@@ -291,11 +291,8 @@ export const Step6_Final = () => {
             const audioFolder = folder.folder("audio");
             if (audioFolder) {
                 // Group by speaker
-                const speakerGroups = script.reduce((acc, cut) => {
-                    if (!acc[cut.speaker]) acc[cut.speaker] = [];
-                    acc[cut.speaker].push(cut);
-                    return acc;
-                }, {} as Record<string, typeof script>);
+                // Group by speaker logic removed as it was unused placeholder
+
 
                 // Note: Actual audio file adding would happen here if we had the blobs ready
                 // For now, this structure is just a placeholder in the zip
