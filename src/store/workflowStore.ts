@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { StateStorage } from 'zustand/middleware';
 import { get as idbGet, set as idbSet, del as idbDel } from 'idb-keyval';
+import { extractSeriesData, getNextEpisodeNumber } from '../utils/seriesUtils';
 
 // Import types and slices
 import type { ProjectData, ProjectMetadata } from './types';
@@ -16,7 +17,7 @@ interface MultiProjectActions {
     // Project Management
     id: string;
     lastModified: number;
-    createProject: () => Promise<void>;
+    createProject: (sourceSeries?: string) => Promise<void>;
     loadProject: (id: string) => Promise<void>;
     saveProject: () => Promise<void>;
     deleteProject: (id: string) => Promise<void>;
@@ -281,11 +282,12 @@ export const useWorkflowStore = create<WorkflowStore>()(
                 }));
             },
 
-            createProject: async () => {
+            createProject: async (sourceSeries?: string) => {
                 await get().saveProject();
                 const newId = generateId();
                 const state = get() as any;
 
+                // Base template for new project
                 const newProject: ProjectData = {
                     id: newId,
                     lastModified: Date.now(),
@@ -312,7 +314,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
                         epNumSize: 60,
                         textColor: '#ffffff',
                         fontFamily: 'Inter',
-                        frameImage: '/frame_bg.svg'
+                        frameImage: '' // Fixed: don't auto-load frame
                     },
                     masterStyle: { description: '', referenceImage: null },
                     styleAnchor: {
@@ -326,6 +328,34 @@ export const useWorkflowStore = create<WorkflowStore>()(
                     assets: {},
                     currentStep: 1,
                 };
+
+                // If sourceSeries is provided, inherit series-level data
+                if (sourceSeries) {
+                    const { getLatestProjectBySeries, extractSeriesData, getNextEpisodeNumber } = await import('../utils/seriesUtils');
+                    const sourceProject = await getLatestProjectBySeries(sourceSeries);
+
+                    if (sourceProject) {
+                        console.log(`[Store] Inheriting series data from "${sourceSeries}"`);
+                        const seriesData = extractSeriesData(sourceProject);
+                        const nextEpisodeNum = await getNextEpisodeNumber(sourceSeries);
+
+                        Object.assign(newProject, {
+                            ...seriesData,
+                            episodeNumber: nextEpisodeNum,
+                            episodeName: `Episode ${nextEpisodeNum}`,
+                            episodePlot: '',
+                            episodeCharacters: [],
+                            episodeLocations: [],
+                            script: [],
+                            assets: {},
+                            thumbnailUrl: null,
+                            thumbnailSettings: {
+                                ...newProject.thumbnailSettings,
+                                ...seriesData.thumbnailSettings
+                            }
+                        });
+                    }
+                }
 
                 await saveProjectToDisk(newProject);
 
@@ -363,10 +393,38 @@ export const useWorkflowStore = create<WorkflowStore>()(
 
             deleteProject: async (id: string) => {
                 const state = get() as any;
-                const newSavedProjects = { ...state.savedProjects };
-                delete newSavedProjects[id];
+                const { [id]: deleted, ...remainingProjects } = state.savedProjects;
+
+                // Update store state
+                set({ savedProjects: remainingProjects });
+
+                // Remove from IndexedDB
                 await deleteProjectFromDisk(id);
-                set({ savedProjects: newSavedProjects });
+                console.log(`[Store] Deleted project ${id}`);
+            },
+
+            deleteSeries: async (seriesName: string) => {
+                const state = get() as any;
+                const projectIdsToDelete: string[] = [];
+                const remainingProjects: Record<string, ProjectMetadata> = {};
+
+                // Identify projects to delete
+                Object.entries(state.savedProjects).forEach(([id, project]: [string, any]) => {
+                    if (project.seriesName === seriesName) {
+                        projectIdsToDelete.push(id);
+                    } else {
+                        remainingProjects[id] = project;
+                    }
+                });
+
+                // Update store state
+                set({ savedProjects: remainingProjects });
+
+                // Remove from IndexedDB
+                for (const id of projectIdsToDelete) {
+                    await deleteProjectFromDisk(id);
+                }
+                console.log(`[Store] Deleted series "${seriesName}" (${projectIdsToDelete.length} episodes)`);
             },
 
             restoreData: async () => {

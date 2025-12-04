@@ -48,8 +48,9 @@ export const downloadBackup = () => {
     const link = document.createElement('a');
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+
     link.href = url;
-    link.download = `idea-lab-manual-backup-${timestamp}.json`;
+    link.download = `IdeaLab_FullBackup_${timestamp}.json`;
 
     document.body.appendChild(link);
     link.click();

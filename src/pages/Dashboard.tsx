@@ -1,14 +1,14 @@
 import React from 'react';
 import { useWorkflowStore, type ProjectData, type ProjectMetadata } from '../store/workflowStore';
 import { useNavigate } from 'react-router-dom';
-import { Image, FileText, Music, CheckCircle, ArrowRight, TrendingUp, BarChart3, Plus, Download } from 'lucide-react';
+import { Image, FileText, Music, CheckCircle, ArrowRight, TrendingUp, BarChart3, Plus, Download, Trash2 } from 'lucide-react';
 
 import { StorageInspector } from '../components/StorageInspector';
 import { useAutoBackup } from '../hooks/useAutoBackup';
 
 export const Dashboard: React.FC = () => {
     const store = useWorkflowStore();
-    const { savedProjects, loadProject, createProject, id: activeProjectId } = store;
+    const { savedProjects, loadProject, createProject, deleteProject, deleteSeries, id: activeProjectId } = store;
     const navigate = useNavigate();
     const [showInspector, setShowInspector] = React.useState(false);
     const [projectsData, setProjectsData] = React.useState<Record<string, ProjectData>>({});
@@ -25,6 +25,26 @@ export const Dashboard: React.FC = () => {
     const handleLoadProject = (projectId: string) => {
         loadProject(projectId);
         navigate(`/step/1`); // Always start at step 1 when loading from dashboard
+    };
+
+    const handleNewEpisode = async (seriesName: string, e: React.MouseEvent) => {
+        e.stopPropagation(); // Prevent card click
+        await createProject(seriesName);
+        navigate('/step/1');
+    };
+
+    const handleDeleteProject = async (projectId: string, episodeName: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (confirm(`Are you sure you want to delete "${episodeName}"? This cannot be undone.`)) {
+            await deleteProject(projectId);
+        }
+    };
+
+    const handleDeleteSeries = async (seriesName: string, e: React.MouseEvent) => {
+        e.stopPropagation(); // Prevent accordion toggle if implemented
+        if (confirm(`WARNING: Are you sure you want to delete the entire series "${seriesName}"? \n\nThis will delete ALL episodes in this series. This cannot be undone.`)) {
+            await deleteSeries(seriesName);
+        }
     };
 
     // Group projects by series
@@ -70,11 +90,11 @@ export const Dashboard: React.FC = () => {
     const isStepCompleted = (projectData: ProjectData | undefined, stepId: number): boolean => {
         if (!projectData) return false;
         switch (stepId) {
-            case 1: return !!(projectData.seriesName && projectData.episodeName);
+            case 1: return !!(projectData.seriesName && projectData.episodeName && projectData.episodePlot);
             case 2: return !!projectData.styleAnchor?.referenceImage;
             case 3: return projectData.script.length > 0;
             case 4: return projectData.script.length > 0 && projectData.script.every(cut => cut.isConfirmed);
-            case 5: return true;
+            case 5: return !!projectData.thumbnailUrl;
             case 6: return projectData.script.length > 0 && projectData.script.every(cut =>
                 cut.isConfirmed && cut.finalImageUrl && cut.audioUrl
             );
@@ -164,19 +184,33 @@ export const Dashboard: React.FC = () => {
                     <p className="text-2xl text-[var(--color-primary)] font-medium">Meriel's Idea Lab</p>
                 </div>
 
+                {/* New Series Section */}
+                <div className="space-y-3 max-w-[220px]">
+                    <div className="space-y-1">
+                        <h3 className="text-sm font-bold text-white uppercase tracking-wider">Start Fresh</h3>
+                        <p className="text-xs text-gray-400 leading-relaxed">
+                            Create a completely new series with its own characters, locations, and style
+                        </p>
+                    </div>
+                    <button
+                        onClick={handleCreateProject}
+                        className="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-gradient-to-r from-[var(--color-primary)] to-orange-500 hover:from-[var(--color-primary)]/90 hover:to-orange-500/90 border-2 border-[var(--color-primary)] transition-all text-sm text-black font-bold group shadow-lg shadow-[var(--color-primary)]/20"
+                    >
+                        <span className="flex items-center gap-2">
+                            <Plus size={16} />
+                            New Series
+                        </span>
+                        <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
+                    </button>
+                </div>
+
+                {/* Quick Actions */}
                 <div className="space-y-2 max-w-[200px]">
                     <div className="flex items-center gap-2">
                         <div className="w-2.5 h-2.5 bg-[var(--color-primary)] flex-shrink-0" />
                         <h3 className="text-xs font-bold text-white uppercase tracking-wider">Quick Actions</h3>
                     </div>
                     <div className="space-y-1.5">
-                        <button onClick={handleCreateProject} className="w-full flex items-center justify-between px-2.5 py-1 rounded-md bg-[var(--color-surface)] hover:bg-[var(--color-primary)]/20 hover:border-[var(--color-primary)] border border-[var(--color-border)] transition-all text-xs text-white group">
-                            <span className="flex items-center gap-2">
-                                <Plus size={14} className="text-[var(--color-primary)]" />
-                                New Project
-                            </span>
-                            <ArrowRight size={10} className="group-hover:translate-x-0.5 transition-transform" />
-                        </button>
                         <button onClick={() => navigate('/step/6')} className="w-full flex items-center justify-between px-2.5 py-1 rounded-md bg-[var(--color-surface)] hover:bg-[var(--color-primary)]/20 hover:border-[var(--color-primary)] border border-[var(--color-border)] transition-all text-xs text-white">
                             <span>Export Assets</span>
                             <ArrowRight size={10} />
@@ -222,8 +256,27 @@ export const Dashboard: React.FC = () => {
                 {allSeries.map((series) => (
                     <div key={series.id} className="glass-panel p-8 space-y-6 hover:border-[var(--color-primary)] transition-all">
                         <div className="flex items-center justify-between pb-4 border-b border-[var(--color-border)]">
-                            <h2 className="text-3xl font-bold text-white">{series.name}</h2>
-                            <span className="text-sm text-[var(--color-text-muted)]">{series.episodes.length} episode(s)</span>
+                            <div className="flex items-center gap-4">
+                                <h2 className="text-3xl font-bold text-white">{series.name}</h2>
+                                <button
+                                    onClick={(e) => handleNewEpisode(series.name, e)}
+                                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/20 border border-[var(--color-primary)]/30 hover:border-[var(--color-primary)] transition-all text-xs font-bold uppercase tracking-wider"
+                                    title={`Create new episode for ${series.name}`}
+                                >
+                                    <Plus size={14} />
+                                    New Episode
+                                </button>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <span className="text-sm text-[var(--color-text-muted)]">{series.episodes.length} episode(s)</span>
+                                <button
+                                    onClick={(e) => handleDeleteSeries(series.name, e)}
+                                    className="p-2 rounded-lg text-gray-500 hover:text-red-500 hover:bg-red-500/10 transition-all"
+                                    title={`Delete entire series "${series.name}"`}
+                                >
+                                    <Trash2 size={16} />
+                                </button>
+                            </div>
                         </div>
                         {series.episodes.map((episode) => {
                             const isActive = episode.id === activeProjectId;
@@ -239,10 +292,20 @@ export const Dashboard: React.FC = () => {
                                         }`}
                                 >
                                     {isActive && (
-                                        <div className="absolute top-4 right-4 px-2 py-1 bg-[var(--color-primary)] text-black text-[10px] font-bold uppercase tracking-wider rounded">
+                                        <div className="absolute top-4 right-4 px-2 py-1 bg-[var(--color-primary)] text-black text-[10px] font-bold uppercase tracking-wider rounded z-10">
                                             Active
                                         </div>
                                     )}
+
+                                    <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover/card:opacity-100 transition-opacity z-20">
+                                        <button
+                                            onClick={(e) => handleDeleteProject(episode.id, episode.name, e)}
+                                            className="p-1.5 rounded bg-black/50 text-white hover:bg-red-500 hover:text-white transition-colors backdrop-blur-sm"
+                                            title="Delete Episode"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
 
                                     <h3 className="text-xl font-semibold text-[var(--color-primary)] flex items-center gap-2">
                                         <span>EP.{episode.number}</span>
@@ -357,8 +420,9 @@ export const Dashboard: React.FC = () => {
                             );
                         })}
                     </div>
-                ))}
-            </div>
-        </div>
+                ))
+                }
+            </div >
+        </div >
     );
 };

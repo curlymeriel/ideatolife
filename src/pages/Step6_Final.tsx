@@ -310,31 +310,147 @@ export const Step6_Final = () => {
     };
 
     const handleExportExcel = () => {
-        const data = script.map((cut, index) => ({
-            'Cut #': index + 1,
-            'Speaker': cut.speaker,
-            'Dialogue': cut.dialogue,
-            'Duration (s)': cut.estimatedDuration,
-            'Visual Prompt': cut.visualPrompt,
-            'Image Status': cut.finalImageUrl ? 'Final' : (cut.draftImageUrl ? 'Draft' : 'None'),
-            'Audio Status': cut.audioUrl ? 'Ready' : 'None'
-        }));
-
-        const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Script");
 
-        // Adjust column widths
-        const wscols = [
+        // Helper: Detect voice gender from speaker name (fallback for missing data)
+        const getDefaultVoiceGender = (speaker: string): string => {
+            const lower = speaker.toLowerCase();
+
+            // Korean female keywords
+            if (lower.includes('어머니') || lower.includes('엄마') || lower.includes('할머니') ||
+                lower.includes('누나') || lower.includes('언니') || lower.includes('여자') ||
+                lower.includes('소녀') || lower.includes('아가씨') || lower.includes('이모') || lower.includes('고모')) {
+                return 'female';
+            }
+
+            // Korean male keywords
+            if (lower.includes('아버지') || lower.includes('아빠') || lower.includes('할아버지') ||
+                lower.includes('형') || lower.includes('오빠') || lower.includes('남자') ||
+                lower.includes('소년') || lower.includes('삼촌') || lower.includes('이모부') || lower.includes('고모부')) {
+                return 'male';
+            }
+
+            // English keywords
+            if (lower.includes('hero') || lower.includes('male') || lower.includes('man') ||
+                lower.includes('boy') || lower.includes('father') || lower.includes('dad') ||
+                lower.includes('brother') || lower.includes('uncle')) {
+                return 'male';
+            }
+
+            if (lower.includes('heroine') || lower.includes('female') || lower.includes('woman') ||
+                lower.includes('girl') || lower.includes('mother') || lower.includes('mom') ||
+                lower.includes('sister') || lower.includes('aunt')) {
+                return 'female';
+            }
+
+            return 'neutral';
+        };
+
+        // Sheet 1: "by cut" - Detailed cut information
+        let cumulativeTime = 0;
+        const cutData = script.map((cut, index) => {
+            const duration = getCutDuration(index);
+            const startTime = cumulativeTime;
+            const endTime = startTime + duration;
+            cumulativeTime = endTime;
+
+            return {
+                'Cut #': index + 1,
+                'Speaker': cut.speaker || '',
+                'Dialogue': cut.dialogue || '',
+                'Visual Description': cut.visualPrompt || '',
+                'Language': cut.language || 'ko-KR',
+                'Emotion': cut.emotion || '',
+                'Emotion Intensity': cut.emotionIntensity || '',
+                'Voice Gender': cut.voiceGender || getDefaultVoiceGender(cut.speaker || ''),
+                'Voice Age': cut.voiceAge || 'adult',
+                'Start Time': startTime.toFixed(2),
+                'End Time': endTime.toFixed(2),
+                'Duration': duration.toFixed(2),
+                'Audio Duration': (audioDurations[index] || 0).toFixed(2),
+                'Has Audio': cut.audioUrl ? 'Yes' : 'No',
+                'Has Image': (cut.finalImageUrl || cut.draftImageUrl) ? 'Yes' : 'No'
+            };
+        });
+
+        const wsCuts = XLSX.utils.json_to_sheet(cutData);
+        wsCuts['!cols'] = [
             { wch: 6 },  // Cut #
             { wch: 15 }, // Speaker
             { wch: 50 }, // Dialogue
+            { wch: 50 }, // Visual Description
+            { wch: 10 }, // Language
+            { wch: 12 }, // Emotion
+            { wch: 12 }, // Emotion Intensity
+            { wch: 12 }, // Voice Gender
+            { wch: 10 }, // Voice Age
+            { wch: 10 }, // Start Time
+            { wch: 10 }, // End Time
             { wch: 10 }, // Duration
-            { wch: 50 }, // Visual Prompt
-            { wch: 12 }, // Image Status
-            { wch: 12 }  // Audio Status
+            { wch: 12 }, // Audio Duration
+            { wch: 10 }, // Has Audio
+            { wch: 10 }  // Has Image
         ];
-        ws['!cols'] = wscols;
+        XLSX.utils.book_append_sheet(wb, wsCuts, "by cut");
+
+        // Sheet 2: "pj" - Project metadata
+        const { characters, episodeCharacters, seriesLocations, episodeLocations, masterStyle, assetDefinitions } = useWorkflowStore.getState();
+
+        // Log potential duplicates for debugging
+        const characterNames = characters.map(c => c.name);
+        const episodeCharacterNames = episodeCharacters.map(c => c.name);
+        const duplicateCharacters = characterNames.filter(name => episodeCharacterNames.includes(name));
+
+        const locationNames = seriesLocations.map(l => l.name);
+        const episodeLocationNames = episodeLocations.map(l => l.name);
+        const duplicateLocations = locationNames.filter(name => episodeLocationNames.includes(name));
+
+        if (duplicateCharacters.length > 0) {
+            console.warn('[Excel Export] Duplicate characters found between series and episode:', duplicateCharacters);
+        }
+        if (duplicateLocations.length > 0) {
+            console.warn('[Excel Export] Duplicate locations found between series and episode:', duplicateLocations);
+        }
+
+        const projectData = [
+            { Field: 'Series Name', Value: seriesName || '' },
+            { Field: 'Episode Name', Value: episodeName || '' },
+            { Field: 'Episode Number', Value: useWorkflowStore.getState().episodeNumber || '' },
+            { Field: 'Target Duration (s)', Value: targetDuration || '' },
+            { Field: 'Actual Duration (s)', Value: actualDuration.toFixed(2) },
+            { Field: 'Total Cuts', Value: script.length },
+            { Field: 'Series Story', Value: useWorkflowStore.getState().seriesStory || '' },
+            { Field: 'Episode Plot', Value: useWorkflowStore.getState().episodePlot || '' },
+            { Field: 'Aspect Ratio', Value: useWorkflowStore.getState().aspectRatio || '' },
+            { Field: '', Value: '' }, // Blank row
+            { Field: '=== Characters ===', Value: '' },
+            ...characters.map(c => ({ Field: `Character: ${c.name}`, Value: `${c.role} - ${c.description}` })),
+            ...episodeCharacters.map(c => ({ Field: `Ep Character: ${c.name}`, Value: `${c.role} - ${c.description}` })),
+            { Field: '', Value: '' }, // Blank row
+            { Field: '=== Locations ===', Value: '' },
+            ...seriesLocations.map(l => ({ Field: `Location: ${l.name}`, Value: l.description })),
+            ...episodeLocations.map(l => ({ Field: `Ep Location: ${l.name}`, Value: l.description })),
+            { Field: '', Value: '' }, // Blank row
+            { Field: '=== Visual Style ===', Value: '' },
+            { Field: 'Master Style', Value: masterStyle?.description || '' },
+            { Field: 'Character Modifier', Value: masterStyle?.characterModifier || '' },
+            { Field: 'Background Modifier', Value: masterStyle?.backgroundModifier || '' },
+            { Field: '', Value: '' }, // Blank row
+            { Field: '=== Key Visual Assets (Step 2) ===', Value: '' },
+            ...Object.values(assetDefinitions || {}).map(asset => ({
+                Field: `${asset.type.charAt(0).toUpperCase() + asset.type.slice(1)}: ${asset.name}`,
+                Value: asset.description
+            })),
+            { Field: '', Value: '' }, // Blank row
+            { Field: 'Export Date', Value: new Date().toISOString() }
+        ];
+
+        const wsProject = XLSX.utils.json_to_sheet(projectData);
+        wsProject['!cols'] = [
+            { wch: 30 }, // Field
+            { wch: 80 }  // Value
+        ];
+        XLSX.utils.book_append_sheet(wb, wsProject, "pj");
 
         XLSX.writeFile(wb, `${seriesName} - ${episodeName}.xlsx`);
     };
@@ -482,10 +598,10 @@ export const Step6_Final = () => {
 
                         {/* Subtitles - Bottom aligned, smaller font */}
                         <div className="absolute bottom-28 left-0 w-full text-center px-12 md:px-32 z-20">
-                            <p className="text-lg md:text-xl font-medium text-white drop-shadow-lg leading-relaxed animate-fade-in">
+                            <p className="text-xl md:text-2xl font-medium text-white drop-shadow-lg leading-relaxed animate-fade-in">
                                 "{script[currentCutIndex]?.dialogue}"
                             </p>
-                            <p className="text-sm text-[var(--color-primary)] mt-3 uppercase tracking-widest font-bold opacity-80">
+                            <p className="text-base text-[var(--color-primary)] mt-3 uppercase tracking-widest font-bold opacity-80">
                                 {script[currentCutIndex]?.speaker}
                             </p>
                         </div>

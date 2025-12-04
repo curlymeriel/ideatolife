@@ -17,6 +17,7 @@ export interface ScriptCut {
     language?: 'en-US' | 'ko-KR';  // NEW: Detected language for voice selection
     voiceGender?: 'male' | 'female' | 'neutral';  // NEW: Manual gender override
     voiceAge?: 'child' | 'young' | 'adult' | 'senior';  // NEW: Age range for voice
+    storylineSceneId?: string;     // NEW: Link to source storyline scene
 }
 
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
@@ -29,7 +30,9 @@ export const generateScript = async (
     apiKey: string,
     episodePlot?: string,
     characters?: any[],
-    locations?: any[]
+    locations?: any[],
+    storylineTable?: StorylineScene[],  // Use storyline as structure
+    assetDefinitions?: Record<string, any>  // NEW: Step 2 asset definitions
 ): Promise<ScriptCut[]> => {
     if (!apiKey) {
         // Mock response
@@ -63,15 +66,59 @@ export const generateScript = async (
     }
 
     try {
-        // Build character info string
-        const characterInfo = characters && characters.length > 0
-            ? characters.map(c => `- ${c.name} (${c.role}): ${c.description}`).join('\n')
-            : 'No specific characters defined';
+        // Build character info string with Step 2 asset details
+        let characterInfo = '';
+        if (characters && characters.length > 0) {
+            characterInfo = characters.map(c => {
+                // Try to find matching asset definition from Step 2
+                const assetDef = assetDefinitions ? Object.values(assetDefinitions).find(
+                    (a: any) => a.type === 'character' && a.name === c.name
+                ) : null;
 
-        // Build location info string
-        const locationInfo = locations && locations.length > 0
-            ? locations.map(l => `- ${l.name}: ${l.description}`).join('\n')
-            : 'No specific locations defined';
+                // Use Step 2 description if available (more detailed), otherwise Step 1
+                const description = (assetDef as any)?.description || c.description;
+                return `- ${c.name} (${c.role}): ${description}`;
+            }).join('\n');
+        } else {
+            characterInfo = 'No specific characters defined';
+        }
+
+        // Build location info string with Step 2 asset details
+        let locationInfo = '';
+        if (locations && locations.length > 0) {
+            locationInfo = locations.map(l => {
+                // Try to find matching asset definition from Step 2
+                const assetDef = assetDefinitions ? Object.values(assetDefinitions).find(
+                    (a: any) => a.type === 'location' && a.name === l.name
+                ) : null;
+
+                // Use Step 2 description if available (more detailed), otherwise Step 1
+                const description = (assetDef as any)?.description || l.description;
+                return `- ${l.name}: ${description}`;
+            }).join('\n');
+        } else {
+            locationInfo = 'No specific locations defined';
+        }
+
+        // Build storyline context if available
+        let storylineContext = '';
+        if (storylineTable && storylineTable.length > 0) {
+            storylineContext = `
+
+**SCENE STRUCTURE (from user's storyline plan):**
+${storylineTable.map(scene => `
+Scene ${scene.sceneNumber} (${scene.estimatedTime}):
+Content: ${scene.content}
+Direction: ${scene.directionNotes}
+`).join('')}
+
+CRITICAL INSTRUCTIONS:
+1. Follow this scene structure closely. Create 1-3 cuts for each scene.
+2. Match the suggested timing for each scene.
+3. Expand the content into detailed dialogue and visual descriptions.
+4. Maintain the narrative flow across scenes.
+`;
+        }
 
         const prompt = `
       You are a professional screenwriter. Create a video script for a YouTube short.
@@ -88,6 +135,7 @@ export const generateScript = async (
       
       **Available Locations:**
       ${locationInfo}
+      ${storylineContext}
       
       **Production Details:**
       - Target Duration: ${targetDuration} seconds
@@ -109,7 +157,20 @@ export const generateScript = async (
       - language: Detected language code based on dialogue text (en-US for English, ko-KR for Korean)
       - emotion: Emotional tone of the dialogue (neutral/happy/sad/angry/excited/calm/tense)
       - emotionIntensity: Strength of the emotion (low/moderate/high)
-      - visualPrompt: A detailed visual description for AI image generation. **CRITICAL: Use ONLY the exact official character and location names as listed in "Available Characters" and "Available Locations" above. DO NOT translate, romanize, or add alternative names in parentheses.**
+      - visualPrompt: **CRITICAL - Use STRICT cinematographic format with ALL FIVE components:**
+        Format: (Shot Size) + (Angle) + (Subject & Action) + (Camera Movement) + (Lighting/Style)
+        
+        REQUIRED COMPONENTS:
+        1. Shot Size: Wide shot / Medium shot / Close-up / Extreme close-up / Full shot / Medium close-up
+        2. Angle: Eye-level / Low angle / High angle / Dutch angle / Over-the-shoulder / Bird's eye view
+        3. Subject & Action: [Character Name] + specific action/pose + [Location Name] + environment details
+        4. Camera Movement: Static / Slow pan / Zoom in / Zoom out / Tracking / Dolly
+        5. Lighting/Style: Golden hour / Dramatic shadows / Soft lighting / Neon / Cinematic / Noir / etc.
+        
+        GOOD Example: "Wide shot, low angle, Detective Kane standing in Rain-Soaked Street looking up at building, static camera, dramatic noir lighting with wet pavement reflections"
+        BAD Example: "Detective in the street" (missing all components)
+        
+        **Use ONLY exact character/location names from lists above. Vary shot sizes and angles for visual diversity.**
       - estimatedDuration: Duration in seconds (Must be < 8s)
       
       **Important:**
@@ -159,6 +220,15 @@ export interface AiCharacter {
     description: string;
 }
 
+export interface StorylineScene {
+    id?: string;
+    sceneNumber: number;
+    estimatedTime: string;
+    content: string;
+    directionNotes: string;
+    linkedCutIds?: number[];  // NEW: Track which cuts belong to this scene
+}
+
 export interface ConsultationResult {
     reply: string;
     suggestedSeriesName?: string;
@@ -172,6 +242,7 @@ export interface ConsultationResult {
     suggestedEpisodeCharacters?: AiCharacter[];
     suggestedEpisodeLocations?: { name: string; description: string }[];
     suggestedDuration?: number;
+    suggestedStorylineScenes?: StorylineScene[];  // NEW: AI-suggested storyline breakdown
 }
 
 export interface ProjectContext {
@@ -233,30 +304,43 @@ export const consultStory = async (
         
         You should chat naturally, but also try to extract or suggest specific project details when possible.
         
-        IMPORTANT DISTINCTION - Characters:
-        - "suggestedCharacters": Use this for MAIN CHARACTERS who appear throughout the ENTIRE SERIES. Return as an array of objects with name, role, and description.
-        - "suggestedSeriesLocations": Use this for KEY LOCATIONS that appear throughout the SERIES. Return as an array of objects with name and description.
-        - "suggestedEpisodeCharacters": Use this for characters who appear ONLY in THIS SPECIFIC EPISODE. Return as an array of objects with name, role, and description.
-        - "suggestedEpisodeLocations": Use this for locations specific to THIS EPISODE. Return as an array of objects with name and description.
+        CRITICAL - CHARACTER AND LOCATION DESCRIPTIONS:
+        When suggesting characters or locations, the "description" field must include BOTH:
+        1. Story context/personality traits (1-2 sentences)
+        2. Detailed visual image prompt for AI generation (specific appearance details)
         
-        ALWAYS return your response in valid JSON format with the following structure:
+        Format example for character:
+        "A cynical detective who has seen too much. Visual: A tall middle-aged man, sharp angular features, tired blue eyes, wearing a gray trench coat over a rumpled suit, stubble on chin, holding a lit cigarette, noir lighting with dramatic shadows"
+        
+        Format example for location:
+        "The main hub of the Mars colony where all trade happens. Visual: A massive dome-shaped structure with red sand visible outside through transparent walls, futuristic chrome buildings inside, holographic market stalls, blue-tinted lighting, bustling crowd of people in spacesuits"
+        
+        IMPORTANT DISTINCTION:
+        - "suggestedCharacters": MAIN CHARACTERS for the ENTIRE SERIES (name, role, description with story context + visual prompt)
+        - "suggestedSeriesLocations": KEY LOCATIONS for the SERIES (name, description with context + visual prompt)
+        - "suggestedEpisodeCharacters": Characters ONLY in THIS EPISODE (name, role, description with context + visual prompt)
+        - "suggestedEpisodeLocations": Locations ONLY in THIS EPISODE (name, description with context + visual prompt)
+        - "suggestedStorylineScenes": Scene breakdown array with sceneNumber, estimatedTime, content, directionNotes
+        
+        ALWAYS return valid JSON:
         {
-            "reply": "Your conversational response here...",
-            "suggestedSeriesName": "Name of the series (optional)",
-            "suggestedEpisodeName": "Name of the episode (optional)",
+            "reply": "Your conversational response...",
+            "suggestedSeriesName": "Series name (optional)",
+            "suggestedEpisodeName": "Episode name (optional)",
             "suggestedEpisodeNumber": 1 (optional),
-            "suggestedSeriesStory": "Brief summary of the overall series (optional)",
-            "suggestedMainCharacters": "List of main characters in the series (optional)",
-            "suggestedCharacters": [{"name": "Character Name", "role": "Protagonist/Antagonist/Supporting", "description": "Brief character description"}] (optional),
-            "suggestedSeriesLocations": [{"name": "Location Name", "description": "Visual description"}] (optional),
-            "suggestedEpisodePlot": "Brief plot summary of this specific episode (optional)",
-            "suggestedEpisodeCharacters": [{"name": "Character Name", "role": "Guest/Supporting", "description": "Brief character description"}] (optional),
-            "suggestedEpisodeLocations": [{"name": "Location Name", "description": "Visual description"}] (optional),
-            "suggestedDuration": 60 (optional, in seconds)
+            "suggestedSeriesStory": "Brief series summary (optional)",
+            "suggestedMainCharacters": "Character list string (optional)",
+            "suggestedCharacters": [{"name": "Name", "role": "Role", "description": "Story context. Visual: detailed appearance"}] (optional),
+            "suggestedSeriesLocations": [{"name": "Name", "description": "Context. Visual: detailed appearance"}] (optional),
+            "suggestedEpisodePlot": "Episode plot summary (optional)",
+            "suggestedEpisodeCharacters": [{"name": "Name", "role": "Role", "description": "Story context. Visual: detailed appearance"}] (optional),
+            "suggestedEpisodeLocations": [{"name": "Name", "description": "Context. Visual: detailed appearance"}] (optional),
+            "suggestedDuration": 60 (optional),
+            "suggestedStorylineScenes": [{"sceneNumber": 1, "estimatedTime": "0:00-0:30", "content": "Summary", "directionNotes": "Notes"}] (optional)
         }
         
-        If the user hasn't provided enough info for a field, you can omit it or suggest a creative default if appropriate.
-        Keep the "reply" engaging and helpful. Ask follow-up questions to flesh out the story.
+        If the user hasn't provided enough info, omit fields or suggest creative defaults.
+        Keep the "reply" engaging and helpful. Ask follow-up questions to develop the story.
         `;
 
         const contents = history.map(msg => ({
@@ -297,7 +381,8 @@ export const consultStory = async (
                 suggestedEpisodePlot: parsed.suggestedEpisodePlot,
                 suggestedEpisodeCharacters: parsed.suggestedEpisodeCharacters,
                 suggestedEpisodeLocations: parsed.suggestedEpisodeLocations,
-                suggestedDuration: parsed.suggestedDuration
+                suggestedDuration: parsed.suggestedDuration,
+                suggestedStorylineScenes: parsed.suggestedStorylineScenes
             };
         } catch (e) {
             console.error("Failed to parse JSON from Gemini:", e);

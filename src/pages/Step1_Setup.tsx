@@ -47,10 +47,16 @@ export const Step1_Setup: React.FC = () => {
     const [localEpisodeCharacters, setLocalEpisodeCharacters] = useState<any[]>([]);
     const [localEpisodeLocations, setLocalEpisodeLocations] = useState<any[]>([]);
     const [localAspectRatio, setLocalAspectRatio] = useState<AspectRatio>('16:9');
+    const [localStorylineTable, setLocalStorylineTable] = useState<any[]>([]);
+    const [isStorylineOpen, setIsStorylineOpen] = useState(false);
 
     // Chat states
     const [inputMessage, setInputMessage] = useState('');
     const [isConsulting, setIsConsulting] = useState(false);
+
+    // Series selector state
+    const [availableSeries, setAvailableSeries] = useState<string[]>([]);
+    const [isInheritedFromSeries, setIsInheritedFromSeries] = useState(false);
 
     // Collapsible states
     const [isSeriesOpen, setIsSeriesOpen] = useState(true);
@@ -77,8 +83,9 @@ export const Step1_Setup: React.FC = () => {
             setLocalEpisodeCharacters(JSON.parse(JSON.stringify(episodeCharacters)));
             setLocalEpisodeLocations(JSON.parse(JSON.stringify(episodeLocations)));
             setLocalAspectRatio(store.aspectRatio || '16:9');
+            setLocalStorylineTable(JSON.parse(JSON.stringify(store.storylineTable || [])));
         }
-    }, [isEditing, seriesName, episodeName, episodeNumber, seriesStory, episodePlot, targetDuration, characters, seriesLocations, episodeCharacters, episodeLocations, store.aspectRatio]);
+    }, [isEditing, seriesName, episodeName, episodeNumber, seriesStory, episodePlot, targetDuration, characters, seriesLocations, episodeCharacters, episodeLocations, store.aspectRatio, store.storylineTable]);
 
     // Initial Mode Logic
     useEffect(() => {
@@ -86,7 +93,23 @@ export const Step1_Setup: React.FC = () => {
         if (!seriesName) {
             setIsEditing(true);
         }
+        // Check if this project was created from series inheritance
+        if (seriesName && seriesName !== 'New Series' && episodeNumber > 1) {
+            setIsInheritedFromSeries(true);
+        }
     }, []); // Run once on mount
+
+    // Load available series names
+    useEffect(() => {
+        const loadSeries = async () => {
+            const { getAllSeriesNames } = await import('../utils/seriesUtils');
+            const names = await getAllSeriesNames();
+            setAvailableSeries(names);
+        };
+        if (isEditing) {
+            loadSeries();
+        }
+    }, [isEditing]);
 
     const scrollToBottom = () => {
         chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -111,6 +134,7 @@ export const Step1_Setup: React.FC = () => {
             episodeNumber: localEpisodeNumber,
             seriesStory: localSeriesStory,
             episodePlot: localEpisodePlot,
+            storylineTable: localStorylineTable,
             targetDuration: localTargetDuration,
             characters: localCharacters,
             seriesLocations: localSeriesLocations,
@@ -124,6 +148,56 @@ export const Step1_Setup: React.FC = () => {
     const handleCancel = () => {
         setIsEditing(false);
         // Local state will be re-synced by the useEffect
+    };
+
+    const handleSeriesSelect = async (selectedSeries: string) => {
+        if (!selectedSeries) return;
+
+        try {
+            const { getLatestProjectBySeries, extractSeriesData, getNextEpisodeNumber } = await import('../utils/seriesUtils');
+            const sourceProject = await getLatestProjectBySeries(selectedSeries);
+
+            if (sourceProject) {
+                const seriesData = extractSeriesData(sourceProject);
+                const nextEpNum = await getNextEpisodeNumber(selectedSeries);
+
+                // Update local state with inherited data
+                setLocalSeriesName(seriesData.seriesName || '');
+                setLocalSeriesStory(seriesData.seriesStory || '');
+                setLocalCharacters(JSON.parse(JSON.stringify(seriesData.characters || [])));
+                setLocalSeriesLocations(JSON.parse(JSON.stringify(seriesData.seriesLocations || [])));
+                setLocalAspectRatio(seriesData.aspectRatio || '16:9');
+                setLocalEpisodeNumber(nextEpNum);
+                setLocalEpisodeName(`Episode ${nextEpNum}`);
+                setLocalStorylineTable([]); // Reset storyline table for new episode
+                setIsInheritedFromSeries(true);
+
+                // Also update store immediately
+                if (setProjectInfo) {
+                    setProjectInfo({
+                        ...seriesData,
+                        episodeNumber: nextEpNum,
+                        episodeName: `Episode ${nextEpNum}`,
+                        storylineTable: [], // Reset storyline table for new episode
+                        masterStyle: seriesData.masterStyle || { description: '', referenceImage: null },
+                        assetDefinitions: seriesData.assetDefinitions || {},
+                        thumbnailSettings: seriesData.thumbnailSettings || {
+                            scale: 1,
+                            imagePosition: { x: 0, y: 0 },
+                            textPosition: { x: 0, y: 0 },
+                            titleSize: 48,
+                            epNumSize: 60,
+                            textColor: '#ffffff',
+                            fontFamily: 'Inter',
+                            frameImage: sourceProject.thumbnailSettings?.frameImage || ''
+                        }
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load series data:', error);
+            alert('Failed to load series data');
+        }
     };
 
     const handleSendMessage = async () => {
@@ -172,8 +246,8 @@ export const Step1_Setup: React.FC = () => {
                     targetDuration: result.suggestedDuration || targetDuration
                 };
 
-                // Handle character array from AI
-                if (result.suggestedCharacters && result.suggestedCharacters.length > 0) {
+                // Handle character array from AI (allow empty arrays for deletion)
+                if (result.suggestedCharacters !== undefined && Array.isArray(result.suggestedCharacters)) {
                     const newCharacters = result.suggestedCharacters.map((char: AiCharacter) => ({
                         id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
                         name: char.name || '',
@@ -183,8 +257,8 @@ export const Step1_Setup: React.FC = () => {
                     updates.characters = newCharacters;
                 }
 
-                // Handle episode character array from AI
-                if (result.suggestedEpisodeCharacters && Array.isArray(result.suggestedEpisodeCharacters) && result.suggestedEpisodeCharacters.length > 0) {
+                // Handle episode character array from AI (allow empty arrays for deletion)
+                if (result.suggestedEpisodeCharacters !== undefined && Array.isArray(result.suggestedEpisodeCharacters)) {
                     const newEpCharacters = result.suggestedEpisodeCharacters.map((char: AiCharacter) => ({
                         id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
                         name: char.name || '',
@@ -194,8 +268,8 @@ export const Step1_Setup: React.FC = () => {
                     updates.episodeCharacters = newEpCharacters;
                 }
 
-                // Handle series locations from AI
-                if (result.suggestedSeriesLocations && Array.isArray(result.suggestedSeriesLocations) && result.suggestedSeriesLocations.length > 0) {
+                // Handle series locations from AI (allow empty arrays for deletion)
+                if (result.suggestedSeriesLocations !== undefined && Array.isArray(result.suggestedSeriesLocations)) {
                     const newLocs = result.suggestedSeriesLocations.map((loc: any) => ({
                         id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
                         name: loc.name || '',
@@ -204,14 +278,26 @@ export const Step1_Setup: React.FC = () => {
                     updates.seriesLocations = newLocs;
                 }
 
-                // Handle episode locations from AI
-                if (result.suggestedEpisodeLocations && Array.isArray(result.suggestedEpisodeLocations) && result.suggestedEpisodeLocations.length > 0) {
+                // Handle episode locations from AI (allow empty arrays for deletion)
+                if (result.suggestedEpisodeLocations !== undefined && Array.isArray(result.suggestedEpisodeLocations)) {
                     const newLocs = result.suggestedEpisodeLocations.map((loc: any) => ({
                         id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
                         name: loc.name || '',
                         description: loc.description || ''
                     }));
                     updates.episodeLocations = newLocs;
+                }
+
+                // Handle storyline scenes from AI
+                if (result.suggestedStorylineScenes !== undefined && Array.isArray(result.suggestedStorylineScenes)) {
+                    const newScenes = result.suggestedStorylineScenes.map((scene: any) => ({
+                        id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
+                        sceneNumber: scene.sceneNumber || 0,
+                        estimatedTime: scene.estimatedTime || '',
+                        content: scene.content || '',
+                        directionNotes: scene.directionNotes || ''
+                    }));
+                    updates.storylineTable = newScenes;
                 }
 
                 setProjectInfo(updates);
@@ -464,6 +550,46 @@ export const Step1_Setup: React.FC = () => {
                                             <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-1">Episode Plot</label>
                                             <p className="text-gray-300 whitespace-pre-wrap leading-relaxed">{episodePlot || <span className="text-gray-600 italic">No plot defined.</span>}</p>
                                         </div>
+
+                                        {/* Storyline Table (View Mode) */}
+                                        {store.storylineTable && store.storylineTable.length > 0 && (
+                                            <div className="space-y-2">
+                                                <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-2 flex items-center gap-2">
+                                                    <Film size={14} className="text-[var(--color-primary)]" />
+                                                    Storyline Table ({store.storylineTable.length} scenes)
+                                                </label>
+                                                <div className="space-y-3 p-4 bg-[var(--color-bg)] rounded-lg border border-[var(--color-border)]">
+                                                    {store.storylineTable.map((scene) => (
+                                                        <div key={scene.id} className="bg-[var(--color-surface)] p-4 rounded-xl border border-[var(--color-border)]">
+                                                            <div className="flex items-start gap-4">
+                                                                <div className="flex-shrink-0 w-12 text-center">
+                                                                    <div className="text-[var(--color-primary)] font-bold text-lg">#{scene.sceneNumber}</div>
+                                                                </div>
+                                                                <div className="flex-1 space-y-2">
+                                                                    <div className="grid grid-cols-4 gap-2">
+                                                                        <div className="col-span-1">
+                                                                            <div className="text-[10px] text-gray-500 uppercase mb-1">Time</div>
+                                                                            <div className="text-xs text-white">{scene.estimatedTime || '-'}</div>
+                                                                        </div>
+                                                                        <div className="col-span-3">
+                                                                            <div className="text-[10px] text-gray-500 uppercase mb-1">Scene Content</div>
+                                                                            <div className="text-xs text-white">{scene.content || '-'}</div>
+                                                                        </div>
+                                                                    </div>
+                                                                    {scene.directionNotes && (
+                                                                        <div>
+                                                                            <div className="text-[10px] text-gray-500 uppercase mb-1">Direction Notes</div>
+                                                                            <div className="text-xs text-gray-300">{scene.directionNotes}</div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
                                         <div>
                                             <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-2">Episode Characters</label>
                                             <div className="flex flex-wrap gap-2">
@@ -516,6 +642,41 @@ export const Step1_Setup: React.FC = () => {
 
                                     {isSeriesOpen && (
                                         <div className="p-4 pt-4 space-y-6 animate-fade-in border-t border-[var(--color-border)]">
+                                            {/* SERIES SELECTOR - Only show when creating new project */}
+                                            {(!localSeriesName || localSeriesName === 'New Series') && availableSeries.length > 0 && (
+                                                <div className="space-y-2 p-4 bg-[var(--color-primary)]/5 border border-[var(--color-primary)]/20 rounded-lg">
+                                                    <label className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-wider flex items-center gap-2">
+                                                        <Film size={14} />
+                                                        Link to Existing Series (Optional)
+                                                    </label>
+                                                    <select
+                                                        onChange={(e) => handleSeriesSelect(e.target.value)}
+                                                        className="input-field text-sm"
+                                                        defaultValue=""
+                                                    >
+                                                        <option value="">-- Start New Series --</option>
+                                                        {availableSeries.map((series) => (
+                                                            <option key={series} value={series}>
+                                                                {series}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    <p className="text-xs text-gray-400">
+                                                        Select an existing series to inherit characters, locations, and master style
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            {/* Inheritance Indicator */}
+                                            {isInheritedFromSeries && (
+                                                <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-500/30 rounded-lg">
+                                                    <CheckCircle size={16} className="text-green-400" />
+                                                    <span className="text-xs text-green-300 font-medium">
+                                                        Series data inherited from "{localSeriesName}"
+                                                    </span>
+                                                </div>
+                                            )}
+
                                             <div className="space-y-2">
                                                 {renderLabel("Series Name", !!localSeriesName)}
                                                 <input
@@ -588,7 +749,7 @@ export const Step1_Setup: React.FC = () => {
                                                                 </button>
                                                             </div>
                                                             <textarea
-                                                                placeholder="Character traits & description..."
+                                                                placeholder="Visual image prompt: Describe appearance for AI generation (e.g., 'A tall detective wearing a gray trench coat, sharp features, blue eyes, holding a cigarette')"
                                                                 className="w-full bg-transparent border border-[var(--color-border)] rounded-lg p-2 text-sm text-gray-300 focus:border-[var(--color-primary)] outline-none resize-none h-20 placeholder-gray-600"
                                                                 value={char.description}
                                                                 onChange={(e) => {
@@ -647,7 +808,7 @@ export const Step1_Setup: React.FC = () => {
                                                                 </button>
                                                             </div>
                                                             <textarea
-                                                                placeholder="Visual description of this location..."
+                                                                placeholder="Visual image prompt: Describe location for AI generation (e.g., 'A dusty dome-shaped city on Mars, red sand, transparent protective shield, futuristic buildings')"
                                                                 className="w-full bg-transparent border border-[var(--color-border)] rounded-lg p-2 text-sm text-gray-300 focus:border-[var(--color-primary)] outline-none resize-none h-20 placeholder-gray-600"
                                                                 value={loc.description}
                                                                 onChange={(e) => {
@@ -735,6 +896,120 @@ export const Step1_Setup: React.FC = () => {
                                                 />
                                             </div>
 
+                                            {/* Storyline Table (Accordion) */}
+                                            <div className="space-y-2">
+                                                <button
+                                                    onClick={() => setIsStorylineOpen(!isStorylineOpen)}
+                                                    className="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-[var(--color-surface)] hover:bg-[var(--color-surface-highlight)] border border-[var(--color-border)] transition-all"
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <Film size={18} className="text-[var(--color-primary)]" />
+                                                        <span className="text-sm font-bold text-white">Storyline Table</span>
+                                                        <span className="text-xs text-gray-400">({localStorylineTable.length} scenes)</span>
+                                                    </div>
+                                                    <ChevronDown size={20} className={`text-gray-400 transition-transform duration-300 ${isStorylineOpen ? 'rotate-180' : ''}`} />
+                                                </button>
+
+                                                {isStorylineOpen && (
+                                                    <div className="space-y-3 p-4 bg-[var(--color-bg)] rounded-lg border border-[var(--color-border)] animate-fade-in">
+                                                        <div className="flex justify-between items-center">
+                                                            <p className="text-xs text-gray-400">Break down your episode into key scenes with timing and direction notes</p>
+                                                            <button
+                                                                onClick={() => {
+                                                                    const newScene = {
+                                                                        id: Date.now().toString(),
+                                                                        sceneNumber: localStorylineTable.length + 1,
+                                                                        estimatedTime: '',
+                                                                        content: '',
+                                                                        directionNotes: ''
+                                                                    };
+                                                                    setLocalStorylineTable([...localStorylineTable, newScene]);
+                                                                }}
+                                                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/20 transition-colors text-xs font-bold"
+                                                            >
+                                                                <Plus size={14} />
+                                                                Add Scene
+                                                            </button>
+                                                        </div>
+
+                                                        {localStorylineTable.length === 0 ? (
+                                                            <div className="text-center py-8 text-gray-500">
+                                                                <Film size={40} className="mx-auto mb-2 opacity-30" />
+                                                                <p className="text-sm">No scenes yet. Click "Add Scene" to start building your storyline.</p>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="space-y-3">
+                                                                {localStorylineTable.map((scene, index) => (
+                                                                    <div key={scene.id} className="group relative bg-[var(--color-surface)] p-4 rounded-xl border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors">
+                                                                        <div className="flex items-start gap-4">
+                                                                            <div className="flex-shrink-0 w-12 text-center">
+                                                                                <div className="text-[var(--color-primary)] font-bold text-lg">#{scene.sceneNumber}</div>
+                                                                            </div>
+                                                                            <div className="flex-1 space-y-3">
+                                                                                <div className="grid grid-cols-4 gap-2">
+                                                                                    <div className="col-span-1">
+                                                                                        <label className="text-[10px] text-gray-500 uppercase mb-1 block">Time</label>
+                                                                                        <input
+                                                                                            type="text"
+                                                                                            placeholder="e.g. 0:00-1:30"
+                                                                                            className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-2 py-1 text-xs text-white focus:border-[var(--color-primary)] outline-none"
+                                                                                            value={scene.estimatedTime}
+                                                                                            onChange={(e) => {
+                                                                                                const newTable = [...localStorylineTable];
+                                                                                                newTable[index].estimatedTime = e.target.value;
+                                                                                                setLocalStorylineTable(newTable);
+                                                                                            }}
+                                                                                        />
+                                                                                    </div>
+                                                                                    <div className="col-span-3">
+                                                                                        <label className="text-[10px] text-gray-500 uppercase mb-1 block">Scene Content</label>
+                                                                                        <input
+                                                                                            type="text"
+                                                                                            placeholder="Brief summary of what happens..."
+                                                                                            className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-2 py-1 text-xs text-white focus:border-[var(--color-primary)] outline-none"
+                                                                                            value={scene.content}
+                                                                                            onChange={(e) => {
+                                                                                                const newTable = [...localStorylineTable];
+                                                                                                newTable[index].content = e.target.value;
+                                                                                                setLocalStorylineTable(newTable);
+                                                                                            }}
+                                                                                        />
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div>
+                                                                                    <label className="text-[10px] text-gray-500 uppercase mb-1 block">Direction Notes</label>
+                                                                                    <textarea
+                                                                                        placeholder="Visual direction, mood, key elements..."
+                                                                                        className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs text-white focus:border-[var(--color-primary)] outline-none resize-none h-16"
+                                                                                        value={scene.directionNotes}
+                                                                                        onChange={(e) => {
+                                                                                            const newTable = [...localStorylineTable];
+                                                                                            newTable[index].directionNotes = e.target.value;
+                                                                                            setLocalStorylineTable(newTable);
+                                                                                        }}
+                                                                                    />
+                                                                                </div>
+                                                                            </div>
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    const newTable = localStorylineTable.filter(s => s.id !== scene.id);
+                                                                                    // Re-number scenes
+                                                                                    const renumbered = newTable.map((s, i) => ({ ...s, sceneNumber: i + 1 }));
+                                                                                    setLocalStorylineTable(renumbered);
+                                                                                }}
+                                                                                className="p-1.5 rounded-lg text-gray-500 hover:text-red-500 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
+                                                                            >
+                                                                                <Trash2 size={16} />
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+
                                             <div className="space-y-4">
                                                 <div className="flex justify-between items-center">
                                                     {renderLabel("Episode Characters", localEpisodeCharacters.length > 0)}
@@ -786,7 +1061,7 @@ export const Step1_Setup: React.FC = () => {
                                                                 </button>
                                                             </div>
                                                             <textarea
-                                                                placeholder="Character traits & description..."
+                                                                placeholder="Visual image prompt: Describe appearance for AI generation (e.g., 'A mysterious guest character with silver hair, wearing a lab coat, carrying a briefcase')"
                                                                 className="w-full bg-transparent border border-[var(--color-border)] rounded-lg p-2 text-sm text-gray-300 focus:border-[var(--color-primary)] outline-none resize-none h-20 placeholder-gray-600"
                                                                 value={char.description}
                                                                 onChange={(e) => {
@@ -845,7 +1120,7 @@ export const Step1_Setup: React.FC = () => {
                                                                 </button>
                                                             </div>
                                                             <textarea
-                                                                placeholder="Visual description of this location..."
+                                                                placeholder="Visual image prompt: Describe location for AI generation (e.g., 'An abandoned underground tunnel, dark with flickering lights, water dripping from ceiling')"
                                                                 className="w-full bg-transparent border border-[var(--color-border)] rounded-lg p-2 text-sm text-gray-300 focus:border-[var(--color-primary)] outline-none resize-none h-20 placeholder-gray-600"
                                                                 value={loc.description}
                                                                 onChange={(e) => {

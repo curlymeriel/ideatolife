@@ -20,6 +20,7 @@ export interface Character {
     name: string;
     role: string;
     description: string;
+    gender?: 'male' | 'female' | 'other';   // Character gender
     voiceId?: string;                       // e.g., 'en-US-Neural2-C' or 'ko-KR-Chirp3-HD-Aoede'
     voiceLanguage?: 'en-US' | 'ko-KR';      // Voice language
     voicePitch?: string;                    // e.g., '+2st', '-1st' (Neural2 only)
@@ -75,6 +76,23 @@ export interface AssetDefinition {
     lastUpdated?: number;
 }
 
+export interface StorylineScene {
+    id: string;
+    sceneNumber: number;
+    estimatedTime: string;  // e.g., '1:00 - 2:30'
+    content: string;         // Scene summary/content
+    directionNotes: string;  // Visual direction notes
+}
+
+export interface VisualAsset {
+    id: string;              // character or location ID
+    type: 'character' | 'location';
+    name: string;
+    visualPrompt: string;    // Detailed visual description
+    previewImageUrl?: string; // Small preview image
+    isConfirmed: boolean;    // Whether this is finalized for Step 3
+}
+
 // ====================
 // Project Data (Persisted Domain State)
 // ====================
@@ -94,6 +112,7 @@ export interface ProjectData {
     episodePlot: string;
     episodeCharacters: Character[];
     episodeLocations: Location[];
+    storylineTable?: StorylineScene[];  // NEW: Structured storyline table
     targetDuration: number;
     aspectRatio: AspectRatio;
     apiKeys: ApiKeys;
@@ -103,6 +122,7 @@ export interface ProjectData {
     masterStyle: MasterStyle;
     styleAnchor: StyleAnchor;
     assetDefinitions: Record<string, AssetDefinition>;
+    visualAssets?: Record<string, VisualAsset>;  // NEW: Visual prompts for characters/locations
 
     // Step 3: Thumbnail
     thumbnailUrl: string | null;

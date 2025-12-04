@@ -8,12 +8,14 @@ import { useNavigate } from 'react-router-dom';
 import { Wand2, Loader2, ArrowRight } from 'lucide-react';
 import { CutItem } from '../components/Production/CutItem';
 import { getMatchedAssets } from '../utils/assetUtils';
+import { linkCutsToStoryline, syncCutsToStoryline } from '../utils/storylineUtils';  // NEW
 
-export const Step4_Production: React.FC = () => {
+export const Step3_Production: React.FC = () => {
     const {
         seriesName, episodeName, targetDuration, styleAnchor, apiKeys,
         script, setScript, ttsModel, setTtsModel, imageModel, setImageModel, nextStep, assetDefinitions,
-        episodePlot, characters, episodeCharacters, seriesLocations, episodeLocations, masterStyle, aspectRatio
+        episodePlot, characters, episodeCharacters, seriesLocations, episodeLocations, masterStyle, aspectRatio,
+        storylineTable, setProjectInfo  // NEW: For storyline integration
     } = useWorkflowStore();
     const navigate = useNavigate();
 
@@ -70,12 +72,17 @@ export const Step4_Production: React.FC = () => {
                 apiKeys.gemini,
                 episodePlot,
                 allCharacters,
-                allLocations
+                allLocations,
+                storylineTable,  // Pass storyline table
+                assetDefinitions  // NEW: Pass Step 2 asset definitions
             );
+
+            // Link cuts to storyline scenes
+            const linkedScript = linkCutsToStoryline(generated, storylineTable);
 
             // Merge generated script with confirmed cuts
             // Keep confirmed cuts' content but add new TTS metadata
-            const mergedScript = generated.map((newCut, index) => {
+            const mergedScript = linkedScript.map((newCut, index) => {
                 const existingCut = localScriptRef.current[index];
                 if (existingCut && existingCut.isConfirmed) {
                     // Keep confirmed cut content but add new metadata for TTS
@@ -87,7 +94,14 @@ export const Step4_Production: React.FC = () => {
                         language: newCut.language
                     };
                 }
-                return newCut;
+
+                // Auto-populate voiceGender and voiceAge for new cuts
+                const autoGender = detectGender(newCut.speaker || 'Narrator');
+                return {
+                    ...newCut,
+                    voiceGender: autoGender,
+                    voiceAge: 'adult' as const  // Default to adult, user can change via dropdown
+                };
             });
 
             setLocalScript(mergedScript);
@@ -147,29 +161,54 @@ export const Step4_Production: React.FC = () => {
                 }
             });
 
+
             const allReferenceImages = [...characterImages, ...locationImages].slice(0, 3);
 
             let characterDetails = '';
+            let locationDetails = '';
+
             matchedAssets.forEach(assetName => {
                 const asset = Object.values(assetDefinitions || {}).find((a: any) => a.name === assetName);
-                if (asset && asset.type === 'character' && asset.description) {
-                    characterDetails += `\n- ${asset.name}: ${asset.description}`;
+                if (asset && asset.description) {
+                    if (asset.type === 'character') {
+                        characterDetails += `\n- ${asset.name}: ${asset.description}`;
+                    } else if (asset.type === 'location') {
+                        locationDetails += `\n- ${asset.name}: ${asset.description}`;
+                    }
                 }
             });
 
+            let assetDetails = '';
             if (characterDetails) {
-                characterDetails = `\n\n[Character Details]${characterDetails}`;
+                assetDetails += `\n\n[Character Details]${characterDetails}`;
+            }
+            if (locationDetails) {
+                assetDetails += `\n\n[Location Details]${locationDetails}`;
             }
 
             let stylePrompt = '';
             if (masterStyle?.description) {
                 stylePrompt += `\n\n[Master Visual Style]\n${masterStyle.description}`;
+
+                // Determine if this cut has character assets or location assets
+                const hasCharacterAssets = matchedAssets.some(assetName => {
+                    const asset = Object.values(assetDefinitions || {}).find((a: any) => a.name === assetName);
+                    return asset && asset.type === 'character';
+                });
+
+                // Apply appropriate modifier
+                if (hasCharacterAssets && masterStyle.characterModifier) {
+                    stylePrompt += `\n${masterStyle.characterModifier}`;
+                } else if (!hasCharacterAssets && masterStyle.backgroundModifier) {
+                    // If no character assets, assume it's a background/location shot
+                    stylePrompt += `\n${masterStyle.backgroundModifier}`;
+                }
             }
             if (styleAnchor?.prompts) {
                 stylePrompt += `\n\n[Style Details]\n${JSON.stringify(styleAnchor.prompts)}`;
             }
 
-            const finalPrompt = prompt + characterDetails + stylePrompt;
+            const finalPrompt = prompt + assetDetails + stylePrompt;
 
             const result = await generateImage(
                 finalPrompt,
@@ -341,7 +380,15 @@ export const Step4_Production: React.FC = () => {
             console.log(`[Audio ${cutId}] Generated successfully`);
 
             const updatedScript = currentScript.map(cut =>
-                cut.id === cutId ? { ...cut, audioUrl } : cut
+                cut.id === cutId ? {
+                    ...cut,
+                    audioUrl,
+                    language,
+                    emotion: currentCut?.emotion,
+                    emotionIntensity: currentCut?.emotionIntensity,
+                    voiceGender: genderToUse,
+                    voiceAge: currentCut?.voiceAge || 'adult'
+                } : cut
             );
             setLocalScript(updatedScript);
             saveToStore(updatedScript);
@@ -450,10 +497,22 @@ export const Step4_Production: React.FC = () => {
     };
 
     const handleUpdateCut = useCallback((id: number, updates: Partial<ScriptCut>) => {
-        setLocalScript(prev => prev.map(cut =>
-            cut.id === id ? { ...cut, ...updates } : cut
-        ));
-    }, []);
+        setLocalScript(prev => {
+            const updated = prev.map(cut =>
+                cut.id === id ? { ...cut, ...updates } : cut
+            );
+            // Auto-save to store when updating cut metadata
+            saveToStore(updated);
+
+            // NEW: Sync changes back to storyline table
+            if (storylineTable && storylineTable.length > 0) {
+                const updatedStoryline = syncCutsToStoryline(updated, storylineTable);
+                setProjectInfo({ storylineTable: updatedStoryline });
+            }
+
+            return updated;
+        });
+    }, [storylineTable, setProjectInfo]);
 
     const toggleConfirm = useCallback((cutId: number) => {
         setLocalScript(prev => {
@@ -596,6 +655,17 @@ export const Step4_Production: React.FC = () => {
                     </button>
                 </div>
             </div>
+
+            {/* Storyline Indicator */}
+            {storylineTable && storylineTable.length > 0 && (
+                <div className="glass-panel p-3 border-l-4 border-blue-500">
+                    <p className="text-sm text-blue-300 flex items-center gap-2">
+                        <span className="text-lg">{'\uD83D\uDCCB'}</span>
+                        Script generated from {storylineTable.length} storyline scene{storylineTable.length > 1 ? 's' : ''}.
+                        Edits will sync back to Step 1.
+                    </p>
+                </div>
+            )}
 
             {/* Progress Bar */}
             {localScript.length > 0 && (

@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowRight, RefreshCw, Image as ImageIcon, Upload, Type, Layers, Move, ZoomIn, Maximize, Download } from 'lucide-react';
 import html2canvas from 'html2canvas';
 
-export const Step3_Thumbnail: React.FC = () => {
+export const Step5_Thumbnail: React.FC = () => {
     const {
         episodeName, episodeNumber,
         setThumbnail, nextStep, prevStep,

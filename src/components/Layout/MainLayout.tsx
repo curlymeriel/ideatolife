@@ -31,7 +31,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     const isStepCompleted = (stepId: number): boolean => {
         switch (stepId) {
             case 1: // Setup
-                return !!(seriesName && episodeName);
+                return !!(seriesName && episodeName && store.episodePlot);
             case 2: // Key Visuals
                 return !!styleAnchor?.referenceImage;
             case 3: // Script
@@ -39,7 +39,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             case 4: // Production
                 return script.length > 0 && script.every(cut => cut.isConfirmed);
             case 5: // Thumbnail
-                return true; // Thumbnail step is always considered complete once visited
+                return !!store.thumbnailUrl;
             case 6: // Final
                 return script.length > 0 && script.every(cut => cut.isConfirmed && cut.finalImageUrl && cut.audioUrl);
             default:

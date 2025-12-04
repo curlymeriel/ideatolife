@@ -5,7 +5,7 @@ import { generateSpeech } from '../services/tts';
 import { useNavigate } from 'react-router-dom';
 import { Play, Loader2, Image as ImageIcon, Music, ArrowRight, ArrowLeft, BarChart3, AlertTriangle, CheckCircle, Pause } from 'lucide-react';
 
-export const Step5_QualityAssurance: React.FC = () => {
+export const Step4_QualityAssurance: React.FC = () => {
     const { script, apiKeys, ttsModel, imageModel, nextStep, prevStep, assetDefinitions, aspectRatio, masterStyle, styleAnchor, setScript } = useWorkflowStore();
     const navigate = useNavigate();
 
@@ -405,7 +405,7 @@ export const Step5_QualityAssurance: React.FC = () => {
                     className="flex items-center gap-2 px-6 py-3 rounded-lg hover:bg-[var(--color-surface-highlight)] text-[var(--color-text-muted)] hover:text-white transition-all"
                 >
                     <ArrowLeft size={20} />
-                    Back to Step 4
+                    Back to Step 3
                 </button>
 
                 <button

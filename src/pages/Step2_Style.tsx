@@ -35,6 +35,8 @@ export const Step2_Style: React.FC = () => {
 
     // Form states
     const [description, setDescription] = useState('');
+    const [characterModifier, setCharacterModifier] = useState('');
+    const [backgroundModifier, setBackgroundModifier] = useState('');
     const [referenceImage, setReferenceImage] = useState<string | null>(null);
     const [draftImage, setDraftImage] = useState<string | null>(null);
 
@@ -90,6 +92,8 @@ export const Step2_Style: React.FC = () => {
     useEffect(() => {
         if (selectedAssetId === 'master_style') {
             setDescription(safeMasterStyle.description || '');
+            setCharacterModifier(safeMasterStyle.characterModifier || '');
+            setBackgroundModifier(safeMasterStyle.backgroundModifier || '');
             setReferenceImage(safeMasterStyle.referenceImage || null);
             setDraftImage(null);
             // Master style is always editable for now, or we can treat it like others
@@ -106,8 +110,52 @@ export const Step2_Style: React.FC = () => {
                 // New definition - prepend Master Style if it exists
                 let initialDescription = '';
                 if (safeMasterStyle.description) {
-                    initialDescription = `[Master Visual Style: ${safeMasterStyle.description}]\n\n`;
+                    initialDescription = `[Master Visual Style: ${safeMasterStyle.description}]`;
+
+                    // Add Character Modifier for character assets
+                    if (selectedAssetType === 'character' && safeMasterStyle.characterModifier) {
+                        initialDescription += `\n[Character Modifier: ${safeMasterStyle.characterModifier}]`;
+                    }
+
+                    // Add Background Modifier for location assets
+                    if (selectedAssetType === 'location' && safeMasterStyle.backgroundModifier) {
+                        initialDescription += `\n[Background Modifier: ${safeMasterStyle.backgroundModifier}]`;
+                    }
+
+                    initialDescription += '\n\n';
                 }
+
+                // Find and add the character/location description from Step 1
+                let baseDescription = '';
+                if (selectedAssetType === 'character') {
+                    // Check series characters first
+                    const seriesChar = safeCharacters.find((c: any) => c.id === selectedAssetId);
+                    if (seriesChar?.description) {
+                        baseDescription = seriesChar.description;
+                    } else {
+                        // Check episode characters
+                        const episodeChar = safeEpisodeCharacters.find((c: any) => c.id === selectedAssetId);
+                        if (episodeChar?.description) {
+                            baseDescription = episodeChar.description;
+                        }
+                    }
+                } else if (selectedAssetType === 'location') {
+                    // Check series locations first
+                    const seriesLoc = safeSeriesLocations.find((l: any) => l.id === selectedAssetId);
+                    if (seriesLoc?.description) {
+                        baseDescription = seriesLoc.description;
+                    } else {
+                        // Check episode locations
+                        const episodeLoc = safeEpisodeLocations.find((l: any) => l.id === selectedAssetId);
+                        if (episodeLoc?.description) {
+                            baseDescription = episodeLoc.description;
+                        }
+                    }
+                }
+
+                // Combine with base description
+                initialDescription += baseDescription;
+
                 setDescription(initialDescription);
                 setReferenceImage(null);
                 setDraftImage(null);
@@ -136,7 +184,9 @@ export const Step2_Style: React.FC = () => {
             if (setMasterStyle) {
                 setMasterStyle({
                     description,
-                    referenceImage: referenceImage || null
+                    referenceImage: referenceImage || null,
+                    characterModifier: characterModifier || undefined,
+                    backgroundModifier: backgroundModifier || undefined
                 });
             }
         } else {
@@ -480,10 +530,36 @@ export const Step2_Style: React.FC = () => {
                                             <CheckCircle size={18} className="text-green-500" />
                                             <span className="text-sm font-bold uppercase">Confirmed Description</span>
                                         </div>
-                                        <div className="flex-1 overflow-y-auto pr-2">
+                                        <div className="flex-1 overflow-y-auto pr-2 space-y-4">
                                             <p className="text-gray-300 text-lg leading-relaxed whitespace-pre-wrap">
                                                 {description || "No description defined."}
                                             </p>
+
+                                            {/* Character Modifier Display */}
+                                            {characterModifier && (
+                                                <div className="border-t border-[var(--color-border)] pt-4">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <User size={14} className="text-[var(--color-primary)]" />
+                                                        <span className="text-xs font-bold text-[var(--color-primary)] uppercase">Character Modifier</span>
+                                                    </div>
+                                                    <p className="text-gray-400 text-sm leading-relaxed whitespace-pre-wrap pl-5">
+                                                        {characterModifier}
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            {/* Background Modifier Display */}
+                                            {backgroundModifier && (
+                                                <div className="border-t border-[var(--color-border)] pt-4">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <MapPin size={14} className="text-[var(--color-primary)]" />
+                                                        <span className="text-xs font-bold text-[var(--color-primary)] uppercase">Background Modifier</span>
+                                                    </div>
+                                                    <p className="text-gray-400 text-sm leading-relaxed whitespace-pre-wrap pl-5">
+                                                        {backgroundModifier}
+                                                    </p>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
@@ -582,39 +658,77 @@ export const Step2_Style: React.FC = () => {
 
                             {/* PROMPT AND REFERENCE IMAGE - HORIZONTAL LAYOUT */}
                             <div className="flex gap-6">
-                                {/* DESCRIPTION TEXTAREA - LEFT */}
-                                <div className="flex-1 glass-panel flex flex-col !rounded-none border border-[var(--color-border)]">
-                                    <div className="flex items-center justify-between text-[var(--color-text-muted)] p-4 border-b border-[var(--color-border)]">
-                                        <div className="flex items-center gap-2">
-                                            <Type size={18} />
-                                            <span className="text-sm font-bold uppercase">
-                                                {selectedAssetId === 'master_style' ? 'Master Style Description' : 'Asset Description'}
-                                            </span>
+                                {/* LEFT SIDE: DESCRIPTION AND MODIFIERS - 2/3 WIDTH */}
+                                <div className="w-2/3 flex flex-col gap-4">
+                                    {/* DESCRIPTION TEXTAREA */}
+                                    <div className="glass-panel flex flex-col !rounded-none border border-[var(--color-border)]">
+                                        <div className="flex items-center justify-between text-[var(--color-text-muted)] p-4 border-b border-[var(--color-border)]">
+                                            <div className="flex items-center gap-2">
+                                                <Type size={18} />
+                                                <span className="text-sm font-bold uppercase">
+                                                    {selectedAssetId === 'master_style' ? 'Master Style Description' : 'Asset Description'}
+                                                </span>
+                                            </div>
+                                            <button
+                                                onClick={handleMagicExpand}
+                                                disabled={isProcessing || !description}
+                                                className="flex items-center gap-2 px-3 py-1 rounded-none bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs font-bold hover:opacity-90 disabled:opacity-50 transition-all shadow-lg"
+                                            >
+                                                {isProcessing ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+                                                AI Expander
+                                            </button>
                                         </div>
-                                        <button
-                                            onClick={handleMagicExpand}
-                                            disabled={isProcessing || !description}
-                                            className="flex items-center gap-2 px-3 py-1 rounded-none bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs font-bold hover:opacity-90 disabled:opacity-50 transition-all shadow-lg"
-                                        >
-                                            {isProcessing ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
-                                            AI Expander
-                                        </button>
+                                        <div className="flex-1 p-4" style={{ minHeight: '200px' }}>
+                                            <textarea
+                                                className="w-full h-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded-none p-4 text-gray-300 focus:border-[var(--color-primary)] outline-none resize-none text-lg leading-relaxed"
+                                                placeholder={selectedAssetId === 'master_style'
+                                                    ? "Define the global visual style (e.g. '90s anime style, cel shaded, vibrant colors, grain film effect'). This will be applied to ALL generated images."
+                                                    : safeMasterStyle.description
+                                                        ? "Continue describing this asset... (Master Style is already included above)"
+                                                        : "Describe the appearance in detail... (e.g. 'A detective in a trench coat, smoking a cigarette')"}
+                                                value={description}
+                                                onChange={(e) => setDescription(e.target.value)}
+                                                style={{ minHeight: '150px' }}
+                                            />
+                                        </div>
                                     </div>
-                                    <div className="flex-1 p-4 overflow-y-auto" style={{ minHeight: '200px', maxHeight: '400px' }}>
-                                        <textarea
-                                            className="w-full h-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded-none p-4 text-gray-300 focus:border-[var(--color-primary)] outline-none resize-none text-lg leading-relaxed"
-                                            placeholder={selectedAssetId === 'master_style'
-                                                ? "Define the global visual style (e.g. '90s anime style, cel shaded, vibrant colors, grain film effect'). This will be applied to ALL generated images."
-                                                : safeMasterStyle.description
-                                                    ? "Continue describing this asset... (Master Style is already included above)"
-                                                    : "Describe the appearance in detail... (e.g. 'A detective in a trench coat, smoking a cigarette')"}
-                                            value={description}
-                                            onChange={(e) => setDescription(e.target.value)}
-                                        />
-                                    </div>
+
+                                    {/* Character Modifier Textarea (Master Style Only) */}
+                                    {selectedAssetId === 'master_style' && (
+                                        <div className="glass-panel p-4 !rounded-none border border-[var(--color-border)]">
+                                            <label className="text-sm font-bold text-[var(--color-text-muted)] mb-2 block flex items-center gap-2">
+                                                <User size={14} />
+                                                Character Modifier (Optional)
+                                            </label>
+                                            <textarea
+                                                value={characterModifier}
+                                                onChange={(e) => setCharacterModifier(e.target.value)}
+                                                placeholder="Additional style for character images (e.g., 'with soft lighting and warm colors')"
+                                                className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded p-3 text-gray-300 focus:border-[var(--color-primary)] outline-none resize-none text-sm"
+                                                rows={3}
+                                            />
+                                        </div>
+                                    )}
+
+                                    {/* Background Modifier Textarea (Master Style Only) */}
+                                    {selectedAssetId === 'master_style' && (
+                                        <div className="glass-panel p-4 !rounded-none border border-[var(--color-border)]">
+                                            <label className="text-sm font-bold text-[var(--color-text-muted)] mb-2 block flex items-center gap-2">
+                                                <MapPin size={14} />
+                                                Background Modifier (Optional)
+                                            </label>
+                                            <textarea
+                                                value={backgroundModifier}
+                                                onChange={(e) => setBackgroundModifier(e.target.value)}
+                                                placeholder="Additional style for background/location images (e.g., 'with dramatic lighting and shadows')"
+                                                className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded p-3 text-gray-300 focus:border-[var(--color-primary)] outline-none resize-none text-sm"
+                                                rows={3}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
 
-                                {/* REFERENCE IMAGE - RIGHT */}
+                                {/* REFERENCE IMAGE - RIGHT 1/3 */}
                                 <div className="w-1/3 glass-panel flex flex-col !rounded-none border border-[var(--color-border)]">
                                     <div className="flex items-center justify-between text-[var(--color-text-muted)] p-4 border-b border-[var(--color-border)]">
                                         <div className="flex items-center gap-2">
@@ -702,54 +816,58 @@ export const Step2_Style: React.FC = () => {
             </div>
 
             {/* DEBUG INFO POPUP */}
-            {showDebug && (
-                <div className="fixed top-1/2 left-[calc(33.333%+2rem)] transform -translate-y-1/2 bg-black/95 border border-[var(--color-primary)] p-4 text-xs font-mono text-green-400 z-50 max-h-[80vh] overflow-y-auto shadow-2xl w-[500px]">
-                    <div className="space-y-4">
-                        <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-2 mb-4">
-                            <h3 className="text-[var(--color-primary)] font-bold text-sm">Debug Info</h3>
-                            <button
-                                onClick={() => setShowDebug(false)}
-                                className="text-[var(--color-text-muted)] hover:text-white"
-                            >
-                                ✕
-                            </button>
-                        </div>
+            {
+                showDebug && (
+                    <div className="fixed top-1/2 left-[calc(33.333%+2rem)] transform -translate-y-1/2 bg-black/95 border border-[var(--color-primary)] p-4 text-xs font-mono text-green-400 z-50 max-h-[80vh] overflow-y-auto shadow-2xl w-[500px]">
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-2 mb-4">
+                                <h3 className="text-[var(--color-primary)] font-bold text-sm">Debug Info</h3>
+                                <button
+                                    onClick={() => setShowDebug(false)}
+                                    className="text-[var(--color-text-muted)] hover:text-white"
+                                >
+                                    ✕
+                                </button>
+                            </div>
 
-                        <div>
-                            <h4 className="font-bold text-white mb-2">State Status</h4>
-                            <p>Hydrated: {isHydrated ? 'Yes' : 'No'}</p>
-                            <p>Asset ID: {selectedAssetId}</p>
-                            <p>Asset Type: {selectedAssetType}</p>
-                            <p>Editing: {isEditing ? 'Yes' : 'No'}</p>
-                        </div>
+                            <div>
+                                <h4 className="font-bold text-white mb-2">State Status</h4>
+                                <p>Hydrated: {isHydrated ? 'Yes' : 'No'}</p>
+                                <p>Asset ID: {selectedAssetId}</p>
+                                <p>Asset Type: {selectedAssetType}</p>
+                                <p>Editing: {isEditing ? 'Yes' : 'No'}</p>
+                            </div>
 
-                        <div>
-                            <h4 className="font-bold text-white mb-2">Data Counts</h4>
-                            <p>Characters: {safeCharacters.length}</p>
-                            <p>Locations: {safeSeriesLocations.length}</p>
-                            <p>Ep. Characters: {safeEpisodeCharacters.length}</p>
-                            <p>Ep. Locations: {safeEpisodeLocations.length}</p>
-                        </div>
+                            <div>
+                                <h4 className="font-bold text-white mb-2">Data Counts</h4>
+                                <p>Characters: {safeCharacters.length}</p>
+                                <p>Locations: {safeSeriesLocations.length}</p>
+                                <p>Ep. Characters: {safeEpisodeCharacters.length}</p>
+                                <p>Ep. Locations: {safeEpisodeLocations.length}</p>
+                            </div>
 
-                        <div>
-                            <h4 className="font-bold text-white mb-2">Current Definition</h4>
-                            <pre className="whitespace-pre-wrap break-all text-[10px] text-gray-400 bg-black/50 p-2 rounded border border-[var(--color-border)] max-h-[300px] overflow-y-auto">
-                                {JSON.stringify(safeAssetDefinitions[selectedAssetId] || "No definition", null, 2)}
-                            </pre>
+                            <div>
+                                <h4 className="font-bold text-white mb-2">Current Definition</h4>
+                                <pre className="whitespace-pre-wrap break-all text-[10px] text-gray-400 bg-black/50 p-2 rounded border border-[var(--color-border)] max-h-[300px] overflow-y-auto">
+                                    {JSON.stringify(safeAssetDefinitions[selectedAssetId] || "No definition", null, 2)}
+                                </pre>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Image Crop Modal */}
-            {showCropModal && imageToCrop && (
-                <ImageCropModal
-                    imageSrc={imageToCrop}
-                    aspectRatio={aspectRatio || '16:9'}
-                    onConfirm={handleCropConfirm}
-                    onCancel={handleCropCancel}
-                />
-            )}
-        </div>
+            {
+                showCropModal && imageToCrop && (
+                    <ImageCropModal
+                        imageSrc={imageToCrop}
+                        aspectRatio={aspectRatio || '16:9'}
+                        onConfirm={handleCropConfirm}
+                        onCancel={handleCropCancel}
+                    />
+                )
+            }
+        </div >
     );
 };

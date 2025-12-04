@@ -41,6 +41,7 @@ const sampleProjectDefaults = {
     episodePlot: 'Kael discovers a strange signal coming from the old mines.',
     episodeCharacters: [],
     episodeLocations: [],
+    storylineTable: [],
     targetDuration: 60,
     aspectRatio: '16:9' as const,
     apiKeys: {
@@ -74,6 +75,7 @@ const sampleProjectDefaults = {
         },
     },
     assetDefinitions: {},
+    visualAssets: {},
     script: [],
     ttsModel: 'neural2' as const,
     imageModel: 'gemini-2.5-flash-image' as const,
