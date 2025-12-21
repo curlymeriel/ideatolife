@@ -207,11 +207,14 @@ export const CutItem = memo(({
 
     // Asset matching
     const manualAssets = cut.referenceAssetIds || [];
-    const allMatchedAssets = useMemo(() =>
-        getMatchedAssets(cut.visualPrompt, manualAssets, assetDefinitions, cut.id),
+    const allMatchedResults = useMemo(() =>
+        getMatchedAssets(cut.visualPrompt || '', manualAssets, assetDefinitions, cut.id),
         [cut.visualPrompt, manualAssets, assetDefinitions, cut.id]);
 
-    const autoMatchedAssets = allMatchedAssets.filter((a: any) => !manualAssets.includes(a.id));
+    // Extract actual asset objects - getMatchedAssets returns { asset, isManual }[]
+    const autoMatchedAssets = allMatchedResults
+        .filter((match: any) => !match.isManual)
+        .map((match: any) => match.asset);
     const manualAssetObjs = assetDefinitions
         ? manualAssets.map(id => assetDefinitions[id]).filter(Boolean)
         : [];
@@ -379,7 +382,7 @@ export const CutItem = memo(({
                                     className="flex items-center justify-center gap-1 w-16 px-2 py-1.5 rounded text-[10px] font-bold bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30 disabled:opacity-50 transition-colors"
                                 >
                                     {audioLoading ? <Loader2 size={10} className="animate-spin" /> : <Mic size={10} />}
-                                    Gen
+                                    {hasRealAudio ? 'Regen' : 'Gen'}
                                 </button>
                             )}
 
