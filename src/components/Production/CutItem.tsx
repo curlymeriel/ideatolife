@@ -117,6 +117,10 @@ export const CutItem = memo(({
     const [resolvedAudioUrl, setResolvedAudioUrl] = useState<string>('');
     const [actualAudioDuration, setActualAudioDuration] = useState<number | null>(null);
 
+    // Dropdown states for inline settings
+    const [showAudioSettings, setShowAudioSettings] = useState(false);
+    const [showImageSettings, setShowImageSettings] = useState(false);
+
     // Sync local state with cut changes (but not while editing)
     useEffect(() => {
         if (!isFocusedRef.current) setLocalDialogue(cut.dialogue || '');
@@ -268,7 +272,7 @@ export const CutItem = memo(({
                     </div>
                 </div>
 
-                {/* Row 2: Dialogue Input */}
+                {/* Row 2: Dialogue Input + Audio Actions */}
                 <div className="flex gap-2 items-start">
                     <div className="flex-1">
                         <label className="text-[9px] text-gray-500 uppercase font-bold block mb-1">💬 Dialogue</label>
@@ -285,9 +289,139 @@ export const CutItem = memo(({
                             placeholder="Dialogue..."
                         />
                     </div>
+                    {/* Audio Action Buttons */}
+                    <div className="flex flex-col gap-1 pt-5">
+                        {/* Generate/Play Audio Button */}
+                        {!hasAudio && cut.speaker !== 'SILENT' ? (
+                            <button
+                                onClick={() => onGenerateAudio(cut.id, cut.dialogue)}
+                                disabled={audioLoading || !cut.dialogue || isAudioConfirmed}
+                                className="flex items-center justify-center gap-1 w-20 px-2 py-2 rounded-lg bg-[var(--color-primary)]/20 border border-[var(--color-primary)]/30 text-[var(--color-primary)] text-xs hover:bg-[var(--color-primary)]/30 transition-colors disabled:opacity-50"
+                                title="Generate Audio"
+                            >
+                                {audioLoading ? <Loader2 size={12} className="animate-spin" /> : <Mic size={12} />}
+                                <span>Gen</span>
+                            </button>
+                        ) : hasRealAudio ? (
+                            <button
+                                onClick={() => onPlayAudio(cut.id)}
+                                className={`flex items-center justify-center gap-1 w-20 px-2 py-2 rounded-lg text-xs transition-colors ${playingAudio === cut.id ? 'bg-[var(--color-primary)] text-black' : 'bg-green-500/20 border border-green-500/30 text-green-400 hover:bg-green-500/30'}`}
+                                title="Play Audio"
+                            >
+                                <Play size={12} />
+                                <span>{playingAudio === cut.id ? 'Stop' : 'Play'}</span>
+                            </button>
+                        ) : cut.speaker === 'SILENT' ? (
+                            <div className="flex items-center justify-center w-20 px-2 py-2 rounded-lg bg-gray-500/10 text-gray-500 text-xs border border-gray-500/20">
+                                🔇 Silent
+                            </div>
+                        ) : null}
+
+                        {/* Audio Lock Button */}
+                        {hasAudio && (
+                            <button
+                                onClick={() => onToggleAudioConfirm(cut.id)}
+                                className={`flex items-center justify-center gap-1 w-20 px-2 py-1.5 rounded text-[10px] font-bold transition-all ${isAudioConfirmed ? 'bg-green-500 text-black' : 'bg-white/5 text-gray-500 hover:bg-white/10 hover:text-white border border-white/10'}`}
+                                title={isAudioConfirmed ? "Unlock Audio" : "Lock Audio"}
+                            >
+                                {isAudioConfirmed ? <Lock size={10} /> : <Unlock size={10} />}
+                                🎵 {isAudioConfirmed ? 'Locked' : 'Lock'}
+                            </button>
+                        )}
+
+                        {/* Audio Settings Dropdown Toggle */}
+                        <button
+                            onClick={() => setShowAudioSettings(!showAudioSettings)}
+                            className={`flex items-center justify-center gap-1 w-20 px-2 py-1.5 rounded text-[10px] transition-colors ${showAudioSettings ? 'bg-[var(--color-primary)]/20 text-[var(--color-primary)]' : 'bg-white/5 text-gray-500 hover:text-white border border-white/10'}`}
+                            title="Audio Settings"
+                        >
+                            ⚙️ Settings
+                        </button>
+                    </div>
                 </div>
 
-                {/* Row 3: Visual Prompt Input */}
+                {/* Audio Settings Dropdown (inline) */}
+                {showAudioSettings && (
+                    <div className="p-3 bg-black/30 rounded-lg border border-[var(--color-border)] space-y-2">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] text-gray-400 font-bold uppercase">🎵 Audio Settings</span>
+                            <button onClick={() => setShowAudioSettings(false)} className="text-gray-500 hover:text-white"><X size={12} /></button>
+                        </div>
+                        <div className="flex flex-wrap gap-3">
+                            <div className="min-w-[80px]">
+                                <label className="text-[9px] text-gray-500 uppercase block mb-1">Language</label>
+                                <select
+                                    className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`}
+                                    value={cut.language || 'ko-KR'}
+                                    disabled={isAudioConfirmed}
+                                    onChange={(e) => onUpdateCut(cut.id, { language: e.target.value as 'en-US' | 'ko-KR' })}
+                                >
+                                    <option value="ko-KR">한국어</option>
+                                    <option value="en-US">English</option>
+                                </select>
+                            </div>
+                            <div className="min-w-[70px]">
+                                <label className="text-[9px] text-gray-500 uppercase block mb-1">Gender</label>
+                                <select
+                                    className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`}
+                                    value={cut.voiceGender || 'neutral'}
+                                    disabled={isAudioConfirmed}
+                                    onChange={(e) => onUpdateCut(cut.id, { voiceGender: e.target.value as any })}
+                                >
+                                    <option value="neutral">Auto</option>
+                                    <option value="male">Male</option>
+                                    <option value="female">Female</option>
+                                </select>
+                            </div>
+                            <div className="min-w-[70px]">
+                                <label className="text-[9px] text-gray-500 uppercase block mb-1">Age</label>
+                                <select
+                                    className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`}
+                                    value={cut.voiceAge || 'adult'}
+                                    disabled={isAudioConfirmed}
+                                    onChange={(e) => onUpdateCut(cut.id, { voiceAge: e.target.value as any })}
+                                >
+                                    <option value="child">Child</option>
+                                    <option value="young">Young</option>
+                                    <option value="adult">Adult</option>
+                                    <option value="senior">Senior</option>
+                                </select>
+                            </div>
+                            <div className="min-w-[80px]">
+                                <label className="text-[9px] text-gray-500 uppercase block mb-1">Emotion</label>
+                                <select
+                                    className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`}
+                                    value={cut.emotion || 'neutral'}
+                                    disabled={isAudioConfirmed}
+                                    onChange={(e) => onUpdateCut(cut.id, { emotion: e.target.value })}
+                                >
+                                    <option value="neutral">Neutral</option>
+                                    <option value="happy">Happy</option>
+                                    <option value="sad">Sad</option>
+                                    <option value="angry">Angry</option>
+                                    <option value="excited">Excited</option>
+                                    <option value="calm">Calm</option>
+                                </select>
+                            </div>
+                            <div className="min-w-[60px]">
+                                <label className="text-[9px] text-gray-500 uppercase block mb-1">Padding</label>
+                                <select
+                                    className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`}
+                                    value={cut.audioPadding ?? 0.5}
+                                    disabled={isAudioConfirmed}
+                                    onChange={(e) => onUpdateCut(cut.id, { audioPadding: parseFloat(e.target.value) })}
+                                >
+                                    <option value={0}>0s</option>
+                                    <option value={0.2}>0.2s</option>
+                                    <option value={0.5}>0.5s</option>
+                                    <option value={1.0}>1.0s</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Row 3: Visual Prompt Input + Image Actions */}
                 <div className="flex gap-2 items-start">
                     <div className="flex-1">
                         <label className="text-[9px] text-gray-500 uppercase font-bold block mb-1">📷 Visual Prompt</label>
@@ -304,7 +438,147 @@ export const CutItem = memo(({
                             placeholder="Visual description..."
                         />
                     </div>
+                    {/* Image Action Buttons */}
+                    <div className="flex flex-col gap-1 pt-5">
+                        {/* Generate/View Image Button */}
+                        {!hasImage ? (
+                            <button
+                                onClick={() => onGenerateImage(cut.id, cut.visualPrompt)}
+                                disabled={imageLoading || isImageConfirmed}
+                                className="flex items-center justify-center gap-1 w-20 px-2 py-2 rounded-lg bg-blue-500/20 border border-blue-500/30 text-blue-400 text-xs hover:bg-blue-500/30 transition-colors disabled:opacity-50"
+                                title="Generate Image"
+                            >
+                                {imageLoading ? <Loader2 size={12} className="animate-spin" /> : <Eye size={12} />}
+                                <span>Gen</span>
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => onRegenerateImage(cut.id)}
+                                disabled={imageLoading || isImageConfirmed}
+                                className="flex items-center justify-center gap-1 w-20 px-2 py-2 rounded-lg bg-blue-500/20 border border-blue-500/30 text-blue-400 text-xs hover:bg-blue-500/30 transition-colors disabled:opacity-50"
+                                title="Regenerate Image"
+                            >
+                                {imageLoading ? <Loader2 size={12} className="animate-spin" /> : <Image size={12} />}
+                                <span>Regen</span>
+                            </button>
+                        )}
+
+                        {/* Image Lock Button */}
+                        {hasImage && (
+                            <button
+                                onClick={() => onToggleImageConfirm(cut.id)}
+                                className={`flex items-center justify-center gap-1 w-20 px-2 py-1.5 rounded text-[10px] font-bold transition-all ${isImageConfirmed ? 'bg-green-500 text-black' : 'bg-white/5 text-gray-500 hover:bg-white/10 hover:text-white border border-white/10'}`}
+                                title={isImageConfirmed ? "Unlock Image" : "Lock Image"}
+                            >
+                                {isImageConfirmed ? <Lock size={10} /> : <Unlock size={10} />}
+                                🖼️ {isImageConfirmed ? 'Locked' : 'Lock'}
+                            </button>
+                        )}
+
+                        {/* Image Settings Dropdown Toggle */}
+                        <button
+                            onClick={() => setShowImageSettings(!showImageSettings)}
+                            className={`flex items-center justify-center gap-1 w-20 px-2 py-1.5 rounded text-[10px] transition-colors ${showImageSettings ? 'bg-blue-500/20 text-blue-400' : 'bg-white/5 text-gray-500 hover:text-white border border-white/10'}`}
+                            title="Image Settings"
+                        >
+                            ⚙️ Settings
+                        </button>
+                    </div>
                 </div>
+
+                {/* Image Settings Dropdown (inline) */}
+                {showImageSettings && (
+                    <div className="p-3 bg-black/30 rounded-lg border border-blue-500/20 space-y-3">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] text-blue-400 font-bold uppercase">🖼️ Image Settings</span>
+                            <button onClick={() => setShowImageSettings(false)} className="text-gray-500 hover:text-white"><X size={12} /></button>
+                        </div>
+
+                        {/* Image Preview (if exists) */}
+                        {hasImage && (
+                            <div className="rounded-lg overflow-hidden border border-white/10 bg-black max-h-[200px]">
+                                <img src={resolvedImageUrl} alt="Preview" className="w-full h-full object-contain" />
+                            </div>
+                        )}
+
+                        {/* Visual Term Helper */}
+                        <div>
+                            <div className="flex items-center gap-2 mb-2">
+                                <HelpCircle size={10} className="text-blue-400" />
+                                <span className="text-[9px] text-blue-400 uppercase font-bold">전문 용어 도우미</span>
+                            </div>
+                            <div className="space-y-2 max-h-[150px] overflow-y-auto">
+                                {Object.entries(VISUAL_TERMS).slice(0, 2).map(([category, terms]) => (
+                                    <div key={category}>
+                                        <h5 className="text-[9px] font-bold text-gray-500 uppercase mb-1">{category}</h5>
+                                        <div className="flex flex-wrap gap-1">
+                                            {terms.slice(0, 4).map((item) => (
+                                                <button
+                                                    key={item.term}
+                                                    onClick={() => {
+                                                        const newPrompt = cut.visualPrompt
+                                                            ? `${cut.visualPrompt.trim()}, ${item.term}`
+                                                            : item.term;
+                                                        onUpdateCut(cut.id, { visualPrompt: newPrompt });
+                                                        setLocalVisualPrompt(newPrompt);
+                                                    }}
+                                                    disabled={isImageConfirmed}
+                                                    className="px-1.5 py-0.5 text-[9px] bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 rounded border border-blue-500/20 transition-colors disabled:opacity-50"
+                                                    title={item.desc}
+                                                >
+                                                    {item.term}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Video Motion Prompt */}
+                        <div>
+                            <label className="text-[9px] text-purple-400 uppercase font-bold block mb-1">🎬 Video Motion Prompt</label>
+                            <textarea
+                                className={`w-full bg-black/50 border border-purple-500/20 rounded px-2 py-1.5 text-gray-300 text-xs min-h-[50px] focus:border-purple-500 outline-none resize-none ${isImageConfirmed ? 'opacity-50' : ''}`}
+                                value={cut.videoPrompt || ''}
+                                disabled={isImageConfirmed}
+                                onChange={(e) => onUpdateCut(cut.id, { videoPrompt: e.target.value })}
+                                onBlur={onSave}
+                                placeholder="Camera movement, character actions..."
+                            />
+                        </div>
+
+                        {/* User Reference Upload */}
+                        <div className="flex items-center justify-between">
+                            <span className="text-[9px] text-orange-400 uppercase font-bold">🎨 Sketch/Reference</span>
+                            <div className="flex items-center gap-2">
+                                {cut.userReferenceImage && (
+                                    <div className="relative w-6 h-6 rounded overflow-hidden border border-white/20">
+                                        <img src={cut.userReferenceImage} className="w-full h-full object-cover" />
+                                        <button
+                                            onClick={() => onUpdateCut(cut.id, { userReferenceImage: undefined })}
+                                            className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 hover:opacity-100"
+                                        >
+                                            <X size={10} className="text-white" />
+                                        </button>
+                                    </div>
+                                )}
+                                <label className="cursor-pointer text-[9px] bg-white/10 hover:bg-white/20 text-gray-300 px-2 py-1 rounded flex items-center gap-1">
+                                    <Plus size={10} />
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file && onUploadUserReference) onUploadUserReference(cut.id, file);
+                                        }}
+                                    />
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Row 4: SFX Recommendation (if available) */}
                 {cut.sfxDescription && !cut.sfxUrl && (
@@ -350,98 +624,33 @@ export const CutItem = memo(({
                     </div>
                 )}
 
-                {/* Row 5: Quick Actions */}
-                <div className="flex items-center gap-2 pt-2 border-t border-white/5">
-                    {!hasAudio && cut.speaker !== 'SILENT' && (
-                        <button
-                            onClick={() => onGenerateAudio(cut.id, cut.dialogue)}
-                            disabled={audioLoading || !cut.dialogue || isAudioConfirmed}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-white text-xs hover:border-[var(--color-primary)] transition-colors disabled:opacity-50"
-                        >
-                            {audioLoading ? <Loader2 size={12} className="animate-spin" /> : <Mic size={12} />}
-                            Audio
-                        </button>
-                    )}
-                    {hasAudio && (
-                        <button
-                            onClick={() => onPlayAudio(cut.id)}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors ${playingAudio === cut.id ? 'bg-[var(--color-primary)] text-black' : 'bg-[var(--color-surface)] border border-[var(--color-border)] text-white hover:border-[var(--color-primary)]'}`}
-                        >
-                            <Play size={12} />
-                            {playingAudio === cut.id ? 'Playing' : 'Play'}
-                        </button>
-                    )}
-                    {!hasImage && (
-                        <button
-                            onClick={() => onGenerateImage(cut.id, cut.visualPrompt)}
-                            disabled={imageLoading || isImageConfirmed}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-white text-xs hover:border-blue-500 transition-colors disabled:opacity-50"
-                        >
-                            {imageLoading ? <Loader2 size={12} className="animate-spin" /> : <Eye size={12} />}
-                            Image
-                        </button>
-                    )}
-                    {hasImage && !isImageConfirmed && (
-                        <button
-                            onClick={() => onRegenerateImage(cut.id)}
-                            disabled={imageLoading}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-gray-400 text-xs hover:bg-white/10 hover:text-white transition-colors disabled:opacity-50"
-                        >
-                            {imageLoading ? <Loader2 size={12} className="animate-spin" /> : <Image size={12} />}
-                            Regen
-                        </button>
-                    )}
-
-                    {/* Lock Buttons */}
-                    <div className="flex-1" />
-                    {hasAudio && (
-                        <button
-                            onClick={() => onToggleAudioConfirm(cut.id)}
-                            className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold transition-all ${isAudioConfirmed ? 'bg-green-500 text-black' : 'bg-white/5 text-gray-500 hover:text-white'}`}
-                            title={isAudioConfirmed ? "Unlock Audio" : "Lock Audio"}
-                        >
-                            {isAudioConfirmed ? <Lock size={10} /> : <Unlock size={10} />}
-                            🎵
-                        </button>
-                    )}
-                    {hasImage && (
-                        <button
-                            onClick={() => onToggleImageConfirm(cut.id)}
-                            className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold transition-all ${isImageConfirmed ? 'bg-green-500 text-black' : 'bg-white/5 text-gray-500 hover:text-white'}`}
-                            title={isImageConfirmed ? "Unlock Image" : "Lock Image"}
-                        >
-                            {isImageConfirmed ? <Lock size={10} /> : <Unlock size={10} />}
-                            🖼️
-                        </button>
-                    )}
-
-                    {/* Hidden audio element for playback */}
-                    {hasRealAudio && resolvedAudioUrl && (
-                        <audio
-                            key={resolvedAudioUrl}
-                            id={`audio-${cut.id}`}
-                            src={resolvedAudioUrl}
-                            preload="metadata"
-                            onLoadedMetadata={(e) => setActualAudioDuration(e.currentTarget.duration)}
-                            onError={(e) => {
-                                const target = e.currentTarget;
-                                console.error(`[CutItem ${cut.id}] Audio playback error:`, target.error);
-                            }}
-                            className="hidden"
-                        />
-                    )}
-                </div>
+                {/* Hidden audio element for playback */}
+                {hasRealAudio && resolvedAudioUrl && (
+                    <audio
+                        key={resolvedAudioUrl}
+                        id={`audio-${cut.id}`}
+                        src={resolvedAudioUrl}
+                        preload="metadata"
+                        onLoadedMetadata={(e) => setActualAudioDuration(e.currentTarget.duration)}
+                        onError={(e) => {
+                            const target = e.currentTarget;
+                            console.error(`[CutItem ${cut.id}] Audio playback error:`, target.error);
+                        }}
+                        className="hidden"
+                    />
+                )}
             </div>
 
-            {/* Advanced Settings - Collapsible */}
+            {/* Advanced Settings - Collapsible (Only Assets & Delete) */}
             <details className="border-t border-white/5">
                 <summary className="px-4 py-2 cursor-pointer text-[10px] text-gray-500 hover:text-gray-300 font-bold uppercase tracking-wider flex items-center gap-2 select-none list-none">
-                    ⚙️ Advanced Settings
-                    <span className="text-[9px] font-normal text-gray-600">(Audio details, Video prompt, Assets, Delete)</span>
+                    ⚙️ More Options
+                    <span className="text-[9px] font-normal text-gray-600">(Asset selection, Delete)</span>
                 </summary>
                 <div className="p-4 pt-2 space-y-4">
                     {/* Delete Button Row */}
-                    <div className="flex justify-end">
+                    <div className="flex justify-between items-center">
+                        <span className="text-xs text-gray-500">Delete this cut permanently</span>
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
@@ -449,248 +658,11 @@ export const CutItem = memo(({
                                     onDelete(cut.id);
                                 }
                             }}
-                            className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                            className="px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 rounded-lg border border-red-500/20 transition-colors flex items-center gap-1"
                             title="Delete Cut"
                         >
-                            <X size={16} />
+                            <X size={14} /> Delete Cut
                         </button>
-                    </div>
-
-                    {/* Audio Settings Panel */}
-                    <div className={`glass-panel p-4 !rounded-lg border ${isAudioConfirmed ? 'border-green-500/30' : 'border-[var(--color-border)]'}`}>
-                        <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2 text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider">
-                                <Mic size={12} /> Audio Settings
-                            </div>
-                            <button
-                                onClick={() => onToggleAudioConfirm(cut.id)}
-                                disabled={!hasAudio && cut.speaker !== 'SILENT'}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${isAudioConfirmed
-                                    ? 'bg-green-500 hover:bg-green-600 text-black'
-                                    : 'bg-white/5 hover:bg-white/10 text-[var(--color-text-muted)] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed'
-                                    }`}
-                            >
-                                {isAudioConfirmed ? <Lock size={12} /> : <Unlock size={12} />}
-                                {isAudioConfirmed ? 'LOCKED' : 'LOCK'}
-                            </button>
-                        </div>
-
-                        {/* Audio-specific Settings */}
-                        <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
-                            <div className="min-w-[100px]">
-                                <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mb-1.5">Language</label>
-                                <select
-                                    className={`w-full bg-black/30 border border-white/10 rounded px-2 py-1.5 text-xs text-white focus:border-[var(--color-primary)] outline-none transition-colors ${isAudioConfirmed ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                    value={cut.language || 'ko-KR'}
-                                    disabled={isAudioConfirmed}
-                                    onChange={(e) => onUpdateCut(cut.id, { language: e.target.value as 'en-US' | 'ko-KR' })}
-                                    onBlur={onSave}
-                                >
-                                    <option value="ko-KR">한국어 (KR)</option>
-                                    <option value="en-US">English (US)</option>
-                                </select>
-                            </div>
-                            <div className="min-w-[80px]">
-                                <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mb-1.5">Gender</label>
-                                <select
-                                    className={`w-full bg-black/30 border border-white/10 rounded px-2 py-1.5 text-xs text-white focus:border-[var(--color-primary)] outline-none transition-colors ${isAudioConfirmed ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                    value={cut.voiceGender || 'neutral'}
-                                    disabled={isAudioConfirmed}
-                                    onChange={(e) => onUpdateCut(cut.id, { voiceGender: e.target.value as 'male' | 'female' | 'neutral' })}
-                                    onBlur={onSave}
-                                >
-                                    <option value="neutral">Auto</option>
-                                    <option value="male">Male</option>
-                                    <option value="female">Female</option>
-                                </select>
-                            </div>
-                            <div className="min-w-[80px]">
-                                <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mb-1.5">Age</label>
-                                <select
-                                    className={`w-full bg-black/30 border border-white/10 rounded px-2 py-1.5 text-xs text-white focus:border-[var(--color-primary)] outline-none transition-colors ${isAudioConfirmed ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                    value={cut.voiceAge || 'adult'}
-                                    disabled={isAudioConfirmed}
-                                    onChange={(e) => onUpdateCut(cut.id, { voiceAge: e.target.value as 'child' | 'young' | 'adult' | 'senior' })}
-                                    onBlur={onSave}
-                                >
-                                    <option value="child">Child</option>
-                                    <option value="young">Young</option>
-                                    <option value="adult">Adult</option>
-                                    <option value="senior">Senior</option>
-                                </select>
-                            </div>
-                            <div className="min-w-[100px]">
-                                <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mb-1.5">Emotion</label>
-                                <select
-                                    className={`w-full bg-black/30 border border-white/10 rounded px-2 py-1.5 text-xs text-white focus:border-[var(--color-primary)] outline-none transition-colors ${isAudioConfirmed ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                    value={cut.emotion || 'neutral'}
-                                    disabled={isAudioConfirmed}
-                                    onChange={(e) => onUpdateCut(cut.id, { emotion: e.target.value })}
-                                    onBlur={onSave}
-                                >
-                                    <option value="neutral">Neutral</option>
-                                    <option value="happy">Happy</option>
-                                    <option value="sad">Sad</option>
-                                    <option value="angry">Angry</option>
-                                    <option value="excited">Excited</option>
-                                    <option value="calm">Calm</option>
-                                    <option value="tense">Tense</option>
-                                </select>
-                            </div>
-                            <div className="min-w-[80px]">
-                                <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mb-1.5">Duration</label>
-                                <div className="flex items-center bg-black/30 rounded border border-white/10 px-2 py-1">
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        max="60"
-                                        step="0.1"
-                                        className={`bg-transparent text-[var(--color-primary)] font-bold text-xs w-10 outline-none ${isAudioConfirmed ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                        value={cut.estimatedDuration || 0}
-                                        disabled={isAudioConfirmed}
-                                        onChange={(e) => onUpdateCut(cut.id, { estimatedDuration: parseFloat(e.target.value) })}
-                                        onBlur={onSave}
-                                    />
-                                    <span className="text-[10px] text-gray-600 font-bold">s</span>
-                                </div>
-                            </div>
-                            <div className="min-w-[80px]">
-                                <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mb-1.5">Padding</label>
-                                <select
-                                    className={`w-full bg-black/30 border border-white/10 rounded px-2 py-1.5 text-xs text-white outline-none ${isAudioConfirmed ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                    value={cut.audioPadding ?? 0.5}
-                                    disabled={isAudioConfirmed}
-                                    onChange={(e) => onUpdateCut(cut.id, { audioPadding: parseFloat(e.target.value) })}
-                                    onBlur={onSave}
-                                >
-                                    <option value={0}>None</option>
-                                    <option value={0.2}>0.2s</option>
-                                    <option value={0.5}>0.5s</option>
-                                    <option value={1.0}>1.0s</option>
-                                    <option value={2.0}>2.0s</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Video Prompt Section */}
-                    <div className="glass-panel p-4 !rounded-lg border border-purple-500/20">
-                        <div className="flex items-center gap-2 mb-2">
-                            <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1">
-                                🎬 Video Motion Prompt
-                            </span>
-                            <span className="text-[9px] text-gray-500">(Step 4.5 비디오 생성용)</span>
-                        </div>
-                        <div className="flex gap-4">
-                            <textarea
-                                className={`flex-1 bg-[rgba(0,0,0,0.2)] border border-purple-500/20 rounded-lg p-3 text-gray-300 text-sm min-h-[70px] focus:border-purple-500 outline-none resize-none ${isImageConfirmed ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                value={cut.videoPrompt || ''}
-                                disabled={isImageConfirmed}
-                                onChange={(e) => onUpdateCut(cut.id, { videoPrompt: e.target.value })}
-                                onBlur={onSave}
-                                placeholder="Video motion prompt (camera movement, character actions, atmospheric changes)..."
-                            />
-                            {!cut.videoPrompt && !isImageConfirmed && (
-                                <button
-                                    onClick={() => {
-                                        const basePrompt = cut.visualPrompt || '';
-                                        const motionSuffix = '. Camera slowly pushes in. Subtle atmospheric motion.';
-                                        onUpdateCut(cut.id, { videoPrompt: basePrompt + motionSuffix });
-                                    }}
-                                    className="flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-300 hover:bg-purple-500/30 transition-colors text-xs"
-                                    title="Generate from Still Image Prompt"
-                                >
-                                    <Video size={14} />
-                                    <span>Auto</span>
-                                </button>
-                            )}
-                        </div>
-                        <p className="text-[9px] text-gray-500 mt-1 italic">
-                            💡 카메라 움직임, 캐릭터 동작, 대기 효과 등 시간적 변화를 포함하세요.
-                        </p>
-                    </div>
-
-                    {/* Visual Prompt Helper */}
-                    <div className="glass-panel p-4 !rounded-lg border border-[var(--color-border)]">
-                        <div className="flex items-center gap-2 mb-3">
-                            <HelpCircle size={12} className="text-blue-400" />
-                            <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">전문 용어 도우미</span>
-                        </div>
-                        <p className="text-[10px] text-gray-400 mb-3">클릭하면 Visual Prompt에 자동으로 추가됩니다.</p>
-                        <div className="space-y-3 max-h-[200px] overflow-y-auto">
-                            {Object.entries(VISUAL_TERMS).map(([category, terms]) => (
-                                <div key={category}>
-                                    <h5 className="text-[10px] font-bold text-gray-400 uppercase mb-1">{category}</h5>
-                                    <div className="flex flex-wrap gap-1">
-                                        {terms.map((item) => (
-                                            <button
-                                                key={item.term}
-                                                onClick={() => {
-                                                    const newPrompt = cut.visualPrompt
-                                                        ? `${cut.visualPrompt.trim()}, ${item.term}`
-                                                        : item.term;
-                                                    onUpdateCut(cut.id, { visualPrompt: newPrompt });
-                                                    setLocalVisualPrompt(newPrompt);
-                                                }}
-                                                disabled={isImageConfirmed}
-                                                className="px-2 py-1 text-[10px] bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 rounded border border-blue-500/20 transition-colors disabled:opacity-50"
-                                                title={item.desc}
-                                            >
-                                                {item.term}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* User Reference Image Upload */}
-                    <div className="glass-panel p-4 !rounded-lg border border-orange-500/20">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-bold text-orange-400 uppercase tracking-wider">
-                                    🎨 Sketch / Reference
-                                </span>
-                                {cut.userReferenceImage ? (
-                                    <span className="text-[9px] text-green-400 flex items-center gap-1">
-                                        <Check size={10} /> Attached
-                                    </span>
-                                ) : (
-                                    <span className="text-[9px] text-gray-500">
-                                        (Optional) 구도 참고용 이미지
-                                    </span>
-                                )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                                {cut.userReferenceImage && (
-                                    <div className="relative group w-8 h-8 rounded overflow-hidden border border-white/20">
-                                        <img src={cut.userReferenceImage} className="w-full h-full object-cover" />
-                                        <button
-                                            onClick={() => onUpdateCut(cut.id, { userReferenceImage: undefined })}
-                                            className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                                        >
-                                            <X size={12} className="text-white" />
-                                        </button>
-                                    </div>
-                                )}
-                                <label className="cursor-pointer text-[10px] bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white px-2 py-1 rounded transition-colors flex items-center gap-1 border border-white/10">
-                                    <Plus size={10} />
-                                    Upload
-                                    <input
-                                        type="file"
-                                        accept="image/*"
-                                        className="hidden"
-                                        onChange={(e) => {
-                                            const file = e.target.files?.[0];
-                                            if (file && onUploadUserReference) {
-                                                onUploadUserReference(cut.id, file);
-                                            }
-                                        }}
-                                    />
-                                </label>
-                            </div>
-                        </div>
                     </div>
 
                     {/* Asset Selection */}
