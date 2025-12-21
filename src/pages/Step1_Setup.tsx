@@ -608,10 +608,8 @@ export const Step1_Setup: React.FC = () => {
 
                 setProjectInfo(updates);
 
-                // Open sections to show new data AND switch to View Mode
-                setIsSeriesOpen(true);
-                setIsEpisodeOpen(true);
-                setIsEditing(false); // Force View Mode to show new data
+                // Force View Mode to show new data
+                setIsEditing(false);
             }
 
         } catch (error: any) {
