@@ -367,10 +367,10 @@ export const CutItem = memo(({
                             {hasRealAudio && (
                                 <button
                                     onClick={() => onPlayAudio(cut.id)}
-                                    className={`flex items-center justify-center gap-1 w-16 px-2 py-1.5 rounded text-xs font-bold transition-colors ${playingAudio === cut.id ? 'bg-green-500 text-black' : 'bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30'}`}
+                                    className={`flex items-center justify-center gap-1.5 w-[84px] px-2 py-1.5 rounded text-xs font-bold transition-colors ${playingAudio === cut.id ? 'bg-green-500 text-black' : 'bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30'}`}
                                 >
                                     <Play size={10} />
-                                    {playingAudio === cut.id ? 'Stop' : 'Play'}
+                                    {playingAudio === cut.id ? '정지' : '재생'}
                                 </button>
                             )}
 
@@ -379,21 +379,21 @@ export const CutItem = memo(({
                                 <button
                                     onClick={() => onGenerateAudio(cut.id, cut.dialogue)}
                                     disabled={audioLoading || !cut.dialogue || isAudioConfirmed}
-                                    className="flex items-center justify-center gap-1 w-16 px-2 py-1.5 rounded text-xs font-bold bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30 disabled:opacity-50 transition-colors"
+                                    className="flex items-center justify-center gap-1.5 w-[84px] px-2 py-1.5 rounded text-[11px] font-bold bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30 disabled:opacity-50 transition-colors"
                                 >
                                     {audioLoading ? <Loader2 size={10} className="animate-spin" /> : <Mic size={10} />}
-                                    {hasRealAudio ? 'Regen' : 'Gen'}
+                                    {hasRealAudio ? '재생성' : '생성'}
                                 </button>
                             )}
 
                             {/* Settings Button */}
                             <button
                                 onClick={() => setShowAudioSettings(!showAudioSettings)}
-                                className={`flex items-center justify-center w-16 px-2 py-1.5 rounded text-xs transition-colors ${showAudioSettings ? 'bg-[var(--color-primary)]/30 text-[var(--color-primary)]' : 'bg-white/5 text-gray-500 hover:text-white'}`}
+                                className={`flex items-center justify-center w-[84px] px-1 py-1 gap-1 rounded text-[10px] transition-all ${showAudioSettings ? 'bg-[var(--color-primary)]/40 text-white border border-[var(--color-primary)]/50' : 'bg-white/10 text-gray-400 hover:text-white border border-white/5'}`}
                             >
                                 <Settings size={10} />
+                                <span className="font-bold">생성 세팅</span>
                             </button>
-
                         </div>
                     </div>
 
@@ -530,60 +530,67 @@ export const CutItem = memo(({
                         className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-bold transition-colors ${isImageConfirmed ? 'bg-green-500 text-black' : 'bg-white/10 text-gray-400 hover:text-white disabled:opacity-30'}`}
                     >
                         {isImageConfirmed ? <Lock size={10} /> : <Unlock size={10} />}
-                        {isImageConfirmed ? 'Locked' : 'Lock Visual'}
+                        {isImageConfirmed ? 'Locked' : 'Lock Image'}
                     </button>
                 </div>
 
                 {/* Visual Prompt Row */}
                 <div className="px-4 py-3">
                     <div className="flex gap-2">
-                        <div className="flex-1 relative">
-                            <div className="flex items-center justify-between mb-1">
+                        <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
                                 <label className="text-xs text-[var(--color-primary)] uppercase font-bold">📷 Still Image Prompt</label>
-                                {/* Term Helper Button */}
-                                <button
-                                    onClick={() => setShowTermHelper(!showTermHelper)}
-                                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs ${showTermHelper ? 'bg-[var(--color-primary)]/20 text-[var(--color-primary)]' : 'text-gray-500 hover:text-[var(--color-primary)]'}`}
-                                >
-                                    <HelpCircle size={10} />
-                                    전문용어
-                                </button>
-                            </div>
+                                {/* Term Helper Container */}
+                                <div className="relative inline-block">
+                                    <button
+                                        onClick={() => setShowTermHelper(!showTermHelper)}
+                                        className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all border ${showTermHelper ? 'bg-[var(--color-primary)] text-black border-[var(--color-primary)]' : 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] border-[var(--color-primary)]/30 hover:bg-[var(--color-primary)]/20 shadow-sm'}`}
+                                    >
+                                        <HelpCircle size={10} />
+                                        전문용어 도우미
+                                    </button>
 
-                            {/* Term Helper Dropdown (positioned above, left-aligned) */}
-                            {showTermHelper && (
-                                <>
-                                    <div className="fixed inset-0 z-[90]" onClick={() => setShowTermHelper(false)} />
-                                    <div className="absolute bottom-full left-0 mb-2 w-[400px] max-h-[400px] overflow-y-auto bg-[#1a1a1a] border border-[var(--color-primary)]/30 rounded-lg shadow-2xl z-[100] p-3">
-                                        <div className="flex items-center justify-between mb-3 sticky top-0 bg-[#1a1a1a] pb-2 border-b border-white/10">
-                                            <span className="text-xs text-[var(--color-primary)] font-bold">📚 영상 전문 용어 도우미</span>
-                                            <button onClick={() => setShowTermHelper(false)} className="text-gray-500 hover:text-white"><X size={14} /></button>
-                                        </div>
-                                        {Object.entries(VISUAL_TERMS).map(([category, terms]) => (
-                                            <div key={category} className="mb-3">
-                                                <h5 className="text-xs font-bold text-[var(--color-primary)] uppercase mb-1.5">{category}</h5>
-                                                <div className="space-y-1">
-                                                    {terms.map((item) => (
-                                                        <button
-                                                            key={item.term}
-                                                            onClick={() => {
-                                                                const newPrompt = cut.visualPrompt ? `${cut.visualPrompt.trim()}, ${item.term}` : item.term;
-                                                                onUpdateCut(cut.id, { visualPrompt: newPrompt });
-                                                                setLocalVisualPrompt(newPrompt);
-                                                            }}
-                                                            disabled={isImageConfirmed}
-                                                            className="w-full text-left px-2 py-1.5 rounded hover:bg-[var(--color-primary)]/10 disabled:opacity-50 group"
-                                                        >
-                                                            <div className="text-xs text-[var(--color-primary)] font-medium group-hover:text-white">{item.term}</div>
-                                                            <div className="text-xs text-gray-500">{item.desc}</div>
-                                                        </button>
+                                    {/* Term Helper Dropdown (positioned at side, expands upwards) */}
+                                    {showTermHelper && (
+                                        <>
+                                            <div className="fixed inset-0 z-[90]" onClick={() => setShowTermHelper(false)} />
+                                            <div className="absolute bottom-0 left-full ml-2 w-[320px] max-h-[280px] flex flex-col bg-[#1a1a1a] border border-[var(--color-primary)]/30 rounded-lg shadow-2xl z-[100] overflow-hidden">
+                                                {/* Fixed Header */}
+                                                <div className="flex items-center justify-between p-3 bg-[#1a1a1a] border-b border-white/10 shrink-0">
+                                                    <span className="text-[10px] text-[var(--color-primary)] font-bold tracking-tight">📚 영상 전문 용어 도우미</span>
+                                                    <button onClick={() => setShowTermHelper(false)} className="text-gray-500 hover:text-white p-1 hover:bg-white/5 rounded"><X size={12} /></button>
+                                                </div>
+
+                                                {/* Scrollable List */}
+                                                <div className="flex-1 overflow-y-auto p-3 pt-0">
+                                                    {Object.entries(VISUAL_TERMS).map(([category, terms]) => (
+                                                        <div key={category} className="mb-3 first:mt-3">
+                                                            <h5 className="text-xs font-bold text-[var(--color-primary)] uppercase mb-1.5 sticky top-0 bg-[#1a1a1a] py-1 z-10">{category}</h5>
+                                                            <div className="space-y-1">
+                                                                {terms.map((item) => (
+                                                                    <button
+                                                                        key={item.term}
+                                                                        onClick={() => {
+                                                                            const newPrompt = cut.visualPrompt ? `${cut.visualPrompt.trim()}, ${item.term}` : item.term;
+                                                                            onUpdateCut(cut.id, { visualPrompt: newPrompt });
+                                                                            setLocalVisualPrompt(newPrompt);
+                                                                        }}
+                                                                        disabled={isImageConfirmed}
+                                                                        className="w-full text-left px-2 py-1.5 rounded hover:bg-[var(--color-primary)]/10 disabled:opacity-50 group transition-colors"
+                                                                    >
+                                                                        <div className="text-xs text-[var(--color-primary)] font-medium group-hover:text-white">{item.term}</div>
+                                                                        <div className="text-xs text-gray-500">{item.desc}</div>
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
                                                     ))}
                                                 </div>
                                             </div>
-                                        ))}
-                                    </div>
-                                </>
-                            )}
+                                        </>
+                                    )}
+                                </div>
+                            </div>
 
                             <textarea
                                 className={`w-full bg-[rgba(0,0,0,0.3)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-gray-300 text-sm min-h-[60px] focus:border-[var(--color-primary)] outline-none resize-none ${isImageConfirmed ? 'opacity-70 cursor-not-allowed' : ''}`}
@@ -612,10 +619,10 @@ export const CutItem = memo(({
                             {hasImage && (
                                 <button
                                     onClick={() => setShowImageSettings(true)}
-                                    className="flex items-center justify-center gap-1 w-16 px-2 py-1.5 rounded text-xs font-bold bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30"
+                                    className="flex items-center justify-center gap-1.5 w-[84px] px-2 py-1.5 rounded text-xs font-bold bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30"
                                 >
                                     <Eye size={10} />
-                                    View
+                                    보기
                                 </button>
                             )}
 
@@ -623,18 +630,19 @@ export const CutItem = memo(({
                             <button
                                 onClick={() => hasImage ? onRegenerateImage(cut.id) : onGenerateImage(cut.id, cut.visualPrompt)}
                                 disabled={imageLoading || isImageConfirmed}
-                                className="flex items-center justify-center gap-1 w-16 px-2 py-1.5 rounded text-xs font-bold bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30 disabled:opacity-50"
+                                className="flex items-center justify-center gap-1.5 w-[84px] px-2 py-1.5 rounded text-[11px] font-bold bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30 disabled:opacity-50"
                             >
                                 {imageLoading ? <Loader2 size={10} className="animate-spin" /> : <Image size={10} />}
-                                {hasImage ? 'Regen' : 'Gen'}
+                                {hasImage ? '재생성' : '생성'}
                             </button>
 
                             {/* Settings Button */}
                             <button
                                 onClick={() => setShowImageSettings(!showImageSettings)}
-                                className={`flex items-center justify-center w-16 px-2 py-1.5 rounded text-xs transition-colors ${showImageSettings ? 'bg-[var(--color-primary)]/30 text-[var(--color-primary)]' : 'bg-white/5 text-gray-500 hover:text-white'}`}
+                                className={`flex items-center justify-center w-[84px] px-1 py-1 gap-1 rounded text-[10px] transition-all ${showImageSettings ? 'bg-[var(--color-primary)]/40 text-white border border-[var(--color-primary)]/50' : 'bg-white/10 text-gray-400 hover:text-white border border-white/5'}`}
                             >
                                 <Settings size={10} />
+                                <span className="font-bold">생성 세팅</span>
                             </button>
                         </div>
                     </div>
@@ -658,6 +666,25 @@ export const CutItem = memo(({
                             <div>
                                 <div className="flex items-center gap-2 mb-2">
                                     <span className="text-xs text-gray-400 uppercase font-bold">Referenced Assets</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1 items-center">
+                                    {autoMatchedAssets.map((asset: any) => (
+                                        <div key={asset.id} className="px-2 py-0.5 rounded bg-white/5 text-gray-400 text-xs border border-white/10">{asset.name} <span className="opacity-50">(Auto)</span></div>
+                                    ))}
+                                    {manualAssetObjs.map((asset: any) => (
+                                        <div key={asset.id} className="flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-xs border border-[var(--color-primary)]/30">
+                                            {asset.name}
+                                            {!isImageConfirmed && <button onClick={() => onRemoveAsset(cut.id, asset.id)} className="hover:text-white"><X size={10} /></button>}
+                                        </div>
+                                    ))}
+                                    {(cut.referenceCutIds || []).map(refId => (
+                                        <div key={refId} className="flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-xs border border-[var(--color-primary)]/30">
+                                            <Image size={8} /> Cut #{refId}
+                                            {!isImageConfirmed && <button onClick={() => onRemoveReference(cut.id, refId)} className="hover:text-white"><X size={10} /></button>}
+                                        </div>
+                                    ))}
+
+                                    {/* Add Button - Moved to end of list */}
                                     {!isImageConfirmed && (
                                         <div className={`relative ${showAssetSelector ? 'z-[100]' : ''}`}>
                                             <button onClick={() => onToggleAssetSelector(cut.id)} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30">
@@ -666,7 +693,7 @@ export const CutItem = memo(({
                                             {showAssetSelector && (
                                                 <>
                                                     <div className="fixed inset-0 z-[100]" onClick={onCloseAssetSelector} />
-                                                    <div className="absolute top-full left-0 mt-1 w-56 bg-[#1a1a1a] border border-[var(--color-border)] rounded-lg shadow-2xl z-[101] max-h-64 overflow-y-auto">
+                                                    <div className="absolute top-full right-0 mt-1 w-56 bg-[#1a1a1a] border border-[var(--color-border)] rounded-lg shadow-2xl z-[101] max-h-64 overflow-y-auto">
                                                         <div className="p-2 text-xs text-gray-500 font-bold uppercase">Assets</div>
                                                         {uniqueAssets.map((asset: any) => (
                                                             <button key={asset.id} onClick={() => onAddAsset(cut.id, asset.id)} className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-white/10 hover:text-white flex items-center gap-2">
@@ -686,23 +713,6 @@ export const CutItem = memo(({
                                             )}
                                         </div>
                                     )}
-                                </div>
-                                <div className="flex flex-wrap gap-1">
-                                    {autoMatchedAssets.map((asset: any) => (
-                                        <div key={asset.id} className="px-2 py-0.5 rounded bg-white/5 text-gray-400 text-xs border border-white/10">{asset.name} <span className="opacity-50">(Auto)</span></div>
-                                    ))}
-                                    {manualAssetObjs.map((asset: any) => (
-                                        <div key={asset.id} className="flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-xs border border-[var(--color-primary)]/30">
-                                            {asset.name}
-                                            {!isImageConfirmed && <button onClick={() => onRemoveAsset(cut.id, asset.id)} className="hover:text-white"><X size={10} /></button>}
-                                        </div>
-                                    ))}
-                                    {(cut.referenceCutIds || []).map(refId => (
-                                        <div key={refId} className="flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-xs border border-[var(--color-primary)]/30">
-                                            <Image size={8} /> Cut #{refId}
-                                            {!isImageConfirmed && <button onClick={() => onRemoveReference(cut.id, refId)} className="hover:text-white"><X size={10} /></button>}
-                                        </div>
-                                    ))}
                                 </div>
                             </div>
 
