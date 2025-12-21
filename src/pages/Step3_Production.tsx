@@ -821,9 +821,23 @@ export const Step3_Production: React.FC = () => {
 
     const toggleImageConfirm = useCallback((cutId: number) => {
         setLocalScript(prev => {
-            const updated = prev.map(cut =>
-                cut.id === cutId ? { ...cut, isImageConfirmed: !cut.isImageConfirmed } : cut
-            );
+            const updated = prev.map(cut => {
+                if (cut.id === cutId) {
+                    const newIsConfirmed = !cut.isImageConfirmed;
+                    let updates: Partial<typeof cut> = { isImageConfirmed: newIsConfirmed };
+
+                    // Auto-generate video motion prompt if locking and it's empty
+                    if (newIsConfirmed && !cut.videoPrompt) {
+                        const basePrompt = cut.visualPrompt || '';
+                        const motionSuffix = '. Camera slowly pushes in. Subtle atmospheric motion. Character breathes naturally.';
+                        updates.videoPrompt = basePrompt + motionSuffix;
+                        console.log(`[Cut ${cut.id}] 🎬 Auto-generated video prompt on lock`);
+                    }
+
+                    return { ...cut, ...updates };
+                }
+                return cut;
+            });
             saveToStore(updated);
             return updated;
         });
@@ -1007,314 +1021,258 @@ export const Step3_Production: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Model Settings - Always Visible */}
-                <div className="glass-panel p-4">
-                    <div className="flex items-center justify-between mb-3">
+                {/* INTEGRATED PRODUCTION SETTINGS */}
+                <div className="glass-panel p-4 space-y-5">
+                    <div className="flex items-center justify-between">
                         <span className="text-sm font-bold text-white flex items-center gap-2">
-                            🤖 Model Settings
+                            ⚙️ AI Production Settings
                         </span>
                     </div>
-                    <div className="space-y-3">
-                        <div>
-                            <label className="text-[10px] text-[var(--color-text-muted)] uppercase block mb-1">Image Model</label>
-                            <select
-                                className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
-                                value={imageModel}
-                                onChange={(e) => setImageModel(e.target.value as any)}
-                            >
-                                {IMAGE_MODELS.map(model => (
-                                    <option key={model.value} value={model.value}>
-                                        {model.label} {model.cost}
-                                    </option>
-                                ))}
-                            </select>
-                            <span className="text-[10px] text-[var(--color-text-muted)] mt-1 block">
-                                {IMAGE_MODELS.find(m => m.value === imageModel)?.hint}
-                            </span>
-                        </div>
-                        <div>
-                            <label className="text-[10px] text-[var(--color-text-muted)] uppercase block mb-1">TTS Model</label>
-                            <select
-                                className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
-                                value={ttsModel}
-                                onChange={(e) => setTtsModel(e.target.value as any)}
-                            >
-                                {TTS_MODELS.map(model => (
-                                    <option key={model.value} value={model.value}>
-                                        {model.label} {model.cost}
-                                    </option>
-                                ))}
-                            </select>
-                            <span className="text-[10px] text-[var(--color-text-muted)] mt-1 block">
-                                {TTS_MODELS.find(m => m.value === ttsModel)?.hint}
-                            </span>
-                        </div>
+
+                    {/* 1) Image Generation AI Model */}
+                    <div className="space-y-2">
+                        <label className="text-[11px] text-[var(--color-primary)] font-bold uppercase tracking-wider block">
+                            1) 이미지 생성 AI모델
+                        </label>
+                        <select
+                            className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
+                            value={imageModel}
+                            onChange={(e) => setImageModel(e.target.value as any)}
+                        >
+                            {IMAGE_MODELS.map(model => (
+                                <option key={model.value} value={model.value}>
+                                    {model.label} {model.cost}
+                                </option>
+                            ))}
+                        </select>
+                        <span className="text-[10px] text-[var(--color-text-muted)] block">
+                            {IMAGE_MODELS.find(m => m.value === imageModel)?.hint}
+                        </span>
                     </div>
-                </div>
 
-                {/* Voice & Lock Settings */}
-                {localScript.length > 0 && (() => {
-                    const speakerMap = new Map<string, { gender?: string; age?: string; voiceId?: string; voiceSpeed?: number; language?: string; cutCount: number }>();
+                    <div className="h-px bg-white/5 my-2" />
 
-                    // Group cuts by speaker
-                    const speakerCuts = new Map<string, ScriptCut[]>();
-                    localScript.forEach(cut => {
-                        const s = cut.speaker || 'Narrator';
-                        if (!speakerCuts.has(s)) speakerCuts.set(s, []);
-                        speakerCuts.get(s)!.push(cut);
-                    });
+                    {/* 2) Audio Generation AI Model & Bulk Settings */}
+                    <div className="space-y-2">
+                        <label className="text-[11px] text-[var(--color-primary)] font-bold uppercase tracking-wider block">
+                            2) 오디오(TTS) 생성 AI모델
+                        </label>
+                        <select
+                            className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
+                            value={ttsModel}
+                            onChange={(e) => setTtsModel(e.target.value as any)}
+                        >
+                            {TTS_MODELS.map(model => (
+                                <option key={model.value} value={model.value}>
+                                    {model.label} {model.cost}
+                                </option>
+                            ))}
+                        </select>
+                        <span className="text-[10px] text-[var(--color-text-muted)] block mb-3">
+                            {TTS_MODELS.find(m => m.value === ttsModel)?.hint}
+                        </span>
 
-                    // For each speaker, derive "Bulk Setting" from the first UNLOCKED cut if possible, otherwise first cut.
-                    speakerCuts.forEach((cuts, speaker) => {
-                        const primaryCut = cuts.find(c => !c.isAudioConfirmed && !c.isConfirmed) || cuts[0];
-                        speakerMap.set(speaker, {
-                            gender: primaryCut.voiceGender,
-                            age: primaryCut.voiceAge,
-                            voiceId: primaryCut.voiceId,
-                            voiceSpeed: primaryCut.voiceSpeed,
-                            language: primaryCut.language,
-                            cutCount: cuts.length
-                        });
-                    });
-
-                    const speakers = Array.from(speakerMap.entries());
-                    const currentLanguage = localScript[0]?.language || '';
-                    const currentSpeed = localScript[0]?.voiceSpeed || '';
-
-                    // Combined Voice Options (Show both languages to prevent selection disappearance)
-                    const VOICE_OPTIONS = [
-                        {
-                            optgroup: '🇰🇷 Korean (Neural2/Standard)', options: [
-                                { value: 'ko-KR-Neural2-A', label: 'Neural2-A (여성)', gender: 'female', lang: 'ko-KR' },
-                                { value: 'ko-KR-Neural2-B', label: 'Neural2-B (여성, 차분함)', gender: 'female', lang: 'ko-KR' },
-                                { value: 'ko-KR-Neural2-C', label: 'Neural2-C (남성)', gender: 'male', lang: 'ko-KR' },
-                                { value: 'ko-KR-Standard-A', label: 'Standard-A (여성)', gender: 'female', lang: 'ko-KR' },
-                                { value: 'ko-KR-Standard-C', label: 'Standard-C (남성)', gender: 'male', lang: 'ko-KR' },
-                            ]
-                        },
-                        {
-                            optgroup: '🇰🇷 Korean (Chirp HD)', options: [
-                                { value: 'ko-KR-Chirp3-HD-Aoede', label: 'Aoede (여성, 성인)', gender: 'female', lang: 'ko-KR' },
-                                { value: 'ko-KR-Chirp3-HD-Leda', label: 'Leda (여성, 젊음)', gender: 'female', lang: 'ko-KR' },
-                                { value: 'ko-KR-Chirp3-HD-Fenrir', label: 'Fenrir (남성, 성인)', gender: 'male', lang: 'ko-KR' },
-                                { value: 'ko-KR-Chirp3-HD-Puck', label: 'Puck (남성, 젊음)', gender: 'male', lang: 'ko-KR' },
-                            ]
-                        },
-                        {
-                            optgroup: '🇺🇸 English (Neural2)', options: [
-                                { value: 'en-US-Neural2-C', label: 'Neural2-C (Female)', gender: 'female', lang: 'en-US' },
-                                { value: 'en-US-Neural2-G', label: 'Neural2-G (Female, Young)', gender: 'female', lang: 'en-US' },
-                                { value: 'en-US-Neural2-J', label: 'Neural2-J (Male)', gender: 'male', lang: 'en-US' },
-                                { value: 'en-US-Neural2-I', label: 'Neural2-I (Male, Young)', gender: 'male', lang: 'en-US' },
-                            ]
-                        }
-                    ];
-
-                    const FLAT_VOICE_OPTIONS = VOICE_OPTIONS.flatMap(g => g.options);
-
-                    // Apply voice selection to speaker (sets voiceId, gender, age, AND language)
-                    const applyVoiceToSpeaker = (speakerName: string, voiceValue: string) => {
-                        const voice = FLAT_VOICE_OPTIONS.find(v => v.value === voiceValue);
-                        if (voice) {
-                            setLocalScript(prev => {
-                                const updated = prev.map(cut => {
-                                    const isLocked = cut.isAudioConfirmed || cut.isConfirmed;
-                                    const isMatch = (cut.speaker || 'Narrator') === speakerName;
-
-                                    if (isMatch && !isLocked) {
-                                        return {
-                                            ...cut,
-                                            voiceId: voiceValue,
-                                            voiceGender: voice.gender as 'male' | 'female' | 'neutral',
-                                            language: voice.lang
-                                        } as ScriptCut;
-                                    }
-                                    return cut;
+                        {/* BULK AUDIO SUB-PANEL */}
+                        {localScript.length > 0 && (() => {
+                            // ... (Re-using logic from original Voice Settings)
+                            const speakerMap = new Map<string, { gender?: string; age?: string; voiceId?: string; voiceSpeed?: number; language?: string; cutCount: number }>();
+                            const speakerCuts = new Map<string, ScriptCut[]>();
+                            localScript.forEach(cut => {
+                                const s = cut.speaker || 'Narrator';
+                                if (!speakerCuts.has(s)) speakerCuts.set(s, []);
+                                speakerCuts.get(s)!.push(cut);
+                            });
+                            speakerCuts.forEach((cuts, speaker) => {
+                                const primaryCut = cuts.find(c => !c.isAudioConfirmed && !c.isConfirmed) || cuts[0];
+                                speakerMap.set(speaker, {
+                                    gender: primaryCut.voiceGender,
+                                    age: primaryCut.voiceAge,
+                                    voiceId: primaryCut.voiceId,
+                                    voiceSpeed: primaryCut.voiceSpeed,
+                                    language: primaryCut.language,
+                                    cutCount: cuts.length
                                 });
-                                saveToStore(updated);
-                                return updated;
                             });
-                        }
-                    };
+                            const speakers = Array.from(speakerMap.entries());
+                            const currentLanguage = localScript[0]?.language || '';
+                            const currentSpeed = localScript[0]?.voiceSpeed || '';
 
-                    const applyToSpeaker = (speakerName: string, field: keyof ScriptCut, value: any) => {
-                        setLocalScript(prev => {
-                            const updated = prev.map(cut => {
-                                const isLocked = cut.isAudioConfirmed || cut.isConfirmed;
-                                const isMatch = (cut.speaker || 'Narrator') === speakerName;
-                                if (isMatch && !isLocked) {
-                                    return { ...cut, [field]: value };
+                            // Combined Voice Options
+                            const VOICE_OPTIONS = [
+                                {
+                                    optgroup: '🇰🇷 Korean (Neural2/Standard)', options: [
+                                        { value: 'ko-KR-Neural2-A', label: 'Neural2-A (여성)', gender: 'female', lang: 'ko-KR' },
+                                        { value: 'ko-KR-Neural2-B', label: 'Neural2-B (여성, 차분함)', gender: 'female', lang: 'ko-KR' },
+                                        { value: 'ko-KR-Neural2-C', label: 'Neural2-C (남성)', gender: 'male', lang: 'ko-KR' },
+                                        { value: 'ko-KR-Standard-A', label: 'Standard-A (여성)', gender: 'female', lang: 'ko-KR' },
+                                        { value: 'ko-KR-Standard-C', label: 'Standard-C (남성)', gender: 'male', lang: 'ko-KR' },
+                                    ]
+                                },
+                                {
+                                    optgroup: '🇰🇷 Korean (Chirp HD)', options: [
+                                        { value: 'ko-KR-Chirp3-HD-Aoede', label: 'Aoede (여성, 성인)', gender: 'female', lang: 'ko-KR' },
+                                        { value: 'ko-KR-Chirp3-HD-Leda', label: 'Leda (여성, 젊음)', gender: 'female', lang: 'ko-KR' },
+                                        { value: 'ko-KR-Chirp3-HD-Fenrir', label: 'Fenrir (남성, 성인)', gender: 'male', lang: 'ko-KR' },
+                                        { value: 'ko-KR-Chirp3-HD-Puck', label: 'Puck (남성, 젊음)', gender: 'male', lang: 'ko-KR' },
+                                    ]
+                                },
+                                {
+                                    optgroup: '🇺🇸 English (Neural2)', options: [
+                                        { value: 'en-US-Neural2-C', label: 'Neural2-C (Female)', gender: 'female', lang: 'en-US' },
+                                        { value: 'en-US-Neural2-G', label: 'Neural2-G (Female, Young)', gender: 'female', lang: 'en-US' },
+                                        { value: 'en-US-Neural2-J', label: 'Neural2-J (Male)', gender: 'male', lang: 'en-US' },
+                                        { value: 'en-US-Neural2-I', label: 'Neural2-I (Male, Young)', gender: 'male', lang: 'en-US' },
+                                    ]
                                 }
-                                return cut;
-                            });
-                            saveToStore(updated);
-                            return updated;
-                        });
-                    };
+                            ];
+                            const FLAT_VOICE_OPTIONS = VOICE_OPTIONS.flatMap(g => g.options);
 
-
-                    const applyToAll = (field: string, value: any) => {
-                        setLocalScript(prev => {
-                            const updated = prev.map(cut => {
-                                const isLocked = cut.isAudioConfirmed || cut.isConfirmed;
-                                if (!isLocked) {
-                                    return { ...cut, [field]: value };
+                            const getDefaultVoice = (gender?: string) => {
+                                if (gender === 'male') {
+                                    return FLAT_VOICE_OPTIONS.find(v => v.gender === 'male' && v.lang === currentLanguage)?.value || FLAT_VOICE_OPTIONS[0]?.value;
                                 }
-                                return cut;
-                            });
-                            saveToStore(updated);
-                            return updated;
-                        });
-                    };
+                                return FLAT_VOICE_OPTIONS.find(v => v.gender === 'female' && v.lang === currentLanguage)?.value || FLAT_VOICE_OPTIONS[0]?.value;
+                            };
 
-
-                    const lockAllAudio = () => {
-                        setLocalScript(prev => {
-                            const updated = prev.map(cut => (cut.audioUrl || cut.speaker === 'SILENT') ? { ...cut, isAudioConfirmed: true } : cut);
-                            saveToStore(updated);
-                            return updated;
-                        });
-                    };
-                    const unlockAllAudio = () => {
-                        setLocalScript(prev => {
-                            const updated = prev.map(cut => ({ ...cut, isAudioConfirmed: false }));
-                            saveToStore(updated);
-                            return updated;
-                        });
-                    };
-                    const lockAllImages = () => {
-                        setLocalScript(prev => {
-                            const updated = prev.map(cut => cut.finalImageUrl ? { ...cut, isImageConfirmed: true } : cut);
-                            saveToStore(updated);
-                            return updated;
-                        });
-                    };
-                    const unlockAllImages = () => {
-                        setLocalScript(prev => {
-                            const updated = prev.map(cut => ({ ...cut, isImageConfirmed: false }));
-                            saveToStore(updated);
-                            return updated;
-                        });
-                    };
-
-
-                    const handleBulkGenerateAudio = async (speakerName: string) => {
-                        const cutsToGenerate = localScriptRef.current.filter(c =>
-                            (c.speaker || 'Narrator') === speakerName &&
-                            !c.isAudioConfirmed
-                        );
-
-                        if (cutsToGenerate.length === 0) {
-                            alert('No unlocked cuts found for this speaker.');
-                            return;
-                        }
-
-                        if (!confirm(`Generate audio for ${cutsToGenerate.length} cuts for "${speakerName}"?\n(This will process sequentially)`)) return;
-
-                        for (const cut of cutsToGenerate) {
-                            if (!cut.dialogue) continue;
-                            await handleGenerateAudio(cut.id, cut.dialogue);
-                            await new Promise(r => setTimeout(r, 200));
-                        }
-                    };
-
-                    const handleBulkLockAudio = (speakerName: string, lock: boolean) => {
-                        setLocalScript(prev => {
-                            const updated = prev.map(cut => {
-                                if ((cut.speaker || 'Narrator') === speakerName) {
-                                    if (lock && (!cut.audioUrl && cut.speaker !== 'SILENT')) return cut;
-                                    return { ...cut, isAudioConfirmed: lock };
+                            const applyVoiceToSpeaker = (speakerName: string, voiceValue: string) => {
+                                const voice = FLAT_VOICE_OPTIONS.find(v => v.value === voiceValue);
+                                if (voice) {
+                                    setLocalScript(prev => {
+                                        const updated = prev.map(cut => {
+                                            const isLocked = cut.isAudioConfirmed || cut.isConfirmed;
+                                            const isMatch = (cut.speaker || 'Narrator') === speakerName;
+                                            if (isMatch && !isLocked) {
+                                                return {
+                                                    ...cut,
+                                                    voiceId: voiceValue,
+                                                    voiceGender: voice.gender as 'male' | 'female' | 'neutral',
+                                                    language: voice.lang
+                                                } as ScriptCut;
+                                            }
+                                            return cut;
+                                        });
+                                        saveToStore(updated);
+                                        return updated;
+                                    });
                                 }
-                                return cut;
-                            });
-                            saveToStore(updated);
-                            return updated;
-                        });
-                    };
+                            };
+                            const applyToSpeaker = (speakerName: string, field: keyof ScriptCut, value: any) => {
+                                setLocalScript(prev => {
+                                    const updated = prev.map(cut => {
+                                        const isLocked = cut.isAudioConfirmed || cut.isConfirmed;
+                                        const isMatch = (cut.speaker || 'Narrator') === speakerName;
+                                        if (isMatch && !isLocked) {
+                                            return { ...cut, [field]: value };
+                                        }
+                                        return cut;
+                                    });
+                                    saveToStore(updated);
+                                    return updated;
+                                });
+                            };
+                            const applyToAll = (field: string, value: any) => {
+                                setLocalScript(prev => {
+                                    const updated = prev.map(cut => {
+                                        const isLocked = cut.isAudioConfirmed || cut.isConfirmed;
+                                        if (!isLocked) {
+                                            return { ...cut, [field]: value };
+                                        }
+                                        return cut;
+                                    });
+                                    saveToStore(updated);
+                                    return updated;
+                                });
+                            };
 
-                    const audioLockedCount = localScript.filter(c => c.isAudioConfirmed).length;
-                    const imageLockedCount = localScript.filter(c => c.isImageConfirmed).length;
-                    const audioGeneratedCount = localScript.filter(c => c.audioUrl).length;
-                    const imageGeneratedCount = localScript.filter(c => c.finalImageUrl).length;
+                            const handleBulkGenerateAudio = async (speakerName: string) => {
+                                const cutsToGenerate = localScriptRef.current.filter(c =>
+                                    (c.speaker || 'Narrator') === speakerName &&
+                                    !c.isAudioConfirmed
+                                );
+                                if (cutsToGenerate.length === 0) {
+                                    alert('No unlocked cuts found for this speaker.');
+                                    return;
+                                }
+                                if (!confirm(`Generate audio for ${cutsToGenerate.length} cuts for "${speakerName}"?\n(This will process sequentially)`)) return;
+                                for (const cut of cutsToGenerate) {
+                                    if (!cut.dialogue) continue;
+                                    await handleGenerateAudio(cut.id, cut.dialogue);
+                                    await new Promise(r => setTimeout(r, 200));
+                                }
+                            };
+                            const handleBulkLockAudio = (speakerName: string, lock: boolean) => {
+                                setLocalScript(prev => {
+                                    const updated = prev.map(cut => {
+                                        if ((cut.speaker || 'Narrator') === speakerName) {
+                                            if (lock && (!cut.audioUrl && cut.speaker !== 'SILENT')) return cut;
+                                            return { ...cut, isAudioConfirmed: lock };
+                                        }
+                                        return cut;
+                                    });
+                                    saveToStore(updated);
+                                    return updated;
+                                });
+                            };
 
-                    // Voice sample data for preview (pre-recorded samples)
-                    const VOICE_SAMPLES: Record<string, string> = {
-                        'ko-KR-Chirp3-HD-Aoede': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Aoede.wav',
-                        'ko-KR-Chirp3-HD-Fenrir': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Fenrir.wav',
-                        'ko-KR-Chirp3-HD-Leda': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Leda.wav',
-                        'ko-KR-Chirp3-HD-Puck': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Puck.wav',
-                        'ko-KR-Neural2-A': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Neural2-A.wav',
-                        'ko-KR-Neural2-B': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Neural2-B.wav',
-                        'ko-KR-Neural2-C': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Neural2-C.wav',
-                        'en-US-Neural2-C': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-C.wav',
-                        'en-US-Neural2-G': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-G.wav',
-                        'en-US-Neural2-J': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-J.wav',
-                        'en-US-Neural2-I': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-I.wav',
-                    };
+                            const VOICE_SAMPLES: Record<string, string> = {
+                                'ko-KR-Chirp3-HD-Aoede': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Aoede.wav',
+                                'ko-KR-Chirp3-HD-Fenrir': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Fenrir.wav',
+                                'ko-KR-Chirp3-HD-Leda': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Leda.wav',
+                                'ko-KR-Chirp3-HD-Puck': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Puck.wav',
+                                'ko-KR-Neural2-A': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Neural2-A.wav',
+                                'ko-KR-Neural2-B': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Neural2-B.wav',
+                                'ko-KR-Neural2-C': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Neural2-C.wav',
+                                'en-US-Neural2-C': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-C.wav',
+                                'en-US-Neural2-G': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-G.wav',
+                                'en-US-Neural2-J': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-J.wav',
+                                'en-US-Neural2-I': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-I.wav',
+                            };
+                            const playVoiceSample = (voiceId: string) => {
+                                const sampleUrl = VOICE_SAMPLES[voiceId];
+                                if (sampleUrl) {
+                                    const audio = new Audio(sampleUrl);
+                                    audio.play().catch(e => console.warn('Sample playback failed:', e));
+                                } else {
+                                    alert('Sample not available for this voice');
+                                }
+                            };
 
 
-                    // Get default voice for speaker based on gender
-                    const getDefaultVoice = (gender?: string) => {
-                        if (gender === 'male') {
-                            return FLAT_VOICE_OPTIONS.find(v => v.gender === 'male' && v.lang === currentLanguage)?.value || FLAT_VOICE_OPTIONS[0]?.value;
-                        }
-                        return FLAT_VOICE_OPTIONS.find(v => v.gender === 'female' && v.lang === currentLanguage)?.value || FLAT_VOICE_OPTIONS[0]?.value;
-                    };
-
-                    const playVoiceSample = (voiceId: string) => {
-                        const sampleUrl = VOICE_SAMPLES[voiceId];
-                        if (sampleUrl) {
-                            const audio = new Audio(sampleUrl);
-                            audio.play().catch(e => console.warn('Sample playback failed:', e));
-                        } else {
-                            alert('Sample not available for this voice');
-                        }
-                    };
-
-                    return (
-                        <>
-                            {/* Voice Settings - Accordion */}
-                            <details className="glass-panel">
-                                <summary className="p-4 cursor-pointer flex items-center justify-between hover:bg-[rgba(255,255,255,0.02)] rounded-xl transition-colors select-none">
-                                    <span className="text-sm font-bold text-white flex items-center gap-2">
-                                        🎙️ Voice Settings
-                                    </span>
-                                    <span className="text-[10px] text-[var(--color-text-muted)]">▼</span>
-                                </summary>
-                                <div className="px-4 pb-4 space-y-4">
-
-                                    {/* Global Settings */}
-                                    <div className="space-y-2">
-                                        <div className="text-[10px] text-[var(--color-primary)] uppercase font-bold">Global (All Cuts)</div>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <select
-                                                className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs text-white focus:border-[var(--color-primary)] outline-none"
-                                                value={currentLanguage}
-                                                onChange={(e) => applyToAll('language', e.target.value || undefined)}
-                                            >
-                                                <option value="">🌐 Auto Lang</option>
-                                                <option value="ko-KR">🇰🇷 Korean</option>
-                                                <option value="en-US">🇺🇸 English</option>
-                                            </select>
-                                            <select
-                                                className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs text-white focus:border-[var(--color-primary)] outline-none"
-                                                value={currentSpeed}
-                                                onChange={(e) => applyToAll('voiceSpeed', e.target.value ? parseFloat(e.target.value) : undefined)}
-                                            >
-                                                <option value="">⚡ Auto Rate</option>
-                                                <option value="0.85">85% Slow</option>
-                                                <option value="1.0">100% Normal</option>
-                                                <option value="1.15">115% Fast</option>
-                                            </select>
-                                        </div>
+                            return (
+                                <div className="mt-2 p-3 bg-black/20 rounded-lg border border-white/5 space-y-3">
+                                    <div className="text-[10px] text-gray-400 font-bold flex items-center gap-1 uppercase tracking-wider">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)]"></div>
+                                        Bulk Audio Settings
                                     </div>
 
-                                    {/* Per-Speaker Voice Selection with Preview */}
+                                    {/* Global Settings */}
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <select
+                                            className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs text-white focus:border-[var(--color-primary)] outline-none"
+                                            value={currentLanguage}
+                                            onChange={(e) => applyToAll('language', e.target.value || undefined)}
+                                        >
+                                            <option value="">🌐 Auto Lang</option>
+                                            <option value="ko-KR">🇰🇷 Korean</option>
+                                            <option value="en-US">🇺🇸 English</option>
+                                        </select>
+                                        <select
+                                            className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs text-white focus:border-[var(--color-primary)] outline-none"
+                                            value={currentSpeed}
+                                            onChange={(e) => applyToAll('voiceSpeed', e.target.value ? parseFloat(e.target.value) : undefined)}
+                                        >
+                                            <option value="">⚡ Auto Rate</option>
+                                            <option value="0.85">85% Slow</option>
+                                            <option value="1.0">100% Normal</option>
+                                            <option value="1.15">115% Fast</option>
+                                        </select>
+                                    </div>
+
+                                    {/* Per Speaker */}
                                     <div className="space-y-2 pt-2 border-t border-[var(--color-border)]">
-                                        <div className="text-[10px] text-[var(--color-text-muted)] uppercase font-bold">Per Speaker Voice</div>
-                                        <div className="space-y-2 max-h-[250px] overflow-y-auto">
+                                        <div className="text-[9px] text-[var(--color-text-muted)] uppercase font-bold">Per Speaker Voice</div>
+                                        <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
                                             {speakers.map(([speaker, settings]) => {
-                                                // Use voiceId if set, otherwise derive from gender
                                                 const currentVoice = settings.voiceId || getDefaultVoice(settings.gender);
                                                 return (
                                                     <div key={speaker} className="bg-[var(--color-surface)] p-2 rounded border border-[var(--color-border)] space-y-2">
@@ -1348,7 +1306,6 @@ export const Step3_Production: React.FC = () => {
                                                                         <option value="0.9">0.9x</option>
                                                                         <option value="1.0">1.0x</option>
                                                                         <option value="1.1">1.1x</option>
-                                                                        <option value="1.2">1.2x</option>
                                                                     </select>
                                                                     <select
                                                                         className="flex-1 bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-1 py-0.5 text-[9px] text-gray-400 outline-none"
@@ -1401,36 +1358,47 @@ export const Step3_Production: React.FC = () => {
                                         </div>
                                     </div>
                                 </div>
-                            </details>
+                            );
+                        })()}
+                    </div>
+                </div>
 
-                            {/* AI Instructions Button - Opens Popup Modal */}
-                            <button
-                                onClick={() => setIsInstructionsModalOpen(true)}
-                                className="w-full glass-panel p-4 flex items-center justify-between hover:bg-[rgba(255,255,255,0.05)] transition-colors rounded-xl"
-                            >
-                                <span className="text-sm font-bold text-white flex items-center gap-2">
-                                    🤖 AI Script Instructions
-                                </span>
-                                <span className="text-[10px] text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-2 py-1 rounded">
-                                    Edit Prompt ✏️
-                                </span>
-                            </button>
+                {/* System Instruction Management Panel */}
+                <div className="glass-panel p-4 space-y-3">
+                    <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-bold text-white flex items-center gap-2">
+                            📝 텍스트 AI 지시문 관리
+                        </span>
+                    </div>
 
-                            {/* Video Prompt Instructions Button - Opens Popup Modal */}
-                            <button
-                                onClick={() => setIsVideoInstructionsModalOpen(true)}
-                                className="w-full glass-panel p-4 flex items-center justify-between hover:bg-[rgba(255,255,255,0.05)] transition-colors rounded-xl"
-                            >
-                                <span className="text-sm font-bold text-white flex items-center gap-2">
-                                    🎬 Video Prompt Instructions
-                                </span>
-                                <span className="text-[10px] text-purple-400 bg-purple-500/10 px-2 py-1 rounded">
-                                    Veo3/Grok ✏️
-                                </span>
-                            </button>
-                        </>
-                    );
-                })()}
+                    <div className="space-y-2">
+                        {/* 1) Script / Image Prompt Instructions */}
+                        <button
+                            onClick={() => setIsInstructionsModalOpen(true)}
+                            className="w-full flex items-center justify-between p-3 bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)] rounded-lg transition-colors group text-left"
+                        >
+                            <span className="text-xs font-medium text-white group-hover:text-[var(--color-primary)] transition-colors">
+                                1) Script / Image 프롬프트 작성
+                            </span>
+                            <span className="text-[10px] text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-2 py-1 rounded">
+                                Edit ✏️
+                            </span>
+                        </button>
+
+                        {/* 2) Video Prompt Instructions */}
+                        <button
+                            onClick={() => setIsVideoInstructionsModalOpen(true)}
+                            className="w-full flex items-center justify-between p-3 bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-purple-400 rounded-lg transition-colors group text-left"
+                        >
+                            <span className="text-xs font-medium text-white group-hover:text-purple-400 transition-colors">
+                                2) Video 프롬프트 작성
+                            </span>
+                            <span className="text-[10px] text-purple-400 bg-purple-500/10 px-2 py-1 rounded">
+                                Edit ✏️
+                            </span>
+                        </button>
+                    </div>
+                </div>
 
                 {/* Next Step Button */}
                 {localScript.length > 0 && (
@@ -1534,136 +1502,140 @@ export const Step3_Production: React.FC = () => {
             />
 
             {/* AI Instructions Popup Modal */}
-            {isInstructionsModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-                    <div className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
-                        {/* Modal Header */}
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
-                            <div className="flex items-center gap-3">
-                                <span className="text-2xl">🤖</span>
-                                <div>
-                                    <h2 className="text-lg font-bold text-white">AI Script Instructions</h2>
-                                    <p className="text-xs text-[var(--color-text-muted)]">
-                                        Customize how the AI generates your script
-                                    </p>
+            {
+                isInstructionsModalOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                        <div className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
+                            {/* Modal Header */}
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
+                                <div className="flex items-center gap-3">
+                                    <span className="text-2xl">🤖</span>
+                                    <div>
+                                        <h2 className="text-lg font-bold text-white">AI Script Instructions</h2>
+                                        <p className="text-xs text-[var(--color-text-muted)]">
+                                            Customize how the AI generates your script
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => setCustomInstructions(DEFAULT_SCRIPT_INSTRUCTIONS)}
+                                        className="px-3 py-1.5 text-xs text-[var(--color-text-muted)] hover:text-white border border-[var(--color-border)] rounded-lg hover:bg-[rgba(255,255,255,0.05)] transition-colors"
+                                    >
+                                        ↺ Reset to Default
+                                    </button>
+                                    <button
+                                        onClick={() => setIsInstructionsModalOpen(false)}
+                                        className="px-4 py-1.5 text-xs font-bold text-black bg-[var(--color-primary)] rounded-lg hover:opacity-90 transition-opacity"
+                                    >
+                                        Done ✓
+                                    </button>
                                 </div>
                             </div>
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={() => setCustomInstructions(DEFAULT_SCRIPT_INSTRUCTIONS)}
-                                    className="px-3 py-1.5 text-xs text-[var(--color-text-muted)] hover:text-white border border-[var(--color-border)] rounded-lg hover:bg-[rgba(255,255,255,0.05)] transition-colors"
-                                >
-                                    ↺ Reset to Default
-                                </button>
+
+                            {/* Modal Body - Large Textarea */}
+                            <div className="flex-1 overflow-hidden p-4 flex flex-col gap-4">
+                                <textarea
+                                    value={customInstructions}
+                                    onChange={(e) => setCustomInstructions(e.target.value)}
+                                    className="w-full flex-1 min-h-[40vh] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-4 text-sm text-white font-mono outline-none resize-none focus:border-[var(--color-primary)] transition-colors"
+                                    placeholder="Enter custom instructions for the AI screenwriter..."
+                                />
+
+                                {/* AI Helper Chat - Memoized Component */}
+                                <AiInstructionHelper
+                                    currentInstruction={customInstructions}
+                                    onInstructionChange={setCustomInstructions}
+                                    instructionType="script"
+                                    apiKey={apiKeys?.gemini || ''}
+                                    accentColor="primary"
+                                />
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="px-6 py-3 border-t border-[var(--color-border)] flex items-center justify-between">
+                                <p className="text-[10px] text-[var(--color-text-muted)]">
+                                    ⚠️ <strong>중요:</strong> 개별 컷은 반드시 8초 이내로 구성해야 합니다. 이 규칙이 프롬프트에 이미 포함되어 있습니다.
+                                </p>
                                 <button
                                     onClick={() => setIsInstructionsModalOpen(false)}
-                                    className="px-4 py-1.5 text-xs font-bold text-black bg-[var(--color-primary)] rounded-lg hover:opacity-90 transition-opacity"
+                                    className="text-xs text-[var(--color-text-muted)] hover:text-white"
                                 >
-                                    Done ✓
+                                    ESC to close
                                 </button>
                             </div>
                         </div>
-
-                        {/* Modal Body - Large Textarea */}
-                        <div className="flex-1 overflow-hidden p-4 flex flex-col gap-4">
-                            <textarea
-                                value={customInstructions}
-                                onChange={(e) => setCustomInstructions(e.target.value)}
-                                className="w-full flex-1 min-h-[40vh] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-4 text-sm text-white font-mono outline-none resize-none focus:border-[var(--color-primary)] transition-colors"
-                                placeholder="Enter custom instructions for the AI screenwriter..."
-                            />
-
-                            {/* AI Helper Chat - Memoized Component */}
-                            <AiInstructionHelper
-                                currentInstruction={customInstructions}
-                                onInstructionChange={setCustomInstructions}
-                                instructionType="script"
-                                apiKey={apiKeys?.gemini || ''}
-                                accentColor="primary"
-                            />
-                        </div>
-
-                        {/* Modal Footer */}
-                        <div className="px-6 py-3 border-t border-[var(--color-border)] flex items-center justify-between">
-                            <p className="text-[10px] text-[var(--color-text-muted)]">
-                                ⚠️ <strong>중요:</strong> 개별 컷은 반드시 8초 이내로 구성해야 합니다. 이 규칙이 프롬프트에 이미 포함되어 있습니다.
-                            </p>
-                            <button
-                                onClick={() => setIsInstructionsModalOpen(false)}
-                                className="text-xs text-[var(--color-text-muted)] hover:text-white"
-                            >
-                                ESC to close
-                            </button>
-                        </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Video Prompt Instructions Popup Modal */}
-            {isVideoInstructionsModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-                    <div className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
-                        {/* Modal Header */}
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
-                            <div className="flex items-center gap-3">
-                                <span className="text-2xl">🎬</span>
-                                <div>
-                                    <h2 className="text-lg font-bold text-white">Video Prompt Instructions</h2>
-                                    <p className="text-xs text-[var(--color-text-muted)]">
-                                        Customize video generation for Veo3, Kling, Grok
-                                    </p>
+            {
+                isVideoInstructionsModalOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                        <div className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
+                            {/* Modal Header */}
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
+                                <div className="flex items-center gap-3">
+                                    <span className="text-2xl">🎬</span>
+                                    <div>
+                                        <h2 className="text-lg font-bold text-white">Video Prompt Instructions</h2>
+                                        <p className="text-xs text-[var(--color-text-muted)]">
+                                            Customize video generation for Veo3, Kling, Grok
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => setVideoPromptInstructions(DEFAULT_VIDEO_PROMPT_INSTRUCTIONS)}
+                                        className="px-3 py-1.5 text-xs text-[var(--color-text-muted)] hover:text-white border border-[var(--color-border)] rounded-lg hover:bg-[rgba(255,255,255,0.05)] transition-colors"
+                                    >
+                                        ↺ Reset to Default
+                                    </button>
+                                    <button
+                                        onClick={() => setIsVideoInstructionsModalOpen(false)}
+                                        className="px-4 py-1.5 text-xs font-bold text-white bg-purple-600 rounded-lg hover:opacity-90 transition-opacity"
+                                    >
+                                        Done ✓
+                                    </button>
                                 </div>
                             </div>
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={() => setVideoPromptInstructions(DEFAULT_VIDEO_PROMPT_INSTRUCTIONS)}
-                                    className="px-3 py-1.5 text-xs text-[var(--color-text-muted)] hover:text-white border border-[var(--color-border)] rounded-lg hover:bg-[rgba(255,255,255,0.05)] transition-colors"
-                                >
-                                    ↺ Reset to Default
-                                </button>
+
+                            {/* Modal Body - Large Textarea */}
+                            <div className="flex-1 overflow-hidden p-4 flex flex-col gap-4">
+                                <textarea
+                                    value={videoPromptInstructions}
+                                    onChange={(e) => setVideoPromptInstructions(e.target.value)}
+                                    className="w-full flex-1 min-h-[40vh] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-4 text-sm text-white font-mono outline-none resize-none focus:border-purple-500 transition-colors"
+                                    placeholder="Enter custom instructions for video prompt generation..."
+                                />
+
+                                {/* AI Helper Chat - Memoized Component */}
+                                <AiInstructionHelper
+                                    currentInstruction={videoPromptInstructions}
+                                    onInstructionChange={setVideoPromptInstructions}
+                                    instructionType="video"
+                                    apiKey={apiKeys?.gemini || ''}
+                                    accentColor="purple"
+                                />
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="px-6 py-3 border-t border-[var(--color-border)] flex items-center justify-between">
+                                <p className="text-[10px] text-[var(--color-text-muted)]">
+                                    💡 <strong>팁:</strong> 각 컷의 visualPrompt를 기반으로 카메라 무브먼트와 모션을 추가합니다.
+                                </p>
                                 <button
                                     onClick={() => setIsVideoInstructionsModalOpen(false)}
-                                    className="px-4 py-1.5 text-xs font-bold text-white bg-purple-600 rounded-lg hover:opacity-90 transition-opacity"
+                                    className="text-xs text-[var(--color-text-muted)] hover:text-white"
                                 >
-                                    Done ✓
+                                    ESC to close
                                 </button>
                             </div>
                         </div>
-
-                        {/* Modal Body - Large Textarea */}
-                        <div className="flex-1 overflow-hidden p-4 flex flex-col gap-4">
-                            <textarea
-                                value={videoPromptInstructions}
-                                onChange={(e) => setVideoPromptInstructions(e.target.value)}
-                                className="w-full flex-1 min-h-[40vh] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-4 text-sm text-white font-mono outline-none resize-none focus:border-purple-500 transition-colors"
-                                placeholder="Enter custom instructions for video prompt generation..."
-                            />
-
-                            {/* AI Helper Chat - Memoized Component */}
-                            <AiInstructionHelper
-                                currentInstruction={videoPromptInstructions}
-                                onInstructionChange={setVideoPromptInstructions}
-                                instructionType="video"
-                                apiKey={apiKeys?.gemini || ''}
-                                accentColor="purple"
-                            />
-                        </div>
-
-                        {/* Modal Footer */}
-                        <div className="px-6 py-3 border-t border-[var(--color-border)] flex items-center justify-between">
-                            <p className="text-[10px] text-[var(--color-text-muted)]">
-                                💡 <strong>팁:</strong> 각 컷의 visualPrompt를 기반으로 카메라 무브먼트와 모션을 추가합니다.
-                            </p>
-                            <button
-                                onClick={() => setIsVideoInstructionsModalOpen(false)}
-                                className="text-xs text-[var(--color-text-muted)] hover:text-white"
-                            >
-                                ESC to close
-                            </button>
-                        </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 };

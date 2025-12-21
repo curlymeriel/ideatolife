@@ -556,9 +556,12 @@ export const CutItem = memo(({
                                             <div className="fixed inset-0 z-[90]" onClick={() => setShowTermHelper(false)} />
                                             <div className="absolute bottom-0 left-full ml-2 w-[320px] max-h-[280px] flex flex-col bg-[#1a1a1a] border border-[var(--color-primary)]/30 rounded-lg shadow-2xl z-[100] overflow-hidden">
                                                 {/* Fixed Header */}
-                                                <div className="flex items-center justify-between p-3 bg-[#1a1a1a] border-b border-white/10 shrink-0">
-                                                    <span className="text-[10px] text-[var(--color-primary)] font-bold tracking-tight">📚 영상 전문 용어 도우미</span>
-                                                    <button onClick={() => setShowTermHelper(false)} className="text-gray-500 hover:text-white p-1 hover:bg-white/5 rounded"><X size={12} /></button>
+                                                <div className="p-3 bg-[#1a1a1a] border-b border-white/10 shrink-0">
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <span className="text-[10px] text-[var(--color-primary)] font-bold tracking-tight">📚 영상 전문 용어 도우미</span>
+                                                        <button onClick={() => setShowTermHelper(false)} className="text-gray-500 hover:text-white p-1 hover:bg-white/5 rounded"><X size={12} /></button>
+                                                    </div>
+                                                    <p className="text-[9px] text-gray-400">용어를 클릭하면 프롬프트에 추가됩니다.</p>
                                                 </div>
 
                                                 {/* Scrollable List */}
