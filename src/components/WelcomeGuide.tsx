@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, ChevronLeft, ChevronRight, Key, AlertTriangle, Sparkles } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Key, AlertTriangle, Sparkles, ExternalLink } from 'lucide-react';
 
 interface WelcomeGuideProps {
     isOpen: boolean;
@@ -40,17 +40,32 @@ const STEPS = [
                     좌측 하단 <strong>⚙️ API Config</strong>에서 키를 입력해주세요.
                 </p>
                 <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1 text-xs">
-                    <div className="bg-[var(--color-surface)] p-2 rounded border border-[var(--color-border)]">
-                        <span className="text-white font-bold block">🧠 Gemini API (필수)</span>
-                        <span className="text-gray-500">스크립트 작성 및 기본 이미지 생성</span>
+                    <div className="bg-[var(--color-surface)] p-2 rounded border border-[var(--color-border)] flex justify-between items-center group">
+                        <div>
+                            <span className="text-white font-bold block">🧠 Gemini API (필수)</span>
+                            <span className="text-gray-500">스크립트 작성 및 기본 이미지 생성</span>
+                        </div>
+                        <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="bg-white/10 hover:bg-white/20 text-white p-2 rounded transition-colors" title="Get API Key">
+                            <ExternalLink size={14} />
+                        </a>
                     </div>
-                    <div className="bg-[var(--color-surface)] p-2 rounded border border-[var(--color-border)]">
-                        <span className="text-white font-bold block">🎙️ Google Cloud (TTS)</span>
-                        <span className="text-gray-500">고품질 음성 합성 (Studio Voice)</span>
+                    <div className="bg-[var(--color-surface)] p-2 rounded border border-[var(--color-border)] flex justify-between items-center group">
+                        <div>
+                            <span className="text-white font-bold block">🎙️ Google Cloud (TTS)</span>
+                            <span className="text-gray-500">고품질 음성 합성 (Studio Voice)</span>
+                        </div>
+                        <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="bg-white/10 hover:bg-white/20 text-white p-2 rounded transition-colors" title="Get API Key">
+                            <ExternalLink size={14} />
+                        </a>
                     </div>
-                    <div className="bg-[var(--color-surface)] p-2 rounded border border-[var(--color-border)]">
-                        <span className="text-white font-bold block">🎬 Replicate (Video)</span>
-                        <span className="text-gray-500">Step 4.5에서 비디오 생성 시 필요</span>
+                    <div className="bg-[var(--color-surface)] p-2 rounded border border-[var(--color-border)] flex justify-between items-center group">
+                        <div>
+                            <span className="text-white font-bold block">🔊 Freesound API (SFX)</span>
+                            <span className="text-gray-500">배경음 및 효과음 검색/다운로드</span>
+                        </div>
+                        <a href="https://freesound.org/apiv2/apply" target="_blank" rel="noopener noreferrer" className="bg-white/10 hover:bg-white/20 text-white p-2 rounded transition-colors" title="Get API Key">
+                            <ExternalLink size={14} />
+                        </a>
                     </div>
                 </div>
             </div>

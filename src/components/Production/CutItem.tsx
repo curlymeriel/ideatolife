@@ -145,6 +145,7 @@ export const CutItem = memo(({
     // Resolved URLs for IndexedDB
     const [resolvedImageUrl, setResolvedImageUrl] = useState<string>('');
     const [resolvedAudioUrl, setResolvedAudioUrl] = useState<string>('');
+    const [resolvedUserRefUrl, setResolvedUserRefUrl] = useState<string>('');
     const [actualAudioDuration, setActualAudioDuration] = useState<number | null>(null);
 
     // Panel expand states
@@ -185,6 +186,18 @@ export const CutItem = memo(({
             setResolvedAudioUrl('');
         }
     }, [cut.audioUrl]);
+
+    useEffect(() => {
+        if (cut.userReferenceImage) {
+            if (isIdbUrl(cut.userReferenceImage)) {
+                resolveUrl(cut.userReferenceImage).then(url => setResolvedUserRefUrl(url || ''));
+            } else {
+                setResolvedUserRefUrl(cut.userReferenceImage);
+            }
+        } else {
+            setResolvedUserRefUrl('');
+        }
+    }, [cut.userReferenceImage]);
 
     // Debounced dialogue update
     const handleDialogueChange = useCallback((value: string) => {
@@ -725,7 +738,7 @@ export const CutItem = memo(({
                                 <div className="flex items-center gap-2">
                                     {cut.userReferenceImage && (
                                         <div className="relative w-8 h-8 rounded overflow-hidden border border-white/20">
-                                            <img src={cut.userReferenceImage} className="w-full h-full object-cover" />
+                                            <img src={resolvedUserRefUrl} className="w-full h-full object-cover" />
                                             <button onClick={() => onUpdateCut(cut.id, { userReferenceImage: undefined })} className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 hover:opacity-100"><X size={10} className="text-white" /></button>
                                         </div>
                                     )}
