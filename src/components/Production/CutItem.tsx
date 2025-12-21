@@ -595,8 +595,15 @@ export const CutItem = memo(({
                                     isVisualPromptFocusedRef.current = false;
                                     onSave();
                                 }}
-                                placeholder="Visual description..."
+                                placeholder="Visual description (English)..."
                             />
+                            {/* Korean Translation Display */}
+                            {cut.visualPromptKR && (
+                                <div className="mt-1 px-2 py-1.5 bg-white/5 rounded text-[11px] text-gray-500 border-l-2 border-[var(--color-primary)]/30">
+                                    <span className="text-[9px] text-gray-600 mr-1">🇰🇷</span>
+                                    {cut.visualPromptKR}
+                                </div>
+                            )}
                         </div>
 
                         {/* Image Buttons (Preview/Gen + Settings) */}
