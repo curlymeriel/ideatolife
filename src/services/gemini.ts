@@ -5,6 +5,7 @@ export interface ScriptCut {
     speaker: string;
     dialogue: string;
     visualPrompt: string;
+    visualPromptKR?: string;       // Korean translation of visualPrompt for user reference
     estimatedDuration: number;
     draftImageUrl?: string;        // Legacy: Quick preview images
     finalImageUrl?: string;        // Final quality image from Step 4
@@ -161,7 +162,8 @@ export const DEFAULT_SCRIPT_INSTRUCTIONS = `
       - emotion: Emotional tone of the dialogue (neutral/happy/sad/angry/excited/calm/tense)
       - emotionIntensity: Strength of the emotion (low/moderate/high)
       
-      - visualPrompt: **STATIC IMAGE ONLY - NO MOTION:**
+      - visualPrompt: **STATIC IMAGE ONLY - NO MOTION (WRITE IN ENGLISH):**
+        - **LANGUAGE: MUST BE WRITTEN IN ENGLISH** (except for asset names which may be in any language)
         - This prompt generates a **STILL IMAGE** (first frame of cut). Describe a "frozen moment".
         - **Format:** (Shot Size) + (Angle) + (Subject & Pose) + (Lighting/Atmosphere)
         - **STATIC POSES ONLY:** "Character in mid-stride pose", "Mid-sentence with mouth open", "Hand reaching out frozen"
@@ -181,6 +183,10 @@ export const DEFAULT_SCRIPT_INSTRUCTIONS = `
         
         **NEGATIVE CONSTRAINTS:**
         - No text, No typography, No UI overlays, No speech bubbles, No camera movements.
+      
+      - visualPromptKR: (Optional) Korean translation of visualPrompt for user reference.
+        - Translate the English visualPrompt to Korean so users can easily understand the scene.
+        - Keep the same structure and meaning as the English version.
       
       - estimatedDuration: ⚠️ **CRITICAL: MAXIMUM 8 SECONDS PER CUT (ABSOLUTE LIMIT)**
         • HARD LIMIT: No cut may exceed 8 seconds. This is non-negotiable.
@@ -203,7 +209,7 @@ export const DEFAULT_SCRIPT_INSTRUCTIONS = `
       - Visual prompts should reference specific characters/locations by name for consistency
       - Total duration should approximately match the target duration
       
-      Return ONLY a raw JSON array of objects with keys: id, speaker, dialogue, language, emotion, emotionIntensity, visualPrompt, sfxDescription, estimatedDuration.
+      Return ONLY a raw JSON array of objects with keys: id, speaker, dialogue, language, emotion, emotionIntensity, visualPrompt, visualPromptKR, sfxDescription, estimatedDuration.
       Do not include markdown formatting like \`\`\`json.
     `;
 
