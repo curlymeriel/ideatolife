@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { parseRate, parsePitch, parseVolume } from './tts_parsers';
 
 export interface AudioAsset {
     cutId: number;
@@ -111,8 +112,11 @@ export const generateSpeech = async (
                     name: fullVoiceName
                 },
                 audioConfig: {
-                    audioEncoding: 'MP3'
-                    // Note: pitch and speakingRate are controlled via SSML now
+                    audioEncoding: 'MP3',
+                    // Pass speakingRate and pitch explicitly for models that might ignore SSML prosody (like Chirp)
+                    ...(voiceConfig?.rate && { speakingRate: parseRate(voiceConfig.rate) }),
+                    ...(voiceConfig?.pitch && { pitch: parsePitch(voiceConfig.pitch) }),
+                    ...(voiceConfig?.volume && { volumeGainDb: parseVolume(voiceConfig.volume) }),
                 }
             }
         );

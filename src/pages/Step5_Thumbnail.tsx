@@ -1,16 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useWorkflowStore } from '../store/workflowStore';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, RefreshCw, Image as ImageIcon, Upload, Type, Layers, Move, ZoomIn, Maximize, Download } from 'lucide-react';
+import { ArrowRight, RefreshCw, Image as ImageIcon, Upload, Type, Layers, Move, ZoomIn, Download, Wand2, Sparkles, CheckSquare, Square, X, Loader2 } from 'lucide-react';
 import html2canvas from 'html2canvas';
+import { generateImage } from '../services/imageGen';
+import { generateVisualPrompt } from '../services/gemini';
+import { resolveUrl, saveToIdb, isIdbUrl } from '../utils/imageStorage';
 
 export const Step5_Thumbnail: React.FC = () => {
     const {
+        id: projectId,
         episodeName, episodeNumber,
         setThumbnail, nextStep, prevStep,
-        thumbnailSettings, setThumbnailSettings, // Access store settings
-        isHydrated, // Access hydration status
-        script // Access script for cut images
+        thumbnailSettings, setThumbnailSettings,
+        isHydrated,
+        script,
+        saveProject,
+        apiKeys,
+        imageModel,
+        assetDefinitions,
+        aspectRatio
     } = useWorkflowStore();
     const navigate = useNavigate();
 
@@ -26,8 +35,20 @@ export const Step5_Thumbnail: React.FC = () => {
     const [showCutSelector, setShowCutSelector] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
 
+    // Mode state
+    const [mode, setMode] = useState<'framing' | 'ai-gen'>(thumbnailSettings?.mode || 'framing');
+    const [aiPrompt, setAiPrompt] = useState(thumbnailSettings?.aiPrompt || '');
+    const [aiTitle, setAiTitle] = useState(thumbnailSettings?.aiTitle || episodeName || '');
+    const [selectedReferenceIds, setSelectedReferenceIds] = useState<string[]>(thumbnailSettings?.selectedReferenceIds || []);
+    const [styleReferenceId, setStyleReferenceId] = useState<string | null>(thumbnailSettings?.styleReferenceId || null);
+    const [resolvedStyleRef, setResolvedStyleRef] = useState<string | null>(null);
+
+    const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+    const [isSuggesting, setIsSuggesting] = useState(false);
+
     // Initialize state from store settings or defaults
     const [frameImage, setFrameImage] = useState<string>(thumbnailSettings?.frameImage || '/frame_bg.svg');
+    const [resolvedFrameImage, setResolvedFrameImage] = useState<string>(thumbnailSettings?.frameImage || '/frame_bg.svg');
     const [titleFont, setTitleFont] = useState(thumbnailSettings?.fontFamily || 'Inter');
     const [customTitle, setCustomTitle] = useState(episodeName || '');
     const [customEpNum, setCustomEpNum] = useState(episodeNumber?.toString() || '1');
@@ -41,6 +62,15 @@ export const Step5_Thumbnail: React.FC = () => {
     const [titleSize, setTitleSize] = useState(thumbnailSettings?.titleSize || 48);
     const [epNumSize, setEpNumSize] = useState(thumbnailSettings?.epNumSize || 60);
     const [textColor, setTextColor] = useState(thumbnailSettings?.textColor || '#ffffff');
+
+    // Resolve style reference if it exists
+    useEffect(() => {
+        if (styleReferenceId) {
+            resolveUrl(styleReferenceId).then(setResolvedStyleRef);
+        } else {
+            setResolvedStyleRef(null);
+        }
+    }, [styleReferenceId]);
 
     // Font options (Google Fonts)
     const FONTS = [
@@ -63,10 +93,52 @@ export const Step5_Thumbnail: React.FC = () => {
         };
     }, []);
 
-    // Clear old thumbnail on mount to prevent Step 6 from showing low-quality cached thumbnail
+    // CRITICAL: Reset state when project changes to prevent showing old project data
     useEffect(() => {
-        setThumbnail(null);
-    }, [setThumbnail]);
+        const syncFromStore = async () => {
+            console.log(`[Step5] Project changed to ${projectId} - resetting state`);
+            setSelectedImage(null);
+            setScale(1);
+            setPosition({ x: 0, y: 0 });
+            setTextPosition({ x: 0, y: 0 });
+
+            const store = useWorkflowStore.getState();
+
+            if (store.thumbnailUrl) {
+                const resolved = await resolveUrl(store.thumbnailUrl);
+                setSelectedImage(resolved || null);
+            }
+
+            if (store.thumbnailSettings) {
+                const settings = store.thumbnailSettings;
+                if (settings.mode) setMode(settings.mode);
+                if (settings.aiPrompt) setAiPrompt(settings.aiPrompt);
+                if (settings.selectedReferenceIds) setSelectedReferenceIds(settings.selectedReferenceIds);
+                if (settings.scale !== undefined) setScale(settings.scale);
+                if (settings.imagePosition) setPosition(settings.imagePosition);
+                if (settings.textPosition) setTextPosition(settings.textPosition);
+                if (settings.titleSize) setTitleSize(settings.titleSize);
+                if (settings.epNumSize) setEpNumSize(settings.epNumSize);
+                if (settings.textColor) setTextColor(settings.textColor);
+                if (settings.fontFamily) setTitleFont(settings.fontFamily);
+                if (settings.frameImage) setFrameImage(settings.frameImage);
+            }
+        };
+
+        syncFromStore();
+    }, [projectId]);
+
+    // Load existing thumbnail on mount
+    useEffect(() => {
+        const initFromStore = async () => {
+            const store = useWorkflowStore.getState();
+            if (store.thumbnailUrl && !selectedImage) {
+                const resolved = await resolveUrl(store.thumbnailUrl);
+                setSelectedImage(resolved || null);
+            }
+        };
+        initFromStore();
+    }, []);
 
     // Sync with store when it changes
     useEffect(() => {
@@ -77,6 +149,10 @@ export const Step5_Thumbnail: React.FC = () => {
     // Sync local state with store when hydrated
     useEffect(() => {
         if (isHydrated && thumbnailSettings) {
+            setMode(thumbnailSettings.mode || 'framing');
+            setAiPrompt(thumbnailSettings.aiPrompt || '');
+            setAiTitle(thumbnailSettings.aiTitle || episodeName || ''); // Sync AI Title
+            setSelectedReferenceIds(thumbnailSettings.selectedReferenceIds || []);
             setScale(thumbnailSettings.scale);
             setPosition(thumbnailSettings.imagePosition);
             setTextPosition(thumbnailSettings.textPosition);
@@ -88,12 +164,27 @@ export const Step5_Thumbnail: React.FC = () => {
         }
     }, [isHydrated, thumbnailSettings]);
 
+    // Resolve Frame Image URL
+    useEffect(() => {
+        if (!frameImage) return;
+        if (isIdbUrl(frameImage)) {
+            resolveUrl(frameImage).then(setResolvedFrameImage);
+        } else {
+            setResolvedFrameImage(frameImage);
+        }
+    }, [frameImage]);
+
     // Auto-save settings to store when they change
     useEffect(() => {
         if (!isHydrated) return;
 
         const timer = setTimeout(() => {
             setThumbnailSettings({
+                mode,
+                aiPrompt,
+                aiTitle,
+                selectedReferenceIds,
+                styleReferenceId: styleReferenceId || undefined,
                 scale,
                 imagePosition: position,
                 textPosition,
@@ -106,7 +197,7 @@ export const Step5_Thumbnail: React.FC = () => {
         }, 500); // Debounce save
 
         return () => clearTimeout(timer);
-    }, [scale, position, textPosition, titleSize, epNumSize, textColor, titleFont, frameImage, setThumbnailSettings, isHydrated]);
+    }, [mode, aiPrompt, aiTitle, selectedReferenceIds, styleReferenceId, scale, position, textPosition, titleSize, epNumSize, textColor, titleFont, frameImage, setThumbnailSettings, isHydrated]);
 
 
     // Calculate scale factor on resize
@@ -134,10 +225,16 @@ export const Step5_Thumbnail: React.FC = () => {
         const file = e.target.files?.[0];
         if (file) {
             const reader = new FileReader();
-            reader.onloadend = () => {
-                setSelectedImage(reader.result as string);
-                setThumbnail(reader.result as string); // Update store
-                // Reset transform on new image
+            reader.onloadend = async () => {
+                const base64 = reader.result as string;
+                setSelectedImage(base64); // Show in UI immediately
+
+                // Save to IDB and store the reference
+                const { saveToIdb } = await import('../utils/imageStorage');
+                const idbUrl = await saveToIdb('images', `${projectId}-thumbnail-bg`, base64);
+                setThumbnail(idbUrl);
+
+                // Reset transform
                 setScale(1);
                 setPosition({ x: 0, y: 0 });
             };
@@ -149,17 +246,41 @@ export const Step5_Thumbnail: React.FC = () => {
         const file = e.target.files?.[0];
         if (file) {
             const reader = new FileReader();
-            reader.onloadend = () => {
-                setFrameImage(reader.result as string);
+            reader.onloadend = async () => {
+                const base64 = reader.result as string;
+                // Save to IDB immediately using standardized storage
+                // Use a key containing 'frame' to exempt from compression
+                const { saveToIdb } = await import('../utils/imageStorage');
+                const idbUrl = await saveToIdb('images', `${projectId}-thumbnail-frame`, base64);
+
+                setFrameImage(idbUrl);
+                // Also update settings in store immediately
+                setThumbnailSettings({
+                    ...thumbnailSettings,
+                    frameImage: idbUrl
+                });
             };
             reader.readAsDataURL(file);
         }
     };
 
-    const handleSelectCutImage = (imageUrl: string) => {
-        setSelectedImage(imageUrl);
+    const handleSelectCutImage = async (imageUrl: string) => {
+        // 1. Save the reference to the store
         setThumbnail(imageUrl);
+
+        // 2. Resolve for UI display
+        let resolvedUrl = imageUrl;
+        if (imageUrl.startsWith('idb://')) {
+            try {
+                const { resolveUrl } = await import('../utils/imageStorage');
+                resolvedUrl = await resolveUrl(imageUrl);
+            } catch (e) {
+                console.error('[Step5] Failed to resolve:', e);
+            }
+        }
+        setSelectedImage(resolvedUrl);
         setShowCutSelector(false);
+
         // Reset transform on new image
         setScale(1);
         setPosition({ x: 0, y: 0 });
@@ -186,28 +307,72 @@ export const Step5_Thumbnail: React.FC = () => {
                 logging: false,
                 useCORS: true,
                 allowTaint: true,
-                foreignObjectRendering: false, // Better text rendering
-                imageTimeout: 0, // No timeout for images
+                foreignObjectRendering: false,
+                imageTimeout: 0,
             });
 
-            // 4. Download: Full-res PNG only
-            const fullResDataUrl = canvas.toDataURL('image/png');
-            const downloadLink = document.createElement('a');
-            downloadLink.href = fullResDataUrl;
-            downloadLink.download = `thumbnail_ep${customEpNum}.png`;
-            document.body.appendChild(downloadLink);
-            downloadLink.click();
-            document.body.removeChild(downloadLink);
+            // 4. Download: Full-res PNG (Use Blob for better large file support)
+            canvas.toBlob((blob) => {
+                if (!blob) {
+                    console.error('Canvas to Blob failed');
+                    return;
+                }
+                const url = URL.createObjectURL(blob);
+                const downloadLink = document.createElement('a');
+                downloadLink.href = url;
 
-            // 5. DO NOT save to project - prevents memory issues
-            // Step 6 will use first cut image as fallback
+                // Sanitize filename
+                const safeEpNum = (customEpNum || '1').replace(/[^a-z0-9]/gi, '_');
+                const safeTitle = (customTitle || 'Episode').replace(/[^a-z0-9]/gi, '_');
+                downloadLink.download = `Thumbnail_Ep${safeEpNum}_${safeTitle}.jpeg`;
 
-            // 6. Clear canvas memory
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+                URL.revokeObjectURL(url);
+            }, 'image/jpeg', 0.92);
+
+            // 5. Save full-resolution thumbnail to SEPARATE IndexedDB key (Need DataURL for storage)
+            const fullResDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+
+            // 5. Save full-resolution thumbnail using standardized imageStorage
+            const { saveToIdb } = await import('../utils/imageStorage');
+            // Use 'images' type and include projectId in key
+            const thumbnailKey = `thumbnail-${projectId}`;
+
+            // This handles the correct "media-" prefix and URL generation
+            const idbUrl = await saveToIdb('images', thumbnailKey, fullResDataUrl);
+            console.log(`[Step5] Saved full-res thumbnail: ${idbUrl}`);
+
+            // 6. Store the standardized IDB URL
+            // Append timestamp to force reload if needed, though URL changes usually handle it
+            setThumbnail(`${idbUrl}?t=${Date.now()}`);
+
+            // 7. Also create a small preview for Dashboard (in-store, compressed)
+            // This is tiny and safe to keep in the main store
+            const previewCanvas = document.createElement('canvas');
+            previewCanvas.width = 320;
+            previewCanvas.height = 180;
+            const ctx = previewCanvas.getContext('2d');
+            if (ctx) {
+                ctx.drawImage(canvas, 0, 0, 320, 180);
+                const previewUrl = previewCanvas.toDataURL('image/jpeg', 0.6);
+                // Save preview as thumbnailPreview for Dashboard cards
+                useWorkflowStore.setState({ thumbnailPreview: previewUrl } as any);
+            }
+            previewCanvas.width = 0;
+            previewCanvas.height = 0;
+
+            // 8. Save project to update savedProjects metadata
+            await saveProject();
+            console.log('[Step5] Saved thumbnail reference and updated project metadata');
+
+            // 9. Clear canvas memory
             canvas.width = 0;
             canvas.height = 0;
 
-            // 7. User Feedback
-            alert('✅ Thumbnail downloaded successfully!\n\n📥 Saved to Downloads folder\n💡 Use downloaded file for final production');
+            // 10. User Feedback
+            alert('✅ Thumbnail saved successfully!\n\n📥 Downloaded to your computer\n💾 Saved to project (full quality)');
 
         } catch (error) {
             console.error('Error saving thumbnail:', error);
@@ -217,362 +382,584 @@ export const Step5_Thumbnail: React.FC = () => {
         }
     };
 
-    const handleNext = () => {
-        nextStep();
-        navigate('/step/6'); // Corrected to Step 6
+    const handleGenerateAIThumbnail = async () => {
+        if (!aiPrompt.trim() || !apiKeys.gemini) {
+            alert('Prompt and Gemini API Key are required.');
+            return;
+        }
+
+        setIsGeneratingAI(true);
+        try {
+            // 1. Resolve all reference images to base64
+            const resolvedRefs = await Promise.all(
+                selectedReferenceIds.map(async (url) => {
+                    const resolved = await resolveUrl(url);
+                    return resolved;
+                })
+            );
+
+            // 1b. Resolve style reference if exists
+            if (styleReferenceId) {
+                const styleResolved = await resolveUrl(styleReferenceId);
+                if (styleResolved) resolvedRefs.push(styleResolved);
+            }
+
+            // 2. Construct Enhanced Prompt for AI Text Rendering
+            const fullPrompt = `TASK: Create a professional cinematic masterpiece thumbnail.
+${aiTitle ? `TEXT TO INCLUDE: Render the title "${aiTitle}" as bold, stylistic typography integrated into the scene. DO NOT render episode numbers.` : ''}
+USER VISION: ${aiPrompt}
+TECHNICAL: High contrast, 4K quality, professional composition. The typography should be legible and artistic.`;
+
+            // 3. Generate Image
+            const result = await generateImage(
+                fullPrompt,
+                apiKeys.gemini,
+                resolvedRefs.length > 0 ? resolvedRefs : undefined,
+                aspectRatio,
+                imageModel
+            );
+
+            if (result.urls && result.urls.length > 0) {
+                const generatedUrl = result.urls[0];
+                setSelectedImage(generatedUrl);
+
+                // 4. Save to IDB
+                const idbUrl = await saveToIdb('images', `${projectId}-thumbnail-bg-ai`, generatedUrl);
+                setThumbnail(idbUrl);
+
+                // 5. Reset transform (not used in AI mode but good to have)
+                setScale(1);
+                setPosition({ x: 0, y: 0 });
+
+                alert('✅ AI Thumbnail generated successfully!');
+            }
+        } catch (error: any) {
+            console.error('AI Thumbnail Generation Failed:', error);
+            alert(`Generation Failed: ${error.message}`);
+        } finally {
+            setIsGeneratingAI(false);
+        }
     };
 
-    // Reusable Thumbnail Content Component
-    const ThumbnailContent = ({ forCapture = false }: { forCapture?: boolean }) => (
-        <div className="w-full h-full bg-black overflow-hidden relative">
-            {/* LAYER 1: CUT IMAGE (BOTTOM) - Z-0 */}
-            <div className="absolute inset-0 z-0 flex items-center justify-center overflow-hidden">
-                {
-                    selectedImage ? (
+    const handleNext = () => {
+        nextStep();
+        navigate('/step/6');
+    };
+
+    // Clear existing thumbnail data
+    const handleClearThumbnail = async () => {
+        if (!confirm('Clear existing thumbnail? This will remove the saved thumbnail from this project.')) return;
+
+        try {
+            // Clear from store
+            setThumbnail(null);
+            setSelectedImage(null);
+            useWorkflowStore.setState({ thumbnailPreview: null } as any);
+
+            // Save project to persist changes
+            await saveProject();
+
+            alert('✅ Thumbnail cleared successfully!');
+        } catch (error) {
+            console.error('Error clearing thumbnail:', error);
+            alert('Failed to clear thumbnail.');
+        }
+    };
+
+    const handleStyleRefUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            const base64 = event.target?.result as string;
+            const idbUrl = await saveToIdb('images', `${projectId}-thumbnail-style-ref`, base64);
+            setStyleReferenceId(idbUrl);
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const handleSuggestPrompt = async () => {
+        if (!apiKeys.gemini) {
+            alert("Gemini API Key is required for prompt suggestion.");
+            return;
+        }
+        setIsSuggesting(true);
+        try {
+            // Context construction
+            const { seriesStory, episodePlot, episodeName, assetDefinitions } = useWorkflowStore.getState();
+
+            console.log("Suggest Prompt Debug:", { aiTitle, episodeName, aiPrompt });
+
+            // Simplify context to visual relevant info
+            const context = `
+Thumbnail Title: "${aiTitle || episodeName}"
+Story Concept: ${seriesStory}
+Episode Focus: ${episodePlot || script?.[0]?.content}
+Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.name).join(', ')}
+`.trim();
+
+            // Gather reference images (Style Ref + Selected Cuts/Assets)
+            const resolvedRefs: string[] = [];
+
+            // 1. Style Reference (External)
+            if (styleReferenceId) {
+                const url = await resolveUrl(styleReferenceId);
+                if (url) resolvedRefs.push(url);
+            }
+
+            // 2. Selected IDs (Cuts or Assets)
+            for (const id of selectedReferenceIds) {
+                const url = await resolveUrl(id);
+                if (url) resolvedRefs.push(url);
+            }
+
+            const visualPrompt = await generateVisualPrompt(context, resolvedRefs, apiKeys.gemini);
+            setAiPrompt(visualPrompt);
+
+        } catch (error) {
+            console.error("Prompt Suggestion Failed:", error);
+            alert("Failed to suggest prompt.");
+        } finally {
+            setIsSuggesting(false);
+        }
+    };
+
+    const ThumbnailContent = ({ forCapture = false }: { forCapture?: boolean }) => {
+        if (mode === 'ai-gen') {
+            return (
+                <div className="w-full h-full bg-[#050505] overflow-hidden relative flex items-center justify-center">
+                    {selectedImage ? (
                         <img
                             src={selectedImage}
-                            alt="Cut"
-                            className="max-w-none"
-                            style={{
-                                transform: `scale(${scale}) translate(${position.x}px, ${position.y}px)`,
-                                transition: forCapture ? 'none' : 'transform 0.1s ease-out'
-                            }}
+                            alt="AI Draft"
+                            className="w-full h-full object-contain"
                             crossOrigin="anonymous"
                         />
                     ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center text-gray-600">
-                            <ImageIcon size={100} className="mb-4 opacity-50" />
-                            <span className="text-4xl">No Image Selected</span>
+                        <div className="text-center p-12 opacity-10">
+                            <Sparkles size={120} className="mx-auto mb-6" />
+                            <p className="text-2xl font-bold tracking-[0.2em] uppercase">Synthesis Required</p>
                         </div>
                     )}
-            </div>
+                </div>
+            );
+        }
 
-            {/* LAYER 2: FRAME OVERLAY (MIDDLE) - Z-10 */}
-            <div className="absolute inset-0 z-10 pointer-events-none">
-                <img
-                    src={frameImage}
-                    alt="Frame Overlay"
-                    className="w-full h-full object-fill"
-                    crossOrigin="anonymous"
-                />
-            </div>
+        return (
+            <div className="w-full h-full bg-black overflow-hidden relative" id="thumbnail-canvas">
+                {/* LAYER 1: CUT IMAGE (BOTTOM) - Z-0 */}
+                <div className="absolute inset-0 z-0 flex items-center justify-center overflow-hidden">
+                    {
+                        selectedImage ? (
+                            <img
+                                src={selectedImage}
+                                alt="Cut"
+                                className="max-w-none"
+                                style={{
+                                    transform: `scale(${scale}) translate(${position.x}px, ${position.y}px)`,
+                                    transition: forCapture ? 'none' : 'transform 0.1s ease-out'
+                                }}
+                                crossOrigin="anonymous"
+                            />
+                        ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center text-gray-600">
+                                <ImageIcon size={100} className="mb-4 opacity-50" />
+                                <span className="text-4xl">No Image Selected</span>
+                            </div>
+                        )}
+                </div>
 
-            {/* LAYER 3: TEXT (TOP) - Z-20 */}
-            <div className="absolute inset-0 z-20 pointer-events-none flex flex-col justify-end p-[5%] pb-[8%]">
-                <div
-                    className="flex items-end gap-8 px-12"
-                    style={{
-                        transform: `translate(${textPosition.x}px, ${textPosition.y}px)`,
-                        transition: forCapture ? 'none' : 'transform 0.1s ease-out'
-                    }}
-                >
-                    <span
-                        className="font-bold"
+                {/* LAYER 2: FRAME OVERLAY (MIDDLE) - Z-10 */}
+                <div className="absolute inset-0 z-10 pointer-events-none">
+                    <img
+                        src={resolvedFrameImage}
+                        alt="Frame Overlay"
+                        className="w-full h-full object-fill"
+                        crossOrigin="anonymous"
+                    />
+                </div>
+
+                {/* LAYER 3: TEXT (TOP) - Z-20 */}
+                <div className="absolute inset-0 z-20 pointer-events-none flex flex-col justify-end p-[5%] pb-[8%]">
+                    <div
+                        className="flex items-end gap-8 px-12"
                         style={{
-                            fontFamily: 'Oswald, Arial, sans-serif',
-                            fontSize: `${epNumSize}px`,
-                            lineHeight: 1.2,
-                            color: textColor,
-                            textShadow: '0 2px 10px rgba(0,0,0,0.5)',
+                            transform: `translate(${textPosition.x}px, ${textPosition.y}px)`,
+                            transition: forCapture ? 'none' : 'transform 0.1s ease-out'
                         }}
                     >
-                        #{customEpNum}
-                    </span>
-                    <h1
-                        style={{
-                            fontFamily: `${titleFont}, Arial, sans-serif`,
-                            fontSize: `${titleSize}px`,
-                            lineHeight: 1.3,
-                            color: textColor,
-                            textShadow: '0 2px 10px rgba(0,0,0,0.5)',
-                            fontWeight: 'bold',
-                        }}
-                    >
-                        {customTitle}
-                    </h1>
+                        <span
+                            className="font-bold"
+                            style={{
+                                fontFamily: 'Oswald, Arial, sans-serif',
+                                fontSize: `${epNumSize}px`,
+                                lineHeight: 1.2,
+                                color: textColor,
+                                textShadow: '0 2px 10px rgba(0,0,0,0.5)',
+                            }}
+                        >
+                            #{customEpNum}
+                        </span>
+                        <h1
+                            style={{
+                                fontFamily: `${titleFont}, Arial, sans-serif`,
+                                fontSize: `${titleSize}px`,
+                                lineHeight: 1.3,
+                                color: textColor,
+                                textShadow: '0 2px 10px rgba(0,0,0,0.5)',
+                                fontWeight: 'bold',
+                            }}
+                        >
+                            {customTitle}
+                        </h1>
+                    </div>
                 </div>
             </div>
-        </div>
-    );
+        );
+    };
 
     return (
         <div className="h-[calc(100vh-140px)] relative">
             <div className="flex gap-4 h-full overflow-hidden">
                 {/* LEFT PANEL: CONTROLS */}
-                <div className="w-[320px] flex-shrink-0 glass-panel flex flex-col h-full overflow-hidden">
+                <div className="w-[340px] flex-shrink-0 glass-panel flex flex-col h-full overflow-hidden">
                     <div className="p-4 bg-gradient-to-r from-[var(--color-primary)]/10 to-transparent border-b border-[var(--color-border)] flex justify-between items-center">
                         <div>
                             <h2 className="text-xl font-bold text-white flex items-center gap-2">
                                 <Layers size={20} className="text-[var(--color-primary)]" />
-                                Frame-It System
+                                Thumbnail Design
                             </h2>
-                            <p className="text-xs text-[var(--color-primary)] uppercase tracking-wider ml-7">Thumbnail Composer</p>
+                            <p className="text-[10px] text-[var(--color-primary)] uppercase tracking-widest ml-7 font-bold">Step 5: Visual Branding</p>
                         </div>
 
-                        <button
-                            onClick={handleSaveThumbnail}
-                            disabled={!selectedImage || isSaving}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold transition-all border border-[var(--color-primary)] ${selectedImage
-                                ? 'text-[var(--color-primary)] hover:bg-[var(--color-primary)] hover:text-black'
-                                : 'text-gray-500 border-gray-700 cursor-not-allowed'
-                                }`}
-                        >
-                            <Download size={14} />
-                            Save
-                        </button>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto p-6 space-y-8">
-                        <label className="text-xs font-bold text-[var(--color-text-muted)] uppercase flex items-center gap-2">
-                            <ImageIcon size={14} /> 1. Cut Image Source
-                        </label>
-
-                        <div className="grid grid-cols-2 gap-3 mb-4">
-                            <label className="cursor-pointer flex flex-col items-center justify-center p-4 border border-dashed border-[var(--color-border)] hover:border-[var(--color-primary)] hover:bg-[var(--color-surface-highlight)] transition-all rounded-lg group">
-                                <Upload size={24} className="mb-2 text-gray-400 group-hover:text-white" />
-                                <span className="text-xs font-bold text-gray-400 group-hover:text-white">Upload File</span>
-                                <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-                            </label>
-
+                        <div className="flex gap-2">
                             <button
-                                onClick={() => setShowCutSelector(true)}
-                                disabled={!script || script.filter(c => c.finalImageUrl).length === 0}
-                                className="flex flex-col items-center justify-center p-4 border border-[var(--color-border)] hover:bg-[var(--color-surface-highlight)] transition-all rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                onClick={handleClearThumbnail}
+                                className="p-2 rounded-lg text-red-400 hover:bg-red-400/10 transition-colors"
+                                title="Clear Settings"
                             >
-                                <RefreshCw size={24} className="mb-2 text-gray-400" />
-                                <span className="text-xs font-bold text-gray-400">From Step 4</span>
-                                {(!script || script.filter(c => c.finalImageUrl).length === 0) && (
-                                    <span className="text-[10px] text-red-400 mt-1">(Not generated yet)</span>
-                                )}
+                                <RefreshCw size={14} />
+                            </button>
+                            <button
+                                onClick={handleSaveThumbnail}
+                                disabled={!selectedImage || isSaving}
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border border-[var(--color-primary)] shadow-[0_0_15px_rgba(var(--color-primary-rgb),0.2)] ${selectedImage
+                                    ? 'text-[var(--color-primary)] hover:bg-[var(--color-primary)] hover:text-black'
+                                    : 'text-gray-500 border-gray-700 cursor-not-allowed opacity-50'
+                                    }`}
+                            >
+                                <Download size={14} />
+                                {isSaving ? 'Saving...' : 'Save'}
                             </button>
                         </div>
+                    </div>
 
-                        {/* Cut Image Selector Modal */}
-                        {showCutSelector && (
-                            <div className="fixed inset-0 z-50 flex items-center justify-center">
-                                <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowCutSelector(false)} />
-                                <div className="relative z-10 w-full max-w-4xl max-h-[80vh] overflow-y-auto bg-[var(--color-bg)] border border-[var(--color-primary)] rounded-lg p-6">
-                                    <h3 className="text-xl font-bold text-white mb-4">Select Cut Image</h3>
-                                    <div className="grid grid-cols-3 gap-4">
-                                        {script.filter(c => c.finalImageUrl).map(cut => (
-                                            <button
-                                                key={cut.id}
-                                                onClick={() => handleSelectCutImage(cut.finalImageUrl!)}
-                                                className="group relative aspect-video rounded-lg overflow-hidden border-2 border-[var(--color-border)] hover:border-[var(--color-primary)] transition-all"
-                                            >
-                                                <img
-                                                    src={cut.finalImageUrl}
-                                                    alt={`Cut ${cut.id}`}
-                                                    className="w-full h-full object-cover"
-                                                />
-                                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                                    <div className="text-center">
-                                                        <p className="text-white font-bold text-sm">Cut #{cut.id}</p>
-                                                        <p className="text-gray-300 text-xs mt-1">{cut.speaker}</p>
-                                                    </div>
-                                                </div>
-                                            </button>
-                                        ))}
-                                    </div>
+                    <div className="flex-1 overflow-y-auto p-5 space-y-8 custom-scrollbar">
+                        {/* 0. Mode Selector */}
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Generation Mode</label>
+                            <div className="flex bg-black/40 rounded-xl p-1 border border-white/5 shadow-inner">
+                                <button
+                                    onClick={() => setMode('framing')}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all ${mode === 'framing' ? 'bg-blue-500 text-white shadow-lg' : 'text-gray-500 hover:text-white'}`}
+                                >
+                                    <ImageIcon size={14} /> Framing
+                                </button>
+                                <button
+                                    onClick={() => setMode('ai-gen')}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all ${mode === 'ai-gen' ? 'bg-purple-600 text-white shadow-lg' : 'text-gray-500 hover:text-white'}`}
+                                >
+                                    <Sparkles size={14} /> AI Gen
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* 1. Image Source (Framing Mode) */}
+                        {mode === 'framing' && (
+                            <div className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
+                                <label className="text-[10px] font-bold text-blue-400 uppercase tracking-widest flex items-center gap-2">
+                                    <ImageIcon size={14} /> 1. Background Source
+                                </label>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <label className="cursor-pointer flex flex-col items-center justify-center p-5 border-2 border-dashed border-white/5 hover:border-blue-500/50 hover:bg-blue-500/5 transition-all rounded-2xl group">
+                                        <Upload size={24} className="mb-2 text-gray-500 group-hover:text-blue-400 group-hover:scale-110 transition-transform" />
+                                        <span className="text-[10px] font-bold text-gray-500 group-hover:text-white lowercase">upload file</span>
+                                        <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                                    </label>
+
                                     <button
-                                        onClick={() => setShowCutSelector(false)}
-                                        className="mt-4 w-full px-4 py-2 bg-[var(--color-surface)] hover:bg-[var(--color-surface-highlight)] text-white rounded-lg transition-all"
+                                        onClick={() => setShowCutSelector(true)}
+                                        className="flex flex-col items-center justify-center p-5 border border-white/5 bg-white/5 hover:bg-white/10 hover:border-white/10 transition-all rounded-2xl group"
                                     >
-                                        Cancel
+                                        <RefreshCw size={24} className="mb-2 text-gray-500 group-hover:text-blue-400 group-hover:rotate-180 transition-all duration-500" />
+                                        <span className="text-[10px] font-bold text-gray-500 group-hover:text-white lowercase">from library</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 1. AI Generation (AI Gen Mode) */}
+                        {mode === 'ai-gen' && (
+                            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
+                                {/* 1. Typography for AI */}
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                                        <Type size={14} /> 1. Typography (AI Rendered)
+                                    </label>
+                                    <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-4">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] text-gray-400 font-bold uppercase px-1">Thumbnail Title</label>
+                                            <input
+                                                type="text"
+                                                placeholder="Main headline for AI to render"
+                                                value={aiTitle}
+                                                onChange={(e) => setAiTitle(e.target.value)}
+                                                className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm text-white font-bold focus:border-purple-500/50 outline-none transition-all shadow-inner"
+                                            />
+                                        </div>
+                                        <button
+                                            onClick={handleSuggestPrompt}
+                                            disabled={isSuggesting}
+                                            className="w-full py-2.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 rounded-xl text-[10px] font-bold uppercase tracking-widest border border-purple-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            {isSuggesting ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
+                                            {isSuggesting ? 'Analyzing Visuals...' : 'Suggest AI Prompt'}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* 2. Style Guidance */}
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                                        <Layers size={14} /> 2. Style Guidance
+                                    </label>
+                                    <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[10px] text-gray-400 font-bold uppercase px-1">External Style Ref</span>
+                                            <label className="cursor-pointer text-[10px] text-purple-400 hover:text-purple-300 font-bold flex items-center gap-1 transition-colors">
+                                                <Upload size={12} /> UPLOAD
+                                                <input type="file" accept="image/*" className="hidden" onChange={handleStyleRefUpload} />
+                                            </label>
+                                        </div>
+                                        {resolvedStyleRef ? (
+                                            <div className="relative aspect-video rounded-xl overflow-hidden border border-purple-500/30 group">
+                                                <img src={resolvedStyleRef} alt="Style Reference" className="w-full h-full object-cover" />
+                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                    <button onClick={() => setStyleReferenceId(null)} className="p-2 bg-red-500 text-white rounded-full"><X size={14} /></button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="aspect-video rounded-xl bg-black/40 border border-dashed border-white/10 flex flex-col items-center justify-center text-gray-600">
+                                                <ImageIcon size={24} className="mb-2 opacity-20" />
+                                                <span className="text-[9px] uppercase tracking-tighter">No style ref uploaded</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* 3. Prompt & Generation */}
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                                        <Sparkles size={14} /> 3. Synthesis
+                                    </label>
+                                    <textarea
+                                        value={aiPrompt}
+                                        onChange={(e) => setAiPrompt(e.target.value)}
+                                        placeholder="Describe the visual composition, lighting, and mood..."
+                                        className="w-full h-24 bg-black/40 border border-white/10 rounded-2xl p-4 text-sm text-gray-300 placeholder:text-gray-700 focus:border-purple-500/50 outline-none resize-none transition-all shadow-inner custom-scrollbar"
+                                    />
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between items-center px-1">
+                                            <label className="text-[10px] text-gray-500 font-bold uppercase">Visual Guidance ({selectedReferenceIds.length})</label>
+                                            <button onClick={() => setShowCutSelector(true)} className="text-[10px] text-purple-400 hover:text-purple-300 font-bold transition-colors font-bold">+ ADD REFS</button>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2.5 p-3 bg-black/40 rounded-xl border border-white/5 min-h-[56px] shadow-inner">
+                                            {selectedReferenceIds.length === 0 ? (
+                                                <div className="flex flex-col items-center justify-center w-full py-2 opacity-30">
+                                                    <ImageIcon size={16} className="mb-1" />
+                                                    <span className="text-[10px] lowercase italic">no references</span>
+                                                </div>
+                                            ) : (
+                                                selectedReferenceIds.map(id => (
+                                                    <ReferenceBadge key={id} id={id} onRemove={(id: string) => setSelectedReferenceIds(prev => prev.filter(ref => ref !== id))} />
+                                                ))
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        onClick={handleGenerateAIThumbnail}
+                                        disabled={isGeneratingAI || !aiPrompt.trim()}
+                                        className="w-full py-4 bg-gradient-to-br from-purple-600 to-indigo-700 hover:from-purple-500 hover:to-indigo-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-xl shadow-purple-900/20 active:scale-[0.97]"
+                                    >
+                                        {isGeneratingAI ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+                                        {isGeneratingAI ? 'Generating Image...' : 'Synthesize Thumbnail'}
                                     </button>
                                 </div>
                             </div>
                         )}
 
                         {/* Transform Controls */}
-                        {selectedImage && (
-                            <div className="p-3 bg-[var(--color-surface)] rounded-lg border border-[var(--color-border)] space-y-3">
-                                <div className="space-y-1">
-                                    <div className="flex justify-between text-[10px] text-gray-400">
-                                        <span className="flex items-center gap-1"><ZoomIn size={10} /> Scale</span>
-                                        <span>{Math.round(scale * 100)}%</span>
+                        {mode === 'framing' && selectedImage && (
+                            <div className="space-y-6 pt-4 border-t border-white/5">
+                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                                    <Move size={14} /> 2. Image Framing
+                                </label>
+                                <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-5">
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between text-[10px] text-gray-400 uppercase font-bold tracking-tighter">
+                                            <span className="flex items-center gap-1"><ZoomIn size={12} /> Scale factor</span>
+                                            <span>{Math.round(scale * 100)}%</span>
+                                        </div>
+                                        <input
+                                            type="range" min="0.5" max="3" step="0.1"
+                                            value={scale}
+                                            onChange={(e) => setScale(parseFloat(e.target.value))}
+                                            className="w-full accent-[var(--color-primary)] opacity-80 hover:opacity-100 transition-opacity"
+                                        />
                                     </div>
-                                    <input
-                                        type="range" min="0.5" max="3" step="0.1"
-                                        value={scale}
-                                        onChange={(e) => setScale(parseFloat(e.target.value))}
-                                        className="w-full accent-[var(--color-primary)]"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <div className="flex justify-between text-[10px] text-gray-400">
-                                        <span className="flex items-center gap-1"><Move size={10} /> Position X</span>
-                                        <span>{position.x}px</span>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between text-[10px] text-gray-400 uppercase font-bold tracking-tighter">
+                                                <span>Offset X</span>
+                                                <span className="text-blue-400">{position.x}px</span>
+                                            </div>
+                                            <input
+                                                type="range" min="-500" max="500" step="10"
+                                                value={position.x}
+                                                onChange={(e) => setPosition({ ...position, x: parseInt(e.target.value) })}
+                                                className="w-full accent-blue-500 opacity-80 hover:opacity-100 transition-opacity"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between text-[10px] text-gray-400 uppercase font-bold tracking-tighter">
+                                                <span>Offset Y</span>
+                                                <span className="text-blue-400">{position.y}px</span>
+                                            </div>
+                                            <input
+                                                type="range" min="-500" max="500" step="10"
+                                                value={position.y}
+                                                onChange={(e) => setPosition({ ...position, y: parseInt(e.target.value) })}
+                                                className="w-full accent-blue-500 opacity-80 hover:opacity-100 transition-opacity"
+                                            />
+                                        </div>
                                     </div>
-                                    <input
-                                        type="range" min="-500" max="500" step="10"
-                                        value={position.x}
-                                        onChange={(e) => setPosition({ ...position, x: parseInt(e.target.value) })}
-                                        className="w-full accent-[var(--color-primary)]"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <div className="flex justify-between text-[10px] text-gray-400">
-                                        <span className="flex items-center gap-1"><Move size={10} /> Position Y</span>
-                                        <span>{position.y}px</span>
-                                    </div>
-                                    <input
-                                        type="range" min="-500" max="500" step="10"
-                                        value={position.y}
-                                        onChange={(e) => setPosition({ ...position, y: parseInt(e.target.value) })}
-                                        className="w-full accent-[var(--color-primary)]"
-                                    />
                                 </div>
                             </div>
                         )}
 
-                        {/* 2. Frame Overlay */}
-                        <div className="space-y-3">
-                            <label className="text-xs font-bold text-[var(--color-text-muted)] uppercase flex items-center gap-2">
-                                <Layers size={14} /> 2. Frame Overlay
-                            </label>
-
-                            <div className="grid grid-cols-2 gap-3">
-                                <label className="cursor-pointer flex flex-col items-center justify-center p-4 border border-dashed border-[var(--color-border)] hover:border-[var(--color-primary)] hover:bg-[var(--color-surface-highlight)] transition-all rounded-lg group">
-                                    <Upload size={24} className="mb-2 text-gray-400 group-hover:text-white" />
-                                    <span className="text-xs font-bold text-gray-400 group-hover:text-white">Upload Frame</span>
-                                    <input type="file" accept="image/*" className="hidden" onChange={handleFrameUpload} />
+                        {/* 3. Text & Font */}
+                        {mode === 'framing' && (
+                            <div className="space-y-6 pt-4 border-t border-white/5 pb-10">
+                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                                    <Type size={14} /> 3. Typography Overlay
                                 </label>
 
-                                <button
-                                    onClick={() => setFrameImage('/frame_bg.svg')}
-                                    className="flex flex-col items-center justify-center p-4 border border-[var(--color-border)] hover:bg-[var(--color-surface-highlight)] transition-all rounded-lg"
-                                >
-                                    <RefreshCw size={24} className="mb-2 text-gray-400" />
-                                    <span className="text-xs font-bold text-gray-400">Reset Default</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* 3. Text & Font */}
-                        <div className="space-y-4">
-                            <label className="text-xs font-bold text-[var(--color-text-muted)] uppercase flex items-center gap-2">
-                                <Type size={14} /> 3. Typography
-                            </label>
-
-                            <div className="space-y-2">
-                                <label className="text-[10px] text-gray-500">Episode Title</label>
-                                <input
-                                    type="text"
-                                    value={customTitle}
-                                    onChange={(e) => setCustomTitle(e.target.value)}
-                                    className="input-field font-bold"
-                                />
-                            </div>
-
-                            <div className="flex gap-3">
-                                <div className="flex-1 space-y-2">
-                                    <label className="text-[10px] text-gray-500">Ep. Number</label>
-                                    <input
-                                        type="text"
-                                        value={customEpNum}
-                                        onChange={(e) => setCustomEpNum(e.target.value)}
-                                        className="input-field text-center"
-                                    />
-                                </div>
-                                <div className="flex-[2] space-y-2">
-                                    <label className="text-[10px] text-gray-500">Font Style</label>
-                                    <select
-                                        value={titleFont}
-                                        onChange={(e) => setTitleFont(e.target.value)}
-                                        className="input-field"
-                                    >
-                                        {FONTS.map(f => (
-                                            <option key={f.name} value={f.name}>{f.label}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <label className="text-[10px] text-gray-500">Text Color</label>
-                                <div className="flex items-center gap-3">
-                                    <input
-                                        type="color"
-                                        value={textColor}
-                                        onChange={(e) => setTextColor(e.target.value)}
-                                        className="w-10 h-10 p-0 border-0 rounded cursor-pointer"
-                                    />
-                                    <span className="text-xs text-gray-400 uppercase">{textColor}</span>
-                                </div>
-                            </div>
-
-                            {/* Text Controls */}
-                            <div className="p-3 bg-[var(--color-surface)] rounded-lg border border-[var(--color-border)] space-y-3">
-                                <div className="space-y-1">
-                                    <div className="flex justify-between text-[10px] text-gray-400">
-                                        <span className="flex items-center gap-1"><Move size={10} /> Text Position X</span>
-                                        <span>{textPosition.x}px</span>
-                                    </div>
-                                    <input
-                                        type="range" min="-1000" max="1000" step="10"
-                                        value={textPosition.x}
-                                        onChange={(e) => setTextPosition({ ...textPosition, x: parseInt(e.target.value) })}
-                                        className="w-full accent-[var(--color-primary)]"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <div className="flex justify-between text-[10px] text-gray-400">
-                                        <span className="flex items-center gap-1"><Move size={10} /> Text Position Y</span>
-                                        <span>{textPosition.y}px</span>
-                                    </div>
-                                    <input
-                                        type="range" min="-1000" max="1000" step="10"
-                                        value={textPosition.y}
-                                        onChange={(e) => setTextPosition({ ...textPosition, y: parseInt(e.target.value) })}
-                                        className="w-full accent-[var(--color-primary)]"
-                                    />
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="space-y-1">
-                                        <div className="flex justify-between text-[10px] text-gray-400">
-                                            <span className="flex items-center gap-1"><Maximize size={10} /> Ep. Size</span>
-                                            <span>{epNumSize}px</span>
-                                        </div>
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] text-gray-500 font-bold uppercase tracking-widest px-1">Episode Title</label>
                                         <input
-                                            type="range" min="20" max="150" step="1"
-                                            value={epNumSize}
-                                            onChange={(e) => setEpNumSize(parseInt(e.target.value))}
-                                            className="w-full accent-[var(--color-primary)]"
+                                            type="text"
+                                            value={customTitle}
+                                            onChange={(e) => setCustomTitle(e.target.value)}
+                                            className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm text-white font-bold focus:border-white/20 outline-none shadow-inner"
                                         />
                                     </div>
-                                    <div className="space-y-1">
-                                        <div className="flex justify-between text-[10px] text-gray-400">
-                                            <span className="flex items-center gap-1"><Maximize size={10} /> Title Size</span>
-                                            <span>{titleSize}px</span>
+
+                                    <div className="flex gap-4">
+                                        <div className="flex-[1] space-y-2">
+                                            <label className="text-[10px] text-gray-500 font-bold uppercase tracking-widest px-1">Ep. #</label>
+                                            <input
+                                                type="text"
+                                                value={customEpNum}
+                                                onChange={(e) => setCustomEpNum(e.target.value)}
+                                                className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm text-center font-bold focus:border-white/20 outline-none shadow-inner"
+                                            />
                                         </div>
-                                        <input
-                                            type="range" min="20" max="150" step="1"
-                                            value={titleSize}
-                                            onChange={(e) => setTitleSize(parseInt(e.target.value))}
-                                            className="w-full accent-[var(--color-primary)]"
-                                        />
+                                        <div className="flex-[2] space-y-2">
+                                            <label className="text-[10px] text-gray-500 font-bold uppercase tracking-widest px-1">Font Family</label>
+                                            <select
+                                                value={titleFont}
+                                                onChange={(e) => setTitleFont(e.target.value)}
+                                                className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm focus:border-white/20 outline-none shadow-inner cursor-pointer"
+                                            >
+                                                {FONTS.map(f => (
+                                                    <option key={f.name} value={f.name}>{f.label}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-3 p-4 bg-white/5 rounded-2xl border border-white/5">
+                                        <div className="flex justify-between items-center px-1">
+                                            <span className="text-[10px] text-gray-500 font-bold uppercase">Manual Adjustments</span>
+                                            <input
+                                                type="color"
+                                                value={textColor}
+                                                onChange={(e) => setTextColor(e.target.value)}
+                                                className="w-6 h-6 p-0 border-0 rounded-md cursor-pointer bg-transparent"
+                                            />
+                                        </div>
+                                        <div className="space-y-4 pt-2">
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-1">
+                                                    <div className="flex justify-between text-[9px] text-gray-500 font-bold uppercase px-1">X Offset</div>
+                                                    <input
+                                                        type="range" min="-1000" max="1000" step="10"
+                                                        value={textPosition.x}
+                                                        onChange={(e) => setTextPosition({ ...textPosition, x: parseInt(e.target.value) })}
+                                                        className="w-full accent-white/30"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <div className="flex justify-between text-[9px] text-gray-500 font-bold uppercase px-1">Y Offset</div>
+                                                    <input
+                                                        type="range" min="-1000" max="1000" step="10"
+                                                        value={textPosition.y}
+                                                        onChange={(e) => setTextPosition({ ...textPosition, y: parseInt(e.target.value) })}
+                                                        className="w-full accent-white/30"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-1">
+                                                    <div className="flex justify-between text-[9px] text-gray-500 font-bold uppercase px-1">Title Size</div>
+                                                    <input
+                                                        type="range" min="20" max="150" step="1"
+                                                        value={titleSize}
+                                                        onChange={(e) => setTitleSize(parseInt(e.target.value))}
+                                                        className="w-full accent-white/30"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <div className="flex justify-between text-[9px] text-gray-500 font-bold uppercase px-1">Num Size</div>
+                                                    <input
+                                                        type="range" min="20" max="150" step="1"
+                                                        value={epNumSize}
+                                                        onChange={(e) => setEpNumSize(parseInt(e.target.value))}
+                                                        className="w-full accent-white/30"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-
+                        )}
                     </div>
-
                 </div>
 
-
                 {/* RIGHT PANEL: PREVIEW */}
-                <div className="flex-1 min-w-0 glass-panel flex flex-col overflow-hidden bg-[#1a1a1a]">
+                <div className="flex-1 min-w-0 glass-panel flex flex-col overflow-hidden bg-[#0a0a0b] relative">
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.05)_0%,transparent_70%)] pointer-events-none" />
 
                     {/* HIDDEN ORIGINAL - For html2canvas Capture Only */}
                     <div
                         ref={contentRef}
                         className="fixed top-0 left-[-9999px] pointer-events-none"
-                        style={{
-                            width: '1920px',
-                            height: '1080px',
-                        }}
+                        style={{ width: '1920px', height: '1080px' }}
                     >
                         <ThumbnailContent forCapture={true} />
                     </div>
@@ -580,9 +967,8 @@ export const Step5_Thumbnail: React.FC = () => {
                     {/* VISIBLE PREVIEW - Scaled Copy */}
                     <div
                         ref={containerRef}
-                        className="flex-1 relative w-full overflow-hidden flex items-center justify-center p-8"
+                        className="flex-1 relative w-full overflow-hidden flex items-center justify-center p-12"
                     >
-                        {/* SCALED CONTAINER */}
                         <div
                             style={{
                                 width: '1920px',
@@ -592,42 +978,225 @@ export const Step5_Thumbnail: React.FC = () => {
                                 left: '50%',
                                 transform: `translate(-50%, -50%) scale(${previewScale})`,
                                 transformOrigin: 'center center',
-                                boxShadow: '0 0 50px rgba(0,0,0,0.5)',
+                                boxShadow: '0 40px 100px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.05)',
+                                borderRadius: '4px',
+                                overflow: 'hidden'
                             }}
                         >
                             <ThumbnailContent forCapture={false} />
+                        </div>
+
+                        {/* Layout Indicator */}
+                        {/* Layout Indicator */}
+                        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-6 px-6 py-2.5 bg-black/60 backdrop-blur-xl border border-white/10 rounded-full text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                            {mode === 'framing' ? (
+                                <>
+                                    <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]" /> BG LAYER</div>
+                                    <div className="w-px h-3 bg-white/10" />
+                                    <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-yellow-500 shadow-[0_0_8px_rgba(234,179,8,0.8)]" /> FRAME OVERLAY</div>
+                                    <div className="w-px h-3 bg-white/10" />
+                                    <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]" /> TEXT OVERLAY</div>
+                                </>
+                            ) : (
+                                <div className="flex items-center gap-2">
+                                    <Sparkles size={12} className="text-purple-400" />
+                                    <span className="text-purple-400">AI SYNTHESIZED IMAGE</span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* NAVIGATION - Absolute on Desktop */}
-            <div className="absolute bottom-4 left-[340px] z-50">
+            {/* NAVIGATION */}
+            <div className="absolute bottom-6 left-[360px] z-50">
                 <button
                     onClick={() => { prevStep(); navigate('/step/4'); }}
-                    className="flex items-center gap-2 px-6 py-3 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] hover:bg-[var(--color-surface-highlight)] text-[var(--color-text-muted)] hover:text-white transition-all shadow-lg"
+                    className="flex items-center gap-2 px-6 py-3 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 hover:border-white/10 text-gray-400 hover:text-white transition-all shadow-lg backdrop-blur-md"
                 >
-                    Back
+                    Back to Design
                 </button>
             </div>
 
-            <div className="absolute bottom-4 right-4 z-50 flex items-center gap-4">
-                <div className="text-[var(--color-text-muted)] text-sm flex items-center gap-2 bg-black/50 px-3 py-1 rounded-full backdrop-blur-sm">
-                    <Layers size={14} />
-                    <span>Layering: Cut Image (Bottom) → Frame Overlay (Middle) → Text (Top)</span>
-                </div>
+            <div className="absolute bottom-6 right-6 z-50">
                 <button
                     onClick={handleNext}
-                    disabled={!selectedImage}
-                    className={`flex items-center gap-2 px-8 py-3 rounded-lg font-bold transition-all shadow-lg ${selectedImage
-                        ? 'bg-[var(--color-primary)] text-black hover:opacity-90 shadow-[0_0_20px_rgba(var(--color-primary-rgb),0.4)]'
-                        : 'bg-[var(--color-surface)] text-gray-500 cursor-not-allowed'
+                    disabled={!selectedImage || isGeneratingAI}
+                    className={`flex items-center gap-2 px-10 py-4 rounded-xl font-bold transition-all shadow-2xl ${selectedImage
+                        ? 'bg-[var(--color-primary)] text-black hover:opacity-90 shadow-[0_10px_40px_rgba(var(--color-primary-rgb),0.3)] hover:-translate-y-0.5 active:translate-y-0'
+                        : 'bg-white/5 text-gray-600 cursor-not-allowed border border-white/5'
                         }`}
                 >
-                    Next Step
+                    Finalize Episode
                     <ArrowRight size={20} />
                 </button>
             </div>
+
+            {/* Reference Selector Modal */}
+            {showCutSelector && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setShowCutSelector(false)} />
+                    <div className="relative z-10 w-full max-w-5xl max-h-[85vh] overflow-hidden bg-[var(--color-surface)] border border-white/10 rounded-2xl flex flex-col shadow-2xl">
+                        <div className="p-6 border-b border-white/5 flex justify-between items-center bg-[var(--color-bg)]">
+                            <div>
+                                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                    <Sparkles className="text-purple-400" size={20} />
+                                    Select Reference Images
+                                </h3>
+                                <p className="text-xs text-gray-500 mt-1">Guided generation uses these images as visual style and character references</p>
+                            </div>
+                            <button onClick={() => setShowCutSelector(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-white">
+                                <X size={24} />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6 space-y-10 custom-scrollbar">
+                            {/* Production Cuts */}
+                            <div>
+                                <h4 className="text-xs font-bold text-blue-400 uppercase tracking-widest mb-4 flex items-center gap-2 px-1">
+                                    <ImageIcon size={14} />
+                                    Final Production Cuts ({script.filter(c => c.finalImageUrl).length})
+                                </h4>
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                    {script.filter(c => c.finalImageUrl).map(cut => (
+                                        <ReferenceSelectorItem
+                                            key={`cut-${cut.id}`}
+                                            id={cut.finalImageUrl!}
+                                            label={`Cut #${cut.id}`}
+                                            isSelected={selectedReferenceIds.includes(cut.finalImageUrl!)}
+                                            isMulti={mode === 'ai-gen'}
+                                            onToggle={(id) => {
+                                                if (mode === 'framing') {
+                                                    handleSelectCutImage(id);
+                                                    setShowCutSelector(false);
+                                                } else {
+                                                    setSelectedReferenceIds(prev => prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]);
+                                                }
+                                            }}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Asset Definitions */}
+                            {Object.keys(assetDefinitions || {}).length > 0 && (
+                                <div>
+                                    <h4 className="text-xs font-bold text-purple-400 uppercase tracking-widest mb-4 flex items-center gap-2 px-1">
+                                        <Layers size={14} />
+                                        Master Character & Location Assets
+                                    </h4>
+                                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                        {Object.values(assetDefinitions).map((asset: any) => {
+                                            const imgUrl = asset.masterImage || asset.draftImage || asset.referenceImage;
+                                            if (!imgUrl) return null;
+                                            return (
+                                                <ReferenceSelectorItem
+                                                    key={`asset-${asset.id}`}
+                                                    id={imgUrl}
+                                                    label={asset.name}
+                                                    isSelected={selectedReferenceIds.includes(imgUrl)}
+                                                    isMulti={mode === 'ai-gen'}
+                                                    onToggle={(id: string) => {
+                                                        if (mode === 'framing') {
+                                                            handleSelectCutImage(id);
+                                                            setShowCutSelector(false);
+                                                        } else {
+                                                            setSelectedReferenceIds(prev => prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]);
+                                                        }
+                                                    }}
+                                                />
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-6 border-t border-white/5 bg-[var(--color-bg)] flex justify-between items-center">
+                            <div className="text-sm text-gray-400">
+                                {mode === 'ai-gen' ? (
+                                    <p>Selected <span className="text-purple-400 font-bold">{selectedReferenceIds.length}</span> guiding references</p>
+                                ) : (
+                                    <p>Select an image to use as background</p>
+                                )}
+                            </div>
+                            <button
+                                onClick={() => setShowCutSelector(false)}
+                                className="px-10 py-3 bg-purple-500 hover:bg-purple-600 text-white rounded-xl font-bold transition-all shadow-lg active:scale-95"
+                            >
+                                Confirm Selection
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
+    );
+};
+
+const ReferenceBadge = ({ id, onRemove }: { id: string, onRemove: (id: string) => void }) => {
+    const [resolvedUrl, setResolvedUrl] = useState<string>('');
+
+    useEffect(() => {
+        resolveUrl(id).then(setResolvedUrl);
+    }, [id]);
+
+    return (
+        <div className="relative w-12 h-12 rounded-lg overflow-hidden border border-white/20 group">
+            {resolvedUrl ? (
+                <img src={resolvedUrl} alt="Ref" className="w-full h-full object-cover" />
+            ) : (
+                <div className="w-full h-full bg-gray-800 animate-pulse" />
+            )}
+            <button
+                onClick={() => onRemove(id)}
+                className="absolute top-0 right-0 bg-red-500/80 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+                <X size={10} className="text-white" />
+            </button>
+        </div>
+    );
+};
+
+const ReferenceSelectorItem = ({ id, label, isSelected, onToggle, isMulti }: { id: string, label: string, isSelected: boolean, onToggle: (id: string) => void, isMulti: boolean }) => {
+    const [resolvedUrl, setResolvedUrl] = useState<string>('');
+
+    useEffect(() => {
+        resolveUrl(id).then(setResolvedUrl);
+    }, [id]);
+
+    return (
+        <button
+            onClick={() => onToggle(id)}
+            className={`group relative aspect-video rounded-xl overflow-hidden border-2 transition-all ${isSelected
+                ? 'border-purple-500 ring-4 ring-purple-500/20'
+                : 'border-white/5 hover:border-white/20'
+                }`}
+        >
+            {resolvedUrl ? (
+                <img src={resolvedUrl} alt={label} className="w-full h-full object-cover" />
+            ) : (
+                <div className="w-full h-full flex items-center justify-center bg-gray-900">
+                    <Loader2 size={24} className="text-gray-700 animate-spin" />
+                </div>
+            )}
+
+            <div className={`absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                <div className="absolute top-3 right-3">
+                    {isSelected ? (
+                        <div className="bg-purple-500 text-white rounded-full p-1 shadow-lg">
+                            <CheckSquare size={16} />
+                        </div>
+                    ) : isMulti ? (
+                        <div className="bg-black/50 text-white rounded-md p-1 backdrop-blur-md border border-white/20">
+                            <Square size={16} />
+                        </div>
+                    ) : null}
+                </div>
+                <div className="absolute bottom-3 left-3 right-3 text-left">
+                    <p className="text-[10px] font-bold text-white uppercase tracking-wider">{label}</p>
+                </div>
+            </div>
+        </button>
     );
 };

@@ -59,14 +59,31 @@ export async function getLatestProjectBySeries(seriesName: string): Promise<Proj
  * Extract series-level data from a project
  */
 export function extractSeriesData(project: ProjectData): Partial<ProjectData> {
+    // Determine which asset definitions belong to the series level (shared) vs episode level
+    const seriesLevelIds = new Set([
+        ...(project.characters || []).map(c => c.id),
+        ...(project.seriesLocations || []).map(l => l.id),
+        ...(project.seriesProps || []).map(p => p.id)
+    ]);
+
+    const seriesAssetDefinitions: Record<string, any> = {};
+    if (project.assetDefinitions) {
+        Object.entries(project.assetDefinitions).forEach(([id, def]) => {
+            if (seriesLevelIds.has(id)) {
+                seriesAssetDefinitions[id] = def;
+            }
+        });
+    }
+
     return {
         seriesName: project.seriesName,
         seriesStory: project.seriesStory,
         characters: project.characters,
         seriesLocations: project.seriesLocations,
+        seriesProps: project.seriesProps,
         aspectRatio: project.aspectRatio,
         masterStyle: project.masterStyle,
-        assetDefinitions: project.assetDefinitions,
+        assetDefinitions: seriesAssetDefinitions,
         // Extract only frameImage from thumbnailSettings
         thumbnailSettings: {
             ...getDefaultThumbnailSettings(),
@@ -76,7 +93,8 @@ export function extractSeriesData(project: ProjectData): Partial<ProjectData> {
         storylineTable: [], // Reset for new episode
         episodePlot: '', // Reset for new episode
         episodeCharacters: [], // Reset for new episode
-        episodeLocations: [] // Reset for new episode
+        episodeLocations: [], // Reset for new episode
+        episodeProps: [] // Reset for new episode
     };
 }
 
@@ -110,6 +128,7 @@ export async function getNextEpisodeNumber(seriesName: string): Promise<number> 
  */
 function getDefaultThumbnailSettings() {
     return {
+        mode: 'framing' as const,
         scale: 1,
         imagePosition: { x: 0, y: 0 },
         textPosition: { x: 0, y: 0 },

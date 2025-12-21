@@ -5,7 +5,7 @@ import type { ScriptCut, ChatMessage } from '../services/gemini';
 // ====================
 
 export type TtsModel = 'standard' | 'wavenet' | 'neural2' | 'chirp3-hd';
-export type ImageModel = 'gemini-2.5-flash-image' | 'gemini-3.0-pro-image';
+export type ImageModel = 'gemini-1.5-flash' | 'gemini-2.0-flash-exp' | 'gemini-2.0-flash' | 'gemini-2.5-flash' | 'gemini-2.5-pro' | 'gemini-3.0-pro';
 export type AspectRatio = '16:9' | '9:16' | '1:1' | '2.35:1';
 
 export interface ApiKeys {
@@ -13,6 +13,7 @@ export interface ApiKeys {
     googleCloud: string;
     elevenLabs: string;
     elevenLabsModelId: string;
+    freesound?: string;  // Freesound.org API key for SFX search
 }
 
 export interface Character {
@@ -20,7 +21,9 @@ export interface Character {
     name: string;
     role: string;
     description: string;
+    visualSummary?: string;          // NEW: Pure visual description for Step 2
     gender?: 'male' | 'female' | 'other';   // Character gender
+    age?: 'child' | 'young' | 'adult' | 'senior';  // Character age category
     voiceId?: string;                       // e.g., 'en-US-Neural2-C' or 'ko-KR-Chirp3-HD-Aoede'
     voiceLanguage?: 'en-US' | 'ko-KR';      // Voice language
     voicePitch?: string;                    // e.g., '+2st', '-1st' (Neural2 only)
@@ -31,6 +34,14 @@ export interface Location {
     id: string;
     name: string;
     description: string;
+    visualSummary?: string;  // NEW: Pure visual description
+}
+
+export interface Prop {
+    id: string;
+    name: string;
+    description: string;
+    visualSummary?: string;
 }
 
 export interface MasterStyle {
@@ -50,6 +61,7 @@ export interface StyleAnchor {
 }
 
 export interface ThumbnailSettings {
+    mode: 'framing' | 'ai-gen';
     scale: number;
     imagePosition: { x: number; y: number };
     textPosition: { x: number; y: number };
@@ -58,6 +70,10 @@ export interface ThumbnailSettings {
     textColor: string;
     fontFamily: string;
     frameImage: string;
+    aiPrompt?: string;
+    aiTitle?: string;
+    selectedReferenceIds?: string[];
+    styleReferenceId?: string;
 }
 
 export interface Asset {
@@ -67,7 +83,7 @@ export interface Asset {
 
 export interface AssetDefinition {
     id: string;
-    type: 'character' | 'location' | 'style';
+    type: 'character' | 'location' | 'prop' | 'style';
     name: string;
     description: string;
     referenceImage?: string;
@@ -112,6 +128,8 @@ export interface ProjectData {
     episodePlot: string;
     episodeCharacters: Character[];
     episodeLocations: Location[];
+    seriesProps: Prop[];     // NEW
+    episodeProps: Prop[];    // NEW
     storylineTable?: StorylineScene[];  // NEW: Structured storyline table
     targetDuration: number;
     aspectRatio: AspectRatio;
@@ -126,6 +144,7 @@ export interface ProjectData {
 
     // Step 3: Thumbnail
     thumbnailUrl: string | null;
+    thumbnailPreview?: string | null;  // Small preview for Dashboard cards
     thumbnailSettings: ThumbnailSettings;
 
     // Step 4: Script
@@ -134,10 +153,18 @@ export interface ProjectData {
     imageModel: ImageModel;
 
     // Step 5: Production
-    assets: Record<number, Asset>;
+    assets: Record<string, Asset[]>;
 
     // Navigation (could move to UI state)
     currentStep: number;
+    // Metadata for dashboard performance
+    cachedProgress?: {
+        workflowPercent: number;
+        scriptLength: number;
+        scriptConfirmed: number;
+        assetsTotal: number;
+        assetsDefined: number;
+    };
 }
 
 // ====================
@@ -161,4 +188,15 @@ export interface ProjectMetadata {
     episodeNumber: number;
     lastModified: number;
     thumbnailUrl: string | null;
+    // Cached progress data for Dashboard (avoid loading full project)
+    cachedProgress?: {
+        workflowPercent: number;    // 0-100
+        scriptLength: number;
+        scriptConfirmed: number;
+        assetsTotal: number;
+        assetsDefined: number;
+        completedStepsCount?: number;
+    };
+    storylineTable?: StorylineScene[];
+    currentStep?: number;
 }

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useWorkflowStore } from '../../store/workflowStore';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Box, Film, Image, Palette, FileText, Play, Home, CheckCircle2, Circle, Settings, ChevronDown, Save, RotateCcw, AlertTriangle } from 'lucide-react';
-import { downloadBackup } from '../../hooks/useAutoBackup';
+import { StorageManager } from '../StorageManager';
+import { Film, Palette, FileText, CheckCircle2, Image, Play, Box, Home, RotateCcw, Settings, ChevronDown, HardDrive, AlertTriangle, Circle } from 'lucide-react';
+
 
 interface MainLayoutProps {
     children: React.ReactNode;
@@ -13,6 +14,7 @@ const STEPS = [
     { id: 2, name: 'Key Visuals', path: '/step/2', icon: Palette },
     { id: 3, name: 'Production', path: '/step/3', icon: FileText },
     { id: 4, name: 'Review', path: '/step/4', icon: CheckCircle2 },
+    { id: 4.5, name: 'Video', path: '/step/4.5', icon: Film },
     { id: 5, name: 'Thumbnail', path: '/step/5', icon: Image },
     { id: 6, name: 'Final', path: '/step/6', icon: Play },
 ];
@@ -20,28 +22,93 @@ const STEPS = [
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     const store = useWorkflowStore();
     const {
-        currentStep, seriesName, episodeName, episodeNumber, apiKeys, setApiKeys, restoreData,
-        script, styleAnchor
+        currentStep, seriesName, episodeName, episodeNumber, episodePlot, apiKeys, setApiKeys, restoreData,
+        script, masterStyle, characters, episodeCharacters, seriesLocations, episodeLocations,
+        seriesProps, episodeProps, assetDefinitions
     } = store;
     const [showApiConfig, setShowApiConfig] = useState(false);
+    const [showStorageManager, setShowStorageManager] = useState(false);
     const location = useLocation();
     const navigate = useNavigate();
+
+    // === ZOMBIE PROJECT CLEANUP ===
+    // If the active project ID is NOT found in savedProjects (and we are hydrated),
+    // it means the project was deleted (possibly from another tab/window).
+    // We must reset to default to avoid showing "Ghost" data.
+    React.useEffect(() => {
+        if (!store.isHydrated) return;
+
+        const currentId = store.id;
+        // Skip check for 'default-project' initial state string, though resetToDefault makes a real ID now.
+        if (currentId === 'default-project') return;
+
+        const savedKeys = Object.keys(store.savedProjects || {});
+        // If savedProjects is empty relative to current ID, or ID not found
+        if (!savedKeys.includes(currentId)) {
+            console.warn(`[MainLayout] Zombie Project Detected (ID: ${currentId}). cleanup triggered.`);
+            store.resetToDefault();
+            // Optional: Alert user?
+            // alert("The active project was deleted. Starting fresh.");
+        }
+    }, [store.id, store.savedProjects, store.isHydrated]); // Dependencies ensure this runs when projects change
 
     // Helper function to check if a step is completed
     const isStepCompleted = (stepId: number): boolean => {
         switch (stepId) {
             case 1: // Setup
-                return !!(seriesName && episodeName && store.episodePlot);
+                return !!(seriesName && episodeName && episodePlot);
             case 2: // Key Visuals
-                return !!styleAnchor?.referenceImage;
-            case 3: // Script
-                return script.length > 0;
-            case 4: // Production
-                return script.length > 0 && script.every(cut => cut.isConfirmed);
+                {
+                    const safeMasterStyle = masterStyle || { description: '', referenceImage: null };
+                    const safeCharacters = Array.isArray(characters) ? characters : [];
+                    const safeEpisodeCharacters = Array.isArray(episodeCharacters) ? episodeCharacters : [];
+                    const safeSeriesLocations = Array.isArray(seriesLocations) ? seriesLocations : [];
+                    const safeEpisodeLocations = Array.isArray(episodeLocations) ? episodeLocations : [];
+                    const safeAssetDefinitions = assetDefinitions || {};
+
+                    const safeSeriesProps = Array.isArray(seriesProps) ? seriesProps : [];
+                    const safeEpisodeProps = Array.isArray(episodeProps) ? episodeProps : [];
+
+                    const isDefined = (id: string) => !!safeAssetDefinitions[id];
+
+                    const allRequiredAssetIds = [
+                        ...safeCharacters.map((c: any) => c.id),
+                        ...safeSeriesLocations.map((l: any) => l.id),
+                        ...safeSeriesProps.map((p: any) => p.id),
+                        ...safeEpisodeCharacters.map((c: any) => c.id),
+                        ...safeEpisodeLocations.map((l: any) => l.id),
+                        ...safeEpisodeProps.map((p: any) => p.id)
+                    ].filter((id, i, arr) => arr.indexOf(id) === i);
+
+                    const isSeriesComplete = !!safeMasterStyle.description && allRequiredAssetIds.length > 0 &&
+                        allRequiredAssetIds.every(id => isDefined(id));
+
+                    return isSeriesComplete;
+                }
+            case 3: // Production (Script Generation + Image/Audio)
+                // Complete when all cuts have BOTH confirmed image AND audio with actual URLs
+                return script.length > 0 && script.every(cut =>
+                    (cut.isImageConfirmed && cut.finalImageUrl) &&
+                    (cut.isAudioConfirmed && (cut.audioUrl || cut.speaker === 'SILENT'))
+                );
+            case 4: // Review (QA)
+                // Same as Step 3 - all cuts must be fully confirmed
+                return script.length > 0 && script.every(cut =>
+                    (cut.isImageConfirmed && cut.finalImageUrl) &&
+                    (cut.isAudioConfirmed && (cut.audioUrl || cut.speaker === 'SILENT'))
+                );
+            case 4.5: // Video Composition
+                // Complete when all cuts have confirmed videos
+                return script.length > 0 && script.every(cut => cut.isVideoConfirmed);
             case 5: // Thumbnail
                 return !!store.thumbnailUrl;
             case 6: // Final
-                return script.length > 0 && script.every(cut => cut.isConfirmed && cut.finalImageUrl && cut.audioUrl);
+                const isScriptFullyConfirmed = script.length > 0 && script.every(cut =>
+                    (cut.isImageConfirmed && cut.finalImageUrl) &&
+                    (cut.isAudioConfirmed && (cut.audioUrl || cut.speaker === 'SILENT'))
+                );
+                const isVideoFullyConfirmed = script.length > 0 && script.every(cut => cut.isVideoConfirmed);
+                return isScriptFullyConfirmed && isVideoFullyConfirmed && !!store.thumbnailUrl;
             default:
                 return false;
         }
@@ -87,33 +154,49 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         Meriel's Idea Lab
                     </p>
 
-                    {/* Save Status Indicator */}
-                    <div className="mt-2 flex items-center gap-2">
-                        {useWorkflowStore(state => state.saveStatus) === 'saving' && (
-                            <span className="text-[10px] text-yellow-500 flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse"></span>
-                                Saving...
-                            </span>
-                        )}
-                        {useWorkflowStore(state => state.saveStatus) === 'saved' && (
-                            <span className="text-[10px] text-green-500 flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                                Saved
-                            </span>
-                        )}
-                        {useWorkflowStore(state => state.saveStatus) === 'error' && (
-                            <span className="text-[10px] text-red-500 flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
-                                Save Error
-                            </span>
-                        )}
+                    {/* Save Status Indicator & Manual Save */}
+                    <div className="mt-2 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            {useWorkflowStore(state => state.saveStatus) === 'saving' && (
+                                <span className="text-[10px] text-yellow-500 flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse"></span>
+                                    Saving...
+                                </span>
+                            )}
+                            {useWorkflowStore(state => state.saveStatus) === 'saved' && (
+                                <span className="text-[10px] text-green-500 flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                                    Saved
+                                </span>
+                            )}
+                            {useWorkflowStore(state => state.saveStatus) === 'error' && (
+                                <span className="text-[10px] text-red-500 flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                                    Save Error
+                                </span>
+                            )}
+                            {useWorkflowStore(state => state.saveStatus) === 'idle' && (
+                                <span className="text-[10px] text-[var(--color-text-muted)] flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-gray-500"></span>
+                                    Idle
+                                </span>
+                            )}
+                        </div>
+
+                        <button
+                            onClick={() => store.saveProject()}
+                            className="p-1.5 rounded hover:bg-white/10 text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors group"
+                            title="Force Manual Save"
+                        >
+                            <RotateCcw size={14} className="group-active:rotate-180 transition-transform" />
+                        </button>
                     </div>
                 </div>
 
                 {/* Dashboard Link - Moved to top */}
                 <button
                     onClick={() => navigate('/')}
-                    className={`w-full px-4 py-3 flex items-center gap-3 transition-all mt-14 mb-14 ${isDashboard
+                    className={`w-full px-4 py-3 flex items-center gap-3 transition-all mt-2 mb-2 ${isDashboard
                         ? 'bg-[var(--color-primary)] text-black font-semibold'
                         : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[rgba(255,255,255,0.05)]'
                         }`}
@@ -172,7 +255,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         return (
                             <button
                                 key={step.id}
-                                onClick={() => navigate(step.path)}
+                                onClick={() => {
+                                    store.setStep(step.id);
+                                    navigate(step.path);
+                                }}
                                 className={`w-full px-4 py-3 flex items-center gap-3 transition-all relative ${isActive
                                     ? 'bg-[rgba(255,173,117,0.15)] text-[var(--color-primary)] font-semibold border-r-2 border-[var(--color-primary)]'
                                     : isCompleted
@@ -182,6 +268,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                             : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[rgba(255,255,255,0.05)]'
                                     } ${isLast ? 'border-b border-[var(--color-primary)]' : ''}`}
                             >
+                                <span className={`text-[10px] font-bold min-w-[24px] ${isActive ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-muted)]'}`}>#{step.id}</span>
                                 <Icon size={18} />
                                 <span className="flex-1 text-left text-sm">
                                     {step.name}
@@ -205,6 +292,26 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         <span className="text-sm font-medium">Restore Data</span>
                     </button>
 
+
+
+                    {/* Storage Manager Button */}
+                    <button
+                        onClick={() => setShowStorageManager(true)}
+                        className="w-full p-3 flex items-center gap-3 text-[var(--color-primary)] hover:text-white hover:bg-[rgba(255,173,117,0.1)] transition-colors border-b border-[var(--color-border)]"
+                        title="Manage Storage and Clean up Orphans"
+                    >
+                        <HardDrive size={16} />
+                        <span className="text-sm font-medium">Storage Manager</span>
+                    </button>
+
+
+
+                    {showStorageManager && (
+                        <React.Suspense fallback={null}>
+                            <StorageManager onClose={() => setShowStorageManager(false)} />
+                        </React.Suspense>
+                    )}
+
                     {/* Rescue Center Button */}
                     <button
                         onClick={() => navigate('/rescue')}
@@ -215,14 +322,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         <span className="text-sm font-medium">Rescue Center</span>
                     </button>
 
-                    {/* Save Project Button - Always Visible */}
-                    <button
-                        onClick={downloadBackup}
-                        className="w-full p-3 flex items-center gap-3 text-[var(--color-text-muted)] hover:text-white hover:bg-[rgba(255,255,255,0.05)] transition-colors border-b border-[var(--color-border)]"
-                    >
-                        <Save size={16} />
-                        <span className="text-sm font-medium">Backup Project</span>
-                    </button>
 
                     {/* API Config Toggle with Status */}
                     <button
@@ -269,6 +368,25 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                     placeholder="For TTS"
                                 />
                             </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-purple-400 uppercase">🔊 Freesound API Key</label>
+                                <input
+                                    type="password"
+                                    className="w-full bg-[var(--color-bg)] border border-purple-500/30 rounded px-2 py-1 text-xs text-white focus:border-purple-500 outline-none"
+                                    value={apiKeys?.freesound || ''}
+                                    onChange={(e) => setApiKeys({ ...apiKeys, freesound: e.target.value })}
+                                    placeholder="For SFX search (freesound.org)"
+                                />
+                                <a
+                                    href="https://freesound.org/apiv2/apply/"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[9px] text-purple-400 hover:underline"
+                                >
+                                    → Get key at freesound.org
+                                </a>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -286,8 +404,18 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                             {isDashboard ? 'Overview' : `Step ${displayStep} of 6`}
                         </div>
                         <div className="flex items-center gap-6 text-sm font-medium text-gray-400">
-                            <span className="hover:text-white cursor-pointer transition-colors">Docs</span>
-                            <span className="hover:text-white cursor-pointer transition-colors">Support</span>
+                            <span
+                                onClick={() => window.dispatchEvent(new Event('openWelcomeGuide'))}
+                                className="hover:text-white cursor-pointer transition-colors"
+                            >
+                                📖 사용가이드
+                            </span>
+                            <span
+                                onClick={() => navigate('/support')}
+                                className="hover:text-white cursor-pointer transition-colors"
+                            >
+                                Support
+                            </span>
                         </div>
                     </div>
                 </div>

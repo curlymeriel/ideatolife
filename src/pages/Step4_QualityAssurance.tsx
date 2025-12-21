@@ -1,17 +1,104 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWorkflowStore } from '../store/workflowStore';
 import { generateImage } from '../services/imageGen';
 import { generateSpeech } from '../services/tts';
 import { useNavigate } from 'react-router-dom';
-import { Play, Loader2, Image as ImageIcon, Music, ArrowRight, ArrowLeft, BarChart3, AlertTriangle, CheckCircle, Pause } from 'lucide-react';
+import { Play, Loader2, Image as ImageIcon, Music, ArrowRight, ArrowLeft, BarChart3, CheckCircle, Pause } from 'lucide-react';
+import { resolveUrl, isIdbUrl } from '../utils/imageStorage';
 
 export const Step4_QualityAssurance: React.FC = () => {
-    const { script, apiKeys, ttsModel, imageModel, nextStep, prevStep, assetDefinitions, aspectRatio, masterStyle, styleAnchor, setScript } = useWorkflowStore();
+    const { id: projectId, script, apiKeys, ttsModel, imageModel, nextStep, prevStep, assetDefinitions, aspectRatio, masterStyle, styleAnchor, setScript } = useWorkflowStore();
     const navigate = useNavigate();
 
     const [batchLoading, setBatchLoading] = useState(false);
     const [currentCutIndex, setCurrentCutIndex] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
+
+    // Resolved image URLs for idb:// references
+    const [resolvedImages, setResolvedImages] = useState<Record<number, string>>({});
+    // Resolved audio URLs for idb:// references
+    const [resolvedAudios, setResolvedAudios] = useState<Record<number, string>>({});
+    // Resolved SFX URLs for idb:// or external references
+    const [resolvedSfx, setResolvedSfx] = useState<Record<number, string>>({});
+
+    // CRITICAL: Reset state when project changes to prevent showing old project data
+    useEffect(() => {
+        console.log(`[Step4] Project changed to ${projectId} - resetting cached state`);
+        setCurrentCutIndex(0);
+        setResolvedImages({});
+        setResolvedAudios({});
+        setResolvedSfx({});
+        setIsPlaying(false);
+    }, [projectId]);
+
+    // Resolve all idb:// image URLs
+    useEffect(() => {
+        const resolveAllImages = async () => {
+            const resolved: Record<number, string> = {};
+            for (const cut of script) {
+                if (cut.finalImageUrl) {
+                    if (isIdbUrl(cut.finalImageUrl)) {
+                        resolved[cut.id] = await resolveUrl(cut.finalImageUrl);
+                    } else {
+                        resolved[cut.id] = cut.finalImageUrl;
+                    }
+                }
+            }
+            setResolvedImages(resolved);
+        };
+        resolveAllImages();
+    }, [script]);
+
+    // Resolve all idb:// audio URLs
+    useEffect(() => {
+        const resolveAllAudios = async () => {
+            console.log('[Step4] Starting audio resolution for', script.length, 'cuts');
+            const resolved: Record<number, string> = {};
+            for (const cut of script) {
+                if (cut.audioUrl && cut.audioUrl !== 'mock:beep') {
+                    console.log(`[Step4] Cut ${cut.id} audioUrl:`, cut.audioUrl.substring(0, 50) + '...');
+                    if (isIdbUrl(cut.audioUrl)) {
+                        console.log(`[Step4] Cut ${cut.id} - Resolving idb:// URL`);
+                        const resolvedUrl = await resolveUrl(cut.audioUrl);
+                        if (resolvedUrl) {
+                            console.log(`[Step4] Cut ${cut.id} - Resolved successfully (${resolvedUrl.substring(0, 30)}...)`);
+                            resolved[cut.id] = resolvedUrl;
+                        } else {
+                            console.warn(`[Step4] Cut ${cut.id} - Failed to resolve idb:// URL`);
+                        }
+                    } else {
+                        // Already a data: URL or http URL
+                        console.log(`[Step4] Cut ${cut.id} - Using direct URL`);
+                        resolved[cut.id] = cut.audioUrl;
+                    }
+                }
+            }
+            console.log('[Step4] Audio resolution complete. Resolved:', Object.keys(resolved).length, 'audios');
+            setResolvedAudios(resolved);
+        };
+        resolveAllAudios();
+    }, [script]);
+
+    // Resolve all SFX URLs
+    useEffect(() => {
+        const resolveAllSfx = async () => {
+            const resolved: Record<number, string> = {};
+            for (const cut of script) {
+                if (cut.sfxUrl) {
+                    if (isIdbUrl(cut.sfxUrl)) {
+                        const resolvedUrl = await resolveUrl(cut.sfxUrl);
+                        if (resolvedUrl) resolved[cut.id] = resolvedUrl;
+                    } else {
+                        // Direct URL (data:, http:, etc.)
+                        resolved[cut.id] = cut.sfxUrl;
+                    }
+                }
+            }
+            console.log('[Step4] SFX resolution complete. Resolved:', Object.keys(resolved).length, 'SFX tracks');
+            setResolvedSfx(resolved);
+        };
+        resolveAllSfx();
+    }, [script]);
 
     // Calculate statistics
     const getMissingAssets = () => {
@@ -21,12 +108,18 @@ export const Step4_QualityAssurance: React.FC = () => {
     };
 
     const { missingAudio, missingImages } = getMissingAssets();
-    const confirmedCount = script.filter(c => c.isConfirmed).length;
+    // Calculate confirmed count using granular flags (consistent with Step 3)
+    const confirmedCount = script.filter(c => {
+        const isAudioDone = c.isAudioConfirmed || c.isConfirmed;
+        const isImageDone = c.isImageConfirmed || c.isConfirmed;
+        return isAudioDone && isImageDone;
+    }).length;
     const totalCount = script.length;
     const completionPercent = totalCount > 0 ? Math.round((confirmedCount / totalCount) * 100) : 0;
 
     // Sequential playback
     const currentCut = script[currentCutIndex];
+    const currentResolvedImage = currentCut ? resolvedImages[currentCut.id] : undefined;
 
     const handlePrevCut = () => {
         setCurrentCutIndex(Math.max(0, currentCutIndex - 1));
@@ -39,24 +132,66 @@ export const Step4_QualityAssurance: React.FC = () => {
     // Stop audio when cut changes
     React.useEffect(() => {
         const audio = document.getElementById(`sequential-audio`) as HTMLAudioElement;
+        const sfxAudio = document.getElementById(`sequential-sfx`) as HTMLAudioElement;
         if (audio) {
             audio.pause();
             audio.currentTime = 0;
+        }
+        if (sfxAudio) {
+            sfxAudio.pause();
+            sfxAudio.currentTime = 0;
         }
         setIsPlaying(false);
     }, [currentCutIndex]);
 
     const handlePlaySequential = () => {
-        if (!currentCut?.audioUrl) return;
+        if (!currentCut?.audioUrl) {
+            console.warn('[Step4] No audioUrl for current cut');
+            return;
+        }
+
+        // Get the resolved audio URL
+        const resolvedAudioUrl = resolvedAudios[currentCut.id];
+        const resolvedSfxUrl = resolvedSfx[currentCut.id];
+        const sfxVolume = currentCut.sfxVolume ?? 0.3;
+
+        console.log(`[Step4] Playing cut ${currentCut.id}:`, {
+            originalUrl: currentCut.audioUrl.substring(0, 50) + '...',
+            resolvedUrl: resolvedAudioUrl ? resolvedAudioUrl.substring(0, 50) + '...' : 'NOT RESOLVED',
+            hasSfx: !!resolvedSfxUrl,
+            sfxVolume,
+            isIdb: isIdbUrl(currentCut.audioUrl)
+        });
+
+        if (!resolvedAudioUrl) {
+            console.error(`[Step4] No resolved audio URL for cut ${currentCut.id}. audioUrl is idb:// but not resolved yet.`);
+            alert('Audio is still loading. Please try again in a moment.');
+            return;
+        }
 
         const audio = document.getElementById(`sequential-audio`) as HTMLAudioElement;
+        const sfxAudio = document.getElementById(`sequential-sfx`) as HTMLAudioElement;
+
         if (audio) {
             if (isPlaying) {
                 audio.pause();
+                if (sfxAudio) sfxAudio.pause();
                 setIsPlaying(false);
             } else {
+                // Ensure audio src is set (for cases where React rendering hasn't caught up)
+                if (audio.src !== resolvedAudioUrl) {
+                    audio.src = resolvedAudioUrl;
+                }
+
                 // Ensure audio is loaded
                 audio.load();
+
+                // Also prepare SFX if available
+                if (sfxAudio && resolvedSfxUrl) {
+                    sfxAudio.src = resolvedSfxUrl;
+                    sfxAudio.volume = sfxVolume;
+                    sfxAudio.load();
+                }
 
                 const playPromise = audio.play();
                 if (playPromise !== undefined) {
@@ -68,9 +203,16 @@ export const Step4_QualityAssurance: React.FC = () => {
                     });
                 }
 
+                // Play SFX simultaneously (fire and forget)
+                if (sfxAudio && resolvedSfxUrl) {
+                    sfxAudio.play().catch(e => console.warn('SFX playback failed:', e));
+                }
+
                 setIsPlaying(true);
                 audio.onended = () => {
                     setIsPlaying(false);
+                    // Stop SFX when TTS ends
+                    if (sfxAudio) sfxAudio.pause();
                     // Auto-advance to next cut
                     if (currentCutIndex < script.length - 1) {
                         setTimeout(() => {
@@ -83,6 +225,8 @@ export const Step4_QualityAssurance: React.FC = () => {
                     setIsPlaying(false);
                 };
             }
+        } else {
+            console.error('[Step4] Audio element not found in DOM');
         }
     };
 
@@ -148,7 +292,7 @@ export const Step4_QualityAssurance: React.FC = () => {
                     );
 
                     const updatedScript = script.map(c =>
-                        c.id === cut.id ? { ...c, finalImageUrl: result.url } : c
+                        c.id === cut.id ? { ...c, finalImageUrl: result.urls[0] } : c
                     );
                     setScript(updatedScript);
                     console.log(`[Batch Image] Success for cut ${cut.id}`);
@@ -171,250 +315,237 @@ export const Step4_QualityAssurance: React.FC = () => {
         navigate('/step/5');
     };
 
-    // Helper to get aspect ratio padding
-    const getAspectRatioPadding = (ratio: string) => {
-        const ratioMap: Record<string, string> = {
-            '16:9': '56.25%',
-            '9:16': '177.78%',
-            '1:1': '100%',
-            '2.35:1': '42.55%'
-        };
-        return ratioMap[ratio] || '56.25%';
-    };
-
     return (
-        <div className="max-w-7xl mx-auto space-y-8 pb-12">
-            {/* Header */}
-            <div className="text-center space-y-2">
-                <h2 className="text-4xl font-bold text-white tracking-tight">Quality Assurance & Review</h2>
-                <p className="text-[var(--color-text-muted)] text-lg">
-                    Review your complete episode before final export
-                </p>
-            </div>
+        <div className="flex gap-6 h-[calc(100vh-120px)]">
+            {/* LEFT SIDEBAR - 1/4 width */}
+            <div className="w-1/4 min-w-[280px] max-w-[360px] flex flex-col gap-4 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-[var(--color-border)] scrollbar-track-transparent">
 
-            {/* Statistics Panel */}
-            <div className="glass-panel p-6">
-                <div className="flex items-center gap-3 mb-4">
-                    <BarChart3 className="text-[var(--color-primary)]" size={24} />
-                    <h3 className="text-xl font-bold text-white">Project Statistics</h3>
-                </div>
+                {/* Header & Stats */}
+                <div className="glass-panel p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                        <BarChart3 className="text-[var(--color-primary)]" size={18} />
+                        <h2 className="text-lg font-bold text-white">Quality Assurance</h2>
+                    </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                    <div className="bg-[var(--color-surface)] p-4 rounded-lg border border-[var(--color-border)]">
-                        <div className="flex items-center gap-2 mb-2">
-                            <CheckCircle className="text-green-500" size={20} />
-                            <span className="text-sm text-[var(--color-text-muted)]">Confirmed Cuts</span>
+                    {/* Progress Bar */}
+                    <div className="mb-3">
+                        <div className="flex justify-between items-center mb-1">
+                            <span className="text-xs text-[var(--color-text-muted)]">Progress</span>
+                            <span className="text-xs text-[var(--color-primary)] font-bold">{completionPercent}%</span>
                         </div>
-                        <p className="text-2xl font-bold text-white">{confirmedCount}/{totalCount}</p>
-                        <p className="text-xs text-[var(--color-text-muted)] mt-1">{completionPercent}% complete</p>
-                    </div>
-
-                    <div className="bg-[var(--color-surface)] p-4 rounded-lg border border-[var(--color-border)]">
-                        <div className="flex items-center gap-2 mb-2">
-                            <AlertTriangle className="text-yellow-500" size={20} />
-                            <span className="text-sm text-[var(--color-text-muted)]">Missing Audio</span>
-                        </div>
-                        <p className="text-2xl font-bold text-white">{missingAudio.length}</p>
-                        <p className="text-xs text-[var(--color-text-muted)] mt-1">cuts need audio</p>
-                    </div>
-
-                    <div className="bg-[var(--color-surface)] p-4 rounded-lg border border-[var(--color-border)]">
-                        <div className="flex items-center gap-2 mb-2">
-                            <AlertTriangle className="text-orange-500" size={20} />
-                            <span className="text-sm text-[var(--color-text-muted)]">Missing Images</span>
-                        </div>
-                        <p className="text-2xl font-bold text-white">{missingImages.length}</p>
-                        <p className="text-xs text-[var(--color-text-muted)] mt-1">cuts need images</p>
-                    </div>
-                </div>
-
-                {(missingAudio.length > 0 || missingImages.length > 0) && (
-                    <button
-                        onClick={handleGenerateMissing}
-                        disabled={batchLoading}
-                        className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-[var(--color-primary)] hover:bg-[var(--color-primary)]/90 text-black font-bold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {batchLoading ? (
-                            <>
-                                <Loader2 className="animate-spin" size={20} />
-                                Generating Missing Assets...
-                            </>
-                        ) : (
-                            <>
-                                <Play size={20} />
-                                Generate Missing Assets ({missingAudio.length} audio + {missingImages.length} images)
-                            </>
-                        )}
-                    </button>
-                )}
-            </div>
-
-            {/* Sequential Viewer */}
-            {script.length > 0 && currentCut && (
-                <div className="glass-panel p-6">
-                    <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                            <Play className="text-[var(--color-primary)]" size={24} />
-                            Sequential Viewer
-                        </h3>
-                        <span className="text-sm text-[var(--color-text-muted)]">
-                            Cut {currentCutIndex + 1} of {script.length}
-                        </span>
-                    </div>
-
-                    {/* Image Display */}
-                    <div className="mb-4">
-                        {currentCut.finalImageUrl ? (
-                            <div className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg overflow-hidden relative" style={{ paddingBottom: getAspectRatioPadding(aspectRatio || '16:9') }}>
-                                <img
-                                    src={currentCut.finalImageUrl}
-                                    alt={`Cut ${currentCut.id}`}
-                                    className="absolute inset-0 w-full h-full object-contain"
-                                />
-                            </div>
-                        ) : (
-                            <div className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] border-dashed rounded-lg flex items-center justify-center text-center p-12" style={{ paddingBottom: getAspectRatioPadding(aspectRatio || '16:9') }}>
-                                <div className="absolute inset-0 flex items-center justify-center flex-col gap-2">
-                                    <ImageIcon size={48} className="text-gray-600" />
-                                    <p className="text-[var(--color-text-muted)]">No image generated</p>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Dialogue & Controls */}
-                    <div className="bg-[var(--color-surface)] p-4 rounded-lg mb-4">
-                        <p className="text-sm text-[var(--color-primary)] font-bold mb-1">{currentCut.speaker}</p>
-                        <p className="text-white text-lg italic">"{currentCut.dialogue}"</p>
-                        <p className="text-xs text-[var(--color-text-muted)] mt-2">{currentCut.visualPrompt}</p>
-                    </div>
-
-                    {/* Playback Controls */}
-                    <div className="flex items-center justify-center gap-4">
-                        <button
-                            onClick={handlePrevCut}
-                            disabled={currentCutIndex === 0}
-                            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-white hover:border-[var(--color-primary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            <ArrowLeft size={18} />
-                            Previous
-                        </button>
-
-                        {currentCut.audioUrl && (
-                            <>
-                                <button
-                                    onClick={handlePlaySequential}
-                                    className="flex items-center gap-2 px-6 py-3 rounded-full bg-[var(--color-primary)] hover:bg-[var(--color-primary)]/90 text-black font-bold transition-all"
-                                >
-                                    {isPlaying ? (
-                                        <>
-                                            <Pause size={20} />
-                                            Pause
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Play size={20} />
-                                            Play
-                                        </>
-                                    )}
-                                </button>
-                                {currentCut.audioUrl !== 'mock:beep' && (
-                                    <audio
-                                        id="sequential-audio"
-                                        src={currentCut.audioUrl}
-                                        preload="metadata"
-                                    />
-                                )}
-                            </>
-                        )}
-
-                        <button
-                            onClick={handleNextCut}
-                            disabled={currentCutIndex === script.length - 1}
-                            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-white hover:border-[var(--color-primary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            Next
-                            <ArrowRight size={18} />
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* Grid Overview */}
-            <div className="glass-panel p-6">
-                <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                    <ImageIcon className="text-[var(--color-primary)]" size={24} />
-                    All Cuts Overview
-                </h3>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                    {script.map((cut, index) => {
-                        const hasAudio = !!cut.audioUrl;
-                        const hasImage = !!cut.finalImageUrl;
-                        const isComplete = hasAudio && hasImage && cut.isConfirmed;
-                        const hasIssues = !hasAudio || !hasImage;
-
-                        return (
+                        <div className="w-full h-2 bg-[var(--color-surface)] rounded-full overflow-hidden">
                             <div
-                                key={cut.id}
-                                onClick={() => setCurrentCutIndex(index)}
-                                className={`relative cursor-pointer rounded-lg overflow-hidden border-2 transition-all hover:scale-105 ${currentCutIndex === index
-                                    ? 'border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/50'
-                                    : isComplete
-                                        ? 'border-green-500/50'
-                                        : hasIssues
-                                            ? 'border-yellow-500/50'
-                                            : 'border-[var(--color-border)]'
-                                    }`}
-                            >
-                                {hasImage ? (
-                                    <div className="aspect-video bg-[var(--color-bg)]">
-                                        <img
-                                            src={cut.finalImageUrl}
-                                            alt={`Cut ${cut.id}`}
-                                            className="w-full h-full object-cover"
-                                        />
-                                    </div>
-                                ) : (
-                                    <div className="aspect-video bg-[var(--color-bg)] flex items-center justify-center">
-                                        <ImageIcon size={24} className="text-gray-600" />
-                                    </div>
-                                )}
+                                className="h-full bg-gradient-to-r from-[var(--color-primary)] to-green-500 transition-all duration-300"
+                                style={{ width: `${completionPercent}%` }}
+                            />
+                        </div>
+                        <div className="text-[10px] text-[var(--color-text-muted)] mt-1">
+                            {confirmedCount}/{totalCount} cuts confirmed
+                        </div>
+                    </div>
 
-                                {/* Overlay with cut number and status */}
-                                <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/80 to-transparent p-2">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-white text-xs font-bold">#{cut.id}</span>
-                                        <div className="flex gap-1">
-                                            {!hasAudio && <Music size={12} className="text-yellow-500" />}
-                                            {!hasImage && <ImageIcon size={12} className="text-orange-500" />}
-                                            {isComplete && <CheckCircle size={12} className="text-green-500" />}
+                    {/* Missing Stats */}
+                    {(missingAudio.length > 0 || missingImages.length > 0) && (
+                        <div className="flex gap-3 mb-3 text-xs">
+                            {missingAudio.length > 0 && (
+                                <div className="flex items-center gap-1 text-yellow-400">
+                                    <Music size={12} />
+                                    <span>{missingAudio.length} audio</span>
+                                </div>
+                            )}
+                            {missingImages.length > 0 && (
+                                <div className="flex items-center gap-1 text-orange-400">
+                                    <ImageIcon size={12} />
+                                    <span>{missingImages.length} images</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Generate Button */}
+                    {(missingAudio.length > 0 || missingImages.length > 0) && (
+                        <button
+                            onClick={handleGenerateMissing}
+                            disabled={batchLoading}
+                            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary)]/90 text-black text-xs font-bold rounded-lg transition-all disabled:opacity-50"
+                        >
+                            {batchLoading ? <Loader2 className="animate-spin" size={14} /> : <Play size={14} />}
+                            Generate Missing
+                        </button>
+                    )}
+                </div>
+
+                {/* Grid Overview - Scrollable */}
+                <div className="glass-panel p-3 flex-1 overflow-y-auto">
+                    <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2 sticky top-0 bg-[var(--color-surface-highlight)] py-1 -mt-1 -mx-1 px-1">
+                        <ImageIcon className="text-[var(--color-primary)]" size={14} />
+                        All Cuts
+                    </h3>
+                    <div className="grid grid-cols-3 gap-2">
+                        {script.map((cut, index) => {
+                            const hasAudio = !!cut.audioUrl;
+                            const hasImage = !!cut.finalImageUrl;
+                            const isComplete = hasAudio && hasImage && cut.isConfirmed;
+                            const hasIssues = !hasAudio || !hasImage;
+
+                            return (
+                                <div
+                                    key={cut.id}
+                                    onClick={() => setCurrentCutIndex(index)}
+                                    className={`relative cursor-pointer rounded overflow-hidden border-2 transition-all hover:scale-105 ${currentCutIndex === index
+                                        ? 'border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/50'
+                                        : isComplete
+                                            ? 'border-green-500/50'
+                                            : hasIssues
+                                                ? 'border-yellow-500/30'
+                                                : 'border-[var(--color-border)]'
+                                        }`}
+                                >
+                                    {hasImage && resolvedImages[cut.id] ? (
+                                        <div className="aspect-video bg-[var(--color-bg)]">
+                                            <img
+                                                src={resolvedImages[cut.id]}
+                                                alt={`Cut ${cut.id}`}
+                                                className="w-full h-full object-cover"
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="aspect-video bg-[var(--color-bg)] flex items-center justify-center">
+                                            <ImageIcon size={16} className="text-gray-600" />
+                                        </div>
+                                    )}
+                                    <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/80 to-transparent p-1">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-white text-[10px] font-bold">#{cut.id}</span>
+                                            <div className="flex gap-0.5">
+                                                {!hasAudio && <Music size={8} className="text-yellow-500" />}
+                                                {!hasImage && <ImageIcon size={8} className="text-orange-500" />}
+                                                {isComplete && <CheckCircle size={8} className="text-green-500" />}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                        );
-                    })}
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Navigation */}
+                <div className="flex gap-2">
+                    <button
+                        onClick={() => { prevStep(); navigate('/step/3'); }}
+                        className="flex-1 flex items-center justify-center gap-1 px-3 py-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-white text-xs transition-all"
+                    >
+                        <ArrowLeft size={14} />
+                        Back
+                    </button>
+                    <button
+                        onClick={handleFinish}
+                        className="flex-1 btn-primary flex items-center justify-center gap-1 px-3 py-2 rounded-lg font-bold text-xs"
+                    >
+                        Next Step
+                        <ArrowRight size={14} />
+                    </button>
                 </div>
             </div>
 
-            {/* Navigation */}
-            <div className="flex justify-between pt-6">
-                <button
-                    onClick={() => { prevStep(); navigate('/step/3'); }}
-                    className="flex items-center gap-2 px-6 py-3 rounded-lg hover:bg-[var(--color-surface-highlight)] text-[var(--color-text-muted)] hover:text-white transition-all"
-                >
-                    <ArrowLeft size={20} />
-                    Back to Step 3
-                </button>
+            {/* RIGHT CONTENT - 3/4 width */}
+            <div className="flex-1 flex flex-col gap-4 overflow-hidden">
+                {script.length > 0 && currentCut ? (
+                    <>
+                        {/* Main Image Display */}
+                        <div className="flex-1 glass-panel p-4 flex flex-col overflow-hidden">
+                            <div className="mb-3">
+                                <span className="text-sm font-bold text-white">
+                                    Cut {currentCutIndex + 1} / {script.length}
+                                </span>
+                            </div>
 
-                <button
-                    onClick={handleFinish}
-                    className="btn-primary flex items-center gap-2 px-6 py-3 rounded-full font-bold shadow-lg hover:shadow-[0_0_20px_rgba(255,159,89,0.4)] hover:scale-105 transition-all"
-                >
-                    Next Step
-                    <ArrowRight size={24} />
-                </button>
+                            {/* Image Container - Flex grow to fill space */}
+                            <div className="flex-1 relative min-h-0">
+                                {currentResolvedImage ? (
+                                    <img
+                                        src={currentResolvedImage}
+                                        alt={`Cut ${currentCut.id}`}
+                                        className="absolute inset-0 w-full h-full object-contain rounded-lg"
+                                    />
+                                ) : (
+                                    <div className="absolute inset-0 bg-[var(--color-bg)] border border-[var(--color-border)] border-dashed rounded-lg flex items-center justify-center">
+                                        <div className="flex flex-col items-center gap-2 text-[var(--color-text-muted)]">
+                                            <ImageIcon size={48} className="text-gray-600" />
+                                            <p>No image generated</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Dialogue & Playback Controls */}
+                        <div className="glass-panel p-4">
+                            <div className="flex items-start gap-4">
+                                {/* Dialogue Text */}
+                                <div className="flex-1">
+                                    <p className="text-sm text-[var(--color-primary)] font-bold mb-1">{currentCut.speaker}</p>
+                                    <p className="text-white text-base italic">"{currentCut.dialogue}"</p>
+                                    <p className="text-[10px] text-[var(--color-text-muted)] mt-1 line-clamp-1">{currentCut.visualPrompt}</p>
+                                </div>
+
+                                {/* Playback Controls */}
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <button
+                                        onClick={handlePrevCut}
+                                        disabled={currentCutIndex === 0}
+                                        className="p-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-white hover:border-[var(--color-primary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        <ArrowLeft size={18} />
+                                    </button>
+
+                                    {currentCut.audioUrl && (
+                                        <>
+                                            <button
+                                                onClick={handlePlaySequential}
+                                                className="flex items-center gap-2 px-4 py-2 rounded-full bg-[var(--color-primary)] hover:bg-[var(--color-primary)]/90 text-black font-bold transition-all"
+                                            >
+                                                {isPlaying ? <Pause size={18} /> : <Play size={18} />}
+                                                {isPlaying ? 'Pause' : 'Play'}
+                                            </button>
+                                            {currentCut.audioUrl !== 'mock:beep' && (
+                                                <>
+                                                    <audio
+                                                        id="sequential-audio"
+                                                        src={resolvedAudios[currentCut.id] || ''}
+                                                        preload="metadata"
+                                                    />
+                                                    {/* SFX Audio Element */}
+                                                    <audio
+                                                        id="sequential-sfx"
+                                                        src={resolvedSfx[currentCut.id] || ''}
+                                                        preload="metadata"
+                                                    />
+                                                </>
+                                            )}
+                                        </>
+                                    )}
+
+                                    <button
+                                        onClick={handleNextCut}
+                                        disabled={currentCutIndex === script.length - 1}
+                                        className="p-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-white hover:border-[var(--color-primary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        <ArrowRight size={18} />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </>
+                ) : (
+                    <div className="flex-1 glass-panel p-12 flex items-center justify-center">
+                        <div className="text-center">
+                            <ImageIcon size={64} className="text-gray-600 mx-auto mb-4" />
+                            <p className="text-[var(--color-text-muted)]">No cuts available. Generate a script in Step 3 first.</p>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

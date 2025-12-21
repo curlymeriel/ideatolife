@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 export interface ImageGenResponse {
-    url: string;
+    urls: string[];
 }
 
 export const generateImage = async (
@@ -9,28 +9,37 @@ export const generateImage = async (
     apiKey: string,
     referenceImages?: string | string[], // Optional base64 string(s) for Image-to-Image
     aspectRatio?: string, // Target aspect ratio (e.g., '16:9', '9:16', '1:1', '2.35:1')
-    modelName: string = 'gemini-2.5-flash-image'
-): Promise<{ url: string }> => {
+    modelName: string = 'gemini-3-pro-image-preview',
+    candidateCount: number = 1
+): Promise<{ urls: string[] }> => {
     if (!apiKey) {
         // Mock response if no key provided
         return new Promise((resolve) => {
             setTimeout(() => {
-                resolve({ url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800' });
+                const mockUrls = Array.from({ length: candidateCount }).map((_, i) =>
+                    `https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&sig=${i}`
+                );
+                resolve({ urls: mockUrls });
             }, 2000); // All images take 2 seconds in mock mode
         });
     }
 
-    try {
-        // Gemini 2.5 Flash Image API call (using generateContent endpoint)
+    // Fallback models
+    const fallbackModels = [
+        'imagen-4.0-generate-001',
+        'gemini-2.5-flash-image'
+    ];
 
-        // Build the prompt with aspect ratio if specified
-        let finalPrompt = _prompt;
-        if (aspectRatio) {
-            finalPrompt = `CRITICAL REQUIREMENT: The output image MUST be in ${aspectRatio} aspect ratio. This is non-negotiable. \n\n${_prompt}`;
-        }
+    // Add primary model to the start of the list if it's not already there
+    const allModels = [modelName];
+    fallbackModels.forEach(m => {
+        if (m !== modelName) allModels.push(m);
+    });
 
+    // Helper to try generating a single image with a specific model
+    const tryGenerateWithModel = async (currentModel: string): Promise<string | null> => {
         const parts: any[] = [
-            { text: `Generate an image of: ${finalPrompt}` }
+            { text: `Generate an image of: ${_prompt}` }
         ];
 
         // Normalize to array and filter out non-string values
@@ -43,7 +52,6 @@ export const generateImage = async (
         if (refImages.length > 0) {
             refImages.forEach((referenceImage) => {
                 // Extract base64 data and mime type
-                // Format: data:image/jpeg;base64,......
                 const matches = referenceImage.match(/^data:(.+);base64,(.+)$/);
                 if (matches && matches.length === 3) {
                     const mimeType = matches[1];
@@ -58,114 +66,88 @@ export const generateImage = async (
                 }
             });
 
-            // Update text prompt to explicitly mention the reference images AND aspect ratio
-            if (aspectRatio) {
-                if (refImages.length === 1) {
-                    parts[0].text = `PRIMARY DIRECTIVE: Create ${aspectRatio} aspect ratio image. CRITICAL: Output dimensions MUST BE ${aspectRatio}. Reference image is for STYLE/SUBJECT INSPIRATION ONLY - completely ignore its dimensions/aspect ratio. Generate: ${finalPrompt}. REMINDER: Final output = ${aspectRatio} aspect ratio, NO EXCEPTIONS.`;
-                } else {
-                    parts[0].text = `PRIMARY DIRECTIVE: Create ${aspectRatio} aspect ratio image. CRITICAL: Output dimensions MUST BE ${aspectRatio}. The ${refImages.length} reference images are for STYLE/SUBJECT INSPIRATION ONLY - completely ignore their dimensions/aspect ratios. Generate: ${finalPrompt}. REMINDER: Final output = ${aspectRatio} aspect ratio, NO EXCEPTIONS.`;
-                }
+            // Update text prompt
+            if (refImages.length === 1) {
+                parts[0].text = `Using the provided image as a strong visual reference, generate: ${_prompt}. Maintain the key features and style from the reference image.`;
             } else {
-                if (refImages.length === 1) {
-                    parts[0].text = `Using the provided image as a strong visual reference, generate: ${finalPrompt}. Maintain the key features and style from the reference image.`;
-                } else {
-                    parts[0].text = `Using the ${refImages.length} provided reference images, generate: ${finalPrompt}. Maintain consistency with all reference images - use their visual features, styles, and characteristics.`;
-                }
+                parts[0].text = `Using the ${refImages.length} provided reference images, generate: ${_prompt}. Maintain consistency with all reference images - use their visual features, styles, and characteristics.`;
             }
         }
 
-        console.log(`[ImageGen] Generating with model: ${modelName}`);
-        console.log(`[ImageGen] Reference images count: ${refImages.length}`);
+        // Convert aspect ratio
+        const getApiAspectRatio = (ratio?: string): string => {
+            if (!ratio) return '16:9';
+            const ratioMap: Record<string, string> = {
+                '16:9': '16:9', '9:16': '9:16', '1:1': '1:1', '2.35:1': '21:9',
+                '21:9': '21:9', '4:3': '4:3', '3:4': '3:4', '3:2': '3:2',
+                '2:3': '2:3', '5:4': '5:4', '4:5': '4:5'
+            };
+            return ratioMap[ratio] || '16:9';
+        };
+        const apiAspectRatio = getApiAspectRatio(aspectRatio);
 
-        // Retry logic for 500 errors
-        let retries = 0;
-        const maxRetries = 2;
+        console.log(`[ImageGen] Trying model: ${currentModel}, AspectRatio: ${apiAspectRatio}`);
 
-        while (retries <= maxRetries) {
-            try {
-                const response = await axios.post(
-                    `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
-                    {
-                        contents: [{
-                            parts: parts
-                        }],
-                    },
-                    {
-                        headers: {
-                            'Content-Type': 'application/json'
-                        }
-                    }
-                );
-
-                // Check for inline image data in the response
-                if (response.data && response.data.candidates && response.data.candidates[0]?.content?.parts) {
-                    const parts = response.data.candidates[0].content.parts;
-                    // Look for a part that has inlineData with an image mimeType
-                    const imagePart = parts.find((part: any) => part.inlineData && part.inlineData.mimeType.startsWith('image/'));
-
-                    if (imagePart) {
-                        return { url: `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}` };
-                    }
+        const response = await axios.post(
+            `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`,
+            {
+                contents: [{ parts: parts }],
+                generationConfig: {
+                    responseModalities: ["IMAGE", "TEXT"],
+                    imageConfig: { aspectRatio: apiAspectRatio },
+                    candidateCount: 1
                 }
+            },
+            {
+                headers: { 'Content-Type': 'application/json' },
+                timeout: 45000
+            }
+        );
 
-                // If we get here, response was 200 but no image found
-                throw new Error('No image data found in Gemini response');
-
-            } catch (error: any) {
-                if (error.response?.status === 500 && retries < maxRetries) {
-                    console.warn(`[ImageGen] 500 Error encountered. Retrying (${retries + 1}/${maxRetries})...`);
-                    retries++;
-                    await new Promise(resolve => setTimeout(resolve, 1000 * retries)); // Exponential backoff
-                    continue;
-                }
-                throw error; // Re-throw if not 500 or max retries reached
+        if (response.data && response.data.candidates?.[0]?.content?.parts) {
+            const imagePart = response.data.candidates[0].content.parts.find((part: any) =>
+                part.inlineData && part.inlineData.mimeType.startsWith('image/')
+            );
+            if (imagePart) {
+                return `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
             }
         }
+        throw new Error('No image data found in response');
+    };
 
-        throw new Error('Max retries exceeded');
+    let lastError: any = null;
 
-    } catch (error: any) {
-        console.error('Gemini Image Generation Failed:', error.response?.data || error.message);
-
-        let errorMessage = error.message;
-        if (error.response) {
-            if (error.response.status === 404) {
-                errorMessage = `Model '${modelName}' not found (404). This model might not be available to your API key yet, or the name is incorrect.`;
-            } else if (error.response.status === 429) {
-                // Get next reset time (tomorrow 9 AM KST)
-                const now = new Date();
-                const tomorrow = new Date(now);
-                tomorrow.setDate(tomorrow.getDate() + 1);
-                tomorrow.setHours(9, 0, 0, 0);
-
-                const hoursUntilReset = Math.ceil((tomorrow.getTime() - now.getTime()) / (1000 * 60 * 60));
-
-                errorMessage = `⏰ API 할당량 초과!\n\n` +
-                    `무료 플랜은 하루 약 15-50개 이미지만 생성할 수 있습니다.\n` +
-                    `약 ${hoursUntilReset}시간 후 (내일 오전 9시경)에 다시 시도해주세요.\n\n` +
-                    `💡 지금 할 수 있는 것:\n` +
-                    `- 텍스트 프롬프트만 작성하고 저장\n` +
-                    `- 다른 Google 계정으로 새 API 키 생성\n` +
-                    `- Google Cloud에서 유료 플랜 활성화`;
-            } else if (error.response.status === 400) {
-                errorMessage = `Bad Request (400): ${JSON.stringify(error.response.data.error?.message || error.response.data)}`;
-            } else if (error.response.status === 403) {
-                errorMessage = `Permission Denied (403). Please check if your API key has the correct permissions.`;
-            } else if (error.response.status === 500) {
-                errorMessage = `Server Error (500). Google's servers are having trouble. Please try again later or try a different model.`;
-            } else {
-                errorMessage = `API Error (${error.response.status}): ${JSON.stringify(error.response.data.error?.message || error.message)}`;
+    // Try each model in sequence
+    for (const model of allModels) {
+        try {
+            const urls: string[] = [];
+            // Generate requested number of candidates
+            for (let i = 0; i < candidateCount; i++) {
+                const url = await tryGenerateWithModel(model);
+                if (url) urls.push(url);
+                if (i < candidateCount - 1) await new Promise(r => setTimeout(r, 500));
             }
+
+            if (urls.length > 0) return { urls };
+
+        } catch (error: any) {
+            console.warn(`[ImageGen] Model ${model} failed:`, error.response?.data?.error?.message || error.message);
+            lastError = error;
+            // Continue to next model in loop
         }
-
-        alert(`Gemini Image Generation Failed: ${errorMessage}`);
-
-        // Fallback to mock response
-        console.warn('Falling back to mock generation due to API error.');
-        return new Promise((resolve) => {
-            setTimeout(() => {
-                resolve({ url: `https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800` });
-            }, 1000);
-        });
     }
+
+    // If all models failed, process the last error to return a user-friendly message
+    let errorMessage = lastError?.message || "Unknown error";
+    if (lastError?.code === 'ECONNABORTED' || lastError?.message?.includes('timeout')) {
+        errorMessage = `⏱️ 연결 시간 초과 (Timeout). 구글 서버 응답이 너무 늦습니다.`;
+    } else if (lastError?.response) {
+        const status = lastError.response.status;
+        if (status === 404) errorMessage = `Model not found (404).`;
+        else if (status === 429) errorMessage = `⏰ API 할당량 초과!`;
+        else if (status === 503) errorMessage = `🔥 서버 과부하 (503). 현재 구글 서버에 사용자가 너무 많습니다.`;
+        else errorMessage = `API Error (${status}): ${lastError.response.data.error?.message}`;
+    }
+
+    throw new Error(`All image generation models failed. Last error: ${errorMessage}`);
 };

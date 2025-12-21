@@ -1,21 +1,25 @@
-﻿import React, { useState, useCallback, useRef, useEffect } from 'react';
+﻿import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useWorkflowStore } from '../store/workflowStore';
-import { generateScript } from '../services/gemini';
+import { generateScript, DEFAULT_SCRIPT_INSTRUCTIONS, DEFAULT_VIDEO_PROMPT_INSTRUCTIONS, modifyInstructionWithAI } from '../services/gemini';
 import type { ScriptCut } from '../services/gemini';
 import { generateImage } from '../services/imageGen';
 import { generateSpeech, type VoiceConfig } from '../services/tts';
 import { useNavigate } from 'react-router-dom';
-import { Wand2, Loader2, ArrowRight } from 'lucide-react';
+import { Wand2, Loader2, ArrowRight, Lock, Unlock, Send, Bot, X } from 'lucide-react';
 import { CutItem } from '../components/Production/CutItem';
+import { SfxSearchModal } from '../components/Production/SfxSearchModal';
+import { AiInstructionHelper } from '../components/Production/AiInstructionHelper';
 import { getMatchedAssets } from '../utils/assetUtils';
-import { linkCutsToStoryline, syncCutsToStoryline } from '../utils/storylineUtils';  // NEW
+import { linkCutsToStoryline } from '../utils/storylineUtils';
+import { saveToIdb, generateCutImageKey, resolveUrl } from '../utils/imageStorage';
 
 export const Step3_Production: React.FC = () => {
     const {
+        id: projectId,  // For IndexedDB storage keys
         seriesName, episodeName, targetDuration, styleAnchor, apiKeys,
         script, setScript, ttsModel, setTtsModel, imageModel, setImageModel, nextStep, assetDefinitions,
         episodePlot, characters, episodeCharacters, seriesLocations, episodeLocations, masterStyle, aspectRatio,
-        storylineTable, setProjectInfo  // NEW: For storyline integration
+        storylineTable, setProjectInfo
     } = useWorkflowStore();
     const navigate = useNavigate();
 
@@ -25,12 +29,20 @@ export const Step3_Production: React.FC = () => {
     const [audioLoading, setAudioLoading] = useState<Record<number, boolean>>({});
     const [playingAudio, setPlayingAudio] = useState<number | null>(null);
     const [showAssetSelector, setShowAssetSelector] = useState<number | null>(null);
+    const [sfxModalCutId, setSfxModalCutId] = useState<number | null>(null);
 
     // Ref to keep track of latest script for stable callbacks
     const localScriptRef = useRef(localScript);
     useEffect(() => {
         localScriptRef.current = localScript;
     }, [localScript]);
+
+    // CRITICAL: Sync localScript when store's script changes (e.g., project switch)
+    // This ensures that when navigating between projects, the component shows correct data
+    useEffect(() => {
+        console.log(`[Step3] Store script changed - syncing localScript (projectId: ${projectId}, cuts: ${script.length})`);
+        setLocalScript(script);
+    }, [projectId, script]);
 
     // Auto-save helper
     const saveToStore = (currentScript: ScriptCut[]) => {
@@ -40,11 +52,30 @@ export const Step3_Production: React.FC = () => {
     const handleSave = useCallback(() => {
         saveToStore(localScriptRef.current);
     }, []);
+    // State for local instructions
+    const [customInstructions, setCustomInstructions] = useState(DEFAULT_SCRIPT_INSTRUCTIONS);
+    const [isInstructionsModalOpen, setIsInstructionsModalOpen] = useState(false);
 
-    // Calculate progress
-    const confirmedCount = localScript.filter(c => c.isConfirmed).length;
+    // State for video prompt instructions
+    const [videoPromptInstructions, setVideoPromptInstructions] = useState(DEFAULT_VIDEO_PROMPT_INSTRUCTIONS);
+    const [isVideoInstructionsModalOpen, setIsVideoInstructionsModalOpen] = useState(false);
+
+    // Calculate progress - requires BOTH actual content AND confirmation
+    const confirmedCount = localScript.filter(c => {
+        const hasConfirmedImage = c.isImageConfirmed && c.finalImageUrl;
+        const hasConfirmedAudio = c.isAudioConfirmed && (c.audioUrl || c.speaker === 'SILENT');
+        return hasConfirmedImage && hasConfirmedAudio;
+    }).length;
     const totalCount = localScript.length;
     const progressPercent = totalCount > 0 ? Math.round((confirmedCount / totalCount) * 100) : 0;
+
+    // Memoized speaker list to prevent re-renders and crashes
+    const speakerList = useMemo(() => {
+        const allChars = [...(characters || []), ...(episodeCharacters || [])];
+        return allChars
+            .map(c => c.name)
+            .filter((v, i, a) => v && a.indexOf(v) === i);
+    }, [characters, episodeCharacters]);
 
     const TTS_MODELS = [
         { value: 'standard' as const, label: 'Standard', cost: '$', hint: 'Basic quality, lowest cost' },
@@ -64,6 +95,26 @@ export const Step3_Production: React.FC = () => {
             const allCharacters = [...(characters || []), ...(episodeCharacters || [])];
             const allLocations = [...(seriesLocations || []), ...(episodeLocations || [])];
 
+            console.log("[Step3] Generating Script with Assets:");
+            console.log("Characters:", allCharacters.map(c => `${c.name} (${c.id})`));
+            console.log("Locations:", allLocations.map(l => `${l.name} (${l.id})`));
+            console.log("Asset Definitions Keys:", assetDefinitions ? Object.keys(assetDefinitions) : "None");
+
+            console.log("--- Generating Script DEBUG ---");
+            console.log("Episode Plot:", episodePlot);
+            console.log("Storyline Table Full:", JSON.stringify(storylineTable, null, 2));
+
+            if (assetDefinitions) {
+                console.log("Asset Definitions Preview:");
+                Object.values(assetDefinitions).forEach((def: any) => {
+                    console.log(`- ${def.name} (${def.type}): ${def.description.substring(0, 50)}... [Full Description check logs]`);
+                    // We log the full description if it looks suspicious
+                    if (def.description.length > 50) console.log(`  Full Desc (${def.name}):`, def.description);
+                });
+            } else {
+                console.log("Asset Definitions: None/Undefined");
+            }
+
             const generated = await generateScript(
                 seriesName,
                 episodeName,
@@ -74,33 +125,94 @@ export const Step3_Production: React.FC = () => {
                 allCharacters,
                 allLocations,
                 storylineTable,  // Pass storyline table
-                assetDefinitions  // NEW: Pass Step 2 asset definitions
+                assetDefinitions,  // NEW: Pass Step 2 asset definitions
+                customInstructions, // NEW: Custom instructions
+                localScript // NEW: Pass existing script for context-aware regeneration
             );
 
             // Link cuts to storyline scenes
             const linkedScript = linkCutsToStoryline(generated, storylineTable);
 
             // Merge generated script with confirmed cuts
-            // Keep confirmed cuts' content but add new TTS metadata
+            // Respect granular locks for Audio and Image
             const mergedScript = linkedScript.map((newCut, index) => {
                 const existingCut = localScriptRef.current[index];
-                if (existingCut && existingCut.isConfirmed) {
-                    // Keep confirmed cut content but add new metadata for TTS
-                    return {
-                        ...existingCut,
-                        // Add/update TTS metadata from regenerated script
-                        emotion: newCut.emotion,
-                        emotionIntensity: newCut.emotionIntensity,
-                        language: newCut.language
-                    };
+
+                if (existingCut) {
+                    // MIGRATION: Treat old 'isConfirmed' as both locked
+                    const isAudioLocked = existingCut.isAudioConfirmed || existingCut.isConfirmed;
+                    const isImageLocked = existingCut.isImageConfirmed || existingCut.isConfirmed;
+
+                    let finalCut = { ...newCut };
+
+                    // Preserve Audio/Dialogue properties if locked
+                    if (isAudioLocked) {
+                        console.log(`[Step3] Preserving AUDIO for cut #${existingCut.id}`);
+                        finalCut = {
+                            ...finalCut,
+                            speaker: existingCut.speaker,
+                            dialogue: existingCut.dialogue,
+                            emotion: existingCut.emotion,
+                            emotionIntensity: existingCut.emotionIntensity,
+                            language: existingCut.language, // Keep user setting
+                            voiceGender: existingCut.voiceGender,
+                            voiceAge: existingCut.voiceAge,
+                            voiceSpeed: existingCut.voiceSpeed,
+                            audioUrl: existingCut.audioUrl,
+                            // SFX preservation Linked to Audio Lock
+                            sfxUrl: existingCut.sfxUrl,
+                            sfxName: existingCut.sfxName,
+                            sfxDescription: existingCut.sfxDescription,
+                            sfxVolume: existingCut.sfxVolume,
+                            audioPadding: existingCut.audioPadding,
+                            estimatedDuration: existingCut.estimatedDuration,
+                            isAudioConfirmed: true
+                        };
+                    } else {
+                        // Auto-populate logic for NEW audio content
+                        // Priority: 1. Character gender/age from Step 1, 2. Name-based detection / default
+                        const speakerChar = allCharacters.find(c => c.name.toLowerCase() === (newCut.speaker || 'Narrator').toLowerCase());
+                        if (speakerChar?.gender && speakerChar.gender !== 'other') {
+                            finalCut.voiceGender = speakerChar.gender as 'male' | 'female';
+                        } else {
+                            finalCut.voiceGender = detectGender(newCut.speaker || 'Narrator');
+                        }
+                        finalCut.voiceAge = speakerChar?.age || 'adult';
+                    }
+
+                    // Preserve Visual/Image properties if locked
+                    if (isImageLocked) {
+                        console.log(`[Step3] Preserving IMAGE for cut #${existingCut.id}`);
+                        finalCut = {
+                            ...finalCut,
+                            visualPrompt: existingCut.visualPrompt,
+                            finalImageUrl: existingCut.finalImageUrl,
+                            referenceAssetIds: existingCut.referenceAssetIds,
+                            referenceCutIds: existingCut.referenceCutIds,
+                            isImageConfirmed: true
+                        };
+                    }
+
+                    // Clear old deprecated flag
+                    delete finalCut.isConfirmed;
+
+                    return finalCut;
                 }
 
-                // Auto-populate voiceGender and voiceAge for new cuts
-                const autoGender = detectGender(newCut.speaker || 'Narrator');
+                // Completely new cut
+                // Priority: 1. Character gender/age from Step 1, 2. Name-based detection / default
+                const speakerChar = allCharacters.find(c => c.name.toLowerCase() === (newCut.speaker || 'Narrator').toLowerCase());
+                let voiceGender: 'male' | 'female' | 'neutral';
+                if (speakerChar?.gender && speakerChar.gender !== 'other') {
+                    voiceGender = speakerChar.gender as 'male' | 'female';
+                } else {
+                    voiceGender = detectGender(newCut.speaker || 'Narrator');
+                }
+
                 return {
                     ...newCut,
-                    voiceGender: autoGender,
-                    voiceAge: 'adult' as const  // Default to adult, user can change via dropdown
+                    voiceGender,
+                    voiceAge: speakerChar?.age || 'adult'
                 };
             });
 
@@ -108,6 +220,7 @@ export const Step3_Production: React.FC = () => {
             saveToStore(mergedScript);
         } catch (error) {
             console.error(error);
+            // ... (keep default fallback)
             setLocalScript([
                 { id: 1, speaker: 'Narrator', dialogue: 'In a world of pure imagination...', visualPrompt: 'Wide shot of a fantasy landscape, golden hour', estimatedDuration: 5 },
                 { id: 2, speaker: 'Hero', dialogue: 'We have to keep moving.', visualPrompt: 'Close up of hero looking determined', estimatedDuration: 3 },
@@ -117,6 +230,8 @@ export const Step3_Production: React.FC = () => {
         }
     };
 
+
+
     const handleGenerateFinalImage = useCallback(async (cutId: number, prompt: string) => {
         setImageLoading(prev => ({ ...prev, [cutId]: true }));
         try {
@@ -124,6 +239,7 @@ export const Step3_Production: React.FC = () => {
 
             const characterImages: string[] = [];
             const locationImages: string[] = [];
+            const propImages: string[] = [];
             const matchedAssets: string[] = [];
 
             const currentScript = localScriptRef.current;
@@ -148,42 +264,79 @@ export const Step3_Production: React.FC = () => {
 
                 matchedAssets.push(asset.name);
 
-                const imageToUse = asset.draftImage || asset.referenceImage;
+                // FIX: Use masterImage (if selected) -> draftImage (if generated) -> referenceImage (if uploaded)
+                const imageToUse = asset.masterImage || asset.draftImage || asset.referenceImage;
 
                 if (imageToUse) {
                     if (asset.type === 'character') {
                         characterImages.push(imageToUse);
                         console.log(`[Image ${cutId}]   - Added CHARACTER: "${asset.name}"`);
-                    } else {
+                    } else if (asset.type === 'location') {
                         locationImages.push(imageToUse);
                         console.log(`[Image ${cutId}]   - Added LOCATION: "${asset.name}"`);
+                    } else if (asset.type === 'prop') {
+                        propImages.push(imageToUse);
+                        console.log(`[Image ${cutId}]   - Added PROP: "${asset.name}"`);
                     }
                 }
             });
 
+            // CRITICAL FIX: Explicitly match Speaker to Asset (to ensure "Orange Uniform" survives)
+            const speakerName = currentCut?.speaker;
+            if (speakerName && speakerName !== 'Narrator' && speakerName !== 'SILENT') {
+                const speakerAsset = Object.values(assetDefinitions || {}).find((a: any) =>
+                    a.type === 'character' && a.name.toLowerCase() === speakerName.toLowerCase()
+                );
+                if (speakerAsset) {
+                    // Only add if not already matched
+                    if (!matchedAssets.includes(speakerAsset.name)) {
+                        console.log(`[Image ${cutId}] 🗣️ Speaker Auto-Match (Priority): "${speakerAsset.name}"`);
+                        matchedAssets.push(speakerAsset.name);
 
-            const allReferenceImages = [...characterImages, ...locationImages].slice(0, 3);
+                        // Also add reference image if available
+                        const imageToUse = speakerAsset.masterImage || speakerAsset.draftImage || speakerAsset.referenceImage;
+                        if (imageToUse) characterImages.push(imageToUse);
+                    }
+                }
+            }
+
+            const allReferenceImages: string[] = [];
+            if (currentCut?.userReferenceImage) {
+                allReferenceImages.push(currentCut.userReferenceImage);
+                console.log(`[Image ${cutId}] 🎨 Added USER SKETCH/REFERENCE image`);
+            }
+            allReferenceImages.push(...characterImages, ...locationImages, ...propImages);
+
+            // Slice to reasonable limit (4 images) to avoid payload issues
+            const limitedReferenceImages = allReferenceImages.slice(0, 4);
 
             let characterDetails = '';
             let locationDetails = '';
+            let propDetails = '';
 
             matchedAssets.forEach(assetName => {
                 const asset = Object.values(assetDefinitions || {}).find((a: any) => a.name === assetName);
                 if (asset && asset.description) {
                     if (asset.type === 'character') {
+                        // ENFORCE VISUAL TRUTH: Prepend "Fixed Visual Reference:"
                         characterDetails += `\n- ${asset.name}: ${asset.description}`;
                     } else if (asset.type === 'location') {
                         locationDetails += `\n- ${asset.name}: ${asset.description}`;
+                    } else if (asset.type === 'prop') {
+                        propDetails += `\n- ${asset.name}: ${asset.description}`;
                     }
                 }
             });
 
             let assetDetails = '';
             if (characterDetails) {
-                assetDetails += `\n\n[Character Details]${characterDetails}`;
+                assetDetails += `\n\n[Character Details (STRICT VISUAL REFERENCE)]${characterDetails}`;
             }
             if (locationDetails) {
                 assetDetails += `\n\n[Location Details]${locationDetails}`;
+            }
+            if (propDetails) {
+                assetDetails += `\n\n[Prop Details]${propDetails}`;
             }
 
             let stylePrompt = '';
@@ -208,29 +361,41 @@ export const Step3_Production: React.FC = () => {
                 stylePrompt += `\n\n[Style Details]\n${JSON.stringify(styleAnchor.prompts)}`;
             }
 
-            const finalPrompt = prompt + assetDetails + stylePrompt;
+            // REORDERED PROMPT STRUCTURE: Asset Details First -> Style -> Scene Action
+            // This ensures the "Who" and "What" (Orange Uniform) are established before the "Action"
+            const finalPrompt = assetDetails + stylePrompt + `\n\n[Scene Action]\n${prompt}`;
+
+            // FIX: Resolve IDB URLs to Base64 before sending to Gemini
+            const resolvedReferenceImages = await Promise.all(
+                limitedReferenceImages.map(url => resolveUrl(url))
+            );
 
             const result = await generateImage(
                 finalPrompt,
                 apiKeys.gemini,
-                allReferenceImages.length > 0 ? allReferenceImages : undefined,
+                resolvedReferenceImages.length > 0 ? resolvedReferenceImages : undefined,
                 aspectRatio,
                 imageModel
             );
 
+            // Save first image to IndexedDB and get idb:// reference URL
+            const imageKey = generateCutImageKey(projectId, cutId, 'final');
+            const idbUrl = await saveToIdb('images', imageKey, result.urls[0]);
+
             const updatedScript = currentScript.map(cut =>
-                cut.id === cutId ? { ...cut, finalImageUrl: result.url } : cut
+                cut.id === cutId ? { ...cut, finalImageUrl: `${idbUrl}?t=${Date.now()}` } : cut
             );
             setLocalScript(updatedScript);
             saveToStore(updatedScript);
 
-            console.log(`[Image ${cutId}] ✅ Generated successfully`);
-        } catch (error) {
+            console.log(`[Image ${cutId}] ✅ Generated and saved to IndexedDB`);
+        } catch (error: any) {
             console.error(`[Image ${cutId}] ❌ Generation failed:`, error);
+            alert(`이미지 생성 실패: ${error.message}`);
         } finally {
             setImageLoading(prev => ({ ...prev, [cutId]: false }));
         }
-    }, [apiKeys.gemini, aspectRatio, imageModel, assetDefinitions, masterStyle, styleAnchor]);
+    }, [projectId, apiKeys.gemini, aspectRatio, imageModel, assetDefinitions, masterStyle, styleAnchor]);
 
     // Helper: Detect gender from speaker name
     const detectGender = (speakerName: string): 'male' | 'female' | 'neutral' => {
@@ -273,36 +438,69 @@ export const Step3_Production: React.FC = () => {
         return koreanRegex.test(text) ? 'ko-KR' : 'en-US';
     };
 
-    // Helper: Get default voice for language and gender
+    // Helper: Get default voice for language, gender, and TTS model
     const getDefaultVoiceForLanguage = (
         language: 'en-US' | 'ko-KR',
         gender: 'male' | 'female' | 'neutral',
-        age: 'child' | 'young' | 'adult' | 'senior' = 'adult'
+        age: 'child' | 'young' | 'adult' | 'senior' = 'adult',
+        model: string = ttsModel
     ): string => {
         if (language === 'ko-KR') {
-            // Chirp 3 HD Korean voices mapping
-            if (gender === 'female') {
-                if (age === 'child' || age === 'young') return 'ko-KR-Chirp3-HD-Leda';
-                if (age === 'senior') return 'ko-KR-Chirp3-HD-Kore';
-                return 'ko-KR-Chirp3-HD-Aoede'; // Default Adult
+            // Korean voices based on model selection
+            if (model === 'chirp3-hd') {
+                // Chirp 3 HD Korean voices
+                if (gender === 'female') {
+                    if (age === 'child' || age === 'young') return 'ko-KR-Chirp3-HD-Leda';
+                    if (age === 'senior') return 'ko-KR-Chirp3-HD-Kore';
+                    return 'ko-KR-Chirp3-HD-Aoede'; // Default Adult
+                } else {
+                    if (age === 'child' || age === 'young') return 'ko-KR-Chirp3-HD-Puck';
+                    if (age === 'senior') return 'ko-KR-Chirp3-HD-Charon';
+                    return 'ko-KR-Chirp3-HD-Fenrir'; // Default Adult
+                }
+            } else if (model === 'wavenet') {
+                // WaveNet Korean voices
+                if (gender === 'female') return 'ko-KR-Wavenet-A';
+                if (gender === 'male') return 'ko-KR-Wavenet-C';
+                return 'ko-KR-Wavenet-B';
             } else {
-                if (age === 'child' || age === 'young') return 'ko-KR-Chirp3-HD-Puck';
-                if (age === 'senior') return 'ko-KR-Chirp3-HD-Charon';
-                return 'ko-KR-Chirp3-HD-Fenrir'; // Default Adult
+                // Standard Korean voices (default for standard model)
+                if (gender === 'female') return 'ko-KR-Standard-A';
+                if (gender === 'male') return 'ko-KR-Standard-C';
+                return 'ko-KR-Standard-B';
             }
         } else {
-            // Neural2 English voices
-            if (gender === 'female') {
-                if (age === 'child' || age === 'young') return 'en-US-Neural2-G';
-                if (age === 'senior') return 'en-US-Neural2-H';
-                return 'en-US-Neural2-C';
+            // English voices based on model selection
+            if (model === 'neural2') {
+                // Neural2 English voices
+                if (gender === 'female') {
+                    if (age === 'child' || age === 'young') return 'en-US-Neural2-G';
+                    if (age === 'senior') return 'en-US-Neural2-H';
+                    return 'en-US-Neural2-C';
+                }
+                if (gender === 'male') {
+                    if (age === 'child' || age === 'young') return 'en-US-Neural2-I';
+                    if (age === 'senior') return 'en-US-Neural2-D';
+                    return 'en-US-Neural2-J';
+                }
+                return 'en-US-Neural2-A';
+            } else if (model === 'wavenet') {
+                // WaveNet English voices
+                if (gender === 'female') return 'en-US-Wavenet-C';
+                if (gender === 'male') return 'en-US-Wavenet-D';
+                return 'en-US-Wavenet-A';
+            } else if (model === 'chirp3-hd') {
+                // Chirp 3 HD doesn't have English - fallback to Neural2
+                console.warn('Chirp 3 HD does not support English, falling back to Neural2');
+                if (gender === 'female') return 'en-US-Neural2-C';
+                if (gender === 'male') return 'en-US-Neural2-J';
+                return 'en-US-Neural2-A';
+            } else {
+                // Standard English voices
+                if (gender === 'female') return 'en-US-Standard-C';
+                if (gender === 'male') return 'en-US-Standard-D';
+                return 'en-US-Standard-A';
             }
-            if (gender === 'male') {
-                if (age === 'child' || age === 'young') return 'en-US-Neural2-I';
-                if (age === 'senior') return 'en-US-Neural2-D';
-                return 'en-US-Neural2-J';
-            }
-            return 'en-US-Neural2-A';
         }
     };
 
@@ -339,22 +537,91 @@ export const Step3_Production: React.FC = () => {
             const currentCut = currentScript.find(c => c.id === cutId);
             const speaker = currentCut?.speaker || 'Narrator';
 
-            // 1. Detect language from cut metadata OR auto-detect from dialogue text
-            const language = currentCut?.language || detectLanguageFromText(dialogue);
+            // 1. Determine language based on TTS model selection and dialogue content
+            // If user selected Chirp 3 HD (Korean model), force Korean language
+            // If user selected Neural2 (English model), force English language
+            let language: 'en-US' | 'ko-KR';
+
+            if (ttsModel === 'chirp3-hd') {
+                // User explicitly selected Korean model
+                language = 'ko-KR';
+                console.log(`[Audio ${cutId}] Using Korean (ko-KR) based on TTS model selection: ${ttsModel}`);
+            } else if (ttsModel === 'neural2') {
+                // User explicitly selected English Neural2 model
+                language = 'en-US';
+                console.log(`[Audio ${cutId}] Using English (en-US) based on TTS model selection: ${ttsModel}`);
+            } else {
+                // For standard/wavenet, auto-detect from cut metadata or dialogue text
+                const rawLanguage = (currentCut?.language || detectLanguageFromText(dialogue)) as string;
+                if (rawLanguage === 'ko' || rawLanguage.startsWith('ko')) {
+                    language = 'ko-KR';
+                } else if (rawLanguage === 'en' || rawLanguage.startsWith('en')) {
+                    language = 'en-US';
+                } else {
+                    language = 'en-US'; // Default fallback
+                }
+                console.log(`[Audio ${cutId}] Auto-detected language: ${language}`);
+            }
 
             // 2. Find character voice settings or use defaults
             const allCharacters = [...(characters || []), ...(episodeCharacters || [])];
             const character = allCharacters.find(c => c.name.toLowerCase() === speaker.toLowerCase());
 
-            const genderToUse = (currentCut?.voiceGender && currentCut.voiceGender !== 'neutral')
-                ? currentCut.voiceGender
-                : detectGender(speaker);
+            // Priority for voice gender:
+            // 1. Manual override from cut (if not 'neutral'/auto)
+            // 2. Character definition from Step 1
+            // 3. Name-based detection as fallback
+            let genderToUse: 'male' | 'female' | 'neutral';
+            if (currentCut?.voiceGender && currentCut.voiceGender !== 'neutral') {
+                // Manual override takes highest priority
+                genderToUse = currentCut.voiceGender;
+                console.log(`[Audio ${cutId}] Using manual gender override: ${genderToUse}`);
+            } else if (character?.gender && character.gender !== 'other') {
+                // Use character definition from Step 1
+                genderToUse = character.gender as 'male' | 'female';
+                console.log(`[Audio ${cutId}] Using character gender from Step 1: ${genderToUse} (${character.name})`);
+            } else {
+                // Fallback to name-based detection
+                genderToUse = detectGender(speaker);
+                console.log(`[Audio ${cutId}] Using name-based gender detection: ${genderToUse}`);
+            }
 
-            const voiceName = character?.voiceId || getDefaultVoiceForLanguage(
-                language,
-                genderToUse,
-                currentCut?.voiceAge || 'adult'
-            );
+            // Priority for voice selection: 
+            // 1. Manual override from cut (voiceId) - Set via Bulk Settings
+            // 2. Character default voice from Step 1
+            let voiceName = currentCut?.voiceId || character?.voiceId;
+
+            // Validate voice-language compatibility
+            if (voiceName) {
+                const isKoreanVoice = voiceName.startsWith('ko-'); // Capture ko-KR, etc.
+                const isEnglishVoice = voiceName.startsWith('en-'); // Capture en-US, en-GB, etc.
+
+                if (language === 'ko-KR' && isEnglishVoice) {
+                    console.warn(`[Audio ${cutId}] ⚠️ Language mismatch: Text is Korean, Voice is English (${voiceName}). Switching to default Korean voice.`);
+                    voiceName = undefined;
+                } else if (language === 'en-US' && isKoreanVoice) {
+                    console.warn(`[Audio ${cutId}] ⚠️ Language mismatch: Text is English, Voice is Korean (${voiceName}). Switching to default English voice.`);
+                    voiceName = undefined;
+                }
+            }
+
+            // Determine voice age: 1. Manual override, 2. Character age from Step 1, 3. Default 'adult'
+            let ageToUse: 'child' | 'young' | 'adult' | 'senior' = 'adult';
+            if (currentCut?.voiceAge) {
+                ageToUse = currentCut.voiceAge;
+                console.log(`[Audio ${cutId}] Using manual age override: ${ageToUse}`);
+            } else if (character?.age) {
+                ageToUse = character.age;
+                console.log(`[Audio ${cutId}] Using character age from Step 1: ${ageToUse} (${character.name})`);
+            }
+
+            if (!voiceName) {
+                voiceName = getDefaultVoiceForLanguage(
+                    language,
+                    genderToUse,
+                    ageToUse
+                );
+            }
 
             // 3. Determine model type
             const isChirp3 = voiceName.includes('Chirp3-HD');
@@ -363,7 +630,7 @@ export const Step3_Production: React.FC = () => {
             // 4. Build voice config with emotion-based prosody
             const voiceConfig: VoiceConfig = {
                 language,
-                rate: getEmotionRate(currentCut?.emotion),
+                rate: currentCut?.voiceSpeed ? `${Math.round(currentCut.voiceSpeed * 100)}%` : getEmotionRate(currentCut?.emotion),
                 volume: currentCut?.emotionIntensity === 'high' ? '+3dB' : currentCut?.emotionIntensity === 'low' ? '-3dB' : undefined
             };
 
@@ -373,10 +640,12 @@ export const Step3_Production: React.FC = () => {
             }
 
             console.log(`[Audio ${cutId}] Voice: ${voiceName}, Model: ${model}, Language: ${language}`);
-            console.log(`[Audio ${cutId}] Emotion: ${currentCut?.emotion} (${currentCut?.emotionIntensity})`);
+            console.log(`[Audio ${cutId}] Emotion: ${currentCut?.emotion || 'neutral'} (${currentCut?.emotionIntensity || 'moderate'})`);
+            console.log(`[Audio ${cutId}] Rate: ${voiceConfig.rate} (${currentCut?.voiceSpeed ? 'Manual' : 'Auto from Emotion'})`);
             console.log(`[Audio ${cutId}] VoiceConfig:`, voiceConfig);
 
-            const audioUrl = await generateSpeech(dialogue, voiceName, apiKeys.googleCloud, model, voiceConfig);
+            const apiKeyToUse = (apiKeys.googleCloud || apiKeys.gemini)?.trim() || '';
+            const audioUrl = await generateSpeech(dialogue, voiceName, apiKeyToUse, model, voiceConfig);
             console.log(`[Audio ${cutId}] Generated successfully`);
 
             const updatedScript = currentScript.map(cut =>
@@ -398,7 +667,19 @@ export const Step3_Production: React.FC = () => {
         } finally {
             setAudioLoading(prev => ({ ...prev, [cutId]: false }));
         }
-    }, [apiKeys.googleCloud, characters, episodeCharacters]);
+    }, [apiKeys.googleCloud, apiKeys.gemini, characters, episodeCharacters, ttsModel]);
+
+    // ESC key handler for AI Instructions modals
+    useEffect(() => {
+        const handleEsc = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                if (isInstructionsModalOpen) setIsInstructionsModalOpen(false);
+                if (isVideoInstructionsModalOpen) setIsVideoInstructionsModalOpen(false);
+            }
+        };
+        window.addEventListener('keydown', handleEsc);
+        return () => window.removeEventListener('keydown', handleEsc);
+    }, [isInstructionsModalOpen, isVideoInstructionsModalOpen]);
 
     // Cleanup audio on unmount
     useEffect(() => {
@@ -503,21 +784,45 @@ export const Step3_Production: React.FC = () => {
             );
             // Auto-save to store when updating cut metadata
             saveToStore(updated);
-
-            // NEW: Sync changes back to storyline table
-            if (storylineTable && storylineTable.length > 0) {
-                const updatedStoryline = syncCutsToStoryline(updated, storylineTable);
-                setProjectInfo({ storylineTable: updatedStoryline });
-            }
-
             return updated;
         });
     }, [storylineTable, setProjectInfo]);
 
-    const toggleConfirm = useCallback((cutId: number) => {
+    const handleUploadUserReference = useCallback(async (cutId: number, file: File) => {
+        try {
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const base64 = e.target?.result as string;
+                if (!base64) return;
+
+                // Optimization: Save to IDB to avoid bloating project.json
+                // Use a manual key pattern since generateCutImageKey assumes final/draft
+                const storageKey = `cut-${cutId}-userref`;
+                const idbUrl = await saveToIdb('images', storageKey, base64, { compress: true, maxWidth: 1024 });
+
+                handleUpdateCut(cutId, { userReferenceImage: idbUrl });
+                console.log(`[Step3] 🎨 Saved user reference to IDB: ${idbUrl}`);
+            };
+            reader.readAsDataURL(file);
+        } catch (error) {
+            console.error("Failed to upload reference:", error);
+        }
+    }, [projectId, handleUpdateCut]);
+
+    const toggleAudioConfirm = useCallback((cutId: number) => {
         setLocalScript(prev => {
             const updated = prev.map(cut =>
-                cut.id === cutId ? { ...cut, isConfirmed: !cut.isConfirmed } : cut
+                cut.id === cutId ? { ...cut, isAudioConfirmed: !cut.isAudioConfirmed } : cut
+            );
+            saveToStore(updated);
+            return updated;
+        });
+    }, []);
+
+    const toggleImageConfirm = useCallback((cutId: number) => {
+        setLocalScript(prev => {
+            const updated = prev.map(cut =>
+                cut.id === cutId ? { ...cut, isImageConfirmed: !cut.isImageConfirmed } : cut
             );
             saveToStore(updated);
             return updated;
@@ -604,147 +909,724 @@ export const Step3_Production: React.FC = () => {
     }, []);
 
     return (
-        <div className="max-w-6xl mx-auto space-y-8">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-3xl font-bold text-white tracking-tight">Script & Production</h2>
-                    <p className="text-[var(--color-text-muted)]">Generate assets per cut and confirm when ready.</p>
-                </div>
-                <div className="flex gap-3">
-                    <div className="flex flex-col">
-                        <label className="text-xs text-[var(--color-text-muted)] mb-1 font-medium">Image Model</label>
-                        <select
-                            className="bg-[var(--color-surface)] border border-[var(--color-border)] text-white rounded-lg px-4 py-2 outline-none focus:border-[var(--color-primary)] min-w-[200px]"
-                            value={imageModel}
-                            onChange={(e) => setImageModel(e.target.value as any)}
-                        >
-                            {IMAGE_MODELS.map(model => (
-                                <option key={model.value} value={model.value}>
-                                    {model.label} {model.cost}
-                                </option>
-                            ))}
-                        </select>
-                        <span className="text-xs text-[var(--color-text-muted)] mt-1">
-                            {IMAGE_MODELS.find(m => m.value === imageModel)?.hint}
-                        </span>
-                    </div>
-                    <div className="flex flex-col">
-                        <label className="text-xs text-[var(--color-text-muted)] mb-1 font-medium">TTS Model</label>
-                        <select
-                            className="bg-[var(--color-surface)] border border-[var(--color-border)] text-white rounded-lg px-4 py-2 outline-none focus:border-[var(--color-primary)] min-w-[200px]"
-                            value={ttsModel}
-                            onChange={(e) => setTtsModel(e.target.value as any)}
-                        >
-                            {TTS_MODELS.map(model => (
-                                <option key={model.value} value={model.value}>
-                                    {model.label} {model.cost}
-                                </option>
-                            ))}
-                        </select>
-                        <span className="text-xs text-[var(--color-text-muted)] mt-1">
-                            {TTS_MODELS.find(m => m.value === ttsModel)?.hint}
-                        </span>
-                    </div>
-                    <button
-                        onClick={handleGenerateScript}
-                        disabled={loading}
-                        className="btn-secondary flex items-center gap-2"
-                    >
-                        {loading ? <Loader2 className="animate-spin" size={18} /> : <Wand2 size={18} />}
-                        {localScript.length > 0 ? 'Regenerate Script' : 'Generate Script'}
-                    </button>
-                </div>
-            </div>
+        <div className="flex gap-6 h-[calc(100vh-120px)]">
+            {/* LEFT SIDEBAR - 1/4 width */}
+            <div className="w-1/4 min-w-[280px] max-w-[360px] flex flex-col gap-4 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-[var(--color-border)] scrollbar-track-transparent">
 
-            {/* Storyline Indicator */}
-            {storylineTable && storylineTable.length > 0 && (
-                <div className="glass-panel p-3 border-l-4 border-blue-500">
-                    <p className="text-sm text-blue-300 flex items-center gap-2">
-                        <span className="text-lg">{'\uD83D\uDCCB'}</span>
-                        Script generated from {storylineTable.length} storyline scene{storylineTable.length > 1 ? 's' : ''}.
-                        Edits will sync back to Step 1.
-                    </p>
-                </div>
-            )}
-
-            {/* Progress Bar */}
-            {localScript.length > 0 && (
+                {/* Header with Stats */}
                 <div className="glass-panel p-4">
-                    <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-medium text-white">Progress: {confirmedCount}/{totalCount} cuts confirmed</span>
-                        <span className="text-sm text-[var(--color-text-muted)]">{progressPercent}%</span>
-                    </div>
-                    <div className="w-full h-2 bg-[var(--color-surface)] rounded-full overflow-hidden">
-                        <div
-                            className="h-full bg-gradient-to-r from-[var(--color-primary)] to-green-500 transition-all duration-300"
-                            style={{ width: `${progressPercent}%` }}
-                        />
-                    </div>
-                </div>
-            )}
-
-            {/* Scrollable Cuts Container */}
-            <div className={localScript.length === 0 ? '' : 'h-[calc(100vh-280px)] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-[var(--color-border)] scrollbar-track-transparent'}>
-                <div className="space-y-4">
-                    {localScript.length === 0 ? (
-                        <div className="glass-panel p-12 text-center space-y-6">
-                            <div className="w-20 h-20 rounded-full bg-[rgba(255,255,255,0.03)] flex items-center justify-center mx-auto border border-[var(--color-border)]">
-                                <Wand2 size={40} className="text-[var(--color-primary)]" />
-                            </div>
+                    <div className="flex flex-col gap-3">
+                        <div className="flex items-center justify-between">
                             <div>
-                                <h3 className="text-xl font-bold text-white">Ready to Write</h3>
-                                <p className="text-[var(--color-text-muted)] max-w-md mx-auto mt-2">
-                                    Gemini will generate a script broken down into shots, complete with dialogue and visual descriptions.
-                                </p>
+                                <h2 className="text-2xl font-bold text-white tracking-tight">Script & Production</h2>
+                                <p className="text-xs text-[var(--color-text-muted)] mt-1">Generate assets per cut and confirm when ready.</p>
                             </div>
-                            <button onClick={handleGenerateScript} className="btn-primary">
-                                Start Magic Generation
-                            </button>
+                            <div className="flex flex-col items-end gap-2">
+                                <button
+                                    onClick={handleGenerateScript}
+                                    disabled={loading}
+                                    className="px-3 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary)]/80 text-black text-xs font-bold rounded-lg flex items-center gap-1.5 transition-all shrink-0 shadow-md"
+                                    title={localScript.length > 0 ? 'Regenerate Script' : 'Generate Script'}
+                                >
+                                    {loading ? <Loader2 className="animate-spin" size={14} /> : <Wand2 size={14} />}
+                                    <span className="hidden sm:inline">Script</span>
+                                </button>
+                                {localScript.length > 0 && (
+                                    <div className="text-right">
+                                        <div className="text-xs font-bold text-[var(--color-primary)]">{progressPercent}% Ready</div>
+                                        <div className="text-[10px] text-[var(--color-text-muted)]">{confirmedCount}/{totalCount} confirmed</div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                    ) : (
-                        <div className="grid gap-6">
-                            {localScript.map((cut, index) => (
-                                <CutItem
-                                    key={cut.id}
-                                    cut={cut}
-                                    index={index}
-                                    isConfirmed={cut.isConfirmed || false}
-                                    showAssetSelector={showAssetSelector === cut.id}
-                                    assetDefinitions={assetDefinitions}
-                                    localScript={localScript}
-                                    audioLoading={!!audioLoading[cut.id]}
-                                    imageLoading={!!imageLoading[cut.id]}
-                                    playingAudio={playingAudio}
-                                    aspectRatio={aspectRatio || '16:9'}
-                                    onToggleConfirm={toggleConfirm}
-                                    onUpdateCut={handleUpdateCut}
-                                    onGenerateAudio={handleGenerateAudio}
-                                    onPlayAudio={handlePlayAudio}
-                                    onGenerateImage={handleGenerateFinalImage}
-                                    onAddAsset={addAssetToCut}
-                                    onRemoveAsset={removeAssetFromCut}
-                                    onAddReference={addCutReference}
-                                    onRemoveReference={removeCutReference}
-                                    onToggleAssetSelector={(id) => setShowAssetSelector(showAssetSelector === id ? null : id)}
-                                    onCloseAssetSelector={() => setShowAssetSelector(null)}
-                                    onSave={handleSave}
-                                    onDelete={handleDeleteCut}
-                                />
-                            ))}
-                        </div>
-                    )}
+                    </div>
                 </div>
-            </div>
 
-            {localScript.length > 0 && (
-                <div className="flex justify-end pt-6 pb-12">
+                {/* Model Settings - Always Visible */}
+                <div className="glass-panel p-4">
+                    <div className="flex items-center justify-between mb-3">
+                        <span className="text-sm font-bold text-white flex items-center gap-2">
+                            🤖 Model Settings
+                        </span>
+                    </div>
+                    <div className="space-y-3">
+                        <div>
+                            <label className="text-[10px] text-[var(--color-text-muted)] uppercase block mb-1">Image Model</label>
+                            <select
+                                className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
+                                value={imageModel}
+                                onChange={(e) => setImageModel(e.target.value as any)}
+                            >
+                                {IMAGE_MODELS.map(model => (
+                                    <option key={model.value} value={model.value}>
+                                        {model.label} {model.cost}
+                                    </option>
+                                ))}
+                            </select>
+                            <span className="text-[10px] text-[var(--color-text-muted)] mt-1 block">
+                                {IMAGE_MODELS.find(m => m.value === imageModel)?.hint}
+                            </span>
+                        </div>
+                        <div>
+                            <label className="text-[10px] text-[var(--color-text-muted)] uppercase block mb-1">TTS Model</label>
+                            <select
+                                className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
+                                value={ttsModel}
+                                onChange={(e) => setTtsModel(e.target.value as any)}
+                            >
+                                {TTS_MODELS.map(model => (
+                                    <option key={model.value} value={model.value}>
+                                        {model.label} {model.cost}
+                                    </option>
+                                ))}
+                            </select>
+                            <span className="text-[10px] text-[var(--color-text-muted)] mt-1 block">
+                                {TTS_MODELS.find(m => m.value === ttsModel)?.hint}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Voice & Lock Settings */}
+                {localScript.length > 0 && (() => {
+                    const speakerMap = new Map<string, { gender?: string; age?: string; voiceId?: string; voiceSpeed?: number; language?: string; cutCount: number }>();
+
+                    // Group cuts by speaker
+                    const speakerCuts = new Map<string, ScriptCut[]>();
+                    localScript.forEach(cut => {
+                        const s = cut.speaker || 'Narrator';
+                        if (!speakerCuts.has(s)) speakerCuts.set(s, []);
+                        speakerCuts.get(s)!.push(cut);
+                    });
+
+                    // For each speaker, derive "Bulk Setting" from the first UNLOCKED cut if possible, otherwise first cut.
+                    speakerCuts.forEach((cuts, speaker) => {
+                        const primaryCut = cuts.find(c => !c.isAudioConfirmed && !c.isConfirmed) || cuts[0];
+                        speakerMap.set(speaker, {
+                            gender: primaryCut.voiceGender,
+                            age: primaryCut.voiceAge,
+                            voiceId: primaryCut.voiceId,
+                            voiceSpeed: primaryCut.voiceSpeed,
+                            language: primaryCut.language,
+                            cutCount: cuts.length
+                        });
+                    });
+
+                    const speakers = Array.from(speakerMap.entries());
+                    const currentLanguage = localScript[0]?.language || '';
+                    const currentSpeed = localScript[0]?.voiceSpeed || '';
+
+                    // Combined Voice Options (Show both languages to prevent selection disappearance)
+                    const VOICE_OPTIONS = [
+                        {
+                            optgroup: '🇰🇷 Korean (Neural2/Standard)', options: [
+                                { value: 'ko-KR-Neural2-A', label: 'Neural2-A (여성)', gender: 'female', lang: 'ko-KR' },
+                                { value: 'ko-KR-Neural2-B', label: 'Neural2-B (여성, 차분함)', gender: 'female', lang: 'ko-KR' },
+                                { value: 'ko-KR-Neural2-C', label: 'Neural2-C (남성)', gender: 'male', lang: 'ko-KR' },
+                                { value: 'ko-KR-Standard-A', label: 'Standard-A (여성)', gender: 'female', lang: 'ko-KR' },
+                                { value: 'ko-KR-Standard-C', label: 'Standard-C (남성)', gender: 'male', lang: 'ko-KR' },
+                            ]
+                        },
+                        {
+                            optgroup: '🇰🇷 Korean (Chirp HD)', options: [
+                                { value: 'ko-KR-Chirp3-HD-Aoede', label: 'Aoede (여성, 성인)', gender: 'female', lang: 'ko-KR' },
+                                { value: 'ko-KR-Chirp3-HD-Leda', label: 'Leda (여성, 젊음)', gender: 'female', lang: 'ko-KR' },
+                                { value: 'ko-KR-Chirp3-HD-Fenrir', label: 'Fenrir (남성, 성인)', gender: 'male', lang: 'ko-KR' },
+                                { value: 'ko-KR-Chirp3-HD-Puck', label: 'Puck (남성, 젊음)', gender: 'male', lang: 'ko-KR' },
+                            ]
+                        },
+                        {
+                            optgroup: '🇺🇸 English (Neural2)', options: [
+                                { value: 'en-US-Neural2-C', label: 'Neural2-C (Female)', gender: 'female', lang: 'en-US' },
+                                { value: 'en-US-Neural2-G', label: 'Neural2-G (Female, Young)', gender: 'female', lang: 'en-US' },
+                                { value: 'en-US-Neural2-J', label: 'Neural2-J (Male)', gender: 'male', lang: 'en-US' },
+                                { value: 'en-US-Neural2-I', label: 'Neural2-I (Male, Young)', gender: 'male', lang: 'en-US' },
+                            ]
+                        }
+                    ];
+
+                    const FLAT_VOICE_OPTIONS = VOICE_OPTIONS.flatMap(g => g.options);
+
+                    // Apply voice selection to speaker (sets voiceId, gender, age, AND language)
+                    const applyVoiceToSpeaker = (speakerName: string, voiceValue: string) => {
+                        const voice = FLAT_VOICE_OPTIONS.find(v => v.value === voiceValue);
+                        if (voice) {
+                            setLocalScript(prev => {
+                                const updated = prev.map(cut => {
+                                    const isLocked = cut.isAudioConfirmed || cut.isConfirmed;
+                                    const isMatch = (cut.speaker || 'Narrator') === speakerName;
+
+                                    if (isMatch && !isLocked) {
+                                        return {
+                                            ...cut,
+                                            voiceId: voiceValue,
+                                            voiceGender: voice.gender as 'male' | 'female' | 'neutral',
+                                            language: voice.lang
+                                        } as ScriptCut;
+                                    }
+                                    return cut;
+                                });
+                                saveToStore(updated);
+                                return updated;
+                            });
+                        }
+                    };
+
+                    const applyToSpeaker = (speakerName: string, field: keyof ScriptCut, value: any) => {
+                        setLocalScript(prev => {
+                            const updated = prev.map(cut => {
+                                const isLocked = cut.isAudioConfirmed || cut.isConfirmed;
+                                const isMatch = (cut.speaker || 'Narrator') === speakerName;
+                                if (isMatch && !isLocked) {
+                                    return { ...cut, [field]: value };
+                                }
+                                return cut;
+                            });
+                            saveToStore(updated);
+                            return updated;
+                        });
+                    };
+
+
+                    const applyToAll = (field: string, value: any) => {
+                        setLocalScript(prev => {
+                            const updated = prev.map(cut => {
+                                const isLocked = cut.isAudioConfirmed || cut.isConfirmed;
+                                if (!isLocked) {
+                                    return { ...cut, [field]: value };
+                                }
+                                return cut;
+                            });
+                            saveToStore(updated);
+                            return updated;
+                        });
+                    };
+
+
+                    const lockAllAudio = () => {
+                        setLocalScript(prev => {
+                            const updated = prev.map(cut => (cut.audioUrl || cut.speaker === 'SILENT') ? { ...cut, isAudioConfirmed: true } : cut);
+                            saveToStore(updated);
+                            return updated;
+                        });
+                    };
+                    const unlockAllAudio = () => {
+                        setLocalScript(prev => {
+                            const updated = prev.map(cut => ({ ...cut, isAudioConfirmed: false }));
+                            saveToStore(updated);
+                            return updated;
+                        });
+                    };
+                    const lockAllImages = () => {
+                        setLocalScript(prev => {
+                            const updated = prev.map(cut => cut.finalImageUrl ? { ...cut, isImageConfirmed: true } : cut);
+                            saveToStore(updated);
+                            return updated;
+                        });
+                    };
+                    const unlockAllImages = () => {
+                        setLocalScript(prev => {
+                            const updated = prev.map(cut => ({ ...cut, isImageConfirmed: false }));
+                            saveToStore(updated);
+                            return updated;
+                        });
+                    };
+
+
+                    const handleBulkGenerateAudio = async (speakerName: string) => {
+                        const cutsToGenerate = localScriptRef.current.filter(c =>
+                            (c.speaker || 'Narrator') === speakerName &&
+                            !c.isAudioConfirmed
+                        );
+
+                        if (cutsToGenerate.length === 0) {
+                            alert('No unlocked cuts found for this speaker.');
+                            return;
+                        }
+
+                        if (!confirm(`Generate audio for ${cutsToGenerate.length} cuts for "${speakerName}"?\n(This will process sequentially)`)) return;
+
+                        for (const cut of cutsToGenerate) {
+                            if (!cut.dialogue) continue;
+                            await handleGenerateAudio(cut.id, cut.dialogue);
+                            await new Promise(r => setTimeout(r, 200));
+                        }
+                    };
+
+                    const handleBulkLockAudio = (speakerName: string, lock: boolean) => {
+                        setLocalScript(prev => {
+                            const updated = prev.map(cut => {
+                                if ((cut.speaker || 'Narrator') === speakerName) {
+                                    if (lock && (!cut.audioUrl && cut.speaker !== 'SILENT')) return cut;
+                                    return { ...cut, isAudioConfirmed: lock };
+                                }
+                                return cut;
+                            });
+                            saveToStore(updated);
+                            return updated;
+                        });
+                    };
+
+                    const audioLockedCount = localScript.filter(c => c.isAudioConfirmed).length;
+                    const imageLockedCount = localScript.filter(c => c.isImageConfirmed).length;
+                    const audioGeneratedCount = localScript.filter(c => c.audioUrl).length;
+                    const imageGeneratedCount = localScript.filter(c => c.finalImageUrl).length;
+
+                    // Voice sample data for preview (pre-recorded samples)
+                    const VOICE_SAMPLES: Record<string, string> = {
+                        'ko-KR-Chirp3-HD-Aoede': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Aoede.wav',
+                        'ko-KR-Chirp3-HD-Fenrir': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Fenrir.wav',
+                        'ko-KR-Chirp3-HD-Leda': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Leda.wav',
+                        'ko-KR-Chirp3-HD-Puck': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Puck.wav',
+                        'ko-KR-Neural2-A': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Neural2-A.wav',
+                        'ko-KR-Neural2-B': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Neural2-B.wav',
+                        'ko-KR-Neural2-C': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Neural2-C.wav',
+                        'en-US-Neural2-C': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-C.wav',
+                        'en-US-Neural2-G': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-G.wav',
+                        'en-US-Neural2-J': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-J.wav',
+                        'en-US-Neural2-I': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-I.wav',
+                    };
+
+
+                    // Get default voice for speaker based on gender
+                    const getDefaultVoice = (gender?: string) => {
+                        if (gender === 'male') {
+                            return FLAT_VOICE_OPTIONS.find(v => v.gender === 'male' && v.lang === currentLanguage)?.value || FLAT_VOICE_OPTIONS[0]?.value;
+                        }
+                        return FLAT_VOICE_OPTIONS.find(v => v.gender === 'female' && v.lang === currentLanguage)?.value || FLAT_VOICE_OPTIONS[0]?.value;
+                    };
+
+                    const playVoiceSample = (voiceId: string) => {
+                        const sampleUrl = VOICE_SAMPLES[voiceId];
+                        if (sampleUrl) {
+                            const audio = new Audio(sampleUrl);
+                            audio.play().catch(e => console.warn('Sample playback failed:', e));
+                        } else {
+                            alert('Sample not available for this voice');
+                        }
+                    };
+
+                    return (
+                        <>
+                            {/* Voice Settings - Accordion */}
+                            <details className="glass-panel">
+                                <summary className="p-4 cursor-pointer flex items-center justify-between hover:bg-[rgba(255,255,255,0.02)] rounded-xl transition-colors select-none">
+                                    <span className="text-sm font-bold text-white flex items-center gap-2">
+                                        🎙️ Voice Settings
+                                    </span>
+                                    <span className="text-[10px] text-[var(--color-text-muted)]">▼</span>
+                                </summary>
+                                <div className="px-4 pb-4 space-y-4">
+
+                                    {/* Global Settings */}
+                                    <div className="space-y-2">
+                                        <div className="text-[10px] text-[var(--color-primary)] uppercase font-bold">Global (All Cuts)</div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <select
+                                                className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs text-white focus:border-[var(--color-primary)] outline-none"
+                                                value={currentLanguage}
+                                                onChange={(e) => applyToAll('language', e.target.value || undefined)}
+                                            >
+                                                <option value="">🌐 Auto Lang</option>
+                                                <option value="ko-KR">🇰🇷 Korean</option>
+                                                <option value="en-US">🇺🇸 English</option>
+                                            </select>
+                                            <select
+                                                className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs text-white focus:border-[var(--color-primary)] outline-none"
+                                                value={currentSpeed}
+                                                onChange={(e) => applyToAll('voiceSpeed', e.target.value ? parseFloat(e.target.value) : undefined)}
+                                            >
+                                                <option value="">⚡ Auto Rate</option>
+                                                <option value="0.85">85% Slow</option>
+                                                <option value="1.0">100% Normal</option>
+                                                <option value="1.15">115% Fast</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    {/* Per-Speaker Voice Selection with Preview */}
+                                    <div className="space-y-2 pt-2 border-t border-[var(--color-border)]">
+                                        <div className="text-[10px] text-[var(--color-text-muted)] uppercase font-bold">Per Speaker Voice</div>
+                                        <div className="space-y-2 max-h-[250px] overflow-y-auto">
+                                            {speakers.map(([speaker, settings]) => {
+                                                // Use voiceId if set, otherwise derive from gender
+                                                const currentVoice = settings.voiceId || getDefaultVoice(settings.gender);
+                                                return (
+                                                    <div key={speaker} className="bg-[var(--color-surface)] p-2 rounded border border-[var(--color-border)] space-y-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="flex-1 text-xs text-white truncate font-medium" title={speaker}>{speaker}</span>
+                                                            <span className="text-[10px] text-gray-500">{settings.cutCount} cuts</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-1">
+                                                            <div className="flex-1 space-y-1">
+                                                                <select
+                                                                    className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-1.5 py-1 text-[10px] text-white outline-none"
+                                                                    value={currentVoice}
+                                                                    onChange={(e) => applyVoiceToSpeaker(speaker, e.target.value)}
+                                                                >
+                                                                    {VOICE_OPTIONS.map(group => (
+                                                                        <optgroup key={group.optgroup} label={group.optgroup}>
+                                                                            {group.options.map(v => (
+                                                                                <option key={v.value} value={v.value}>{v.label}</option>
+                                                                            ))}
+                                                                        </optgroup>
+                                                                    ))}
+                                                                </select>
+                                                                <div className="flex gap-1">
+                                                                    <select
+                                                                        className="flex-1 bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-1 py-0.5 text-[9px] text-gray-400 outline-none"
+                                                                        value={settings.voiceSpeed ?? ''}
+                                                                        onChange={(e) => applyToSpeaker(speaker, 'voiceSpeed', e.target.value === '' ? undefined : parseFloat(e.target.value))}
+                                                                    >
+                                                                        <option value="">Rate: Auto</option>
+                                                                        <option value="0.8">0.8x</option>
+                                                                        <option value="0.9">0.9x</option>
+                                                                        <option value="1.0">1.0x</option>
+                                                                        <option value="1.1">1.1x</option>
+                                                                        <option value="1.2">1.2x</option>
+                                                                    </select>
+                                                                    <select
+                                                                        className="flex-1 bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-1 py-0.5 text-[9px] text-gray-400 outline-none"
+                                                                        value={settings.age || 'adult'}
+                                                                        onChange={(e) => applyToSpeaker(speaker, 'voiceAge', e.target.value)}
+                                                                    >
+                                                                        <option value="child">Child</option>
+                                                                        <option value="young">Young</option>
+                                                                        <option value="adult">Adult</option>
+                                                                        <option value="senior">Senior</option>
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+                                                            <button
+                                                                onClick={() => playVoiceSample(currentVoice || '')}
+                                                                className="px-2 py-2 bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30 rounded text-[12px] font-bold self-start"
+                                                                title="Play voice sample"
+                                                            >
+                                                                🔊
+                                                            </button>
+                                                        </div>
+                                                        {/* Bulk Operations Row */}
+                                                        <div className="flex gap-1 pt-1 border-t border-white/5">
+                                                            <button
+                                                                onClick={() => handleBulkGenerateAudio(speaker)}
+                                                                className="flex-1 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 hover:text-orange-300 text-[10px] py-1 rounded flex items-center justify-center gap-1 transition-colors font-medium border border-orange-500/30"
+                                                                title="Generate audio for all unlocked cuts for this speaker"
+                                                            >
+                                                                <Wand2 size={10} />
+                                                                Gen All
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleBulkLockAudio(speaker, true)}
+                                                                className="px-2 bg-green-500/10 hover:bg-green-500/20 text-green-400 text-[10px] py-1 rounded transition-colors"
+                                                                title="Lock all generated audio for this speaker"
+                                                            >
+                                                                <Lock size={10} />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleBulkLockAudio(speaker, false)}
+                                                                className="px-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-[10px] py-1 rounded transition-colors"
+                                                                title="Unlock all audio for this speaker"
+                                                            >
+                                                                <Unlock size={10} />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+                            </details>
+
+                            {/* Lock Settings - Accordion (Separate Panel) */}
+                            <details className="glass-panel">
+                                <summary className="p-4 cursor-pointer flex items-center justify-between hover:bg-[rgba(255,255,255,0.02)] rounded-xl transition-colors select-none">
+                                    <span className="text-sm font-bold text-white flex items-center gap-2">
+                                        🔒 Bulk Lock Settings
+                                    </span>
+                                    <span className="text-[10px] text-[var(--color-text-muted)]">▼</span>
+                                </summary>
+                                <div className="px-4 pb-4">
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-2">
+                                            <div className="text-[10px] text-gray-400 font-medium">🎵 Audio</div>
+                                            <div className="text-xs text-white font-bold">{audioLockedCount}/{audioGeneratedCount} locked</div>
+                                            <div className="flex gap-1">
+                                                <button onClick={lockAllAudio} className="flex-1 px-2 py-1.5 text-[10px] bg-green-500/20 text-green-400 hover:bg-green-500/30 rounded font-bold">🔒 Lock All</button>
+                                                <button onClick={unlockAllAudio} className="flex-1 px-2 py-1.5 text-[10px] bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded font-bold">🔓 Unlock</button>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <div className="text-[10px] text-gray-400 font-medium">🖼️ Image</div>
+                                            <div className="text-xs text-white font-bold">{imageLockedCount}/{imageGeneratedCount} locked</div>
+                                            <div className="flex gap-1">
+                                                <button onClick={lockAllImages} className="flex-1 px-2 py-1.5 text-[10px] bg-green-500/20 text-green-400 hover:bg-green-500/30 rounded font-bold">🔒 Lock All</button>
+                                                <button onClick={unlockAllImages} className="flex-1 px-2 py-1.5 text-[10px] bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded font-bold">🔓 Unlock</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </details>
+
+                            {/* AI Instructions Button - Opens Popup Modal */}
+                            <button
+                                onClick={() => setIsInstructionsModalOpen(true)}
+                                className="w-full glass-panel p-4 flex items-center justify-between hover:bg-[rgba(255,255,255,0.05)] transition-colors rounded-xl"
+                            >
+                                <span className="text-sm font-bold text-white flex items-center gap-2">
+                                    🤖 AI Script Instructions
+                                </span>
+                                <span className="text-[10px] text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-2 py-1 rounded">
+                                    Edit Prompt ✏️
+                                </span>
+                            </button>
+
+                            {/* Video Prompt Instructions Button - Opens Popup Modal */}
+                            <button
+                                onClick={() => setIsVideoInstructionsModalOpen(true)}
+                                className="w-full glass-panel p-4 flex items-center justify-between hover:bg-[rgba(255,255,255,0.05)] transition-colors rounded-xl"
+                            >
+                                <span className="text-sm font-bold text-white flex items-center gap-2">
+                                    🎬 Video Prompt Instructions
+                                </span>
+                                <span className="text-[10px] text-purple-400 bg-purple-500/10 px-2 py-1 rounded">
+                                    Veo3/Grok ✏️
+                                </span>
+                            </button>
+                        </>
+                    );
+                })()}
+
+                {/* Next Step Button */}
+                {localScript.length > 0 && (
                     <button
                         onClick={handleApprove}
-                        className="btn-primary flex items-center gap-2 px-6 py-3 rounded-full font-bold shadow-lg hover:shadow-[0_0_20px_rgba(255,159,89,0.4)] hover:scale-105 transition-all sticky bottom-8"
+                        className="w-full btn-primary flex items-center justify-center gap-2 py-3 rounded-xl font-bold shadow-lg hover:shadow-[0_0_20px_rgba(255,159,89,0.4)] hover:scale-[1.02] transition-all"
                     >
                         Next Step
-                        <ArrowRight size={24} />
+                        <ArrowRight size={20} />
                     </button>
+                )}
+            </div>
+
+            {/* RIGHT CONTENT - 3/4 width */}
+            <div className="flex-1 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-[var(--color-border)] scrollbar-track-transparent">
+                {localScript.length === 0 ? (
+                    <div className="glass-panel p-12 text-center space-y-6 h-full flex flex-col items-center justify-center">
+                        <div className="w-20 h-20 rounded-full bg-[rgba(255,255,255,0.03)] flex items-center justify-center mx-auto border border-[var(--color-border)]">
+                            <Wand2 size={40} className="text-[var(--color-primary)]" />
+                        </div>
+                        <div>
+                            <h3 className="text-xl font-bold text-white">Ready to Write</h3>
+                            <p className="text-[var(--color-text-muted)] max-w-md mx-auto mt-2">
+                                Gemini will generate a script broken down into shots, complete with dialogue and visual descriptions.
+                            </p>
+                        </div>
+                        <button onClick={handleGenerateScript} className="btn-primary">
+                            Start Magic Generation
+                        </button>
+                    </div>
+                ) : (
+                    <div className="grid gap-4">
+                        {localScript.map((cut, index) => (
+                            <CutItem
+                                key={cut.id}
+                                cut={cut}
+                                index={index}
+                                isAudioConfirmed={!!(cut.isAudioConfirmed || cut.isConfirmed)}
+                                isImageConfirmed={!!(cut.isImageConfirmed || cut.isConfirmed)}
+                                showAssetSelector={showAssetSelector === cut.id}
+                                assetDefinitions={assetDefinitions}
+                                localScript={localScript}
+                                audioLoading={!!audioLoading[cut.id]}
+                                imageLoading={!!imageLoading[cut.id]}
+                                playingAudio={playingAudio}
+                                aspectRatio={aspectRatio || '16:9'}
+                                speakerList={speakerList}
+                                onToggleAudioConfirm={toggleAudioConfirm}
+                                onToggleImageConfirm={toggleImageConfirm}
+                                onUpdateCut={handleUpdateCut}
+                                onGenerateAudio={handleGenerateAudio}
+                                onPlayAudio={handlePlayAudio}
+                                onGenerateImage={handleGenerateFinalImage}
+                                onRegenerateImage={(id) => handleGenerateFinalImage(id, localScript.find(c => c.id === id)?.visualPrompt || '')}
+                                onUploadUserReference={handleUploadUserReference}
+                                onAddAsset={addAssetToCut}
+                                onRemoveAsset={removeAssetFromCut}
+                                onAddReference={addCutReference}
+                                onRemoveReference={removeCutReference}
+                                onToggleAssetSelector={(id) => setShowAssetSelector(showAssetSelector === id ? null : id)}
+                                onCloseAssetSelector={() => setShowAssetSelector(null)}
+                                onSave={handleSave}
+                                onDelete={handleDeleteCut}
+                                onOpenSfxModal={(id) => setSfxModalCutId(id)}
+                                onRemoveSfx={(id) => {
+                                    setLocalScript(prev => {
+                                        const updated = prev.map(c =>
+                                            c.id === id ? { ...c, sfxUrl: undefined, sfxName: undefined, sfxVolume: undefined, sfxFreesoundId: undefined } : c
+                                        );
+                                        saveToStore(updated);
+                                        return updated;
+                                    });
+                                }}
+                            />
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* SFX Search Modal */}
+            <SfxSearchModal
+                isOpen={sfxModalCutId !== null}
+                onClose={() => setSfxModalCutId(null)}
+                onSelect={(sfx) => {
+                    if (sfxModalCutId === null) return;
+                    setLocalScript(prev => {
+                        const updated = prev.map(c =>
+                            c.id === sfxModalCutId
+                                ? { ...c, sfxUrl: sfx.url, sfxName: sfx.name, sfxVolume: sfx.volume, sfxFreesoundId: sfx.freesoundId }
+                                : c
+                        );
+                        saveToStore(updated);
+                        return updated;
+                    });
+                }}
+                sceneDescription={localScript.find(c => c.id === sfxModalCutId)?.visualPrompt || ''}
+                geminiApiKey={apiKeys?.gemini || ''}
+                freesoundApiKey={(apiKeys as any)?.freesound || ''}
+                currentSfxName={localScript.find(c => c.id === sfxModalCutId)?.sfxName}
+                initialQuery={localScript.find(c => c.id === sfxModalCutId)?.sfxDescription}
+            />
+
+            {/* AI Instructions Popup Modal */}
+            {isInstructionsModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                    <div className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
+                        {/* Modal Header */}
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
+                            <div className="flex items-center gap-3">
+                                <span className="text-2xl">🤖</span>
+                                <div>
+                                    <h2 className="text-lg font-bold text-white">AI Script Instructions</h2>
+                                    <p className="text-xs text-[var(--color-text-muted)]">
+                                        Customize how the AI generates your script
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setCustomInstructions(DEFAULT_SCRIPT_INSTRUCTIONS)}
+                                    className="px-3 py-1.5 text-xs text-[var(--color-text-muted)] hover:text-white border border-[var(--color-border)] rounded-lg hover:bg-[rgba(255,255,255,0.05)] transition-colors"
+                                >
+                                    ↺ Reset to Default
+                                </button>
+                                <button
+                                    onClick={() => setIsInstructionsModalOpen(false)}
+                                    className="px-4 py-1.5 text-xs font-bold text-black bg-[var(--color-primary)] rounded-lg hover:opacity-90 transition-opacity"
+                                >
+                                    Done ✓
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Modal Body - Large Textarea */}
+                        <div className="flex-1 overflow-hidden p-4 flex flex-col gap-4">
+                            <textarea
+                                value={customInstructions}
+                                onChange={(e) => setCustomInstructions(e.target.value)}
+                                className="w-full flex-1 min-h-[40vh] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-4 text-sm text-white font-mono outline-none resize-none focus:border-[var(--color-primary)] transition-colors"
+                                placeholder="Enter custom instructions for the AI screenwriter..."
+                            />
+
+                            {/* AI Helper Chat - Memoized Component */}
+                            <AiInstructionHelper
+                                currentInstruction={customInstructions}
+                                onInstructionChange={setCustomInstructions}
+                                instructionType="script"
+                                apiKey={apiKeys?.gemini || ''}
+                                accentColor="primary"
+                            />
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="px-6 py-3 border-t border-[var(--color-border)] flex items-center justify-between">
+                            <p className="text-[10px] text-[var(--color-text-muted)]">
+                                ⚠️ <strong>중요:</strong> 개별 컷은 반드시 8초 이내로 구성해야 합니다. 이 규칙이 프롬프트에 이미 포함되어 있습니다.
+                            </p>
+                            <button
+                                onClick={() => setIsInstructionsModalOpen(false)}
+                                className="text-xs text-[var(--color-text-muted)] hover:text-white"
+                            >
+                                ESC to close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Video Prompt Instructions Popup Modal */}
+            {isVideoInstructionsModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                    <div className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
+                        {/* Modal Header */}
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
+                            <div className="flex items-center gap-3">
+                                <span className="text-2xl">🎬</span>
+                                <div>
+                                    <h2 className="text-lg font-bold text-white">Video Prompt Instructions</h2>
+                                    <p className="text-xs text-[var(--color-text-muted)]">
+                                        Customize video generation for Veo3, Kling, Grok
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setVideoPromptInstructions(DEFAULT_VIDEO_PROMPT_INSTRUCTIONS)}
+                                    className="px-3 py-1.5 text-xs text-[var(--color-text-muted)] hover:text-white border border-[var(--color-border)] rounded-lg hover:bg-[rgba(255,255,255,0.05)] transition-colors"
+                                >
+                                    ↺ Reset to Default
+                                </button>
+                                <button
+                                    onClick={() => setIsVideoInstructionsModalOpen(false)}
+                                    className="px-4 py-1.5 text-xs font-bold text-white bg-purple-600 rounded-lg hover:opacity-90 transition-opacity"
+                                >
+                                    Done ✓
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Modal Body - Large Textarea */}
+                        <div className="flex-1 overflow-hidden p-4 flex flex-col gap-4">
+                            <textarea
+                                value={videoPromptInstructions}
+                                onChange={(e) => setVideoPromptInstructions(e.target.value)}
+                                className="w-full flex-1 min-h-[40vh] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-4 text-sm text-white font-mono outline-none resize-none focus:border-purple-500 transition-colors"
+                                placeholder="Enter custom instructions for video prompt generation..."
+                            />
+
+                            {/* AI Helper Chat - Memoized Component */}
+                            <AiInstructionHelper
+                                currentInstruction={videoPromptInstructions}
+                                onInstructionChange={setVideoPromptInstructions}
+                                instructionType="video"
+                                apiKey={apiKeys?.gemini || ''}
+                                accentColor="purple"
+                            />
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="px-6 py-3 border-t border-[var(--color-border)] flex items-center justify-between">
+                            <p className="text-[10px] text-[var(--color-text-muted)]">
+                                💡 <strong>팁:</strong> 각 컷의 visualPrompt를 기반으로 카메라 무브먼트와 모션을 추가합니다.
+                            </p>
+                            <button
+                                onClick={() => setIsVideoInstructionsModalOpen(false)}
+                                className="text-xs text-[var(--color-text-muted)] hover:text-white"
+                            >
+                                ESC to close
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

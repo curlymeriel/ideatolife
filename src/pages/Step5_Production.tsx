@@ -19,8 +19,10 @@ export const Step5_Production: React.FC = () => {
     // Auto-cleanup: Remove stale audio URLs when component loads
     React.useEffect(() => {
         if (assets) {
-            Object.entries(assets).forEach(([key, asset]) => {
-                if (asset.audioUrl && asset.audioUrl.startsWith('data:audio/')) {
+            Object.entries(assets).forEach(([key, assetArray]) => {
+                const primaryAsset = Array.isArray(assetArray) ? assetArray[0] : assetArray;
+                // @ts-ignore
+                if (primaryAsset && primaryAsset.audioUrl && primaryAsset.audioUrl.startsWith('data:audio/')) {
                     console.log(`[Cleanup] Removing stale audio data for cut ${key}`);
                     updateAsset(Number(key), { audioUrl: undefined });
                 }
@@ -109,7 +111,7 @@ export const Step5_Production: React.FC = () => {
                     aspectRatio,
                     'gemini-2.5-flash-image'
                 );
-                updateAsset(cut.id, { imageUrl: result.url });
+                updateAsset(cut.id, { imageUrl: result.urls[0] });
                 setProductionStatus(prev => ({ ...prev, [cut.id]: { ...prev[cut.id], image: 'done' } }));
             } catch (e) {
                 setProductionStatus(prev => ({ ...prev, [cut.id]: { ...prev[cut.id], image: 'error' } }));
@@ -128,7 +130,8 @@ export const Step5_Production: React.FC = () => {
     };
 
     const handlePlayAudio = (cutId: number) => {
-        const audioUrl = assets?.[cutId]?.audioUrl;
+        const assetArray = assets?.[cutId];
+        const audioUrl = Array.isArray(assetArray) ? assetArray[0]?.audioUrl : (assetArray as any)?.audioUrl;
         console.log(`[Playback] Attempting to play cut ${cutId}, audioUrl:`, audioUrl);
 
         if (!audioUrl) {
@@ -246,7 +249,8 @@ export const Step5_Production: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {script.map((cut) => {
                     const status = productionStatus[cut.id] || { audio: 'pending', image: 'pending' };
-                    const audioUrl = assets?.[cut.id]?.audioUrl;
+                    const assetArray = assets?.[cut.id];
+                    const audioUrl = Array.isArray(assetArray) ? assetArray[0]?.audioUrl : (assetArray as any)?.audioUrl;
 
                     return (
                         <div key={cut.id} className="glass-panel p-5 space-y-4 relative overflow-hidden group">

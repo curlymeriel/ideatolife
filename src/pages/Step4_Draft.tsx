@@ -260,7 +260,7 @@ export const Step4_Draft: React.FC = () => {
 
             // Update local script with new image URL and auto-save
             const updatedScript = localScript.map(cut =>
-                cut.id === cutId ? { ...cut, draftImageUrl: result.url } : cut
+                cut.id === cutId ? { ...cut, draftImageUrl: result.urls[0] } : cut
             );
             setLocalScript(updatedScript);
             saveToStore(updatedScript);

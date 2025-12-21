@@ -7,20 +7,255 @@ export interface ScriptCut {
     visualPrompt: string;
     estimatedDuration: number;
     draftImageUrl?: string;        // Legacy: Quick preview images
-    finalImageUrl?: string;        // NEW: Final quality image from Step 4
-    audioUrl?: string;             // NEW: Generated audio from Step 4
+    finalImageUrl?: string;        // Final quality image from Step 4
+    audioUrl?: string;             // Generated audio from Step 4
     referenceAssetIds?: string[];  // Manual asset selection
-    referenceCutIds?: number[];    // NEW: Manual previous cut selection
-    isConfirmed?: boolean;         // Lock status
-    emotion?: string;              // NEW: Emotional tone (neutral/happy/sad/angry/excited/calm/tense)
-    emotionIntensity?: 'low' | 'moderate' | 'high';  // NEW: Emotion strength
-    language?: 'en-US' | 'ko-KR';  // NEW: Detected language for voice selection
-    voiceGender?: 'male' | 'female' | 'neutral';  // NEW: Manual gender override
-    voiceAge?: 'child' | 'young' | 'adult' | 'senior';  // NEW: Age range for voice
-    storylineSceneId?: string;     // NEW: Link to source storyline scene
+    referenceCutIds?: number[];    // Manual previous cut selection
+    userReferenceImage?: string; // New: User provided sketch/reference
+    isConfirmed?: boolean;         // DEPRECATED: Use granular locks below
+    isAudioConfirmed?: boolean;    // Locks dialogue, speaker, and audio settings
+    isImageConfirmed?: boolean;    // Locks visual prompt and generated image
+    emotion?: string;              // Emotional tone (neutral/happy/sad/angry/excited/calm/tense)
+    emotionIntensity?: 'low' | 'moderate' | 'high';  // Emotion strength
+    language?: 'en-US' | 'ko-KR';  // Detected language for voice selection
+    voiceGender?: 'male' | 'female' | 'neutral';  // Manual gender override
+    voiceAge?: 'child' | 'young' | 'adult' | 'senior';  // Age range for voice
+    voiceSpeed?: number;           // Playback speed (0.5 to 2.0)
+    voiceRate?: string;            // SSML rate (e.g., '85%', '110%', 'slow', 'fast')
+    voiceVolume?: string;          // SSML volume (e.g., 'soft', 'loud', '-2dB', '+3dB')
+    voiceId?: string;              // NEW: Explicit voice ID selection (from bulk settings)
+    audioPadding?: number;         // NEW: Pause after audio finishes (seconds)
+    storylineSceneId?: string;     // Link to source storyline scene
+
+    // Step 4.5: Video Composition
+    videoPrompt?: string;           // Enhanced prompt for video generation (auto-generated from visualPrompt)
+    videoUrl?: string;              // AI-generated or uploaded video clip URL
+    videoSource?: 'kling' | 'veo' | 'runway' | 'upload' | 'image' | 'ai';  // Origin of the video
+    isVideoConfirmed?: boolean;     // Locks video clip for final export
+
+    // SFX: Background Sound Effects
+    sfxUrl?: string;                // Sound effect audio URL (from Freesound or other source)
+    sfxName?: string;               // Name of the sound effect
+    sfxVolume?: number;             // Volume multiplier (0.0 to 1.0, default 0.3)
+    sfxFreesoundId?: number;        // Freesound.org ID for attribution
+    sfxDescription?: string;         // AI-suggested SFX description for this cut
+}
+
+export interface ChatMessage {
+    role: 'user' | 'model';
+    content: string;
+    image?: string; // Base64 image string
+    fileContent?: string; // Text file content (JSON, TXT, CSV, MD)
+    fileName?: string; // Original file name for display
+    fileType?: 'image' | 'text' | 'json'; // File type category
+}
+
+export interface AiCharacter {
+    name: string;
+    role: string;
+    description: string;
+    visualSummary?: string; // Explicit visual prompt
+    gender?: 'male' | 'female' | 'other';  // NEW: Character gender for voice
+    age?: 'child' | 'young' | 'adult' | 'senior';  // NEW: Character age for voice
+}
+
+export interface StorylineScene {
+    id?: string;
+    sceneNumber: number;
+    estimatedTime: string;
+    content: string;
+    directionNotes: string;
+    linkedCutIds?: number[];  // NEW: Track which cuts belong to this scene
+}
+
+export interface AiProp {
+    name: string;
+    description: string;
+    visualSummary?: string;
+}
+
+export interface ConsultationResult {
+    reply: string;
+    suggestedSeriesName?: string;
+    suggestedEpisodeName?: string;
+    suggestedEpisodeNumber?: number;
+    suggestedSeriesStory?: string;
+    suggestedMainCharacters?: string;
+    suggestedCharacters?: AiCharacter[];
+    suggestedSeriesLocations?: { name: string; description: string; visualSummary?: string }[];
+    suggestedEpisodePlot?: string;
+    suggestedEpisodeCharacters?: AiCharacter[];
+    suggestedEpisodeLocations?: { name: string; description: string; visualSummary?: string }[];
+    suggestedDuration?: number;
+    suggestedStorylineScenes?: StorylineScene[];  // NEW: AI-suggested storyline breakdown
+    suggestedSeriesProps?: AiProp[]; // NEW
+    suggestedEpisodeProps?: AiProp[]; // NEW
+}
+
+export interface ProjectContext {
+    seriesName: string;
+    episodeName: string;
+    episodeNumber: number;
+    seriesStory: string;
+    characters: any[];
+    seriesLocations: any[];
+    episodePlot: string;
+    episodeCharacters: any[];
+    episodeLocations: any[];
+    seriesProps: any[]; // NEW
+    episodeProps: any[]; // NEW
+    targetDuration: number;
+    aspectRatio: string;
 }
 
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+const GEMINI_2_5_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+const GEMINI_3_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent';
+const GEMINI_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent';
+const GEMINI_2_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent';
+
+// Default instructions (can be overridden by UI)
+export const DEFAULT_SCRIPT_INSTRUCTIONS = `
+      **Instructions:**
+      Break the episode plot into cinematic cuts that fit within the target duration.
+      
+      ⚠️ **CRITICAL DURATION RULE (ABSOLUTE MAXIMUM - NO EXCEPTIONS):**
+      - Each individual cut MUST be 8 SECONDS OR LESS.
+      - Recommended range: 2-6 seconds per cut for optimal pacing.
+      - If a scene needs more than 8 seconds, SPLIT IT into multiple cuts.
+      - This is a HARD LIMIT - any cut exceeding 8 seconds is INVALID.
+
+      **ASSET NAME RULE (CRITICAL):**
+      - Do NOT translate Character, Location, or Prop names. Use them EXACTLY as they appear in the provided lists (e.g., if "Stick" is English, keep it "Stick" even if writing in Korean).
+      
+      **AUDIO TYPE RULES (CRITICAL - MUST FOLLOW):**
+      Every cut MUST have a clearly defined audio type. Choose ONE:
+      
+      - **DIALOGUE:** Has a speaker and spoken text.
+        • speaker MUST be a specific character name from "Available Characters" list above (e.g., "Kael", "Dr. Aris")
+        • speaker can also be "Narrator" for narration
+        • dialogue contains the actual spoken text
+        
+      - **SILENT:** No spoken audio at all.
+        • Set speaker = "SILENT"
+        • Set dialogue = "..."
+        
+      - **SFX ONLY:**
+        • Set speaker = "SILENT"
+        • Set dialogue = "..."
+        • Set sfxDescription = "Detailed description of the sound effect" (REQUIRED)
+      
+      ⚠️ FORBIDDEN - These patterns are STRICTLY PROHIBITED:
+      - speaker = "SFX" → NEVER USE. Use "SILENT" + sfxDescription instead.
+      - dialogue containing "[SFX:...]" → NEVER USE. Put it in sfxDescription.
+      - speaker = "Unknown" or "Character" → NEVER USE. Use actual names or "Narrator"
+      - speaker = "SILENT" with actual dialogue text → THIS IS WRONG. If there is text, speaker MUST be a character/Narrator.
+      - speaker = "SILENT" → dialogue MUST be "..."
+      - Empty dialogue with a character speaker → Use "SILENT" instead
+      
+      📋 FINAL CHECKLIST (verify before output):
+      □ Is speaker a real character name? (If text exists) ✓
+      □ If speaker is "SILENT", is the dialogue exactly "..."? ✓
+      □ If there is narration, is speaker "Narrator"? ✓
+      
+      - emotion: Emotional tone of the dialogue (neutral/happy/sad/angry/excited/calm/tense)
+      - emotionIntensity: Strength of the emotion (low/moderate/high)
+      
+      - visualPrompt: **STATIC IMAGE ONLY - NO MOTION:**
+        - This prompt generates a **STILL IMAGE** (first frame of cut). Describe a "frozen moment".
+        - **Format:** (Shot Size) + (Angle) + (Subject & Pose) + (Lighting/Atmosphere)
+        - **STATIC POSES ONLY:** "Character in mid-stride pose", "Mid-sentence with mouth open", "Hand reaching out frozen"
+        - **NO CAMERA MOVEMENT:** Do NOT include dolly, pan, zoom, tracking, etc. (Those go in videoPrompt)
+        - **NO MOTION VERBS:** Avoid "running", "walking", "moving". Use frozen poses instead.
+        
+        **ASSET NAME PRIORITY (CRITICAL FOR IMAGE CONSISTENCY):**
+        - ALWAYS use the EXACT asset names from "Available Characters" and "Available Locations" lists.
+        - DO NOT use pronouns (his, her, the, that) to refer to assets.
+        - ❌ BAD: "his sanctuary", "the hero's workshop", "she enters the room"
+        - ✅ GOOD: "Max Fisher's Sanctuary", "Kael standing in The Ancient Workshop", "Dr. Aris enters Rain-Soaked Street"
+        - This ensures the image generator correctly matches reference images for each asset.
+        
+        **TEXT RULE (ZERO TOLERANCE):** 
+        - NEVER include text, labels, signs, or names as rendered text.
+        - Reference characters by name, but don't ask for text rendering.
+        
+        **NEGATIVE CONSTRAINTS:**
+        - No text, No typography, No UI overlays, No speech bubbles, No camera movements.
+      
+      - estimatedDuration: ⚠️ **CRITICAL: MAXIMUM 8 SECONDS PER CUT (ABSOLUTE LIMIT)**
+        • HARD LIMIT: No cut may exceed 8 seconds. This is non-negotiable.
+        • Optimal range: 2-6 seconds for good pacing.
+        • If dialogue or action takes longer, SPLIT into multiple cuts.
+        • Cuts over 8 seconds will be REJECTED by the video pipeline.
+      
+      - sfxDescription: **Background sound effect suggestion (REQUIRED for all cuts):**
+        - Describe ambient/environmental sounds that enhance the scene
+        - Use searchable English keywords: "rain", "footsteps", "crowd murmur", "wind howling", "thunder distant"
+        - For SILENT cuts: describe atmospheric sounds only (e.g., "forest ambience, birds chirping")
+        - For dialogue cuts: suggest subtle background sounds (e.g., "cafe background, soft chatter")
+        - Keep it short (3-8 words) and specific
+        - Example: "heavy rain, thunder, wind gusts"
+      
+      **Important:**
+      - Use the characters and locations defined above
+      - **PRIORITY:** Use "Story Context" for dialogue and plot logic. Use "Visual Appearance" ONLY for the visualPrompt field.
+      - Ensure the dialogue tells the episode plot cohesively
+      - Visual prompts should reference specific characters/locations by name for consistency
+      - Total duration should approximately match the target duration
+      
+      Return ONLY a raw JSON array of objects with keys: id, speaker, dialogue, language, emotion, emotionIntensity, visualPrompt, sfxDescription, estimatedDuration.
+      Do not include markdown formatting like \`\`\`json.
+    `;
+
+// Default video prompt instructions (for Step 3 Video Prompt Generation)
+export const DEFAULT_VIDEO_PROMPT_INSTRUCTIONS = `
+**VIDEO PROMPT GENERATION - For Veo3/Kling/Grok Video AI:**
+
+Transform the static visualPrompt into a dynamic video prompt.
+Each video prompt should describe 5-8 seconds of motion based on the still image.
+
+**VIDEO PROMPT STRUCTURE:**
+1. **Opening Frame:** Start with the exact composition from visualPrompt
+2. **Camera Movement:** Add ONE primary camera move
+3. **Subject Motion:** Describe character/object movements
+4. **Environmental Motion:** Ambient movement (wind, particles, lighting shifts)
+5. **Timing Notes:** Specify speed (slow, medium, fast)
+
+**CAMERA MOVEMENT VOCABULARY (pick ONE):**
+- Dolly in/out: Camera moves toward/away from subject
+- Pan left/right: Camera rotates horizontally
+- Tilt up/down: Camera rotates vertically
+- Tracking shot: Camera follows moving subject
+- Zoom in/out: Lens zoom (different from dolly)
+- Static hold: No camera movement (emphasizes subject motion)
+- Crane up/down: Vertical camera lift
+- Orbit: Camera circles around subject
+
+**SUBJECT MOTION (match dialogue/action):**
+- Speaking: "Lips move naturally, subtle head gestures, expressive eyes"
+- Walking: "Continuous walking motion, natural arm swing"
+- Emotional: "Tears forming", "Smile spreading", "Fist clenching"
+- Idle: "Subtle breathing, hair movement, fabric settling"
+
+**ENVIRONMENTAL MOTION:**
+- Weather: "Rain falling", "Snow drifting", "Leaves blowing"
+- Lighting: "Sunlight shifting", "Shadows moving", "Neon flickering"
+- Particles: "Dust motes floating", "Sparks rising", "Smoke curling"
+
+**QUALITY KEYWORDS FOR AI VIDEO:**
+- "Cinematic motion", "Smooth camera movement", "Natural motion blur"
+- "Professional cinematography", "35mm film look", "Anamorphic lens"
+
+**EXAMPLE OUTPUT:**
+visualPrompt: "Medium shot of Detective Kane standing in rain, noir lighting, wet pavement reflections"
+videoPrompt: "Medium shot, Detective Kane stands in heavy rain. Camera slowly dollies in toward his face. Rain falls steadily, creating ripples in puddles. Kane's wet coat glistens, water droplets run down his face. His eyes narrow with determination, jaw tightens. Subtle head turn as he looks off-screen. Cinematic noir atmosphere with neon reflections."
+
+**RULES:**
+- Always reference the visualPrompt scene composition
+- Keep motion realistic and achievable for AI video
+- Avoid impossible physics or extreme transformations
+- Match movement to dialogue timing if applicable
+`;
 
 export const generateScript = async (
     seriesName: string,
@@ -32,7 +267,9 @@ export const generateScript = async (
     characters?: any[],
     locations?: any[],
     storylineTable?: StorylineScene[],  // Use storyline as structure
-    assetDefinitions?: Record<string, any>  // NEW: Step 2 asset definitions
+    assetDefinitions?: Record<string, any>,  // NEW: Step 2 asset definitions
+    customInstructions?: string, // NEW: Allow overriding instructions
+    existingScript?: ScriptCut[] // NEW: Pass existing script for context-aware regeneration
 ): Promise<ScriptCut[]> => {
     if (!apiKey) {
         // Mock response
@@ -71,13 +308,39 @@ export const generateScript = async (
         if (characters && characters.length > 0) {
             characterInfo = characters.map(c => {
                 // Try to find matching asset definition from Step 2
-                const assetDef = assetDefinitions ? Object.values(assetDefinitions).find(
-                    (a: any) => a.type === 'character' && a.name === c.name
-                ) : null;
+                // STRICT PRIORITY: Check for exact ID match first (to avoid "Ghost" assets with same name)
+                const assets = assetDefinitions ? Object.values(assetDefinitions) : [];
+                let assetDef = assets.find((a: any) => a.type === 'character' && a.id === c.id);
 
-                // Use Step 2 description if available (more detailed), otherwise Step 1
-                const description = (assetDef as any)?.description || c.description;
-                return `- ${c.name} (${c.role}): ${description}`;
+                // Fallback: Name matching (only if ID match fails)
+                if (!assetDef) {
+                    assetDef = assets.find((a: any) => a.type === 'character' && a.name?.toLowerCase() === c.name?.toLowerCase());
+                }
+
+                // Debug log
+                if (assetDef) {
+                    console.log(`[Gemini] Matched Step 1 character "${c.name}" (ID: ${c.id}) with Step 2 asset (ID: ${(assetDef as any).id})`);
+                } else {
+                    console.log(`[Gemini] No Step 2 match for character "${c.name}" (ID: ${c.id}). Available IDs: ${assetDefinitions ? Object.keys(assetDefinitions).join(', ') : 'None'}`);
+                }
+
+                // Merge Step 1 and Step 2 descriptions
+                // Visual source priority: Step 2 Asset Def (Highest) > Step 1 Visual Summary
+                const step1Desc = c.description || '';
+                const step1Visual = c.visualSummary || '';
+                const step2Desc = (assetDef as any)?.description || '';
+
+                const visualDetails = step2Desc || step1Visual;
+
+                if (visualDetails && visualDetails !== step1Desc) {
+                    // EXPLICITLY separate Narrative vs Visual to prevent AI confusion
+                    // This ensures "Old Name" in visual details doesn't override "New Name" in narrative
+                    return `- ${c.name} (${c.role}):
+  * Story Context: ${step1Desc}
+  * Visual Appearance: ${visualDetails}`;
+                }
+
+                return `- ${c.name} (${c.role}): ${step1Desc}`;
             }).join('\n');
         } else {
             characterInfo = 'No specific characters defined';
@@ -88,13 +351,37 @@ export const generateScript = async (
         if (locations && locations.length > 0) {
             locationInfo = locations.map(l => {
                 // Try to find matching asset definition from Step 2
-                const assetDef = assetDefinitions ? Object.values(assetDefinitions).find(
-                    (a: any) => a.type === 'location' && a.name === l.name
-                ) : null;
+                // STRICT PRIORITY: Check for exact ID match first
+                const assets = assetDefinitions ? Object.values(assetDefinitions) : [];
+                let assetDef = assets.find((a: any) => a.type === 'location' && a.id === l.id);
 
-                // Use Step 2 description if available (more detailed), otherwise Step 1
-                const description = (assetDef as any)?.description || l.description;
-                return `- ${l.name}: ${description}`;
+                // Fallback: Name matching
+                if (!assetDef) {
+                    assetDef = assets.find((a: any) => a.type === 'location' && a.name?.toLowerCase() === l.name?.toLowerCase());
+                }
+
+                // Debug log
+                if (assetDef) {
+                    console.log(`[Gemini] Matched Step 1 location "${l.name}" (ID: ${l.id}) with Step 2 asset (ID: ${(assetDef as any).id})`);
+                } else {
+                    console.log(`[Gemini] No Step 2 match for location "${l.name}" (ID: ${l.id}). Available IDs: ${assetDefinitions ? Object.keys(assetDefinitions).join(', ') : 'None'}`);
+                }
+
+                // Merge Step 1 and Step 2 descriptions
+                // Visual source priority: Step 2 Asset Def (Highest) > Step 1 Visual Summary
+                const step1Desc = l.description || '';
+                const step1Visual = l.visualSummary || '';
+                const step2Desc = (assetDef as any)?.description || '';
+
+                const visualDetails = step2Desc || step1Visual;
+
+                if (visualDetails && visualDetails !== step1Desc) {
+                    return `- ${l.name}:
+  * Story Context: ${step1Desc}
+  * Visual Appearance: ${visualDetails}`;
+                }
+
+                return `- ${l.name}: ${step1Desc}`;
             }).join('\n');
         } else {
             locationInfo = 'No specific locations defined';
@@ -120,6 +407,28 @@ CRITICAL INSTRUCTIONS:
 `;
         }
 
+        // NEW: Build Locked Cuts Context
+        let lockedCutsContext = '';
+        if (existingScript && existingScript.length > 0) {
+            // Check for explicit locks (Audio/Image) OR confirmed status
+            const lockedCuts = existingScript.filter(c => c.isConfirmed || c.isAudioConfirmed || c.isImageConfirmed);
+
+            if (lockedCuts.length > 0) {
+                lockedCutsContext = `
+**CRITICAL: LOCKED CUTS (ESTABLISHED STORY)**
+The following cuts are ALREADY ESTABLISHED and cannot be changed. You MUST use them as the narrative foundation.
+
+**CONTINUITY RULES:**
+1. **NO REPETITION:** Do NOT repeat the dialogue of ANY previous cut (locked or generated). Each cut must move the story forward.
+2. **SEQUENCE & FLOW:** New cuts must logically follow the cut immediately preceding them. If the previous cut is locked, the new cut must be a direct narrative continuation.
+3. **LOGICAL PATH:** Treat locked cuts as immutable "narrative anchors". Your generated cuts must bridge these anchors to form a complete, non-redundant, and logically ascending story.
+
+**ESTABLISHED CUTS:**
+${lockedCuts.map(c => `[established] CUT #${c.id} | Speaker: ${c.speaker} | Dialogue: "${c.dialogue}" | Visual: "${c.visualPrompt}"`).join('\n')}
+`;
+            }
+        }
+
         const prompt = `
       You are a professional screenwriter. Create a video script for a YouTube short.
       
@@ -136,51 +445,13 @@ CRITICAL INSTRUCTIONS:
       **Available Locations:**
       ${locationInfo}
       ${storylineContext}
+      ${lockedCutsContext}
       
       **Production Details:**
       - Target Duration: ${targetDuration} seconds
       - Visual Style: ${JSON.stringify(stylePrompts)}
       
-      **Instructions:**
-      Break the episode plot into cinematic cuts that fit within ${targetDuration} seconds total.
-      
-      **Strict Constraints:**
-      1. **Duration:** Each cut must be LESS THAN 8 seconds.
-      2. **One Visual Per Cut:** Each cut must depict exactly ONE static visual scene. Do not describe scene transitions or multiple sequential actions in a single visual prompt. If the visual changes, create a new cut.
-      3. **Asset Names:** You MUST use the exact official names provided in "Available Characters" and "Available Locations" when writing visual prompts. 
-         - Example: If the location is "Company Office", use "Company Office". Do NOT use "Meriel's Office" or "The office".
-         - This is critical for automated asset matching.
-      
-      For each cut, provide:
-      - speaker: Name of the speaker (use character names from above) or "Narrator"
-      - dialogue: The spoken text that advances the story
-      - language: Detected language code based on dialogue text (en-US for English, ko-KR for Korean)
-      - emotion: Emotional tone of the dialogue (neutral/happy/sad/angry/excited/calm/tense)
-      - emotionIntensity: Strength of the emotion (low/moderate/high)
-      - visualPrompt: **CRITICAL - Use STRICT cinematographic format with ALL FIVE components:**
-        Format: (Shot Size) + (Angle) + (Subject & Action) + (Camera Movement) + (Lighting/Style)
-        
-        REQUIRED COMPONENTS:
-        1. Shot Size: Wide shot / Medium shot / Close-up / Extreme close-up / Full shot / Medium close-up
-        2. Angle: Eye-level / Low angle / High angle / Dutch angle / Over-the-shoulder / Bird's eye view
-        3. Subject & Action: [Character Name] + specific action/pose + [Location Name] + environment details
-        4. Camera Movement: Static / Slow pan / Zoom in / Zoom out / Tracking / Dolly
-        5. Lighting/Style: Golden hour / Dramatic shadows / Soft lighting / Neon / Cinematic / Noir / etc.
-        
-        GOOD Example: "Wide shot, low angle, Detective Kane standing in Rain-Soaked Street looking up at building, static camera, dramatic noir lighting with wet pavement reflections"
-        BAD Example: "Detective in the street" (missing all components)
-        
-        **Use ONLY exact character/location names from lists above. Vary shot sizes and angles for visual diversity.**
-      - estimatedDuration: Duration in seconds (Must be < 8s)
-      
-      **Important:**
-      - Use the characters and locations defined above
-      - Ensure the dialogue tells the episode plot cohesively
-      - Visual prompts should reference specific characters/locations by name for consistency
-      - Total duration should approximately match ${targetDuration} seconds
-      
-      Return ONLY a raw JSON array of objects with keys: id, speaker, dialogue, language, emotion, emotionIntensity, visualPrompt, estimatedDuration.
-      Do not include markdown formatting like \`\`\`json.
+      ${customInstructions || DEFAULT_SCRIPT_INSTRUCTIONS}
     `;
 
         const response = await axios.post(
@@ -193,15 +464,118 @@ CRITICAL INSTRUCTIONS:
             }
         );
 
-        const generatedText = response.data.candidates[0].content.parts[0].text;
-        const script = JSON.parse(generatedText);
+        let generatedText = response.data.candidates[0].content.parts[0].text;
 
-        // Ensure IDs are numbers
-        return script.map((cut: any, index: number) => ({
-            ...cut,
-            id: index + 1,
-            estimatedDuration: Number(cut.estimatedDuration)
-        }));
+        // Remove markdown formatting if present
+        generatedText = generatedText.replace(/```json\n?|\n?```/g, '').trim();
+
+        const rawScript = JSON.parse(generatedText);
+
+        // Normalize and ensure IDs are numbers
+        return rawScript.map((cut: any, index: number) => {
+            // NEW: LOCKED CUT OVERRIDE
+            // Before applying ANY AI-correction logic, check if this cut slot belongs to a locked cut.
+            // We align based on Index (since ID might shift if AI inserts checks, though we asked it not to).
+            // Better: aligned by content match? No, that's impossible if content changed.
+            // Best: Use the existingScript array index if available, assuming AI followed instructions to keep count similar.
+            // BUT: AI might add/remove cuts. 
+            // safer strategy: If we passed existingScript, we asked AI to keep locked cuts. 
+            // We can try to match by ID if the AI preserved IDs.
+
+            let lockedOriginal = null;
+            if (existingScript) {
+                // 1. Try exact ID match (if AI kept the ID)
+                lockedOriginal = existingScript.find(c => c.id === cut.id && (c.isConfirmed || c.isAudioConfirmed || c.isImageConfirmed));
+
+                // 2. Fallback: If AI renumbered but we are in the "preserve" zone? 
+                // Actually, if ID mismatch, it's risky. But let's trust exact ID match first found in the AI output.
+                // The AI prompt explicitly included [CUT #ID].
+            }
+
+            if (lockedOriginal) {
+                console.log(`[Gemini] Restoring LOCKED cut #${lockedOriginal.id} content verbatim.`);
+                return {
+                    ...cut, // Keep any new metadata AI might have added (like sfxDescription if it hallucinated?) - actually NO.
+                    // We must restore core content exactly.
+                    id: lockedOriginal.id, // Enforce original ID
+                    speaker: lockedOriginal.speaker,
+                    dialogue: lockedOriginal.dialogue,
+                    visualPrompt: lockedOriginal.visualPrompt,
+                    // Preserve other locked props
+                    videoPrompt: lockedOriginal.videoPrompt,
+                    audioUrl: lockedOriginal.audioUrl,
+                    finalImageUrl: lockedOriginal.finalImageUrl,
+                    isConfirmed: lockedOriginal.isConfirmed,
+                    isAudioConfirmed: lockedOriginal.isAudioConfirmed,
+                    isImageConfirmed: lockedOriginal.isImageConfirmed,
+                    // Use AI's estimated duration if original didn't have one? No, keep original.
+                    estimatedDuration: lockedOriginal.estimatedDuration || cut.estimatedDuration
+                };
+            }
+
+            // --- STANDARD NORMALIZATION FOR NEW/UNLOCKED CUTS ---
+
+            let speaker = cut.speaker || cut.character || cut.name || 'Unknown';
+            let dialogue = cut.dialogue || cut.content || cut.text || '...';
+
+            // SELF-HEALING: Fix common AI hallucinations
+            // 1. If Speaker is SFX but dialogue seems like speech (not wrapped in brackets), change to Narrator
+            if (speaker.toUpperCase() === 'SFX' && !dialogue.trim().startsWith('[')) {
+                console.warn(`[Gemini] Auto-corrected SFX speaker to Narrator for dialogue: "${dialogue.substring(0, 20)}..."`);
+                speaker = 'Narrator';
+            }
+
+            // 2. If Speaker is SILENT but dialogue is long text, change to Narrator
+            if (speaker.toUpperCase() === 'SILENT' && dialogue.length > 20 && !dialogue.trim().startsWith('[')) {
+                console.warn(`[Gemini] Auto-corrected SILENT speaker to Narrator for dialogue: "${dialogue.substring(0, 20)}..."`);
+                speaker = 'Narrator';
+            }
+
+            // 3. SFX MIGRATION: Aggressive Detection
+            // If Speaker is 'SFX' OR Dialogue is purely bracketed/parenthesized SFX
+            const sfxRegex = /^\[.*(SFX|Sound|Music|Audio|Effect|BGM).*\]$/i;
+            const sfxParenRegex = /^\(.*(SFX|Sound|Music|Audio|Effect|BGM).*\)$/i;
+            const isSfxDialogue = sfxRegex.test(dialogue.trim()) || sfxParenRegex.test(dialogue.trim()) || dialogue.trim().startsWith('[SFX:');
+
+            if (speaker.toUpperCase() === 'SFX' || isSfxDialogue) {
+                // Extract description from dialogue if possible
+                let description = cut.sfxDescription || '';
+
+                // Try to clean up the dialogue to get the description
+                // e.g., "[SFX: Alarm]" -> "Alarm"
+                const cleanDesc = dialogue.replace(/^\[(SFX|Sound|Music|Audio|Effect|BGM):?\s*/i, '').replace(/\]$/, '').trim();
+
+                if (cleanDesc && cleanDesc !== 'SILENT' && cleanDesc !== '무음') {
+                    description = cleanDesc;
+                }
+
+                console.log(`[Gemini] Auto-corrected SFX cut -> SILENT. Desc: "${description}"`);
+
+                speaker = 'SILENT';
+                dialogue = '...'; // Enforce silent tag as "..."
+                if (description) {
+                    cut.sfxDescription = description;
+                }
+            }
+
+            // 4. Safety Check: If Speaker is Narrator but dialogue is [SILENT], fix it
+            if (speaker === 'Narrator' && (dialogue === '[SILENT]' || dialogue === '[무음]')) {
+                speaker = 'SILENT';
+            }
+
+            // 5. FINAL ENFORCEMENT: If Speaker is SILENT, Dialogue MUST be "..."
+            if (speaker === 'SILENT') {
+                dialogue = '...';
+            }
+
+            return {
+                ...cut,
+                id: index + 1,
+                speaker,
+                dialogue,
+                estimatedDuration: Number(cut.estimatedDuration)
+            };
+        });
 
     } catch (error) {
         console.error('Gemini Script Generation Failed:', error);
@@ -209,60 +583,13 @@ CRITICAL INSTRUCTIONS:
     }
 };
 
-export interface ChatMessage {
-    role: 'user' | 'model';
-    content: string;
-}
-
-export interface AiCharacter {
-    name: string;
-    role: string;
-    description: string;
-}
-
-export interface StorylineScene {
-    id?: string;
-    sceneNumber: number;
-    estimatedTime: string;
-    content: string;
-    directionNotes: string;
-    linkedCutIds?: number[];  // NEW: Track which cuts belong to this scene
-}
-
-export interface ConsultationResult {
-    reply: string;
-    suggestedSeriesName?: string;
-    suggestedEpisodeName?: string;
-    suggestedEpisodeNumber?: number;
-    suggestedSeriesStory?: string;
-    suggestedMainCharacters?: string;
-    suggestedCharacters?: AiCharacter[];
-    suggestedSeriesLocations?: { name: string; description: string }[];
-    suggestedEpisodePlot?: string;
-    suggestedEpisodeCharacters?: AiCharacter[];
-    suggestedEpisodeLocations?: { name: string; description: string }[];
-    suggestedDuration?: number;
-    suggestedStorylineScenes?: StorylineScene[];  // NEW: AI-suggested storyline breakdown
-}
-
-export interface ProjectContext {
-    seriesName: string;
-    episodeName: string;
-    episodeNumber: number;
-    seriesStory: string;
-    characters: any[];
-    seriesLocations: any[];
-    episodePlot: string;
-    episodeCharacters: any[];
-    episodeLocations: any[];
-    targetDuration: number;
-    aspectRatio: string;
-}
+import { DEFAULT_CONSULTANT_INSTRUCTION } from '../data/personaTemplates';
 
 export const consultStory = async (
     history: ChatMessage[],
     context: ProjectContext,
-    apiKey: string
+    apiKey: string,
+    customInstruction?: string
 ): Promise<ConsultationResult> => {
     console.log("[Gemini Service] consultStory called. Has API Key:", !!apiKey, "Key length:", apiKey?.length);
     if (!apiKey) {
@@ -276,10 +603,10 @@ export const consultStory = async (
                     suggestedEpisodeNumber: 1,
                     suggestedSeriesStory: "In the year 2150, Mars has been terraformed, but secrets lie beneath the red dust.",
                     suggestedMainCharacters: "Detective Kael, Dr. Aris",
-                    suggestedSeriesLocations: [{ name: "Mars Colony Alpha", description: "A dusty, red-tinted dome city." }],
+                    suggestedSeriesLocations: [{ name: "Mars Colony Alpha", description: "A dusty, red-tinted dome city.", visualSummary: "Wide shot of a massive red dome city on Mars surface, dusty atmosphere, cinematic lighting" }],
                     suggestedEpisodePlot: "Kael discovers a strange signal coming from the old mines.",
-                    suggestedEpisodeCharacters: [{ name: "Mining Chief", role: "Witness", description: "Grumpy old miner." }],
-                    suggestedEpisodeLocations: [{ name: "Old Mines", description: "Dark, abandoned tunnels." }],
+                    suggestedEpisodeCharacters: [{ name: "Mining Chief", role: "Witness", description: "Grumpy old miner.", visualSummary: "Close up of an elderly rugged miner with a thick beard, dirty face, wearing a worn spacesuit, high contrast lighting" }],
+                    suggestedEpisodeLocations: [{ name: "Old Mines", description: "Dark, abandoned tunnels.", visualSummary: "Dark claustrophobic mine tunnel with flickering lights, damp walls, mysterious shadows" }],
                     suggestedDuration: 60
                 });
             }, 1000);
@@ -287,83 +614,124 @@ export const consultStory = async (
     }
 
     try {
-        const systemInstruction = `You are a creative writing partner for a video production workflow. 
-        Your goal is to help the user develop a story for a series and a specific episode.
-        
-        CURRENT PROJECT CONTEXT (Use this to inform your suggestions):
-        - Series Name: "${context.seriesName}"
-        - Series Story: "${context.seriesStory}"
-        - Main Characters: ${JSON.stringify(context.characters)}
-        - Series Locations: ${JSON.stringify(context.seriesLocations)}
-        - Episode Name: "${context.episodeName}" (Ep #${context.episodeNumber})
-        - Episode Plot: "${context.episodePlot}"
-        - Episode Characters: ${JSON.stringify(context.episodeCharacters)}
-        - Episode Locations: ${JSON.stringify(context.episodeLocations)}
-        - Target Duration: ${context.targetDuration}s
-        - Aspect Ratio: ${context.aspectRatio}
-        
-        You should chat naturally, but also try to extract or suggest specific project details when possible.
-        
-        CRITICAL - CHARACTER AND LOCATION DESCRIPTIONS:
-        When suggesting characters or locations, the "description" field must include BOTH:
-        1. Story context/personality traits (1-2 sentences)
-        2. Detailed visual image prompt for AI generation (specific appearance details)
-        
-        Format example for character:
-        "A cynical detective who has seen too much. Visual: A tall middle-aged man, sharp angular features, tired blue eyes, wearing a gray trench coat over a rumpled suit, stubble on chin, holding a lit cigarette, noir lighting with dramatic shadows"
-        
-        Format example for location:
-        "The main hub of the Mars colony where all trade happens. Visual: A massive dome-shaped structure with red sand visible outside through transparent walls, futuristic chrome buildings inside, holographic market stalls, blue-tinted lighting, bustling crowd of people in spacesuits"
-        
-        IMPORTANT DISTINCTION:
-        - "suggestedCharacters": MAIN CHARACTERS for the ENTIRE SERIES (name, role, description with story context + visual prompt)
-        - "suggestedSeriesLocations": KEY LOCATIONS for the SERIES (name, description with context + visual prompt)
-        - "suggestedEpisodeCharacters": Characters ONLY in THIS EPISODE (name, role, description with context + visual prompt)
-        - "suggestedEpisodeLocations": Locations ONLY in THIS EPISODE (name, description with context + visual prompt)
-        - "suggestedStorylineScenes": Scene breakdown array with sceneNumber, estimatedTime, content, directionNotes
-        
-        ALWAYS return valid JSON:
-        {
-            "reply": "Your conversational response...",
-            "suggestedSeriesName": "Series name (optional)",
-            "suggestedEpisodeName": "Episode name (optional)",
-            "suggestedEpisodeNumber": 1 (optional),
-            "suggestedSeriesStory": "Brief series summary (optional)",
-            "suggestedMainCharacters": "Character list string (optional)",
-            "suggestedCharacters": [{"name": "Name", "role": "Role", "description": "Story context. Visual: detailed appearance"}] (optional),
-            "suggestedSeriesLocations": [{"name": "Name", "description": "Context. Visual: detailed appearance"}] (optional),
-            "suggestedEpisodePlot": "Episode plot summary (optional)",
-            "suggestedEpisodeCharacters": [{"name": "Name", "role": "Role", "description": "Story context. Visual: detailed appearance"}] (optional),
-            "suggestedEpisodeLocations": [{"name": "Name", "description": "Context. Visual: detailed appearance"}] (optional),
-            "suggestedDuration": 60 (optional),
-            "suggestedStorylineScenes": [{"sceneNumber": 1, "estimatedTime": "0:00-0:30", "content": "Summary", "directionNotes": "Notes"}] (optional)
-        }
-        
-        If the user hasn't provided enough info, omit fields or suggest creative defaults.
-        Keep the "reply" engaging and helpful. Ask follow-up questions to develop the story.
-        `;
+        let systemInstruction = customInstruction || DEFAULT_CONSULTANT_INSTRUCTION;
 
-        const contents = history.map(msg => ({
-            role: msg.role === 'user' ? 'user' : 'model',
-            parts: [{ text: msg.content }]
-        }));
+        // Hydrate template variables
+        systemInstruction = systemInstruction
+            .replace('{{seriesName}}', context.seriesName || '')
+            .replace('{{seriesStory}}', context.seriesStory || '')
+            .replace('{{characters}}', JSON.stringify(context.characters))
+            .replace('{{seriesLocations}}', JSON.stringify(context.seriesLocations))
+            .replace('{{seriesProps}}', JSON.stringify(context.seriesProps))
+            .replace('{{episodeName}}', context.episodeName || '')
+            .replace('{{episodeNumber}}', String(context.episodeNumber))
+            .replace('{{episodePlot}}', context.episodePlot || '')
+            .replace('{{episodeCharacters}}', JSON.stringify(context.episodeCharacters))
+            .replace('{{episodeLocations}}', JSON.stringify(context.episodeLocations))
+            .replace('{{episodeProps}}', JSON.stringify(context.episodeProps))
+            .replace('{{targetDuration}}', String(context.targetDuration))
+            .replace('{{aspectRatio}}', context.aspectRatio);
 
-        const response = await axios.post(
-            `${GEMINI_API_URL}?key=${apiKey}`,
-            {
-                contents: [
-                    {
-                        role: 'user',
-                        parts: [{ text: systemInstruction }] // Prepend system instruction as first user message context
-                    },
-                    ...contents
-                ],
-                generationConfig: {
-                    temperature: 0.9,
-                    response_mime_type: "application/json"
+
+
+        // Import resolveUrl for idb:// handling
+        const { resolveUrl } = await import('../utils/imageStorage');
+
+        const contents = await Promise.all(history.map(async (msg) => {
+            const parts: any[] = [];
+
+            // Add text content
+            let textContent = msg.content;
+
+            // If there's file content, append it to the text message
+            if (msg.fileContent && msg.fileName) {
+                if (msg.fileType === 'json') {
+                    textContent += `\n\n[Attached JSON file: ${msg.fileName}]\n\`\`\`json\n${msg.fileContent}\n\`\`\``;
+                } else {
+                    textContent += `\n\n[Attached file: ${msg.fileName}]\n\`\`\`\n${msg.fileContent}\n\`\`\``;
                 }
             }
-        );
+
+            parts.push({ text: textContent });
+
+            // Check for image in message
+            if (msg.image) {
+                let imageData = msg.image;
+
+                // Resolve idb:// URLs to actual base64 data
+                if (msg.image.startsWith('idb://')) {
+                    try {
+                        console.log(`[Gemini] Resolving idb:// URL for chat image...`);
+                        imageData = await resolveUrl(msg.image) || '';
+                        if (!imageData || imageData.startsWith('idb://')) {
+                            console.warn(`[Gemini] Failed to resolve idb:// URL, skipping image`);
+                            imageData = ''; // Skip this image
+                        }
+                    } catch (e) {
+                        console.error(`[Gemini] Error resolving idb:// URL:`, e);
+                        imageData = ''; // Skip this image
+                    }
+                }
+
+                // Only add image if we have valid base64 data
+                if (imageData && imageData.startsWith('data:')) {
+                    const cleanBase64 = imageData.split(',')[1] || imageData;
+                    parts.push({
+                        inline_data: {
+                            mime_type: "image/jpeg",
+                            data: cleanBase64
+                        }
+                    });
+                }
+            }
+            return {
+                role: msg.role === 'user' ? 'user' : 'model',
+                parts: parts
+            };
+        }));
+
+        const modelsToTry = [
+            { name: 'Gemini 3.0 Pro', url: `${GEMINI_3_PRO_URL}?key=${apiKey}` },
+            { name: 'Gemini 2.5 Flash', url: `${GEMINI_2_5_FLASH_URL}?key=${apiKey}` },
+            { name: 'Gemini 2.0 Flash Exp', url: `${GEMINI_2_URL}?key=${apiKey}` },
+            { name: 'Gemini 1.5 Pro', url: `${GEMINI_PRO_URL}?key=${apiKey}` }
+        ];
+
+        let lastError: any = null;
+        let response: any = null;
+
+        for (const model of modelsToTry) {
+            try {
+                console.log(`[Gemini] Consulting AI with model: ${model.name}`);
+                response = await axios.post(
+                    model.url,
+                    {
+                        contents: [
+                            {
+                                role: 'user',
+                                parts: [{ text: systemInstruction }]
+                            },
+                            ...contents
+                        ],
+                        generationConfig: {
+                            temperature: 0.9,
+                            response_mime_type: "application/json"
+                        }
+                    }
+                );
+                if (response) break; // Success!
+            } catch (e: any) {
+                lastError = e;
+                const status = e.response?.status;
+                const msg = e.response?.data?.error?.message || e.message;
+                console.warn(`[Gemini] Model ${model.name} failed (${status}): ${msg}`);
+                // Continue to next model
+            }
+        }
+
+        if (!response) {
+            throw lastError || new Error("All Gemini models failed to respond.");
+        }
 
         const generatedText = response.data.candidates[0].content.parts[0].text;
 
@@ -381,6 +749,8 @@ export const consultStory = async (
                 suggestedEpisodePlot: parsed.suggestedEpisodePlot,
                 suggestedEpisodeCharacters: parsed.suggestedEpisodeCharacters,
                 suggestedEpisodeLocations: parsed.suggestedEpisodeLocations,
+                suggestedSeriesProps: parsed.suggestedSeriesProps, // NEW
+                suggestedEpisodeProps: parsed.suggestedEpisodeProps, // NEW
                 suggestedDuration: parsed.suggestedDuration,
                 suggestedStorylineScenes: parsed.suggestedStorylineScenes
             };
@@ -406,19 +776,60 @@ export const enhancePrompt = async (
     if (!apiKey) return basePrompt + " (Enhanced)";
 
     const prompt = `
-    You are an expert visual prompt engineer for AI image generation (Midjourney/Stable Diffusion).
-    Enhance the following short description into a detailed, high-quality visual prompt.
-    
-    Type: ${type}
-    Context: ${context}
-    Base Description: "${basePrompt}"
-    
-    Requirements:
-    - Add sensory details (lighting, texture, atmosphere).
-    - Specify artistic style if relevant to the context.
-    - Keep it focused and evocative.
-    - Return ONLY the enhanced prompt text.
-    `;
+Enhance the following short description into a detailed, high-quality visual prompt.
+
+Type: ${type}
+Context: ${context}
+Base Description: "${basePrompt}"
+
+${type === 'style' ? `
+Requirements for MASTER VISUAL STYLE:
+- You are a Creative Director defining the Art Direction.
+- You MUST explicitly structure your output into these 4 sections. Do NOT skip any section.
+- Header format: "## 1. VISUAL STYLE", "## 2. CHARACTER", etc.
+
+Structure:
+1. VISUAL STYLE:
+   - Artform (e.g., Oil painting, 3D render, Anime, Noir film)
+   - Lighting (e.g., Chiaroscuro, Neon, Soft diffused)
+   - Color Palette (e.g., Pastel, Desaturated, High contrast neon)
+   - Camera/Lens (e.g., Wide angle, Macro, Bokeh, Film grain)
+
+2. CHARACTER:
+   - Anatomy/Proportions (e.g., Realistic, Chibi, Slender)
+   - Skin/Texture rendering
+   - Clothing material details
+
+3. LOCATION:
+   - Architectural style
+   - Atmospheric elements (Fog, Dust, Rain)
+   - Environment scale
+
+4. PROP:
+   - Object detail level
+   - Texture wear (Rust, Scratches, Pristine)
+
+Example Output:
+## 1. VISUAL STYLE
+Cinematic Cyberpunk Realism. 35mm film stock aesthetics with heavy grain. Lighting is dominated by neon teals and magentas contrasting with deep crushed blacks.
+
+## 2. CHARACTER
+Photorealistic skin textures with visible pores and sweat. Tech-wear fashion with matte black plastic and glowing LED accents.
+
+## 3. LOCATION
+Dense futuristic metropolis. Wet pavement reflecting neon lights. Towering Brutalist skyscrapers shrouded in toxic smog.
+
+## 4. PROP
+Gritty and used. Guns and gadgets show signs of wear, oil stains, and scratched metal.
+
+- Return ONLY the categorized text.` : `
+Requirements:
+- Add sensory details (lighting, texture, atmosphere).
+- Specify artistic style if relevant to the context.
+- Keep it focused and evocative.
+- Return ONLY the enhanced prompt text.
+`}
+`;
 
     try {
         const response = await axios.post(
@@ -441,8 +852,17 @@ export const analyzeImage = async (
     if (!apiKey) return "Analyzed image description...";
 
     try {
-        // Remove header if present (data:image/jpeg;base64,)
-        const cleanBase64 = imageBase64.split(',')[1] || imageBase64;
+        // Dynamic MIME type extraction
+        const match = imageBase64.match(/^data:(.+);base64,(.+)$/);
+        let mimeType = "image/jpeg";
+        let cleanBase64 = imageBase64;
+
+        if (match) {
+            mimeType = match[1];
+            cleanBase64 = match[2];
+        } else {
+            cleanBase64 = imageBase64.split(',')[1] || imageBase64;
+        }
 
         const response = await axios.post(
             `${GEMINI_API_URL}?key=${apiKey}`,
@@ -452,7 +872,7 @@ export const analyzeImage = async (
                         { text: "Describe this image in high detail, focusing on visual style, lighting, colors, and composition. This description will be used as a prompt to generate similar images. Return ONLY the description." },
                         {
                             inline_data: {
-                                mime_type: "image/jpeg",
+                                mime_type: mimeType,
                                 data: cleanBase64
                             }
                         }
@@ -464,5 +884,168 @@ export const analyzeImage = async (
     } catch (error) {
         console.error("Image Analysis Failed:", error);
         return "Failed to analyze image.";
+    }
+};
+
+export const generateVisualPrompt = async (
+    context: string,
+    referenceImages: string[], // Base64 strings
+    apiKey: string
+): Promise<string> => {
+    if (!apiKey) return "Please provide an API key.";
+
+    const models = [
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-pro:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent'
+    ];
+
+    const parts: any[] = [
+        {
+            text: `You are a world-class Visual Director and Prompt Engineer. 
+Your goal is to write a highly detailed, single-paragraph image generation prompt for a YouTube thumbnail.
+
+INPUT CONTEXT:
+${context}
+
+TASK:
+1. Analyze the provided reference images (if any) for STYLE, LIGHTING, COMPOSITION, CHARACTER LOOK, and DESIGN DNA.
+2. SYNTHESIZE these elements. TRANSLATE the "Design DNA" into COMPOSITION and ENERGY.
+3. The prompt must be optimized for a high-end AI image generator (Imagen 3).
+4. Focus strictly on VISUALS: lighting (e.g., volumetric, cinematic), camera angle (e.g., dramatic low angle), texture (e.g., 8k, hyper-detailed), and color palette.
+5. DO NOT include narrative filler like "This image represents..." or "The scene captures...". Start directly with the subject.
+6. NEGATIVE CONSTRAINT: DO NOT Mention, Include, or Render the 'Episode Number' or 'Series Number' in the image. The user will add text overlay separately.
+7. LOGO PLACEMENT RULE:
+   - If the context mentions a 'Logo' or 'Corporate CI' asset, explicit instruct the generator to place it in the TOP-RIGHT corner of the composition (or on an element in that area).
+8. COMPOSITION & TEXT RULE:
+   - Title: If the benchmarks suggest bold typography, you MAY ask to render the 'Thumbnail Title'.
+   - ABSOLUTE PROHIBITION: Do NOT render 'Episode Number'.
+9. Return ONLY the raw prompt string.
+`
+        }
+    ];
+
+    // Attach reference images with correct MIME type
+    referenceImages.forEach(base64 => {
+        const match = base64.match(/^data:(.+);base64,(.+)$/);
+        let mimeType = "image/jpeg";
+        let data = base64;
+
+        if (match) {
+            mimeType = match[1];
+            data = match[2];
+        } else {
+            // Fallback cleanup if just base64 or has other prefix
+            data = base64.split(',')[1] || base64;
+        }
+
+        parts.push({
+            inline_data: {
+                mime_type: mimeType,
+                data: data
+            }
+        });
+    });
+
+    let lastError = "Unknown Error";
+
+    for (const modelUrl of models) {
+        try {
+            console.log(`[Gemini] Trying visual prompt with model: ${modelUrl}`);
+            const response = await axios.post(
+                `${modelUrl}?key=${apiKey}`,
+                {
+                    contents: [{ parts }]
+                }
+            );
+
+            if (response.data && response.data.candidates && response.data.candidates.length > 0) {
+                return response.data.candidates[0].content.parts[0].text.trim();
+            }
+        } catch (error: any) {
+            const status = error.response?.status;
+            const msg = error.response?.data?.error?.message || error.message;
+            console.warn(`[Gemini] Model failed: ${modelUrl} (${status}) - ${msg}`);
+            lastError = `${status}: ${msg}`;
+            // Continue to next model
+        }
+    }
+
+    return `Failed to generate visual prompt. Last Error: ${lastError}`;
+};
+
+/**
+ * AI Instruction Helper - Modify script/video instructions via natural language
+ */
+export const modifyInstructionWithAI = async (
+    currentInstruction: string,
+    userRequest: string,
+    instructionType: 'script' | 'video',
+    apiKey: string
+): Promise<{ success: boolean; modifiedInstruction?: string; explanation?: string; error?: string }> => {
+    if (!apiKey) {
+        return { success: false, error: 'API key is required' };
+    }
+
+    const systemPrompt = `You are an AI Instruction Editor specializing in prompt engineering for video/image generation.
+
+Your task: Modify the given ${instructionType === 'script' ? 'Script Generation' : 'Video Prompt'} instructions based on the user's natural language request.
+
+**IMPORTANT RULES:**
+1. Preserve the overall structure and existing critical rules (like 8-second limit, audio type rules)
+2. Only modify/add/remove parts relevant to the user's request
+3. Keep the instruction format consistent (markdown with headers, bullet points, etc.)
+4. If the request is unclear, make intelligent assumptions based on video production best practices
+5. If the request would break core functionality, explain why and suggest an alternative
+
+**RESPONSE FORMAT (JSON):**
+{
+    "modifiedInstruction": "The full modified instruction text",
+    "explanation": "Brief explanation of what was changed (1-2 sentences in Korean)"
+}
+
+Return ONLY raw JSON, no markdown formatting.`;
+
+    const userPrompt = `**Current ${instructionType === 'script' ? 'Script' : 'Video Prompt'} Instructions:**
+\`\`\`
+${currentInstruction}
+\`\`\`
+
+**User's Modification Request:**
+"${userRequest}"
+
+Please modify the instructions according to the user's request.`;
+
+    try {
+        const response = await axios.post(
+            `${GEMINI_API_URL}?key=${apiKey}`,
+            {
+                contents: [
+                    { role: 'user', parts: [{ text: systemPrompt }] },
+                    { role: 'model', parts: [{ text: 'Understood. I will modify the instructions based on the user request and return the result as JSON.' }] },
+                    { role: 'user', parts: [{ text: userPrompt }] }
+                ],
+                generationConfig: {
+                    temperature: 0.7,
+                    response_mime_type: "application/json"
+                }
+            }
+        );
+
+        const generatedText = response.data.candidates[0].content.parts[0].text;
+        const parsed = JSON.parse(generatedText);
+
+        return {
+            success: true,
+            modifiedInstruction: parsed.modifiedInstruction,
+            explanation: parsed.explanation
+        };
+    } catch (error: any) {
+        console.error('[Gemini] Instruction modification failed:', error);
+        return {
+            success: false,
+            error: error.response?.data?.error?.message || error.message || 'Failed to modify instruction'
+        };
     }
 };
