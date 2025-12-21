@@ -511,7 +511,7 @@ export const Dashboard: React.FC = () => {
                 {/* Right Content - Series Cards */}
                 <div className="col-span-12 lg:col-span-9 space-y-6">
                     {/* Top-Level Header Panel */}
-                    <div className="glass-panel p-4 sticky top-6 z-20 flex items-center justify-between mb-8 shadow-xl bg-[#1e1e1e]/80 backdrop-blur-md border-[var(--color-border)]">
+                    <div className="glass-panel p-4 sticky top-20 z-20 flex items-center justify-between mb-8 shadow-xl bg-[#1e1e1e]/80 backdrop-blur-md border-[var(--color-border)]">
                         <div className="flex items-center gap-6">
                             {/* Select All & Stats */}
                             <div className="flex items-center gap-4">
