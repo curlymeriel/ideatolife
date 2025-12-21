@@ -170,6 +170,15 @@ export const DEFAULT_SCRIPT_INSTRUCTIONS = `
         - **NO CAMERA MOVEMENT:** Do NOT include dolly, pan, zoom, tracking, etc. (Those go in videoPrompt)
         - **NO MOTION VERBS:** Avoid "running", "walking", "moving". Use frozen poses instead.
         
+        **⚠️ ONE SCENE ONLY (CRITICAL - ZERO TOLERANCE):**
+        - Each visualPrompt must describe EXACTLY ONE frozen moment from ONE camera angle.
+        - **FORBIDDEN PHRASES:** "then cutting to", "followed by", "next we see", "transitions to", "cuts to", "and then"
+        - ❌ BAD: "Medium shot of A, then cutting to close-up of B's eyes"
+        - ❌ BAD: "Wide shot followed by close-up of hands"
+        - ✅ GOOD: "Medium shot of Max Fisher, confident smile, bright office lighting"
+        - ✅ GOOD: "Close-up of Max Fisher's determined eyes, clinical lighting"
+        - If you need multiple angles, CREATE SEPARATE CUTS for each angle.
+        
         **ASSET NAME PRIORITY (CRITICAL FOR IMAGE CONSISTENCY):**
         - ALWAYS use the EXACT asset names from "Available Characters" and "Available Locations" lists.
         - DO NOT use pronouns (his, her, the, that) to refer to assets.
@@ -182,7 +191,7 @@ export const DEFAULT_SCRIPT_INSTRUCTIONS = `
         - Reference characters by name, but don't ask for text rendering.
         
         **NEGATIVE CONSTRAINTS:**
-        - No text, No typography, No UI overlays, No speech bubbles, No camera movements.
+        - No text, No typography, No UI overlays, No speech bubbles, No camera movements, No scene transitions.
       
       - visualPromptKR: (Optional) Korean translation of visualPrompt for user reference.
         - Translate the English visualPrompt to Korean so users can easily understand the scene.
