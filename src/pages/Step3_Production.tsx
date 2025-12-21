@@ -908,6 +908,45 @@ export const Step3_Production: React.FC = () => {
         });
     }, []);
 
+    // Bulk lock functions - component level for header access
+    const lockAllAudio = useCallback(() => {
+        setLocalScript(prev => {
+            const updated = prev.map(cut => (cut.audioUrl || cut.speaker === 'SILENT') ? { ...cut, isAudioConfirmed: true } : cut);
+            saveToStore(updated);
+            return updated;
+        });
+    }, []);
+
+    const unlockAllAudio = useCallback(() => {
+        setLocalScript(prev => {
+            const updated = prev.map(cut => ({ ...cut, isAudioConfirmed: false }));
+            saveToStore(updated);
+            return updated;
+        });
+    }, []);
+
+    const lockAllImages = useCallback(() => {
+        setLocalScript(prev => {
+            const updated = prev.map(cut => cut.finalImageUrl ? { ...cut, isImageConfirmed: true } : cut);
+            saveToStore(updated);
+            return updated;
+        });
+    }, []);
+
+    const unlockAllImages = useCallback(() => {
+        setLocalScript(prev => {
+            const updated = prev.map(cut => ({ ...cut, isImageConfirmed: false }));
+            saveToStore(updated);
+            return updated;
+        });
+    }, []);
+
+    // Bulk lock counts - component level for header access
+    const audioLockedCount = localScript.filter(c => c.isAudioConfirmed).length;
+    const imageLockedCount = localScript.filter(c => c.isImageConfirmed).length;
+    const audioGeneratedCount = localScript.filter(c => c.audioUrl).length;
+    const imageGeneratedCount = localScript.filter(c => c.finalImageUrl).length;
+
     return (
         <div className="flex gap-6 h-[calc(100vh-120px)]">
             {/* LEFT SIDEBAR - 1/4 width */}
@@ -939,6 +978,32 @@ export const Step3_Production: React.FC = () => {
                                 )}
                             </div>
                         </div>
+
+                        {/* Bulk Lock Buttons - Inside header for visibility before regeneration */}
+                        {localScript.length > 0 && (
+                            <div className="pt-3 border-t border-white/5">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-[10px] text-gray-400 uppercase font-bold">🔒 Bulk Lock</span>
+                                    <span className="text-[10px] text-gray-500">- Lock before regenerating script</span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="flex flex-col gap-1">
+                                        <span className="text-[9px] text-gray-500">🎵 Audio ({audioLockedCount}/{audioGeneratedCount})</span>
+                                        <div className="flex gap-1">
+                                            <button onClick={lockAllAudio} className="flex-1 px-2 py-1 text-[9px] bg-green-500/20 text-green-400 hover:bg-green-500/30 rounded font-bold">Lock All</button>
+                                            <button onClick={unlockAllAudio} className="flex-1 px-2 py-1 text-[9px] bg-red-500/10 text-red-400/70 hover:bg-red-500/20 rounded">Unlock</button>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col gap-1">
+                                        <span className="text-[9px] text-gray-500">🖼️ Image ({imageLockedCount}/{imageGeneratedCount})</span>
+                                        <div className="flex gap-1">
+                                            <button onClick={lockAllImages} className="flex-1 px-2 py-1 text-[9px] bg-green-500/20 text-green-400 hover:bg-green-500/30 rounded font-bold">Lock All</button>
+                                            <button onClick={unlockAllImages} className="flex-1 px-2 py-1 text-[9px] bg-red-500/10 text-red-400/70 hover:bg-red-500/20 rounded">Unlock</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -1333,36 +1398,6 @@ export const Step3_Production: React.FC = () => {
                                                     </div>
                                                 );
                                             })}
-                                        </div>
-                                    </div>
-                                </div>
-                            </details>
-
-                            {/* Lock Settings - Accordion (Separate Panel) */}
-                            <details className="glass-panel">
-                                <summary className="p-4 cursor-pointer flex items-center justify-between hover:bg-[rgba(255,255,255,0.02)] rounded-xl transition-colors select-none">
-                                    <span className="text-sm font-bold text-white flex items-center gap-2">
-                                        🔒 Bulk Lock Settings
-                                    </span>
-                                    <span className="text-[10px] text-[var(--color-text-muted)]">▼</span>
-                                </summary>
-                                <div className="px-4 pb-4">
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="space-y-2">
-                                            <div className="text-[10px] text-gray-400 font-medium">🎵 Audio</div>
-                                            <div className="text-xs text-white font-bold">{audioLockedCount}/{audioGeneratedCount} locked</div>
-                                            <div className="flex gap-1">
-                                                <button onClick={lockAllAudio} className="flex-1 px-2 py-1.5 text-[10px] bg-green-500/20 text-green-400 hover:bg-green-500/30 rounded font-bold">🔒 Lock All</button>
-                                                <button onClick={unlockAllAudio} className="flex-1 px-2 py-1.5 text-[10px] bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded font-bold">🔓 Unlock</button>
-                                            </div>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <div className="text-[10px] text-gray-400 font-medium">🖼️ Image</div>
-                                            <div className="text-xs text-white font-bold">{imageLockedCount}/{imageGeneratedCount} locked</div>
-                                            <div className="flex gap-1">
-                                                <button onClick={lockAllImages} className="flex-1 px-2 py-1.5 text-[10px] bg-green-500/20 text-green-400 hover:bg-green-500/30 rounded font-bold">🔒 Lock All</button>
-                                                <button onClick={unlockAllImages} className="flex-1 px-2 py-1.5 text-[10px] bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded font-bold">🔓 Unlock</button>
-                                            </div>
                                         </div>
                                     </div>
                                 </div>
