@@ -178,7 +178,7 @@ export async function exportWithFFmpeg(
 
         // Update progress
         const baseProgress = 15 + (i / cuts.length) * 75;
-        const progressSpan = (1 / cuts.length) * 75;
+        // const progressSpan = (1 / cuts.length) * 75;
         onProgress?.(baseProgress, `Encoding Cut ${i + 1}/${cuts.length}...`);
 
         try {

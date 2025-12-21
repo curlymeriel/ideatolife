@@ -178,7 +178,7 @@ const saveProjectToDisk = async (project: ProjectData) => {
 
 
 const loadProjectFromDisk = async (id: string): Promise<ProjectData | null> => {
-    const start = performance.now();
+    // const start = performance.now();
     const key = getProjectKey(id);
     try {
         // 1. Raw Load
@@ -978,8 +978,8 @@ export const useWorkflowStore = create<WorkflowStore>()(
 
                     const state = get() as any;
                     const newSavedProjects = { ...state.savedProjects };
-                    let lastImportedId: string | null = null;
-                    let lastImportedProject: ProjectData | null = null;
+                    // let lastImportedId: string | null = null;
+                    // let lastImportedProject: ProjectData | null = null;
 
                     for (const project of projects) {
                         // Check for ID collision
@@ -1035,8 +1035,8 @@ export const useWorkflowStore = create<WorkflowStore>()(
                         };
 
                         newSavedProjects[projectId] = metadata;
-                        lastImportedId = projectId;
-                        lastImportedProject = project;
+                        // lastImportedId = projectId;
+                        // lastImportedProject = project;
                         console.log(`[Store] Added project "${metadata.seriesName} - ${metadata.episodeName}" to savedProjects`);
                     }
 

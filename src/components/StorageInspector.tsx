@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { keys as idbKeys, get as idbGet, del as idbDel } from 'idb-keyval';
 import { useWorkflowStore } from '../store/workflowStore';
-import { useNavigate } from 'react-router-dom';
+// import { useNavigate } from 'react-router-dom';
 import { Database, HardDrive, Download, RefreshCw, AlertTriangle, Upload, Trash2, Clock } from 'lucide-react';
 
 interface StorageItem {
@@ -25,7 +25,7 @@ export const StorageInspector: React.FC<StorageInspectorProps> = ({ isPage = fal
     const [loading, setLoading] = useState(false);
     const { importData, savedProjects } = useWorkflowStore();
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const navigate = useNavigate();
+    // const navigate = useNavigate();
 
     const formatSize = (bytes: number) => {
         if (bytes < 1024) return bytes + ' B';

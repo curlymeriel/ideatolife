@@ -7,6 +7,7 @@ import { parseIdbUrl, optimizeAllStoredImages } from '../utils/imageStorage';
 interface StorageStats {
     images: { count: number; size: number };
     audio: { count: number; size: number };
+    video: { count: number; size: number };
     projects: { count: number; size: number };
     backups: { count: number; size: number };
     total: { count: number; size: number };
@@ -30,7 +31,7 @@ export const StorageManager: React.FC<StorageManagerProps> = ({ onClose }) => {
     const [orphanSize, setOrphanSize] = useState(0);
     const [optimizing, setOptimizing] = useState(false);
     const [optimizeProgress, setOptimizeProgress] = useState({ current: 0, total: 0 });
-    const { recoverOrphanedProjects, savedProjects } = useWorkflowStore();
+    const { savedProjects } = useWorkflowStore();
 
     const formatSize = (bytes: number) => {
         if (bytes < 1024) return bytes + ' B';

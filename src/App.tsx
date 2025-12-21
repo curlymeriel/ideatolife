@@ -15,7 +15,6 @@ const Step5_Thumbnail = lazy(() => import('./pages/Step5_Thumbnail').then(module
 const Step6_Final = lazy(() => import('./pages/Step6_Final').then(module => ({ default: module.Step6_Final })));
 
 const SharedView = lazy(() => import('./pages/SharedView').then(module => ({ default: module.SharedView })));
-const Support = lazy(() => import('./pages/Support').then(module => ({ default: module.Support })));
 const Rescue = lazy(() => import('./pages/Rescue').then(module => ({ default: module.Rescue })));
 
 
@@ -43,7 +42,6 @@ export const App: React.FC = () => {
                   <Route path="/step/5" element={<ErrorBoundary><Step5_Thumbnail /></ErrorBoundary>} />
                   <Route path="/step/6" element={<ErrorBoundary><Step6_Final /></ErrorBoundary>} />
                   <Route path="/share/:shareId" element={<ErrorBoundary><SharedView /></ErrorBoundary>} />
-                  <Route path="/support" element={<ErrorBoundary><Support /></ErrorBoundary>} />
                   <Route path="/rescue" element={<ErrorBoundary><Rescue /></ErrorBoundary>} />
                 </Routes>
               </Suspense>

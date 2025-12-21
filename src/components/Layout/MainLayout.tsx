@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWorkflowStore } from '../../store/workflowStore';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { StorageManager } from '../StorageManager';
-import { Film, Palette, FileText, CheckCircle2, Image, Play, Box, Home, RotateCcw, Settings, ChevronDown, HardDrive, AlertTriangle, Circle } from 'lucide-react';
+import { Film, Palette, FileText, CheckCircle2, Image, Play, Box, Home, RotateCcw, Settings, ChevronDown, HardDrive, AlertTriangle, Circle, HelpCircle, BookOpen, MessageCircle } from 'lucide-react';
+import { WelcomeGuide } from '../WelcomeGuide';
+import { SupportModal } from '../SupportModal';
+import { AppSupportChatbot } from '../AppSupportChatbot';
 
 
 interface MainLayoutProps {
@@ -30,6 +33,19 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     const [showStorageManager, setShowStorageManager] = useState(false);
     const location = useLocation();
     const navigate = useNavigate();
+    // const currentPath = location.pathname;
+
+    // Modal States
+    const [showGuide, setShowGuide] = useState(false);
+    const [showSupport, setShowSupport] = useState(false);
+    const [showChatbot, setShowChatbot] = useState(false);
+
+    // Listen for custom event to open guide (from other components)
+    useEffect(() => {
+        const handleOpenGuide = () => setShowGuide(true);
+        window.addEventListener('openWelcomeGuide', handleOpenGuide);
+        return () => window.removeEventListener('openWelcomeGuide', handleOpenGuide);
+    }, []);
 
     // === ZOMBIE PROJECT CLEANUP ===
     // If the active project ID is NOT found in savedProjects (and we are hydrated),
@@ -403,19 +419,29 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         <div className="text-sm text-[var(--color-text-muted)]">
                             {isDashboard ? 'Overview' : `Step ${displayStep} of 6`}
                         </div>
-                        <div className="flex items-center gap-6 text-sm font-medium text-gray-400">
-                            <span
-                                onClick={() => window.dispatchEvent(new Event('openWelcomeGuide'))}
-                                className="hover:text-white cursor-pointer transition-colors"
+                        {/* Help & Support - NOW IN HEADER */}
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => setShowGuide(true)}
+                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-all text-xs"
                             >
-                                📖 사용가이드
-                            </span>
-                            <span
-                                onClick={() => navigate('/support')}
-                                className="hover:text-white cursor-pointer transition-colors"
+                                <BookOpen size={14} />
+                                사용가이드
+                            </button>
+                            <button
+                                onClick={() => setShowSupport(true)}
+                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-all text-xs"
                             >
+                                <HelpCircle size={14} />
                                 Support
-                            </span>
+                            </button>
+                            <button
+                                onClick={() => setShowChatbot(true)}
+                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 transition-all text-xs font-bold border border-[var(--color-primary)]/30"
+                            >
+                                <MessageCircle size={14} />
+                                AI Q&A
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -425,6 +451,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                     {children}
                 </div>
             </main>
+            {/* Global Modals */}
+            <WelcomeGuide isOpen={showGuide} onClose={() => setShowGuide(false)} />
+            <SupportModal isOpen={showSupport} onClose={() => setShowSupport(false)} />
+            <AppSupportChatbot isOpen={showChatbot} onClose={() => setShowChatbot(false)} />
         </div>
     );
 };

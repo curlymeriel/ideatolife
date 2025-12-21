@@ -1,4 +1,4 @@
-import React, { useState, memo } from 'react';
+import { useState, memo } from 'react';
 import { Send, Bot, X, Loader2 } from 'lucide-react';
 import { modifyInstructionWithAI } from '../../services/gemini';
 

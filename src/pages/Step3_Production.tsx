@@ -1,11 +1,11 @@
 ﻿import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useWorkflowStore } from '../store/workflowStore';
-import { generateScript, DEFAULT_SCRIPT_INSTRUCTIONS, DEFAULT_VIDEO_PROMPT_INSTRUCTIONS, modifyInstructionWithAI } from '../services/gemini';
+import { generateScript, DEFAULT_SCRIPT_INSTRUCTIONS, DEFAULT_VIDEO_PROMPT_INSTRUCTIONS } from '../services/gemini';
 import type { ScriptCut } from '../services/gemini';
 import { generateImage } from '../services/imageGen';
 import { generateSpeech, type VoiceConfig } from '../services/tts';
 import { useNavigate } from 'react-router-dom';
-import { Wand2, Loader2, ArrowRight, Lock, Unlock, Send, Bot, X } from 'lucide-react';
+import { Wand2, Loader2, ArrowRight, Lock, Unlock } from 'lucide-react';
 import { CutItem } from '../components/Production/CutItem';
 import { SfxSearchModal } from '../components/Production/SfxSearchModal';
 import { AiInstructionHelper } from '../components/Production/AiInstructionHelper';

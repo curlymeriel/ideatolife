@@ -798,14 +798,6 @@ Context: ${context}
 Base Description: "${basePrompt}"
 
 ${type === 'style' ? `
-Requirements for MASTER VISUAL STYLE:
-- You are a Creative Director defining the Art Direction.
-- You MUST explicitly structure your output into these 4 sections. Do NOT skip any section.
-- Header format: "## 1. VISUAL STYLE", "## 2. CHARACTER", etc.
-
-Structure:
-1. VISUAL STYLE:
-   - Artform (e.g., Oil painting, 3D render, Anime, Noir film)
    - Lighting (e.g., Chiaroscuro, Neon, Soft diffused)
    - Color Palette (e.g., Pastel, Desaturated, High contrast neon)
    - Camera/Lens (e.g., Wide angle, Macro, Bokeh, Film grain)
@@ -1062,5 +1054,43 @@ Please modify the instructions according to the user's request.`;
             success: false,
             error: error.response?.data?.error?.message || error.message || 'Failed to modify instruction'
         };
+    }
+};
+
+export const consultSupport = async (
+    history: ChatMessage[],
+    apiKey: string,
+    systemPrompt: string
+): Promise<string> => {
+    if (!apiKey) {
+        return "죄송합니다. API 키가 설정되지 않아 답변할 수 없습니다. 설정 메뉴에서 Gemini API Key를 입력해주세요.";
+    }
+
+    try {
+        const contents = history.map(msg => ({
+            role: msg.role === 'user' ? 'user' : 'model',
+            parts: [{ text: msg.content }]
+        }));
+
+        const response = await axios.post(
+            `${GEMINI_2_5_FLASH_URL}?key=${apiKey}`,
+            {
+                contents: [
+                    {
+                        role: 'user',
+                        parts: [{ text: `SYSTEM_INSTRUCTION: ${systemPrompt}\n\nIMPORTANT: You must output ONLY text, no JSON. Be helpful, concise, and friendly.\n\n` }]
+                    },
+                    ...contents
+                ],
+                generationConfig: {
+                    temperature: 0.7,
+                }
+            }
+        );
+
+        return response.data.candidates[0].content.parts[0].text;
+    } catch (error: any) {
+        console.error("Gemini Support Chat Error:", error);
+        return `오류가 발생했습니다: ${error.message || 'Unknown Error'}`;
     }
 };

@@ -1,5 +1,5 @@
 import { memo, useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { Check, Lock, Unlock, Mic, Loader2, Play, ImageIcon as Image, Eye, X, Plus, HelpCircle, Waves, Volume2, Video, Settings, Trash2, Edit3, Sparkles } from 'lucide-react';
+import { Lock, Unlock, Mic, Loader2, Play, ImageIcon as Image, Eye, X, Plus, HelpCircle, Waves, Volume2, Settings, Trash2, Edit3, Sparkles } from 'lucide-react';
 import type { ScriptCut } from '../../services/gemini';
 import { getMatchedAssets } from '../../utils/assetUtils';
 import { resolveUrl, isIdbUrl } from '../../utils/imageStorage';
@@ -115,7 +115,7 @@ export const CutItem = memo(({
     audioLoading,
     imageLoading,
     playingAudio,
-    aspectRatio,
+    // aspectRatio,
     speakerList,
     onToggleAudioConfirm,
     onToggleImageConfirm,
@@ -450,7 +450,7 @@ export const CutItem = memo(({
                                 </div>
                                 <div className="min-w-[50px]">
                                     <label className="text-xs text-gray-500 block mb-1">Volume</label>
-                                    <select className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.voiceVolume ?? 1} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { voiceVolume: parseFloat(e.target.value) }); onSave(); }}>
+                                    <select className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.voiceVolume ?? 1} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { voiceVolume: e.target.value }); onSave(); }}>
                                         <option value={0.5}>50%</option>
                                         <option value={0.75}>75%</option>
                                         <option value={1}>100%</option>
@@ -459,7 +459,7 @@ export const CutItem = memo(({
                                 </div>
                                 <div className="min-w-[50px]">
                                     <label className="text-xs text-gray-500 block mb-1">Rate</label>
-                                    <select className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.voiceRate ?? 1} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { voiceRate: parseFloat(e.target.value) }); onSave(); }}>
+                                    <select className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.voiceRate ?? 1} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { voiceRate: e.target.value }); onSave(); }}>
                                         <option value={0.75}>0.75x</option>
                                         <option value={1}>1.0x</option>
                                         <option value={1.25}>1.25x</option>

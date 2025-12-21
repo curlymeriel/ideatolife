@@ -1,10 +1,9 @@
 import React from 'react';
 import { useWorkflowStore, type ProjectData, type ProjectMetadata } from '../store/workflowStore';
 import { useNavigate } from 'react-router-dom';
-import { Image, FileText, Music, ArrowRight, BarChart3, Plus, Download, Trash2, Database, Loader2, Copy, Check, MoreVertical } from 'lucide-react';
+import { Image, FileText, Music, ArrowRight, BarChart3, Plus, Download, Trash2, Database, Loader2, Copy, Check } from 'lucide-react';
 
 import { StorageInspector } from '../components/StorageInspector';
-import { WelcomeGuide } from '../components/WelcomeGuide';
 import { migrateAllProjects } from '../utils/migration';
 
 import { debugListKeys, loadFromIdb } from '../utils/imageStorage';
@@ -16,7 +15,7 @@ export const Dashboard: React.FC = () => {
     }, []);
 
     const store = useWorkflowStore();
-    const { savedProjects, loadProject, createProject, deleteProject, duplicateProject, deleteSeries, id: activeProjectId, isHydrated } = store;
+    const { savedProjects, loadProject, createProject, deleteProject, duplicateProject, deleteSeries, isHydrated } = store;
     const isLoadingProjects = !isHydrated;
     const navigate = useNavigate();
     const [showInspector, setShowInspector] = React.useState(false);
@@ -36,18 +35,6 @@ export const Dashboard: React.FC = () => {
     // Pagination
     const INITIAL_LOAD_COUNT = 12;
     const [visibleCount, setVisibleCount] = React.useState(INITIAL_LOAD_COUNT);
-
-    // Welcome Guide state
-    const [showWelcomeGuide, setShowWelcomeGuide] = React.useState(() => {
-        return !localStorage.getItem('hasSeenWelcomeGuide');
-    });
-
-    // Listen for custom event to re-open guide
-    React.useEffect(() => {
-        const handleOpenGuide = () => setShowWelcomeGuide(true);
-        window.addEventListener('openWelcomeGuide', handleOpenGuide);
-        return () => window.removeEventListener('openWelcomeGuide', handleOpenGuide);
-    }, []);
 
     // Safety: Reset loading state on mount/unmount and after timeout
     React.useEffect(() => {
@@ -445,12 +432,6 @@ export const Dashboard: React.FC = () => {
 
     return (
         <>
-            {/* Welcome Guide Modal */}
-            <WelcomeGuide
-                isOpen={showWelcomeGuide}
-                onClose={() => setShowWelcomeGuide(false)}
-            />
-
             <div className="grid grid-cols-12 gap-8 relative">
                 {showInspector && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center">

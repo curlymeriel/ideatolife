@@ -339,8 +339,8 @@ const VideoCompositionRow = React.memo(({
 });
 
 // HELPER: Repair function for video data
-const repairVideoData = async (project: any, script: ScriptCut[], onProgress: (msg: string) => void) => {
-    const { loadFromIdb, saveToIdb, parseIdbUrl, generateVideoKey } = await import('../utils/imageStorage');
+const repairVideoData = async (_project: any, script: ScriptCut[], onProgress: (msg: string) => void) => {
+    const { loadFromIdb, parseIdbUrl } = await import('../utils/imageStorage');
     let fixedCount = 0;
 
     for (const cut of script) {

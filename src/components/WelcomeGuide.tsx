@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, ChevronLeft, ChevronRight, Key, AlertTriangle, Download, Upload, Sparkles } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Key, AlertTriangle, Sparkles } from 'lucide-react';
 
 interface WelcomeGuideProps {
     isOpen: boolean;
@@ -9,172 +9,73 @@ interface WelcomeGuideProps {
 const STEPS = [
     {
         icon: Sparkles,
-        title: '환영합니다! 🎉',
-        subtitle: 'Idea to Life에 오신 것을 환영해요',
+        title: 'Idea to Life에 오신 것을 환영해요! 🎉',
+        subtitle: '아이디어를 영상으로 만드는 여정을 시작해볼까요?',
         content: (
             <div className="space-y-4">
-                <p className="text-gray-300 leading-relaxed">
-                    <strong className="text-white">Idea to Life</strong>는 아이디어를 영상 콘텐츠로 변환하는 AI 기반 창작 도구입니다.
+                <p className="text-gray-300 leading-relaxed text-sm">
+                    <strong className="text-white">Idea to Life</strong>는 6단계의 체계적인 워크플로우를 통해
+                    <br />여러분의 상상을 실제 영상 콘텐츠로 구현해주는 AI 파트너입니다.
                 </p>
-                <ul className="space-y-2 text-gray-400 text-sm">
-                    <li className="flex items-center gap-2">✨ AI가 스크립트를 분석하고 이미지를 생성</li>
-                    <li className="flex items-center gap-2">🎙️ 자동 음성 합성 (TTS)</li>
-                    <li className="flex items-center gap-2">🎬 영상 조립 및 내보내기</li>
-                </ul>
-                <p className="text-[var(--color-primary)] text-sm font-medium mt-4">
-                    다음 단계에서 시작하는 방법을 알려드릴게요!
-                </p>
+                <div className="bg-[var(--color-surface)] p-3 rounded-lg border border-[var(--color-border)]">
+                    <h4 className="text-[var(--color-primary)] font-bold text-xs mb-2 uppercase">✨ Core Features</h4>
+                    <ul className="space-y-1 text-gray-400 text-xs">
+                        <li>• <strong>Step 1 Setup:</strong> 시리즈/에피소드 기획 및 기본 설정</li>
+                        <li>• <strong>Step 2 Style:</strong> 캐릭터, 장소, 소품의 일관된 스타일 정의</li>
+                        <li>• <strong>Step 3 Production:</strong> AI 스크립트 작성 및 이미지/오디오 생성</li>
+                        <li>• <strong>Step 4.5 Video:</strong> 이미지 → 비디오 변환 (Replicate/Kling)</li>
+                        <li>• <strong>Step 6 Final:</strong> 최종 결과물 확인 및 내보내기</li>
+                    </ul>
+                </div>
             </div>
         )
     },
     {
         icon: Key,
-        title: 'API 키 설정 🔑',
-        subtitle: '이미지와 음성 생성에 필요해요',
+        title: '준비물: API 키 설정 🔑',
+        subtitle: 'AI 모델을 사용하기 위해 연결이 필요해요',
         content: (
-            <div className="space-y-4">
-                <p className="text-gray-300 leading-relaxed text-sm">
-                    AI 기능을 사용하려면 API 키가 필요합니다. 아래 링크에서 무료로 발급받을 수 있어요.
+            <div className="space-y-3">
+                <p className="text-gray-300 text-xs">
+                    좌측 하단 <strong>⚙️ API Config</strong>에서 키를 입력해주세요.
                 </p>
-
-                <div className="space-y-3 max-h-[280px] overflow-y-auto pr-2">
-                    {/* Gemini API Key */}
-                    <div className="bg-[var(--color-surface)] rounded-lg p-3 border border-[var(--color-border)]">
-                        <div className="flex items-center justify-between mb-1">
-                            <span className="text-white font-medium text-sm">🧠 Gemini API Key</span>
-                            <span className="text-[10px] px-1.5 py-0.5 bg-red-500/20 text-red-400 rounded">필수</span>
-                        </div>
-                        <p className="text-gray-400 text-xs mb-2">스크립트 생성, 이미지 생성, AI 키워드 추천</p>
-                        <a
-                            href="https://aistudio.google.com/app/apikey"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-[var(--color-primary)] text-xs hover:underline flex items-center gap-1"
-                        >
-                            → Google AI Studio에서 발급 ↗
-                        </a>
+                <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1 text-xs">
+                    <div className="bg-[var(--color-surface)] p-2 rounded border border-[var(--color-border)]">
+                        <span className="text-white font-bold block">🧠 Gemini API (필수)</span>
+                        <span className="text-gray-500">스크립트 작성 및 기본 이미지 생성</span>
                     </div>
-
-                    {/* Google Cloud TTS Key */}
-                    <div className="bg-[var(--color-surface)] rounded-lg p-3 border border-[var(--color-border)]">
-                        <div className="flex items-center justify-between mb-1">
-                            <span className="text-white font-medium text-sm">🎙️ Google Cloud Key</span>
-                            <span className="text-[10px] px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 rounded">TTS용</span>
-                        </div>
-                        <p className="text-gray-400 text-xs mb-2">음성 합성 (Text-to-Speech) - 신규가입 시 $300 무료 크레딧</p>
-                        <a
-                            href="https://console.cloud.google.com/apis/credentials"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-[var(--color-primary)] text-xs hover:underline flex items-center gap-1"
-                        >
-                            → Google Cloud Console에서 발급 ↗
-                        </a>
-                        <p className="text-gray-500 text-[10px] mt-1">* Cloud Console → API 및 서비스 → 사용자 인증정보 → API 키 만들기</p>
+                    <div className="bg-[var(--color-surface)] p-2 rounded border border-[var(--color-border)]">
+                        <span className="text-white font-bold block">🎙️ Google Cloud (TTS)</span>
+                        <span className="text-gray-500">고품질 음성 합성 (Studio Voice)</span>
                     </div>
-
-                    {/* Replicate API Key */}
-                    <div className="bg-[var(--color-surface)] rounded-lg p-3 border border-[var(--color-border)]">
-                        <div className="flex items-center justify-between mb-1">
-                            <span className="text-white font-medium text-sm">🎬 Replicate API Key</span>
-                            <span className="text-[10px] px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded">Video용</span>
-                        </div>
-                        <p className="text-gray-400 text-xs mb-2">AI 비디오 생성 (Kling, Runway 등) - Step 4.5에서 사용</p>
-                        <a
-                            href="https://replicate.com/account/api-tokens"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-[var(--color-primary)] text-xs hover:underline flex items-center gap-1"
-                        >
-                            → Replicate에서 발급 ↗
-                        </a>
-                    </div>
-
-                    {/* Freesound API Key */}
-                    <div className="bg-[var(--color-surface)] rounded-lg p-3 border border-[var(--color-border)]">
-                        <div className="flex items-center justify-between mb-1">
-                            <span className="text-white font-medium text-sm">🔊 Freesound API Key</span>
-                            <span className="text-[10px] px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded">SFX용</span>
-                        </div>
-                        <p className="text-gray-400 text-xs mb-2">무료 사운드 이펙트 검색 (완전 무료)</p>
-                        <a
-                            href="https://freesound.org/apiv2/apply/"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-[var(--color-primary)] text-xs hover:underline flex items-center gap-1"
-                        >
-                            → Freesound에서 발급 ↗
-                        </a>
-                        <p className="text-gray-500 text-[10px] mt-1">* 가입 후 API Key 신청 → 앱 이름/설명 입력 → 즉시 발급</p>
+                    <div className="bg-[var(--color-surface)] p-2 rounded border border-[var(--color-border)]">
+                        <span className="text-white font-bold block">🎬 Replicate (Video)</span>
+                        <span className="text-gray-500">Step 4.5에서 비디오 생성 시 필요</span>
                     </div>
                 </div>
-
-                <p className="text-yellow-400 text-xs flex items-center gap-2">
-                    <AlertTriangle size={14} />
-                    키는 좌측 하단 ⚙️ API Config에서 입력하세요
-                </p>
             </div>
         )
     },
     {
         icon: AlertTriangle,
-        title: '중요: 데이터 백업 ⚠️',
-        subtitle: '브라우저 데이터는 언제든 사라질 수 있어요',
+        title: '데이터 저장 주의사항 💾',
+        subtitle: '브라우저에 저장되니 백업이 필수예요!',
         content: (
             <div className="space-y-4">
-                <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
-                    <p className="text-red-400 font-medium mb-2">🚨 데이터 휘발 위험!</p>
-                    <p className="text-gray-300 text-sm leading-relaxed">
-                        모든 프로젝트 데이터는 <strong className="text-white">브라우저 저장소</strong>에 저장됩니다.
-                        브라우저 캐시 삭제, 시크릿 모드 종료, 다른 기기 사용 시 <strong className="text-red-400">데이터가 사라집니다!</strong>
+                <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
+                    <p className="text-red-400 font-bold text-sm mb-1">🚨 데이터 휘발 주의</p>
+                    <p className="text-gray-300 text-xs">
+                        모든 데이터는 서버가 아닌 <strong>여러분의 브라우저(IndexedDB)</strong>에 저장됩니다.
+                        브라우저 캐시를 지우거나 시크릿 모드를 닫으면 데이터가 사라집니다.
                     </p>
                 </div>
-
-                <p className="text-[var(--color-primary)] font-medium">
-                    ✅ 해결책: 작업 완료 후 반드시 백업하세요!
-                </p>
-
-                <p className="text-gray-400 text-sm">
-                    다음 단계에서 백업 방법을 알려드릴게요.
-                </p>
-            </div>
-        )
-    },
-    {
-        icon: Download,
-        title: '백업 & 복원 방법 📦',
-        subtitle: 'ZIP 파일로 완전한 백업이 가능해요',
-        content: (
-            <div className="space-y-4">
-                <div className="grid grid-cols-1 gap-3">
-                    <div className="bg-[var(--color-surface)] rounded-lg p-4 border border-green-500/30">
-                        <div className="flex items-center gap-2 text-green-400 font-medium mb-2">
-                            <Download size={16} />
-                            백업 (Export)
-                        </div>
-                        <ul className="text-gray-400 text-sm space-y-1">
-                            <li>• <strong className="text-white">Dashboard</strong>: 프로젝트 선택 → "Export Selected"</li>
-                            <li>• <strong className="text-white">Step 6</strong>: "Download Assets" 버튼</li>
-                        </ul>
-                        <p className="text-gray-500 text-xs mt-2">→ 이미지, 오디오, project.json 모두 포함</p>
-                    </div>
-
-                    <div className="bg-[var(--color-surface)] rounded-lg p-4 border border-blue-500/30">
-                        <div className="flex items-center gap-2 text-blue-400 font-medium mb-2">
-                            <Upload size={16} />
-                            복원 (Import)
-                        </div>
-                        <ul className="text-gray-400 text-sm space-y-1">
-                            <li>• <strong className="text-white">Dashboard</strong>: "Import Project (ZIP/JSON)" 버튼</li>
-                            <li>• 백업 ZIP 파일 선택</li>
-                        </ul>
-                        <p className="text-gray-500 text-xs mt-2">→ 프로젝트 완전 복원!</p>
-                    </div>
+                <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3">
+                    <p className="text-green-400 font-bold text-sm mb-1">✅ 해결책: 안전한 백업</p>
+                    <ul className="text-gray-300 text-xs space-y-1">
+                        <li>• <strong>Export (ZIP):</strong> 이미지/오디오 포함 전체 백업</li>
+                        <li>• <strong>Rescue Center:</strong> 비상시 데이터 추출 도구</li>
+                    </ul>
                 </div>
-
-                <p className="text-[var(--color-primary)] text-sm font-medium text-center mt-4">
-                    🎉 준비 완료! 이제 시작해보세요!
-                </p>
             </div>
         )
     }

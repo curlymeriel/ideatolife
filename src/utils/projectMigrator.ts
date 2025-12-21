@@ -1,6 +1,6 @@
 
-import { ProjectData } from '../store/types';
-import { saveToIdb, isIdbUrl } from './imageStorage';
+import type { ProjectData } from '../store/types';
+import { saveToIdb } from './imageStorage';
 
 export interface MigrationResult {
     success: boolean;
@@ -15,13 +15,13 @@ export interface MigrationResult {
  */
 export async function migrateProject(project: ProjectData): Promise<ProjectData> {
     const newProject = { ...project };
-    let scriptChanged = false;
+    // let scriptChanged = false;
 
     // 1. Migrate Script Images & Audio
     if (newProject.script && Array.isArray(newProject.script)) {
         newProject.script = await Promise.all(newProject.script.map(async (cut, index) => {
             const newCut = { ...cut };
-            let cutChanged = false;
+            // let cutChanged = false;
 
             // Helper to migrate a single field
             const migrateField = async (field: 'finalImageUrl' | 'draftImageUrl' | 'audioUrl' | 'sfxUrl' | 'videoUrl', type: 'images' | 'audio' | 'video') => {
@@ -31,7 +31,7 @@ export async function migrateProject(project: ProjectData): Promise<ProjectData>
                         const id = `${project.id}-cut-${index}-${field}`;
                         const newUrl = await saveToIdb(type, id, val);
                         newCut[field] = newUrl;
-                        cutChanged = true;
+                        // cutChanged = true;
                     } catch (e) {
                         console.error(`[Migrator] Failed to migrate ${field} for cut ${index}:`, e);
                     }
@@ -44,7 +44,7 @@ export async function migrateProject(project: ProjectData): Promise<ProjectData>
             await migrateField('sfxUrl', 'audio');
             await migrateField('videoUrl', 'video');
 
-            if (cutChanged) scriptChanged = true;
+            // if (cutChanged) scriptChanged = true;
             return newCut;
         }));
     }

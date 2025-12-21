@@ -242,27 +242,27 @@ export const Step5_Thumbnail: React.FC = () => {
         }
     };
 
-    const handleFrameUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = async () => {
-                const base64 = reader.result as string;
-                // Save to IDB immediately using standardized storage
-                // Use a key containing 'frame' to exempt from compression
-                const { saveToIdb } = await import('../utils/imageStorage');
-                const idbUrl = await saveToIdb('images', `${projectId}-thumbnail-frame`, base64);
+    // const handleFrameUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    //     const file = e.target.files?.[0];
+    //     if (file) {
+    //         const reader = new FileReader();
+    //         reader.onloadend = async () => {
+    //             const base64 = reader.result as string;
+    //             // Save to IDB immediately using standardized storage
+    //             // Use a key containing 'frame' to exempt from compression
+    //             const { saveToIdb } = await import('../utils/imageStorage');
+    //             const idbUrl = await saveToIdb('images', `${projectId}-thumbnail-frame`, base64);
 
-                setFrameImage(idbUrl);
-                // Also update settings in store immediately
-                setThumbnailSettings({
-                    ...thumbnailSettings,
-                    frameImage: idbUrl
-                });
-            };
-            reader.readAsDataURL(file);
-        }
-    };
+    //             setFrameImage(idbUrl);
+    //             // Also update settings in store immediately
+    //             setThumbnailSettings({
+    //                 ...thumbnailSettings,
+    //                 frameImage: idbUrl
+    //             });
+    //         };
+    //         reader.readAsDataURL(file);
+    //     }
+    // };
 
     const handleSelectCutImage = async (imageUrl: string) => {
         // 1. Save the reference to the store
@@ -495,7 +495,7 @@ TECHNICAL: High contrast, 4K quality, professional composition. The typography s
             const context = `
 Thumbnail Title: "${aiTitle || episodeName}"
 Story Concept: ${seriesStory}
-Episode Focus: ${episodePlot || script?.[0]?.content}
+Episode Focus: ${episodePlot || script?.[0]?.dialogue}
 Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.name).join(', ')}
 `.trim();
 

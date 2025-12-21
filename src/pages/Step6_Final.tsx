@@ -126,7 +126,7 @@ export const Step6_Final = () => {
     const [exportProgress, setExportProgress] = useState(0);
     const [exportStatus, setExportStatus] = useState('');
     const [showExportModal, setShowExportModal] = useState(false);
-    const [_exportType, setExportType] = useState<'quick' | 'hq' | 'kit' | null>(null);
+    const [exportType, setExportType] = useState<'quick' | 'hq' | 'kit' | null>(null);
 
     // NEW: Playback Mode (Hybrid vs Still) and Video Refs
     const [playbackMode, setPlaybackMode] = useState<'hybrid' | 'still'>('hybrid');

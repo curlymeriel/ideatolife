@@ -1,6 +1,4 @@
 import React, { useState, useRef, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { useNavigate } from 'react-router-dom';
 import { useWorkflowStore } from '../store/workflowStore';
 import { consultStory, type ChatMessage, type AiCharacter } from '../services/gemini';
@@ -173,8 +171,8 @@ export const Step1_Setup: React.FC = () => {
 
     const handleSave = () => {
         let finalStorylineTable = localStorylineTable;
-        const isPlotChanged = store.episodePlot !== localEpisodePlot;
-        const isTableUnchanged = JSON.stringify(store.storylineTable) === JSON.stringify(localStorylineTable);
+        // const isPlotChanged = store.episodePlot !== localEpisodePlot;
+        // const isTableUnchanged = JSON.stringify(store.storylineTable) === JSON.stringify(localStorylineTable);
 
         // FIX: Removed auto-clear logic. We now keep the table even if plot changes.
         // if (isPlotChanged && isTableUnchanged && localStorylineTable.length > 0) {
@@ -242,6 +240,7 @@ export const Step1_Setup: React.FC = () => {
                         assetDefinitions: seriesData.assetDefinitions || {},
                         thumbnailUrl: null,
                         thumbnailSettings: seriesData.thumbnailSettings || {
+                            mode: 'framing',
                             scale: 1,
                             imagePosition: { x: 0, y: 0 },
                             textPosition: { x: 0, y: 0 },
