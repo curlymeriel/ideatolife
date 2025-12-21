@@ -5,69 +5,69 @@ import { getMatchedAssets } from '../../utils/assetUtils';
 import { resolveUrl, isIdbUrl } from '../../utils/imageStorage';
 import type { AspectRatio } from '../../store/types';
 
-// Comprehensive Visual prompt helper terms (영문약어: 한글설명)
+// Comprehensive Visual prompt helper terms (?�문?�어: ?��??�명)
 const VISUAL_TERMS = {
-    'Camera Angle (카메라 앵글)': [
-        { term: 'Low Angle Shot (LAS)', desc: '피사체를 아래에서 올려다보는 앵글. 대상에게 권위감, 위압감, 영웅적 느낌 부여' },
-        { term: 'High Angle Shot (HAS)', desc: '피사체를 위에서 내려다보는 앵글. 취약함, 왜소함, 감시당하는 느낌 연출' },
-        { term: 'Dutch Angle / Canted Angle', desc: '카메라를 기울인 촬영. 불안, 혼란, 심리적 불균형 표현에 효과적' },
-        { term: 'Eye Level Shot', desc: '눈높이 수평 촬영. 가장 자연스럽고 중립적인 앵글' },
-        { term: "Bird's Eye View (BEV)", desc: '피사체 바로 위에서 수직 하강 촬영. 신의 시점, 전체 상황 조망' },
-        { term: "Worm's Eye View", desc: '땅에서 올려다보는 극단적 저각. 건물/거인 강조, 왜곡된 원근감' },
-        { term: 'Over-the-Shoulder (OTS)', desc: '한 인물의 어깨 너머로 다른 인물을 촬영. 대화 장면에 필수' },
-        { term: 'Point of View (POV)', desc: '캐릭터의 1인칭 시점. 관객이 캐릭터와 동일시' },
+    'Camera Angle (카메???��?)': [
+        { term: 'Low Angle Shot (LAS)', desc: '?�사체�? ?�래?�서 ?�려?�보???��?. ?�?�에�?권위�? ?�압�? ?�웅???�낌 부?? },
+        { term: 'High Angle Shot (HAS)', desc: '?�사체�? ?�에???�려?�보???��?. 취약?? ?�소?? 감시?�하???�낌 ?�출' },
+        { term: 'Dutch Angle / Canted Angle', desc: '카메?��? 기울??촬영. 불안, ?��?, ?�리??불균???�현???�과?? },
+        { term: 'Eye Level Shot', desc: '?�높???�평 촬영. 가???�연?�럽�?중립?�인 ?��?' },
+        { term: "Bird's Eye View (BEV)", desc: '?�사�?바로 ?�에???�직 ?�강 촬영. ?�의 ?�점, ?�체 ?�황 조망' },
+        { term: "Worm's Eye View", desc: '?�에???�려?�보??극단???��? 건물/거인 강조, ?�곡???�근�? },
+        { term: 'Over-the-Shoulder (OTS)', desc: '???�물???�깨 ?�머�??�른 ?�물??촬영. ?�???�면???�수' },
+        { term: 'Point of View (POV)', desc: '캐릭?�의 1?�칭 ?�점. 관객이 캐릭?��? ?�일?? },
     ],
-    'Shot Size (샷 사이즈)': [
-        { term: 'Extreme Close-Up (ECU/XCU)', desc: '얼굴 일부(눈, 입술, 손)만 화면 가득. 극도의 감정/디테일 강조' },
-        { term: 'Close-Up (CU)', desc: '얼굴 전체 또는 중요 오브젝트. 감정 표현, 관객과의 친밀감' },
-        { term: 'Medium Close-Up (MCU)', desc: '가슴~머리. 대화 장면의 기본, 표정과 제스처 동시 포착' },
-        { term: 'Medium Shot (MS)', desc: '허리~머리. 인물의 행동과 표정 균형있게 보여줌' },
-        { term: 'Medium Long Shot (MLS) / Cowboy Shot', desc: '무릎~머리. 서부극에서 총집 보이게 촬영해서 유래' },
-        { term: 'Full Shot (FS)', desc: '발끝~머리 전신. 인물의 전체 행동, 의상, 체형 파악' },
-        { term: 'Long Shot (LS) / Wide Shot (WS)', desc: '인물 + 주변 환경. 인물과 공간의 관계 설정' },
-        { term: 'Extreme Long Shot (ELS/XLS)', desc: '매우 넓은 풍경, 인물 극히 작게. 스케일, 고립감, 서사시적 느낌' },
-        { term: 'Two Shot', desc: '두 인물을 한 프레임에. 캐릭터 관계 시각화' },
-        { term: 'Group Shot', desc: '여러 인물을 한 프레임에. 집단 역학 표현' },
+    'Shot Size (???�이�?': [
+        { term: 'Extreme Close-Up (ECU/XCU)', desc: '?�굴 ?��?(?? ?�술, ??�??�면 가?? 극도??감정/?�테??강조' },
+        { term: 'Close-Up (CU)', desc: '?�굴 ?�체 ?�는 중요 ?�브?�트. 감정 ?�현, 관객과??친�?�? },
+        { term: 'Medium Close-Up (MCU)', desc: '가??머리. ?�???�면??기본, ?�정�??�스�??�시 ?�착' },
+        { term: 'Medium Shot (MS)', desc: '?�리~머리. ?�물???�동�??�정 균형?�게 보여�? },
+        { term: 'Medium Long Shot (MLS) / Cowboy Shot', desc: '무릎~머리. ?��?극에??총집 보이�?촬영?�서 ?�래' },
+        { term: 'Full Shot (FS)', desc: '발끝~머리 ?�신. ?�물???�체 ?�동, ?�상, 체형 ?�악' },
+        { term: 'Long Shot (LS) / Wide Shot (WS)', desc: '?�물 + 주�? ?�경. ?�물�?공간??관�??�정' },
+        { term: 'Extreme Long Shot (ELS/XLS)', desc: '매우 ?��? ?�경, ?�물 극히 ?�게. ?��??? 고립�? ?�사?�적 ?�낌' },
+        { term: 'Two Shot', desc: '???�물?????�레?�에. 캐릭??관�??�각?? },
+        { term: 'Group Shot', desc: '?�러 ?�물?????�레?�에. 집단 ??�� ?�현' },
     ],
     'Lighting (조명)': [
-        { term: 'Chiaroscuro Lighting', desc: '명암 대비 극대화. 르네상스 회화 기법, 드라마틱/미스터리 분위기' },
-        { term: 'Rembrandt Lighting', desc: '얼굴 한쪽에 삼각형 빛. 고전적 초상화 조명' },
-        { term: 'Rim/Back Lighting', desc: '피사체 뒤에서 윤곽선 강조. 신비로움, 실루엣 효과' },
-        { term: 'Soft Diffused Lighting', desc: '부드럽게 확산된 빛. 로맨틱, 몽환적, 플래터링한 인물 촬영' },
-        { term: 'Hard Direct Lighting', desc: '강렬한 직사광. 선명한 그림자, 거친/극적 분위기' },
-        { term: 'Golden Hour Lighting', desc: '일출/일몰 황금빛. 따뜻함, 향수, 로맨스' },
-        { term: 'Blue Hour Lighting', desc: '해지기 직후 푸른빛. 차가움, 고요함, 우울함' },
-        { term: 'Neon/Cyberpunk Lighting', desc: '네온사인 다색광. 미래적, 도시적, 사이버펑크 미학' },
-        { term: 'Practical Lighting', desc: '화면 내 조명(램프, 촛불 등) 활용. 자연스러운 분위기' },
-        { term: 'Three-Point Lighting', desc: 'Key/Fill/Back 3점 조명. 기본적인 스튜디오 조명 설정' },
+        { term: 'Chiaroscuro Lighting', desc: '명암 ?��?극�??? 르네?�스 ?�화 기법, ?�라마틱/미스?�리 분위�? },
+        { term: 'Rembrandt Lighting', desc: '?�굴 ?�쪽???�각??�? 고전??초상??조명' },
+        { term: 'Rim/Back Lighting', desc: '?�사�??�에???�곽??강조. ?�비로�?, ?�루???�과' },
+        { term: 'Soft Diffused Lighting', desc: '부?�럽�??�산??�? 로맨?? 몽환?? ?�래?�링???�물 촬영' },
+        { term: 'Hard Direct Lighting', desc: '강렬??직사�? ?�명??그림?? 거친/극적 분위�? },
+        { term: 'Golden Hour Lighting', desc: '?�출/?�몰 ?�금�? ?�뜻?? ?�수, 로맨?? },
+        { term: 'Blue Hour Lighting', desc: '?��?�?직후 ?�른�? 차�??�, 고요?? ?�울?? },
+        { term: 'Neon/Cyberpunk Lighting', desc: '?�온?�인 ?�색�? 미래?? ?�시?? ?�이버펑??미학' },
+        { term: 'Practical Lighting', desc: '?�면 ??조명(?�프, 촛불 ?? ?�용. ?�연?�러??분위�? },
+        { term: 'Three-Point Lighting', desc: 'Key/Fill/Back 3??조명. 기본?�인 ?�튜?�오 조명 ?�정' },
     ],
-    'Atmosphere & Effects (분위기/효과)': [
-        { term: 'Volumetric Fog/Lighting', desc: '빛줄기가 보이는 안개. 신비로움, 영적 분위기' },
-        { term: 'Dust Particles', desc: '공기 중 먼지 입자. 오래된 공간, 시간의 흐름 표현' },
-        { term: 'Lens Flare', desc: '렌즈에 반사된 빛. 태양광, 신비로움, J.J. 에이브럼스 스타일' },
-        { term: 'Bokeh Effect', desc: '전경/배경 흐림으로 피사체 강조. 빛망울 효과' },
-        { term: 'Motion Blur', desc: '움직임에 의한 잔상. 속도감, 긴박함' },
-        { term: 'Depth of Field (DoF)', desc: '초점 심도. Shallow=배경 흐림, Deep=전체 선명' },
-        { term: 'Silhouette', desc: '역광으로 형태만 보임. 미스터리, 익명성, 드라마틱' },
-        { term: 'Reflection', desc: '거울, 물, 유리 등에 반사. 이중성, 자아성찰' },
-        { term: 'Rain/Water Droplets', desc: '비, 물방울 효과. 슬픔, 정화, 극적 분위기' },
+    'Atmosphere & Effects (분위�??�과)': [
+        { term: 'Volumetric Fog/Lighting', desc: '빛줄기�? 보이???�개. ?�비로�?, ?�적 분위�? },
+        { term: 'Dust Particles', desc: '공기 �?먼�? ?�자. ?�래??공간, ?�간???�름 ?�현' },
+        { term: 'Lens Flare', desc: '?�즈??반사??�? ?�양�? ?�비로�?, J.J. ?�이브럼???��??? },
+        { term: 'Bokeh Effect', desc: '?�경/배경 ?�림?�로 ?�사�?강조. 빛망???�과' },
+        { term: 'Motion Blur', desc: '?�직임???�한 ?�상. ?�도�? 긴박?? },
+        { term: 'Depth of Field (DoF)', desc: '초점 ?�도. Shallow=배경 ?�림, Deep=?�체 ?�명' },
+        { term: 'Silhouette', desc: '??��?�로 ?�태�?보임. 미스?�리, ?�명?? ?�라마틱' },
+        { term: 'Reflection', desc: '거울, �? ?�리 ?�에 반사. ?�중?? ?�아?�찰' },
+        { term: 'Rain/Water Droplets', desc: '�? 물방???�과. ?�픔, ?�화, 극적 분위�? },
     ],
     'Composition (구도)': [
-        { term: 'Rule of Thirds', desc: '화면 9등분, 교차점에 주요 요소 배치. 기본 구도 법칙' },
-        { term: 'Center Composition', desc: '주요 피사체 정중앙. 권위, 안정감, 대칭미' },
-        { term: 'Symmetrical Composition', desc: '좌우대칭 구도. 질서, 형식미, 웨스 앤더슨 스타일' },
-        { term: 'Leading Lines', desc: '선(도로, 건물 등)이 시선을 유도. 깊이감, 방향성' },
-        { term: 'Frame within Frame', desc: '문, 창문 등으로 프레임 속 프레임. 고립, 관음, 집중' },
-        { term: 'Negative Space', desc: '빈 공간 활용. 고독, 미니멀리즘, 여백의 미' },
-        { term: 'Foreground Interest', desc: '전경 요소로 깊이감 추가. 레이어링' },
+        { term: 'Rule of Thirds', desc: '?�면 9?�분, 교차?�에 주요 ?�소 배치. 기본 구도 법칙' },
+        { term: 'Center Composition', desc: '주요 ?�사�??�중?? 권위, ?�정�? ?��??' },
+        { term: 'Symmetrical Composition', desc: '좌우?��?구도. 질서, ?�식�? ?�스 ?�더???��??? },
+        { term: 'Leading Lines', desc: '???�로, 건물 ?????�선???�도. 깊이�? 방향?? },
+        { term: 'Frame within Frame', desc: '�? 창문 ?�으�??�레?????�레?? 고립, 관?? 집중' },
+        { term: 'Negative Space', desc: '�?공간 ?�용. 고독, 미니멀리즘, ?�백??�? },
+        { term: 'Foreground Interest', desc: '?�경 ?�소�?깊이�?추�?. ?�이?�링' },
     ],
-    'Color & Mood (색감/분위기)': [
-        { term: 'Warm Color Palette', desc: '따뜻한 색조(주황, 노랑, 빨강). 친밀함, 에너지, 열정' },
-        { term: 'Cool Color Palette', desc: '차가운 색조(파랑, 녹색, 보라). 차분함, 슬픔, 미스터리' },
-        { term: 'Desaturated/Muted Colors', desc: '채도 낮은 색감. 우울, 현실적, 빈티지' },
-        { term: 'High Contrast', desc: '명암 대비 강함. 드라마틱, 누아르' },
-        { term: 'Low Contrast', desc: '명암 대비 약함. 부드러움, 몽환적' },
-        { term: 'Monochromatic', desc: '단색 톤. 통일감, 무드 강조' },
+    'Color & Mood (?�감/분위�?': [
+        { term: 'Warm Color Palette', desc: '?�뜻???�조(주황, ?�랑, 빨강). 친�??? ?�너지, ?�정' },
+        { term: 'Cool Color Palette', desc: '차�????�조(?�랑, ?�색, 보라). 차분?? ?�픔, 미스?�리' },
+        { term: 'Desaturated/Muted Colors', desc: '채도 ??? ?�감. ?�울, ?�실?? 빈티지' },
+        { term: 'High Contrast', desc: '명암 ?��?강함. ?�라마틱, ?�아�? },
+        { term: 'Low Contrast', desc: '명암 ?��??�함. 부?�러?�, 몽환?? },
+        { term: 'Monochromatic', desc: '?�색 ?? ?�일�? 무드 강조' },
     ]
 };
 
@@ -287,10 +287,10 @@ export const CutItem = memo(({
                             {!speakerList.includes('Narrator') && <option value="Narrator">Narrator</option>}
                             {!speakerList.includes('SILENT') && <option value="SILENT">SILENT</option>}
                         </select>
-                        <span className="text-[10px] text-gray-500 bg-white/5 px-1.5 py-0.5 rounded">{displayTotalDuration}s</span>
+                        <span className="text-xs text-gray-500 bg-white/5 px-1.5 py-0.5 rounded">{displayTotalDuration}s</span>
                     </div>
                     {dialoguePreview && (
-                        <p className="text-[11px] text-gray-500 truncate mt-0.5">{dialoguePreview}</p>
+                        <p className="text-xs text-gray-500 truncate mt-0.5">{dialoguePreview}</p>
                     )}
                 </div>
 
@@ -329,13 +329,13 @@ export const CutItem = memo(({
                 <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-[var(--color-primary)]/5">
                     <div className="flex items-center gap-2">
                         <Mic size={12} className="text-[var(--color-primary)]" />
-                        <span className="text-[10px] font-bold text-[var(--color-primary)] uppercase">Audio</span>
-                        <span className="text-[9px] text-gray-500">(Dialogue + SFX)</span>
+                        <span className="text-xs font-bold text-[var(--color-primary)] uppercase">Audio</span>
+                        <span className="text-xs text-gray-500">(Dialogue + SFX)</span>
                     </div>
                     <button
                         onClick={() => onToggleAudioConfirm(cut.id)}
                         disabled={!hasAudio && cut.speaker !== 'SILENT'}
-                        className={`flex items-center gap-1.5 px-3 py-1 rounded text-[10px] font-bold transition-colors ${isAudioConfirmed ? 'bg-green-500 text-black' : 'bg-white/10 text-gray-400 hover:text-white disabled:opacity-30'}`}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-bold transition-colors ${isAudioConfirmed ? 'bg-green-500 text-black' : 'bg-white/10 text-gray-400 hover:text-white disabled:opacity-30'}`}
                     >
                         {isAudioConfirmed ? <Lock size={10} /> : <Unlock size={10} />}
                         {isAudioConfirmed ? 'Locked' : 'Lock Audio'}
@@ -346,7 +346,7 @@ export const CutItem = memo(({
                 <div className="px-4 py-3">
                     <div className="flex gap-2">
                         <div className="flex-1">
-                            <label className="text-[9px] text-[var(--color-primary)] uppercase font-bold block mb-1">💬 Dialogue</label>
+                            <label className="text-xs text-[var(--color-primary)] uppercase font-bold block mb-1">?�� Dialogue</label>
                             <textarea
                                 className={`w-full bg-[rgba(0,0,0,0.3)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-white text-sm min-h-[60px] focus:border-[var(--color-primary)] outline-none resize-none ${isAudioConfirmed ? 'opacity-70 cursor-not-allowed' : ''}`}
                                 value={localDialogue}
@@ -367,7 +367,7 @@ export const CutItem = memo(({
                             {hasRealAudio && (
                                 <button
                                     onClick={() => onPlayAudio(cut.id)}
-                                    className={`flex items-center justify-center gap-1 w-16 px-2 py-1.5 rounded text-[10px] font-bold transition-colors ${playingAudio === cut.id ? 'bg-green-500 text-black' : 'bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30'}`}
+                                    className={`flex items-center justify-center gap-1 w-16 px-2 py-1.5 rounded text-xs font-bold transition-colors ${playingAudio === cut.id ? 'bg-green-500 text-black' : 'bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30'}`}
                                 >
                                     <Play size={10} />
                                     {playingAudio === cut.id ? 'Stop' : 'Play'}
@@ -379,7 +379,7 @@ export const CutItem = memo(({
                                 <button
                                     onClick={() => onGenerateAudio(cut.id, cut.dialogue)}
                                     disabled={audioLoading || !cut.dialogue || isAudioConfirmed}
-                                    className="flex items-center justify-center gap-1 w-16 px-2 py-1.5 rounded text-[10px] font-bold bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30 disabled:opacity-50 transition-colors"
+                                    className="flex items-center justify-center gap-1 w-16 px-2 py-1.5 rounded text-xs font-bold bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30 disabled:opacity-50 transition-colors"
                                 >
                                     {audioLoading ? <Loader2 size={10} className="animate-spin" /> : <Mic size={10} />}
                                     {hasRealAudio ? 'Regen' : 'Gen'}
@@ -389,7 +389,7 @@ export const CutItem = memo(({
                             {/* Settings Button */}
                             <button
                                 onClick={() => setShowAudioSettings(!showAudioSettings)}
-                                className={`flex items-center justify-center w-16 px-2 py-1.5 rounded text-[10px] transition-colors ${showAudioSettings ? 'bg-[var(--color-primary)]/30 text-[var(--color-primary)]' : 'bg-white/5 text-gray-500 hover:text-white'}`}
+                                className={`flex items-center justify-center w-16 px-2 py-1.5 rounded text-xs transition-colors ${showAudioSettings ? 'bg-[var(--color-primary)]/30 text-[var(--color-primary)]' : 'bg-white/5 text-gray-500 hover:text-white'}`}
                             >
                                 <Settings size={10} />
                             </button>
@@ -401,19 +401,19 @@ export const CutItem = memo(({
                     {showAudioSettings && (
                         <div className="mt-3 p-3 bg-black/20 rounded-lg border border-[var(--color-primary)]/20 space-y-2">
                             <div className="flex items-center justify-between mb-2">
-                                <span className="text-[9px] text-[var(--color-primary)] uppercase font-bold">Voice Settings</span>
+                                <span className="text-xs text-[var(--color-primary)] uppercase font-bold">Voice Settings</span>
                                 <button onClick={() => setShowAudioSettings(false)} className="text-gray-500 hover:text-white"><X size={12} /></button>
                             </div>
                             <div className="flex flex-wrap gap-2">
                                 <div className="min-w-[70px]">
-                                    <label className="text-[9px] text-gray-500 block mb-1">Language</label>
+                                    <label className="text-xs text-gray-500 block mb-1">Language</label>
                                     <select className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.language || 'ko-KR'} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { language: e.target.value as any }); onSave(); }}>
-                                        <option value="ko-KR">한국어</option>
+                                        <option value="ko-KR">?�국??/option>
                                         <option value="en-US">English</option>
                                     </select>
                                 </div>
                                 <div className="min-w-[60px]">
-                                    <label className="text-[9px] text-gray-500 block mb-1">Gender</label>
+                                    <label className="text-xs text-gray-500 block mb-1">Gender</label>
                                     <select className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.voiceGender || 'neutral'} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { voiceGender: e.target.value as any }); onSave(); }}>
                                         <option value="neutral">Auto</option>
                                         <option value="male">Male</option>
@@ -421,7 +421,7 @@ export const CutItem = memo(({
                                     </select>
                                 </div>
                                 <div className="min-w-[60px]">
-                                    <label className="text-[9px] text-gray-500 block mb-1">Age</label>
+                                    <label className="text-xs text-gray-500 block mb-1">Age</label>
                                     <select className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.voiceAge || 'adult'} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { voiceAge: e.target.value as any }); onSave(); }}>
                                         <option value="child">Child</option>
                                         <option value="young">Young</option>
@@ -430,7 +430,7 @@ export const CutItem = memo(({
                                     </select>
                                 </div>
                                 <div className="min-w-[70px]">
-                                    <label className="text-[9px] text-gray-500 block mb-1">Emotion</label>
+                                    <label className="text-xs text-gray-500 block mb-1">Emotion</label>
                                     <select className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.emotion || 'neutral'} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { emotion: e.target.value }); onSave(); }}>
                                         <option value="neutral">Neutral</option>
                                         <option value="happy">Happy</option>
@@ -441,7 +441,7 @@ export const CutItem = memo(({
                                     </select>
                                 </div>
                                 <div className="min-w-[60px]">
-                                    <label className="text-[9px] text-gray-500 block mb-1">Intensity</label>
+                                    <label className="text-xs text-gray-500 block mb-1">Intensity</label>
                                     <select className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.emotionIntensity || 'medium'} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { emotionIntensity: e.target.value as any }); onSave(); }}>
                                         <option value="low">Low</option>
                                         <option value="medium">Medium</option>
@@ -449,7 +449,7 @@ export const CutItem = memo(({
                                     </select>
                                 </div>
                                 <div className="min-w-[50px]">
-                                    <label className="text-[9px] text-gray-500 block mb-1">Volume</label>
+                                    <label className="text-xs text-gray-500 block mb-1">Volume</label>
                                     <select className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.voiceVolume ?? 1} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { voiceVolume: parseFloat(e.target.value) }); onSave(); }}>
                                         <option value={0.5}>50%</option>
                                         <option value={0.75}>75%</option>
@@ -458,7 +458,7 @@ export const CutItem = memo(({
                                     </select>
                                 </div>
                                 <div className="min-w-[50px]">
-                                    <label className="text-[9px] text-gray-500 block mb-1">Rate</label>
+                                    <label className="text-xs text-gray-500 block mb-1">Rate</label>
                                     <select className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.voiceRate ?? 1} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { voiceRate: parseFloat(e.target.value) }); onSave(); }}>
                                         <option value={0.75}>0.75x</option>
                                         <option value={1}>1.0x</option>
@@ -467,14 +467,14 @@ export const CutItem = memo(({
                                     </select>
                                 </div>
                                 <div className="min-w-[60px]">
-                                    <label className="text-[9px] text-gray-500 block mb-1">Duration</label>
+                                    <label className="text-xs text-gray-500 block mb-1">Duration</label>
                                     <div className="flex items-center bg-black/50 rounded border border-white/10 px-2 py-1">
                                         <input type="number" min="0" max="60" step="0.1" className={`bg-transparent text-[var(--color-primary)] font-bold text-xs w-8 outline-none ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.estimatedDuration || 0} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { estimatedDuration: parseFloat(e.target.value) }); onSave(); }} />
-                                        <span className="text-[9px] text-gray-500">s</span>
+                                        <span className="text-xs text-gray-500">s</span>
                                     </div>
                                 </div>
                                 <div className="min-w-[50px]">
-                                    <label className="text-[9px] text-gray-500 block mb-1">Padding</label>
+                                    <label className="text-xs text-gray-500 block mb-1">Padding</label>
                                     <select className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.audioPadding ?? 0.5} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { audioPadding: parseFloat(e.target.value) }); onSave(); }}>
                                         <option value={0}>0s</option>
                                         <option value={0.2}>0.2s</option>
@@ -492,20 +492,20 @@ export const CutItem = memo(({
                             {cut.sfxDescription && !cut.sfxUrl && (
                                 <div className="flex items-center gap-2 px-3 py-2 bg-[var(--color-primary)]/10 rounded border border-[var(--color-primary)]/20">
                                     <Waves size={12} className="text-[var(--color-primary)] shrink-0" />
-                                    <span className="text-[10px] text-[var(--color-primary)] font-bold">SFX IDEA:</span>
+                                    <span className="text-xs text-[var(--color-primary)] font-bold">SFX IDEA:</span>
                                     <span className="text-xs text-gray-400 flex-1 truncate">{cut.sfxDescription}</span>
                                     {onOpenSfxModal && (
-                                        <button onClick={() => onOpenSfxModal(cut.id)} className="text-[10px] text-[var(--color-primary)] font-bold px-2 py-1 rounded bg-[var(--color-primary)]/20">Find</button>
+                                        <button onClick={() => onOpenSfxModal(cut.id)} className="text-xs text-[var(--color-primary)] font-bold px-2 py-1 rounded bg-[var(--color-primary)]/20">Find</button>
                                     )}
                                 </div>
                             )}
                             {cut.sfxUrl && (
                                 <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 rounded border border-green-500/20">
                                     <Volume2 size={12} className="text-green-400 shrink-0" />
-                                    <span className="text-[10px] text-green-400 font-bold">SFX:</span>
+                                    <span className="text-xs text-green-400 font-bold">SFX:</span>
                                     <span className="text-xs text-gray-300 flex-1 truncate">{cut.sfxName || 'Sound Effect'}</span>
                                     <div className="flex items-center gap-1">
-                                        {onOpenSfxModal && <button onClick={() => onOpenSfxModal(cut.id)} className="text-[10px] text-gray-400 hover:text-white px-2 py-0.5 rounded bg-white/10">Change</button>}
+                                        {onOpenSfxModal && <button onClick={() => onOpenSfxModal(cut.id)} className="text-xs text-gray-400 hover:text-white px-2 py-0.5 rounded bg-white/10">Change</button>}
                                         {onRemoveSfx && <button onClick={() => onRemoveSfx(cut.id)} className="p-1 text-red-500/50 hover:text-red-400"><X size={12} /></button>}
                                     </div>
                                 </div>
@@ -521,13 +521,13 @@ export const CutItem = memo(({
                 <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-[var(--color-primary)]/5">
                     <div className="flex items-center gap-2">
                         <Image size={12} className="text-[var(--color-primary)]" />
-                        <span className="text-[10px] font-bold text-[var(--color-primary)] uppercase">Visual</span>
-                        <span className="text-[9px] text-gray-500">(Image + Video)</span>
+                        <span className="text-xs font-bold text-[var(--color-primary)] uppercase">Visual</span>
+                        <span className="text-xs text-gray-500">(Image + Video)</span>
                     </div>
                     <button
                         onClick={() => onToggleImageConfirm(cut.id)}
                         disabled={!hasImage}
-                        className={`flex items-center gap-1.5 px-3 py-1 rounded text-[10px] font-bold transition-colors ${isImageConfirmed ? 'bg-green-500 text-black' : 'bg-white/10 text-gray-400 hover:text-white disabled:opacity-30'}`}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-bold transition-colors ${isImageConfirmed ? 'bg-green-500 text-black' : 'bg-white/10 text-gray-400 hover:text-white disabled:opacity-30'}`}
                     >
                         {isImageConfirmed ? <Lock size={10} /> : <Unlock size={10} />}
                         {isImageConfirmed ? 'Locked' : 'Lock Visual'}
@@ -539,14 +539,14 @@ export const CutItem = memo(({
                     <div className="flex gap-2">
                         <div className="flex-1 relative">
                             <div className="flex items-center justify-between mb-1">
-                                <label className="text-[9px] text-[var(--color-primary)] uppercase font-bold">📷 Still Image Prompt</label>
+                                <label className="text-xs text-[var(--color-primary)] uppercase font-bold">?�� Still Image Prompt</label>
                                 {/* Term Helper Button */}
                                 <button
                                     onClick={() => setShowTermHelper(!showTermHelper)}
-                                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] ${showTermHelper ? 'bg-[var(--color-primary)]/20 text-[var(--color-primary)]' : 'text-gray-500 hover:text-[var(--color-primary)]'}`}
+                                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs ${showTermHelper ? 'bg-[var(--color-primary)]/20 text-[var(--color-primary)]' : 'text-gray-500 hover:text-[var(--color-primary)]'}`}
                                 >
                                     <HelpCircle size={10} />
-                                    전문용어
+                                    ?�문?�어
                                 </button>
                             </div>
 
@@ -556,12 +556,12 @@ export const CutItem = memo(({
                                     <div className="fixed inset-0 z-[90]" onClick={() => setShowTermHelper(false)} />
                                     <div className="absolute bottom-full left-0 mb-2 w-[400px] max-h-[400px] overflow-y-auto bg-[#1a1a1a] border border-[var(--color-primary)]/30 rounded-lg shadow-2xl z-[100] p-3">
                                         <div className="flex items-center justify-between mb-3 sticky top-0 bg-[#1a1a1a] pb-2 border-b border-white/10">
-                                            <span className="text-xs text-[var(--color-primary)] font-bold">📚 영상 전문 용어 도우미</span>
+                                            <span className="text-xs text-[var(--color-primary)] font-bold">?�� ?�상 ?�문 ?�어 ?�우�?/span>
                                             <button onClick={() => setShowTermHelper(false)} className="text-gray-500 hover:text-white"><X size={14} /></button>
                                         </div>
                                         {Object.entries(VISUAL_TERMS).map(([category, terms]) => (
                                             <div key={category} className="mb-3">
-                                                <h5 className="text-[10px] font-bold text-[var(--color-primary)] uppercase mb-1.5">{category}</h5>
+                                                <h5 className="text-xs font-bold text-[var(--color-primary)] uppercase mb-1.5">{category}</h5>
                                                 <div className="space-y-1">
                                                     {terms.map((item) => (
                                                         <button
@@ -574,8 +574,8 @@ export const CutItem = memo(({
                                                             disabled={isImageConfirmed}
                                                             className="w-full text-left px-2 py-1.5 rounded hover:bg-[var(--color-primary)]/10 disabled:opacity-50 group"
                                                         >
-                                                            <div className="text-[11px] text-[var(--color-primary)] font-medium group-hover:text-white">{item.term}</div>
-                                                            <div className="text-[10px] text-gray-500">{item.desc}</div>
+                                                            <div className="text-xs text-[var(--color-primary)] font-medium group-hover:text-white">{item.term}</div>
+                                                            <div className="text-xs text-gray-500">{item.desc}</div>
                                                         </button>
                                                     ))}
                                                 </div>
@@ -599,8 +599,8 @@ export const CutItem = memo(({
                             />
                             {/* Korean Translation Display */}
                             {cut.visualPromptKR && (
-                                <div className="mt-1 px-2 py-1.5 bg-white/5 rounded text-[11px] text-gray-500 border-l-2 border-[var(--color-primary)]/30">
-                                    <span className="text-[9px] text-gray-600 mr-1">🇰🇷</span>
+                                <div className="mt-1 px-2 py-1.5 bg-white/5 rounded text-xs text-gray-500 border-l-2 border-[var(--color-primary)]/30">
+                                    <span className="text-xs text-gray-600 mr-1">?��?��</span>
                                     {cut.visualPromptKR}
                                 </div>
                             )}
@@ -612,7 +612,7 @@ export const CutItem = memo(({
                             {hasImage && (
                                 <button
                                     onClick={() => setShowImageSettings(true)}
-                                    className="flex items-center justify-center gap-1 w-16 px-2 py-1.5 rounded text-[10px] font-bold bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30"
+                                    className="flex items-center justify-center gap-1 w-16 px-2 py-1.5 rounded text-xs font-bold bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30"
                                 >
                                     <Eye size={10} />
                                     View
@@ -623,7 +623,7 @@ export const CutItem = memo(({
                             <button
                                 onClick={() => hasImage ? onRegenerateImage(cut.id) : onGenerateImage(cut.id, cut.visualPrompt)}
                                 disabled={imageLoading || isImageConfirmed}
-                                className="flex items-center justify-center gap-1 w-16 px-2 py-1.5 rounded text-[10px] font-bold bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30 disabled:opacity-50"
+                                className="flex items-center justify-center gap-1 w-16 px-2 py-1.5 rounded text-xs font-bold bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30 disabled:opacity-50"
                             >
                                 {imageLoading ? <Loader2 size={10} className="animate-spin" /> : <Image size={10} />}
                                 {hasImage ? 'Regen' : 'Gen'}
@@ -632,7 +632,7 @@ export const CutItem = memo(({
                             {/* Settings Button */}
                             <button
                                 onClick={() => setShowImageSettings(!showImageSettings)}
-                                className={`flex items-center justify-center w-16 px-2 py-1.5 rounded text-[10px] transition-colors ${showImageSettings ? 'bg-[var(--color-primary)]/30 text-[var(--color-primary)]' : 'bg-white/5 text-gray-500 hover:text-white'}`}
+                                className={`flex items-center justify-center w-16 px-2 py-1.5 rounded text-xs transition-colors ${showImageSettings ? 'bg-[var(--color-primary)]/30 text-[var(--color-primary)]' : 'bg-white/5 text-gray-500 hover:text-white'}`}
                             >
                                 <Settings size={10} />
                             </button>
@@ -643,7 +643,7 @@ export const CutItem = memo(({
                     {showImageSettings && (
                         <div className="mt-3 p-3 bg-black/20 rounded-lg border border-[var(--color-primary)]/20 space-y-3">
                             <div className="flex items-center justify-between mb-2">
-                                <span className="text-[9px] text-[var(--color-primary)] uppercase font-bold">Image Settings</span>
+                                <span className="text-xs text-[var(--color-primary)] uppercase font-bold">Image Settings</span>
                                 <button onClick={() => setShowImageSettings(false)} className="text-gray-500 hover:text-white"><X size={12} /></button>
                             </div>
 
@@ -657,17 +657,17 @@ export const CutItem = memo(({
                             {/* Referenced Assets */}
                             <div>
                                 <div className="flex items-center gap-2 mb-2">
-                                    <span className="text-[9px] text-gray-400 uppercase font-bold">Referenced Assets</span>
+                                    <span className="text-xs text-gray-400 uppercase font-bold">Referenced Assets</span>
                                     {!isImageConfirmed && (
                                         <div className={`relative ${showAssetSelector ? 'z-[100]' : ''}`}>
-                                            <button onClick={() => onToggleAssetSelector(cut.id)} className="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30">
+                                            <button onClick={() => onToggleAssetSelector(cut.id)} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30">
                                                 <Plus size={10} /> Add
                                             </button>
                                             {showAssetSelector && (
                                                 <>
                                                     <div className="fixed inset-0 z-[100]" onClick={onCloseAssetSelector} />
                                                     <div className="absolute top-full left-0 mt-1 w-56 bg-[#1a1a1a] border border-[var(--color-border)] rounded-lg shadow-2xl z-[101] max-h-64 overflow-y-auto">
-                                                        <div className="p-2 text-[10px] text-gray-500 font-bold uppercase">Assets</div>
+                                                        <div className="p-2 text-xs text-gray-500 font-bold uppercase">Assets</div>
                                                         {uniqueAssets.map((asset: any) => (
                                                             <button key={asset.id} onClick={() => onAddAsset(cut.id, asset.id)} className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-white/10 hover:text-white flex items-center gap-2">
                                                                 <div className="w-2 h-2 rounded-full bg-[var(--color-primary)]" />{asset.name}
@@ -675,7 +675,7 @@ export const CutItem = memo(({
                                                         ))}
                                                         {index > 0 && (
                                                             <>
-                                                                <div className="p-2 text-[10px] text-gray-500 font-bold uppercase mt-1 border-t border-white/10">Previous Cuts</div>
+                                                                <div className="p-2 text-xs text-gray-500 font-bold uppercase mt-1 border-t border-white/10">Previous Cuts</div>
                                                                 {localScript.slice(0, index).filter(c => c.finalImageUrl).map(prevCut => (
                                                                     <CutReferenceItem key={prevCut.id} cut={prevCut} onSelect={(id) => onAddReference(cut.id, id)} />
                                                                 ))}
@@ -689,16 +689,16 @@ export const CutItem = memo(({
                                 </div>
                                 <div className="flex flex-wrap gap-1">
                                     {autoMatchedAssets.map((asset: any) => (
-                                        <div key={asset.id} className="px-2 py-0.5 rounded bg-white/5 text-gray-400 text-[10px] border border-white/10">{asset.name} <span className="opacity-50">(Auto)</span></div>
+                                        <div key={asset.id} className="px-2 py-0.5 rounded bg-white/5 text-gray-400 text-xs border border-white/10">{asset.name} <span className="opacity-50">(Auto)</span></div>
                                     ))}
                                     {manualAssetObjs.map((asset: any) => (
-                                        <div key={asset.id} className="flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-[10px] border border-[var(--color-primary)]/30">
+                                        <div key={asset.id} className="flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-xs border border-[var(--color-primary)]/30">
                                             {asset.name}
                                             {!isImageConfirmed && <button onClick={() => onRemoveAsset(cut.id, asset.id)} className="hover:text-white"><X size={10} /></button>}
                                         </div>
                                     ))}
                                     {(cut.referenceCutIds || []).map(refId => (
-                                        <div key={refId} className="flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-[10px] border border-[var(--color-primary)]/30">
+                                        <div key={refId} className="flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-xs border border-[var(--color-primary)]/30">
                                             <Image size={8} /> Cut #{refId}
                                             {!isImageConfirmed && <button onClick={() => onRemoveReference(cut.id, refId)} className="hover:text-white"><X size={10} /></button>}
                                         </div>
@@ -708,7 +708,7 @@ export const CutItem = memo(({
 
                             {/* User Reference Sketch Upload */}
                             <div className="flex items-center justify-between">
-                                <span className="text-[9px] text-gray-400 uppercase font-bold">🎨 Sketch/Reference (구도 우선 참조)</span>
+                                <span className="text-xs text-gray-400 uppercase font-bold">?�� Sketch/Reference (구도 ?�선 참조)</span>
                                 <div className="flex items-center gap-2">
                                     {cut.userReferenceImage && (
                                         <div className="relative w-8 h-8 rounded overflow-hidden border border-white/20">
@@ -716,7 +716,7 @@ export const CutItem = memo(({
                                             <button onClick={() => onUpdateCut(cut.id, { userReferenceImage: undefined })} className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 hover:opacity-100"><X size={10} className="text-white" /></button>
                                         </div>
                                     )}
-                                    <label className="cursor-pointer text-[9px] bg-white/10 hover:bg-white/20 text-gray-300 px-2 py-1 rounded flex items-center gap-1">
+                                    <label className="cursor-pointer text-xs bg-white/10 hover:bg-white/20 text-gray-300 px-2 py-1 rounded flex items-center gap-1">
                                         <Plus size={10} /> Upload
                                         <input type="file" accept="image/*" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file && onUploadUserReference) onUploadUserReference(cut.id, file); }} />
                                     </label>
@@ -726,15 +726,15 @@ export const CutItem = memo(({
                             {/* Video Motion Prompt (at bottom of image settings) */}
                             <div className="pt-3 border-t border-white/10">
                                 <div className="flex items-center justify-between mb-1">
-                                    <label className="text-[9px] text-purple-400 uppercase font-bold">🎬 Video Motion Prompt (Step 4.5용)</label>
+                                    <label className="text-xs text-purple-400 uppercase font-bold">?�� Video Motion Prompt (Step 4.5??</label>
                                     <div className="flex items-center gap-1">
                                         {!cut.videoPrompt && !isImageConfirmed && (
-                                            <button onClick={handleAutoGenerateVideoPrompt} className="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] bg-purple-500/20 text-purple-300 hover:bg-purple-500/30">
+                                            <button onClick={handleAutoGenerateVideoPrompt} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-purple-500/20 text-purple-300 hover:bg-purple-500/30">
                                                 <Sparkles size={10} /> Auto
                                             </button>
                                         )}
                                         {cut.videoPrompt && !isImageConfirmed && (
-                                            <button onClick={handleAutoGenerateVideoPrompt} className="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] bg-white/10 text-gray-400 hover:text-white">
+                                            <button onClick={handleAutoGenerateVideoPrompt} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-white/10 text-gray-400 hover:text-white">
                                                 <Edit3 size={10} /> Reset
                                             </button>
                                         )}
@@ -746,9 +746,9 @@ export const CutItem = memo(({
                                     disabled={isImageConfirmed}
                                     onChange={(e) => onUpdateCut(cut.id, { videoPrompt: e.target.value })}
                                     onBlur={onSave}
-                                    placeholder="Camera movement, character actions... (이미지 Lock 후 자동 생성 권장)"
+                                    placeholder="Camera movement, character actions... (?��?지 Lock ???�동 ?�성 권장)"
                                 />
-                                <p className="text-[9px] text-gray-500 mt-1 italic">💡 이미지 Lock 후 AI가 자동 생성. Step 4.5에서 더 정교한 enhancement 적용됨.</p>
+                                <p className="text-xs text-gray-500 mt-1 italic">?�� ?��?지 Lock ??AI가 ?�동 ?�성. Step 4.5?�서 ???�교??enhancement ?�용??</p>
                             </div>
                         </div>
                     )}
@@ -789,7 +789,7 @@ const CutReferenceItem = ({ cut, onSelect }: { cut: ScriptCut, onSelect: (id: nu
             <div className="w-6 h-6 rounded overflow-hidden shrink-0 border border-white/10">
                 <img src={imgUrl} alt="" className="w-full h-full object-cover" />
             </div>
-            <span className="text-[10px] text-gray-400">Cut #{cut.id}</span>
+            <span className="text-xs text-gray-400">Cut #{cut.id}</span>
         </button>
     );
 };
