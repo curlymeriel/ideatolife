@@ -656,17 +656,17 @@ export const CutItem = memo(({
 
                             {/* Referenced Assets */}
                             <div>
-                                <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2 mb-2">
                                     <span className="text-[9px] text-gray-400 uppercase font-bold">Referenced Assets</span>
                                     {!isImageConfirmed && (
                                         <div className={`relative ${showAssetSelector ? 'z-[100]' : ''}`}>
-                                            <button onClick={() => onToggleAssetSelector(cut.id)} className="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] bg-white/10 text-gray-300 hover:text-white">
+                                            <button onClick={() => onToggleAssetSelector(cut.id)} className="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30">
                                                 <Plus size={10} /> Add
                                             </button>
                                             {showAssetSelector && (
                                                 <>
                                                     <div className="fixed inset-0 z-[100]" onClick={onCloseAssetSelector} />
-                                                    <div className="absolute bottom-full left-0 mb-2 w-56 bg-[#1a1a1a] border border-[var(--color-border)] rounded-lg shadow-2xl z-[101] max-h-64 overflow-y-auto">
+                                                    <div className="absolute top-full left-0 mt-1 w-56 bg-[#1a1a1a] border border-[var(--color-border)] rounded-lg shadow-2xl z-[101] max-h-64 overflow-y-auto">
                                                         <div className="p-2 text-[10px] text-gray-500 font-bold uppercase">Assets</div>
                                                         {uniqueAssets.map((asset: any) => (
                                                             <button key={asset.id} onClick={() => onAddAsset(cut.id, asset.id)} className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-white/10 hover:text-white flex items-center gap-2">
