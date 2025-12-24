@@ -1,5 +1,5 @@
 import { memo, useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { Lock, Unlock, Mic, Loader2, Play, ImageIcon as Image, Eye, X, Plus, HelpCircle, Waves, Volume2, Settings, Trash2, Edit3, Sparkles, ChevronDown, ChevronRight } from 'lucide-react';
+import { Lock, Unlock, Mic, Loader2, Play, ImageIcon as Image, Eye, X, Plus, HelpCircle, Waves, Volume2, Settings, Trash2, Edit3, Sparkles, ChevronDown, ChevronRight, ChevronUp } from 'lucide-react';
 import type { ScriptCut } from '../../services/gemini';
 import { getMatchedAssets } from '../../utils/assetUtils';
 import { resolveUrl, isIdbUrl } from '../../utils/imageStorage';
@@ -71,7 +71,7 @@ const VISUAL_TERMS = {
     ]
 };
 
-interface CutItemProps {
+export interface CutItemProps {
     cut: ScriptCut;
     index: number;
     isAudioConfirmed: boolean;
@@ -101,6 +101,8 @@ interface CutItemProps {
     onCloseAssetSelector: () => void;
     onSave: () => void;
     onDelete: (id: number) => void;
+    onMove: (id: number, direction: 'up' | 'down') => void;
+    onInsert: (id: number) => void;
     onOpenSfxModal?: (cutId: number) => void;
     onRemoveSfx?: (cutId: number) => void;
 }
@@ -116,7 +118,7 @@ export const CutItem = memo(({
     audioLoading,
     imageLoading,
     playingAudio,
-    // aspectRatio,
+    aspectRatio,
     speakerList,
     ttsModel,
     onToggleAudioConfirm,
@@ -135,6 +137,8 @@ export const CutItem = memo(({
     onCloseAssetSelector,
     onSave,
     onDelete,
+    onMove,
+    onInsert,
     onOpenSfxModal,
     onRemoveSfx
 }: CutItemProps) => {
@@ -144,11 +148,11 @@ export const CutItem = memo(({
     const isFocusedRef = useRef(false);
     const isVisualPromptFocusedRef = useRef(false);
 
-    // Resolved URLs for IndexedDB - Use null instead of '' to prevent React src="" warnings
-    const [resolvedImageUrl, setResolvedImageUrl] = useState<string | null>(null);
-    const [resolvedAudioUrl, setResolvedAudioUrl] = useState<string | null>(null);
-    const [resolvedUserRefUrl, setResolvedUserRefUrl] = useState<string | null>(null);
-    const [actualAudioDuration, setActualAudioDuration] = useState<number | null>(null);
+    // Resolved URLs for IndexedDB
+    const [resolvedImageUrl, setResolvedImageUrl] = useState<string | undefined>(undefined);
+    const [resolvedAudioUrl, setResolvedAudioUrl] = useState<string | undefined>(undefined);
+    const [resolvedUserRefUrl, setResolvedUserRefUrl] = useState<string | undefined>(undefined);
+    const [actualAudioDuration, setActualAudioDuration] = useState<number | undefined>(undefined);
 
     // Panel expand states
     const [showAudioSettings, setShowAudioSettings] = useState(false);
@@ -186,12 +190,12 @@ export const CutItem = memo(({
     useEffect(() => {
         if (cut.finalImageUrl) {
             if (isIdbUrl(cut.finalImageUrl)) {
-                resolveUrl(cut.finalImageUrl).then(url => setResolvedImageUrl(url || null));
+                resolveUrl(cut.finalImageUrl).then(url => setResolvedImageUrl(url || undefined));
             } else {
-                setResolvedImageUrl(cut.finalImageUrl || null);
+                setResolvedImageUrl(cut.finalImageUrl);
             }
         } else {
-            setResolvedImageUrl(null);
+            setResolvedImageUrl(undefined);
         }
     }, [cut.finalImageUrl]);
 
@@ -207,7 +211,7 @@ export const CutItem = memo(({
                 setResolvedAudioUrl(cut.audioUrl);
             }
         } else {
-            setResolvedAudioUrl(null);
+            setResolvedAudioUrl(undefined);
         }
 
         return () => {
@@ -220,12 +224,12 @@ export const CutItem = memo(({
     useEffect(() => {
         if (cut.userReferenceImage) {
             if (isIdbUrl(cut.userReferenceImage)) {
-                resolveUrl(cut.userReferenceImage).then(url => setResolvedUserRefUrl(url || null));
+                resolveUrl(cut.userReferenceImage).then(url => setResolvedUserRefUrl(url || undefined));
             } else {
-                setResolvedUserRefUrl(cut.userReferenceImage || null);
+                setResolvedUserRefUrl(cut.userReferenceImage);
             }
         } else {
-            setResolvedUserRefUrl(null);
+            setResolvedUserRefUrl(undefined);
         }
     }, [cut.userReferenceImage]);
 
@@ -304,7 +308,14 @@ export const CutItem = memo(({
 
                 {/* Thumbnail (if image exists) */}
                 {hasImage && (
-                    <div className="w-12 h-12 rounded border border-white/20 overflow-hidden shrink-0 bg-black">
+                    <div
+                        className="rounded border border-white/20 overflow-hidden shrink-0 bg-black flex items-center justify-center"
+                        style={{
+                            width: '48px',
+                            height: '48px',
+                            aspectRatio: aspectRatio === '9:16' ? '9/16' : '16/9'
+                        }}
+                    >
                         <img src={resolvedImageUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
                     </div>
                 )}
@@ -351,19 +362,45 @@ export const CutItem = memo(({
                     )}
                 </div>
 
-                {/* Delete Button */}
-                <button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        if (confirm('Are you sure you want to delete this cut?')) {
-                            onDelete(cut.id);
-                        }
-                    }}
-                    className="p-1.5 text-gray-600 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
-                    title="Delete Cut"
-                >
-                    <Trash2 size={14} />
-                </button>
+                <div className="flex items-center gap-1">
+                    {/* Move Up */}
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onMove(cut.id, 'up'); }}
+                        className="p-1.5 text-gray-600 hover:text-[var(--color-primary)] hover:bg-white/5 rounded transition-colors"
+                        title="Move Up"
+                    >
+                        <ChevronUp size={14} />
+                    </button>
+                    {/* Move Down */}
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onMove(cut.id, 'down'); }}
+                        className="p-1.5 text-gray-600 hover:text-[var(--color-primary)] hover:bg-white/5 rounded transition-colors"
+                        title="Move Down"
+                    >
+                        <ChevronDown size={14} />
+                    </button>
+                    {/* Insert After */}
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onInsert(cut.id); }}
+                        className="p-1.5 text-gray-600 hover:text-green-400 hover:bg-green-500/10 rounded transition-colors"
+                        title="Insert New Cut After"
+                    >
+                        <Plus size={14} />
+                    </button>
+                    {/* Delete Button */}
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm('Are you sure you want to delete this cut?')) {
+                                onDelete(cut.id);
+                            }
+                        }}
+                        className="p-1.5 text-gray-600 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                        title="Delete Cut"
+                    >
+                        <Trash2 size={14} />
+                    </button>
+                </div>
             </div>
 
             {/* ===== AUDIO SECTION (Dialogue + SFX) ===== */}
@@ -427,25 +464,32 @@ export const CutItem = memo(({
                                     )}
 
                                     {/* Gen Button */}
-                                    {cut.speaker !== 'SILENT' && (
-                                        <button
-                                            onClick={() => onGenerateAudio(cut.id, cut.dialogue)}
-                                            disabled={audioLoading || !cut.dialogue || isAudioConfirmed}
-                                            className="flex items-center justify-center gap-1.5 w-[84px] px-2 py-1.5 rounded text-[11px] font-bold bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30 disabled:opacity-50 transition-colors"
-                                        >
-                                            {audioLoading ? <Loader2 size={10} className="animate-spin" /> : <Mic size={10} />}
-                                            {hasRealAudio ? '재생성' : '생성'}
-                                        </button>
-                                    )}
+                                    {cut.speaker !== 'SILENT' ? (
+                                        <>
+                                            <button
+                                                onClick={() => onGenerateAudio(cut.id, cut.dialogue)}
+                                                disabled={audioLoading || !cut.dialogue || isAudioConfirmed}
+                                                className="flex items-center justify-center gap-1.5 w-[84px] px-2 py-1.5 rounded text-[11px] font-bold bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30 disabled:opacity-50 transition-colors"
+                                            >
+                                                {audioLoading ? <Loader2 size={10} className="animate-spin" /> : <Mic size={10} />}
+                                                {hasRealAudio ? '재생성' : '생성'}
+                                            </button>
 
-                                    {/* Settings Button */}
-                                    <button
-                                        onClick={() => setShowAudioSettings(!showAudioSettings)}
-                                        className={`flex items-center justify-center w-[84px] px-1 py-1 gap-1 rounded text-[10px] transition-all ${showAudioSettings ? 'bg-[var(--color-primary)]/40 text-white border border-[var(--color-primary)]/50' : 'bg-white/10 text-gray-400 hover:text-white border border-white/5'}`}
-                                    >
-                                        <Settings size={10} />
-                                        <span className="font-bold">생성 세팅</span>
-                                    </button>
+                                            {/* Settings Button */}
+                                            <button
+                                                onClick={() => setShowAudioSettings(!showAudioSettings)}
+                                                className={`flex items-center justify-center w-[84px] px-1 py-1 gap-1 rounded text-[10px] transition-all ${showAudioSettings ? 'bg-[var(--color-primary)]/40 text-white border border-[var(--color-primary)]/50' : 'bg-white/10 text-gray-400 hover:text-white border border-white/5'}`}
+                                            >
+                                                <Settings size={10} />
+                                                <span className="font-bold">생성 세팅</span>
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center w-[84px] h-[52px] rounded border border-white/5 bg-white/5 opacity-40">
+                                            <Mic size={12} className="text-gray-500 mb-1" />
+                                            <span className="text-[9px] text-gray-400 font-bold uppercase tracking-tighter">No Audio</span>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -579,6 +623,15 @@ export const CutItem = memo(({
                                             <Volume2 size={12} className="text-green-400 shrink-0" />
                                             <span className="text-xs text-green-400 font-bold">SFX:</span>
                                             <span className="text-xs text-gray-300 flex-1 truncate">{cut.sfxName || 'Sound Effect'}</span>
+                                            {onRemoveSfx && (
+                                                <button
+                                                    onClick={() => onRemoveSfx(cut.id)}
+                                                    className="p-1 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                                                    title="Remove Sound Effect"
+                                                >
+                                                    <Trash2 size={10} />
+                                                </button>
+                                            )}
                                         </div>
                                     )}
                                 </div>

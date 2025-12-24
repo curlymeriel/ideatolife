@@ -148,18 +148,17 @@ export const DEFAULT_SCRIPT_INSTRUCTIONS = `
         • Set dialogue = "..."
         • Set sfxDescription = "Detailed description of the sound effect" (REQUIRED)
       
-      ⚠️ FORBIDDEN - These patterns are STRICTLY PROHIBITED:
-      - speaker = "SFX" → NEVER USE. Use "SILENT" + sfxDescription instead.
-      - dialogue containing "[SFX:...]" → NEVER USE. Put it in sfxDescription.
-      - speaker = "Unknown" or "Character" → NEVER USE. Use actual names or "Narrator"
-      - speaker = "SILENT" with actual dialogue text → THIS IS WRONG. If there is text, speaker MUST be a character/Narrator.
-      - speaker = "SILENT" → dialogue MUST be "..."
-      - Empty dialogue with a character speaker → Use "SILENT" instead
+      **CONTINUITY & CONTEXT RULES (STRICT):**
+      - **RESPECT LOCKED CUTS:** Some cuts may be provided as "ESTABLISHED CUTS". You MUST treat these as immutable anchors. Do NOT change their speaker, dialogue, or visual essence.
+      - **NO REPETITION:** Do NOT repeat the dialogue or visual action of ANY previous cut (locked or generated). Each cut MUST move the story forward.
+      - **NARRATIVE BRIDGE:** If you are regenerating a script while some cuts are locked, your mission is to "fill the gaps" or "continue the thread" such that the entire sequence forms a seamless, non-redundant story.
       
       📋 FINAL CHECKLIST (verify before output):
       □ Is speaker a real character name? (If text exists) ✓
       □ If speaker is "SILENT", is the dialogue exactly "..."? ✓
       □ If there is narration, is speaker "Narrator"? ✓
+      □ Does this cut repeat any dialogue from prev cuts? (NO) ✓
+      □ Does this cut logically follow the previous one? ✓
       
       - emotion: Emotional tone of the dialogue (neutral/happy/sad/angry/excited/calm/tense)
       - emotionIntensity: Strength of the emotion (low/moderate/high)
@@ -447,15 +446,17 @@ CRITICAL INSTRUCTIONS:
             if (lockedCuts.length > 0) {
                 lockedCutsContext = `
 **CRITICAL: LOCKED CUTS (ESTABLISHED STORY)**
-The following cuts are ALREADY ESTABLISHED and cannot be changed. You MUST use them as the narrative foundation.
+The following cuts are ALREADY ESTABLISHED and are IMMUTABLE. You MUST use them as the narrative anchors for the rest of the script.
 
-**CONTINUITY RULES:**
-1. **NO REPETITION:** Do NOT repeat the dialogue of ANY previous cut (locked or generated). Each cut must move the story forward.
-2. **SEQUENCE & FLOW:** New cuts must logically follow the cut immediately preceding them. If the previous cut is locked, the new cut must be a direct narrative continuation.
-3. **LOGICAL PATH:** Treat locked cuts as immutable "narrative anchors". Your generated cuts must bridge these anchors to form a complete, non-redundant, and logically ascending story.
+**CONTINUITY MANDATE:**
+1. **ABSOLUTE NO-REPETITION:** Never generate dialogue that repeats any of the established dialogue below.
+2. **THREAD CONTINUATION:** Your NEW cuts must logically connect to the cuts immediately preceding/following them.
+3. **GAP FILLING:** If a locked cut exists at index X, and you are generating for index X+1, ensure X+1 is the logical next beat.
 
-**ESTABLISHED CUTS:**
-${lockedCuts.map(c => `[established] CUT #${c.id} | Speaker: ${c.speaker} | Dialogue: "${c.dialogue}" | Visual: "${c.visualPrompt}"`).join('\n')}
+**ESTABLISHED CUTS (Do Not Change These):**
+${lockedCuts.map(c => `[established] SLOT #${c.id} | Speaker: ${c.speaker} | Dialogue: "${c.dialogue}" | Visual: "${c.visualPrompt}"`).join('\n')}
+
+**YOUR TASK:** Generate the remaining cuts to complete the episode, ensuring they integrate perfectly with the established cuts above without any overlap or repetition.
 `;
             }
         }

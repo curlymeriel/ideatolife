@@ -994,6 +994,53 @@ export const Step3_Production: React.FC = () => {
         });
     }, []);
 
+    const handleMoveCut = useCallback((id: number, direction: 'up' | 'down') => {
+        setLocalScript(prev => {
+            const index = prev.findIndex(c => c.id === id);
+            if (index === -1) return prev;
+            if (direction === 'up' && index === 0) return prev;
+            if (direction === 'down' && index === prev.length - 1) return prev;
+
+            const newIndex = direction === 'up' ? index - 1 : index + 1;
+            const updated = [...prev];
+            [updated[index], updated[newIndex]] = [updated[newIndex], updated[index]];
+
+            // Re-index
+            const reindexed = updated.map((cut, idx) => ({
+                ...cut,
+                id: idx + 1
+            }));
+            saveToStore(reindexed);
+            return reindexed;
+        });
+    }, []);
+
+    const handleInsertCut = useCallback((id: number) => {
+        setLocalScript(prev => {
+            const index = prev.findIndex(c => c.id === id);
+            if (index === -1) return prev;
+
+            const newCut: ScriptCut = {
+                id: 0, // Placeholder
+                speaker: 'Narrator',
+                dialogue: '',
+                visualPrompt: '',
+                estimatedDuration: 3
+            };
+
+            const updated = [...prev];
+            updated.splice(index + 1, 0, newCut);
+
+            // Re-index
+            const reindexed = updated.map((cut, idx) => ({
+                ...cut,
+                id: idx + 1
+            }));
+            saveToStore(reindexed);
+            return reindexed;
+        });
+    }, []);
+
     // Bulk lock functions - component level for header access
     const lockAllAudio = useCallback(() => {
         setLocalScript(prev => {
@@ -1151,6 +1198,7 @@ export const Step3_Production: React.FC = () => {
                             const speakerCuts = new Map<string, ScriptCut[]>();
                             localScript.forEach(cut => {
                                 const s = cut.speaker || 'Narrator';
+                                if (s === 'SILENT') return; // Skip SILENT speaker for bulk audio settings
                                 if (!speakerCuts.has(s)) speakerCuts.set(s, []);
                                 speakerCuts.get(s)!.push(cut);
                             });
@@ -1564,6 +1612,8 @@ export const Step3_Production: React.FC = () => {
                                 onCloseAssetSelector={() => setShowAssetSelector(null)}
                                 onSave={handleSave}
                                 onDelete={handleDeleteCut}
+                                onMove={handleMoveCut}
+                                onInsert={handleInsertCut}
                                 onOpenSfxModal={(id) => setSfxModalCutId(id)}
                                 onRemoveSfx={(id) => {
                                     setLocalScript(prev => {
