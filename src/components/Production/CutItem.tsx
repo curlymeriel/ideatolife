@@ -1,5 +1,5 @@
 import { memo, useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { Lock, Unlock, Mic, Loader2, Play, ImageIcon as Image, Eye, X, Plus, HelpCircle, Waves, Volume2, Settings, Trash2, Edit3, Sparkles, ChevronDown, ChevronRight, ChevronUp } from 'lucide-react';
+import { Lock, Unlock, Mic, Loader2, Play, Square, ImageIcon as Image, Eye, X, Plus, HelpCircle, Waves, Volume2, Settings, Trash2, Edit3, Sparkles, ChevronDown, ChevronRight, ChevronUp } from 'lucide-react';
 import type { ScriptCut } from '../../services/gemini';
 import { getMatchedAssets } from '../../utils/assetUtils';
 import { resolveUrl, isIdbUrl } from '../../utils/imageStorage';
@@ -161,6 +161,17 @@ export const CutItem = memo(({
     const [isAudioManualExpand, setIsAudioManualExpand] = useState(false);
     const [isVisualManualExpand, setIsVisualManualExpand] = useState(false);
 
+    // Track image loading state to detect completion
+    const prevImageLoadingRef = useRef(imageLoading);
+    useEffect(() => {
+        // When loading finishes (true -> false) and we actually have an image
+        if (prevImageLoadingRef.current && !imageLoading && cut.finalImageUrl) {
+            setShowImageSettings(true);
+            setIsVisualManualExpand(true);
+        }
+        prevImageLoadingRef.current = imageLoading;
+    }, [imageLoading, cut.finalImageUrl]);
+
     // Auto-collapse when confirmed
     useEffect(() => {
         if (isAudioConfirmed) {
@@ -204,8 +215,11 @@ export const CutItem = memo(({
         if (cut.audioUrl) {
             if (isIdbUrl(cut.audioUrl)) {
                 resolveUrl(cut.audioUrl, { asBlob: true }).then(url => {
+                    console.log(`[CutItem ${cut.id}] 🔊 Resolved audio URL: ${url.substring(0, 50)}...`);
                     currentBlobUrl = url;
                     setResolvedAudioUrl(url);
+                }).catch(err => {
+                    console.error(`[CutItem ${cut.id}] ❌ Failed to resolve audio:`, err);
                 });
             } else {
                 setResolvedAudioUrl(cut.audioUrl);
@@ -452,15 +466,19 @@ export const CutItem = memo(({
 
                                 {/* Audio Buttons (Play/Gen + Settings) */}
                                 <div className="flex flex-col gap-1 pt-5 shrink-0">
-                                    {/* Play Button */}
+                                    {/* Play Button - Redesigned to be Circular + Text with Sand Orange Accent */}
                                     {hasRealAudio && (
-                                        <button
-                                            onClick={() => onPlayAudio(cut.id)}
-                                            className={`flex items-center justify-center gap-1.5 w-[84px] px-2 py-1.5 rounded text-xs font-bold transition-colors ${playingAudio === cut.id ? 'bg-green-500 text-black' : 'bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30'}`}
-                                        >
-                                            <Play size={10} />
-                                            {playingAudio === cut.id ? '정지' : '재생'}
-                                        </button>
+                                        <div className="flex items-center gap-2 py-1">
+                                            <button
+                                                onClick={() => onPlayAudio(cut.id)}
+                                                className={`flex items-center justify-center w-7 h-7 rounded-full transition-all shadow-sm border ${playingAudio === cut.id ? 'bg-green-500 text-black border-green-400 shadow-green-500/20' : 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/25 border-[var(--color-primary)]/30 shadow-[var(--color-primary)]/10'}`}
+                                            >
+                                                {playingAudio === cut.id ? <Square size={10} fill="currentColor" /> : <Play size={10} fill="currentColor" className="ml-0.5" />}
+                                            </button>
+                                            <span className={`text-[10px] font-bold uppercase tracking-widest min-w-[30px] ${playingAudio === cut.id ? 'text-green-400' : 'text-[var(--color-primary)]/80'}`}>
+                                                {playingAudio === cut.id ? 'STOP' : 'PLAY'}
+                                            </span>
+                                        </div>
                                     )}
 
                                     {/* Gen Button */}
@@ -475,13 +493,13 @@ export const CutItem = memo(({
                                                 {hasRealAudio ? '재생성' : '생성'}
                                             </button>
 
-                                            {/* Settings Button */}
+                                            {/* Settings Button - Simplified label */}
                                             <button
                                                 onClick={() => setShowAudioSettings(!showAudioSettings)}
                                                 className={`flex items-center justify-center w-[84px] px-1 py-1 gap-1 rounded text-[10px] transition-all ${showAudioSettings ? 'bg-[var(--color-primary)]/40 text-white border border-[var(--color-primary)]/50' : 'bg-white/10 text-gray-400 hover:text-white border border-white/5'}`}
                                             >
                                                 <Settings size={10} />
-                                                <span className="font-bold">생성 세팅</span>
+                                                <span className="font-bold">세팅</span>
                                             </button>
                                         </>
                                     ) : (
@@ -555,9 +573,20 @@ export const CutItem = memo(({
                                         </div>
                                         <div className="min-w-[50px]">
                                             <label className="text-xs text-gray-500 block mb-1">Rate</label>
-                                            <select className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.voiceRate ?? 1} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { voiceRate: e.target.value }); onSave(); }}>
+                                            <select
+                                                className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`}
+                                                value={cut.voiceSpeed ?? 1.0}
+                                                disabled={isAudioConfirmed}
+                                                onChange={(e) => {
+                                                    const val = parseFloat(e.target.value);
+                                                    onUpdateCut(cut.id, { voiceSpeed: val });
+                                                    onSave();
+                                                }}
+                                            >
                                                 <option value={0.75}>0.75x</option>
-                                                <option value={1}>1.0x</option>
+                                                <option value={0.85}>0.85x</option>
+                                                <option value={1.0}>1.0x</option>
+                                                <option value={1.15}>1.15x</option>
                                                 <option value={1.25}>1.25x</option>
                                                 <option value={1.5}>1.5x</option>
                                             </select>
@@ -646,7 +675,14 @@ export const CutItem = memo(({
                 {/* Visual Section Header (Clean Line Style) */}
                 <div
                     className="flex items-center justify-between px-4 py-2 border-b border-white/5 cursor-pointer hover:bg-white/5 transition-colors group/header"
-                    onClick={() => setIsVisualManualExpand(!isVisualManualExpand)}
+                    onClick={() => {
+                        const nextState = !isVisualManualExpand;
+                        setIsVisualManualExpand(nextState);
+                        // If we are opening a locked cut, default to showing settings/preview
+                        if (nextState && isImageConfirmed) {
+                            setShowImageSettings(true);
+                        }
+                    }}
                 >
                     <div className="flex items-center gap-2">
                         {isVisualVisible ? <ChevronDown size={14} className="text-gray-500" /> : <ChevronRight size={14} className="text-gray-500" />}
@@ -751,37 +787,31 @@ export const CutItem = memo(({
                                     )}
                                 </div>
 
-                                {/* Image Buttons (Preview/Gen + Settings) */}
-                                <div className="flex flex-col gap-1 pt-5 shrink-0">
-                                    {/* Preview Button (opens settings with preview) */}
-                                    {hasImage && (
-                                        <button
-                                            onClick={() => setShowImageSettings(true)}
-                                            className="flex items-center justify-center gap-1.5 w-[84px] px-2 py-1.5 rounded text-xs font-bold bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30"
-                                        >
-                                            <Eye size={10} />
-                                            보기
-                                        </button>
-                                    )}
-
+                                {/* Image Buttons (Gen/Regen + Unified View) */}
+                                <div className="flex flex-col gap-2 pt-5 shrink-0">
                                     {/* Gen/Regen Button */}
                                     <button
                                         onClick={() => hasImage ? onRegenerateImage(cut.id) : onGenerateImage(cut.id, cut.visualPrompt)}
                                         disabled={imageLoading || isImageConfirmed}
-                                        className="flex items-center justify-center gap-1.5 w-[84px] px-2 py-1.5 rounded text-[11px] font-bold bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30 disabled:opacity-50"
+                                        className="flex items-center justify-center gap-1.5 w-[84px] px-2 py-2 rounded text-[11px] font-bold bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30 border border-[var(--color-primary)]/10 disabled:opacity-50"
                                     >
                                         {imageLoading ? <Loader2 size={10} className="animate-spin" /> : <Image size={10} />}
                                         {hasImage ? '재생성' : '생성'}
                                     </button>
 
-                                    {/* Settings Button */}
-                                    <button
-                                        onClick={() => setShowImageSettings(!showImageSettings)}
-                                        className={`flex items-center justify-center w-[84px] px-1 py-1 gap-1 rounded text-[10px] transition-all ${showImageSettings ? 'bg-[var(--color-primary)]/40 text-white border border-[var(--color-primary)]/50' : 'bg-white/10 text-gray-400 hover:text-white border border-white/5'}`}
-                                    >
-                                        <Settings size={10} />
-                                        <span className="font-bold">생성 세팅</span>
-                                    </button>
+                                    {/* Unified View/Settings Button - Redesigned to be Circular + Text with Sand Orange Accent */}
+                                    <div className="flex items-center gap-2 py-1">
+                                        <button
+                                            onClick={() => setShowImageSettings(!showImageSettings)}
+                                            className={`flex items-center justify-center w-7 h-7 rounded-full transition-all shadow-sm border ${showImageSettings ? 'bg-[var(--color-primary)]/40 text-white border border-[var(--color-primary)]/50 shadow-[var(--color-primary)]/20' : 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/25 border-[var(--color-primary)]/30 shadow-[var(--color-primary)]/10'}`}
+                                            title="Settings & Preview"
+                                        >
+                                            <Eye size={12} />
+                                        </button>
+                                        <span className={`text-[10px] font-bold uppercase tracking-widest min-w-[30px] ${showImageSettings ? 'text-[var(--color-primary)]' : 'text-[var(--color-primary)]/80'}`}>
+                                            VIEW
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -795,8 +825,8 @@ export const CutItem = memo(({
 
                                     {/* Image Preview (full aspect ratio) */}
                                     {hasImage && (
-                                        <div className="rounded-lg overflow-hidden border border-white/10 bg-black">
-                                            <img src={resolvedImageUrl || undefined} alt="Preview" className="w-full max-h-[300px] object-contain mx-auto" />
+                                        <div className="rounded-lg overflow-hidden border border-white/10 bg-black shadow-lg">
+                                            <img src={resolvedImageUrl || undefined} alt="Preview" className="w-full max-h-[600px] object-contain mx-auto transition-all duration-300" />
                                         </div>
                                     )}
 
@@ -907,17 +937,23 @@ export const CutItem = memo(({
                         </div>
 
                         {/* Hidden audio element for playback */}
-                        {hasRealAudio && resolvedAudioUrl && (
-                            <audio
-                                key={resolvedAudioUrl}
-                                id={`audio-${cut.id}`}
-                                src={resolvedAudioUrl || undefined}
-                                preload="metadata"
-                                onLoadedMetadata={(e) => setActualAudioDuration(e.currentTarget.duration)}
-                                onError={(e) => console.error(`[CutItem ${cut.id}] Audio error:`, e.currentTarget.error)}
-                            />
-                        )}
                     </>
+                )}
+
+                {/* Hidden audio element for playback - MOVED OUTSIDE ANY CONDITIONAL BLOCKS */}
+                {hasRealAudio && resolvedAudioUrl && (
+                    <audio
+                        key={resolvedAudioUrl}
+                        id={`audio-${cut.id}`}
+                        src={resolvedAudioUrl || undefined}
+                        preload="auto"
+                        onLoadedMetadata={(e) => {
+                            console.log(`[CutItem ${cut.id}] 🎵 Audio metadata loaded: duration=${e.currentTarget.duration}s`);
+                            setActualAudioDuration(e.currentTarget.duration);
+                        }}
+                        onCanPlayThrough={() => console.log(`[CutItem ${cut.id}] ✅ Audio can play through`)}
+                        onError={(e) => console.error(`[CutItem ${cut.id}] ❌ Audio element error:`, e.currentTarget.error)}
+                    />
                 )}
             </div>
         </div>

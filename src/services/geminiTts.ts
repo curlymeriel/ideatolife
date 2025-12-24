@@ -45,8 +45,21 @@ export const generateGeminiSpeech = async (
 
     try {
         let promptText = text;
-        if (config.actingDirection && config.actingDirection.trim()) {
-            promptText = `[Speaking style: ${config.actingDirection}]\n\n"${text}"`;
+        const styleInstructions: string[] = [];
+        if (config.actingDirection) styleInstructions.push(config.actingDirection);
+
+        // Inject numeric hints as natural language if they deviate from normal
+        if (config.rate && (config.rate > 1.05 || config.rate < 0.95)) {
+            const speedTerm = config.rate > 1.0 ? 'fast' : 'slow';
+            styleInstructions.push(`Speak ${speedTerm} (speed: ${config.rate}x)`);
+        }
+        if (config.volume && (config.volume > 1.05 || config.volume < 0.95)) {
+            const volTerm = config.volume > 1.0 ? 'loud' : 'soft';
+            styleInstructions.push(`Speak ${volTerm} (volume: ${config.volume}x)`);
+        }
+
+        if (styleInstructions.length > 0) {
+            promptText = `[Style: ${styleInstructions.join(', ')}]\n\n"${text}"`;
         }
 
         console.log(`[Gemini TTS v9.9] Requesting: voice=${config.voiceName}, lang=${config.languageCode}`);
@@ -218,7 +231,7 @@ async function wrapPcmInWav(base64Pcm: string, sourceRate: number = 24000, volum
             wavView.setInt16(44 + (i * 4) + 2, finalInt16, true);
         }
 
-        console.log(`[Gemini TTS v9.9] Telemetry: Final Peak: ${Math.round((maxPeak * normFactor) * 100)}%`);
+        console.log(`[Gemini TTS v9.9] Telemetry: Final Peak: ${Math.round((maxPeak * normFactor) * 100)}%, Samples: ${targetSamples}, Buffer: ${wavBuffer.byteLength} bytes`);
         return new Blob([wavBuffer], { type: 'audio/wav' });
 
     } catch (e) {

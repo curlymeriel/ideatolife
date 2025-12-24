@@ -135,9 +135,10 @@ export const DEFAULT_SCRIPT_INSTRUCTIONS = `
       Every cut MUST have a clearly defined audio type. Choose ONE:
       
       - **DIALOGUE:** Has a speaker and spoken text.
-        • speaker MUST be a specific character name from "Available Characters" list above (e.g., "Kael", "Dr. Aris")
-        • speaker can also be "Narrator" for narration
-        • dialogue contains the actual spoken text
+        • speaker MUST be a specific character name from the "Available Characters" list above.
+        • Do NOT use nicknames or placeholders. Use the exact name (e.g., "Max Fisher").
+        • If the speaker is a generic narrator, use exactly "Narrator".
+        • Every dialogue line MUST have a valid speaker. Do NOT leave it blank or as "Unknown".
         
       - **SILENT:** No spoken audio at all.
         • Set speaker = "SILENT"
@@ -503,8 +504,16 @@ ${lockedCuts.map(c => `[established] SLOT #${c.id} | Speaker: ${c.speaker} | Dia
 
         const rawScript = JSON.parse(generatedText);
 
+        // Create a list of valid speaker names for normalization
+        const validSpeakerNames = [
+            'Narrator',
+            'SILENT',
+            ...(characters || []).map((c: any) => c.name)
+        ].filter(Boolean);
+
         // Normalize and ensure IDs are numbers
         return rawScript.map((cut: any, index: number) => {
+            // ... (Rest of locked cut logic stays same)
             // NEW: LOCKED CUT OVERRIDE
             // Before applying ANY AI-correction logic, check if this cut slot belongs to a locked cut.
             // We align based on Index (since ID might shift if AI inserts checks, though we asked it not to).
@@ -547,7 +556,39 @@ ${lockedCuts.map(c => `[established] SLOT #${c.id} | Speaker: ${c.speaker} | Dia
 
             // --- STANDARD NORMALIZATION FOR NEW/UNLOCKED CUTS ---
 
-            let speaker = cut.speaker || cut.character || cut.name || 'Unknown';
+            let rawSpeaker = cut.speaker || cut.character || cut.name || 'Narrator';
+            let speaker = 'Narrator'; // Default fallback
+
+            // 1. Try exact match
+            const exactMatch = validSpeakerNames.find(s => s === rawSpeaker);
+            if (exactMatch) {
+                speaker = exactMatch;
+            } else {
+                // 2. Try case-insensitive fuzzy match
+                const fuzzyMatch = validSpeakerNames.find(s => s.toLowerCase() === rawSpeaker.toLowerCase());
+                if (fuzzyMatch) {
+                    speaker = fuzzyMatch;
+                } else {
+                    // 3. Check if it's a known special case
+                    if (rawSpeaker.toUpperCase().includes('SILENT') || rawSpeaker.toUpperCase().includes('NONE')) {
+                        speaker = 'SILENT';
+                    } else if (rawSpeaker.toUpperCase().includes('NARRA')) {
+                        speaker = 'Narrator';
+                    } else {
+                        // 4. If no match, try to find the character name WITHIN the raw speaker string
+                        // (e.g. "Kael (angry)" -> "Kael")
+                        const partialMatch = validSpeakerNames.find(s => rawSpeaker.toLowerCase().includes(s.toLowerCase()));
+                        if (partialMatch) {
+                            speaker = partialMatch;
+                        } else {
+                            // Final fallback: if there are characters, use the first one, otherwise Narrator
+                            speaker = validSpeakerNames.length > 2 ? validSpeakerNames[2] : 'Narrator';
+                            console.warn(`[Gemini] Could not resolve speaker "${rawSpeaker}". Falling back to "${speaker}"`);
+                        }
+                    }
+                }
+            }
+
             let dialogue = cut.dialogue || cut.content || cut.text || '...';
 
             // SELF-HEALING: Fix common AI hallucinations
@@ -602,7 +643,7 @@ ${lockedCuts.map(c => `[established] SLOT #${c.id} | Speaker: ${c.speaker} | Dia
 
             return {
                 ...cut,
-                id: index + 1,
+                id: index + 1, // STRICTLY enforce unique sequential ID
                 speaker,
                 dialogue,
                 estimatedDuration: Number(cut.estimatedDuration)

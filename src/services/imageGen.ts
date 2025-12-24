@@ -54,8 +54,13 @@ export const generateImage = async (
                 // Extract base64 data and mime type
                 const matches = referenceImage.match(/^data:(.+);base64,(.+)$/);
                 if (matches && matches.length === 3) {
-                    const mimeType = matches[1];
+                    let mimeType = matches[1];
                     const data = matches[2];
+
+                    // Safely normalize MIME type (some browsers/tools default to octet-stream)
+                    if (mimeType === 'application/octet-stream' || !mimeType.startsWith('image/')) {
+                        mimeType = 'image/jpeg';
+                    }
 
                     parts.push({
                         inlineData: {

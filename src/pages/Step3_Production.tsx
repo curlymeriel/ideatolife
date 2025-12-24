@@ -574,7 +574,7 @@ export const Step3_Production: React.FC = () => {
                     languageCode: language,
                     actingDirection: currentCut?.actingDirection,
                     volume: currentCut?.voiceVolume ? parseFloat(String(currentCut.voiceVolume)) : 1.0,
-                    rate: currentCut?.voiceRate ? parseFloat(String(currentCut.voiceRate)) : 1.0
+                    rate: currentCut?.voiceSpeed ? parseFloat(String(currentCut.voiceSpeed)) : 1.0
                 };
 
                 console.log(`[Audio ${cutId}] Gemini TTS Config:`, geminiConfig);
@@ -584,17 +584,20 @@ export const Step3_Production: React.FC = () => {
                 // Save to IndexedDB to keep state clean
                 const audioKey = generateAudioKey(projectId, cutId);
                 const idbAudioUrl = await saveToIdb('audio', audioKey, audioData);
+                const cacheBustedUrl = `${idbAudioUrl}?t=${Date.now()}`;
 
-                console.log(`[Audio ${cutId}] Gemini TTS generated and saved to IDB`);
+                console.log(`[Audio ${cutId}] Gemini TTS generated and saved to IDB: ${cacheBustedUrl}`);
 
                 const updatedScript = currentScript.map(cut =>
                     cut.id === cutId ? {
                         ...cut,
-                        audioUrl: idbAudioUrl,
+                        audioUrl: cacheBustedUrl,
                         language,
                         voiceId: voiceName,
                         voiceGender: gender,
-                        voiceAge: age
+                        voiceAge: age,
+                        voiceSpeed: geminiConfig.rate,
+                        voiceVolume: String(geminiConfig.volume)
                     } as ScriptCut : cut
                 );
                 setLocalScript(updatedScript);
@@ -717,18 +720,21 @@ export const Step3_Production: React.FC = () => {
             // Save to IndexedDB
             const audioKey = generateAudioKey(projectId, cutId);
             const idbAudioUrl = await saveToIdb('audio', audioKey, audioDataUrl);
+            const cacheBustedUrl = `${idbAudioUrl}?t=${Date.now()}`;
 
-            console.log(`[Audio ${cutId}] Generated and saved to IDB`);
+            console.log(`[Audio ${cutId}] Generated and saved to IDB: ${cacheBustedUrl}`);
 
             const updatedScript = currentScript.map(cut =>
                 cut.id === cutId ? {
                     ...cut,
-                    audioUrl: idbAudioUrl,
+                    audioUrl: cacheBustedUrl,
                     language,
+                    voiceId: voiceName,
                     emotion: currentCut?.emotion,
                     emotionIntensity: currentCut?.emotionIntensity,
                     voiceGender: genderToUse as any,
-                    voiceAge: (currentCut?.voiceAge || 'adult') as any
+                    voiceAge: (currentCut?.voiceAge || 'adult') as any,
+                    voiceSpeed: currentCut?.voiceSpeed
                 } as ScriptCut : cut
             );
             setLocalScript(updatedScript);
@@ -812,34 +818,50 @@ export const Step3_Production: React.FC = () => {
 
         // Play actual audio
         const audio = document.getElementById(`audio-${cutId}`) as HTMLAudioElement;
-        if (audio) {
-            if (playingAudio === cutId) {
-                audio.pause();
-                audio.currentTime = 0;
-                setPlayingAudio(null);
-            } else {
-                // Ensure audio is loaded
-                audio.load();
+        if (!audio) {
+            console.error(`[Audio ${cutId}] ❌ Audio element not found in DOM!`);
+            alert(`오디오 엘리먼트를 찾을 수 없습니다 (Cut #${cutId}). 다시 시도해 주세요.`);
+            return;
+        }
 
-                const playPromise = audio.play();
-                if (playPromise !== undefined) {
-                    playPromise.catch((error) => {
-                        // Ignore AbortError (happens when clicking fast)
-                        if (error.name !== 'AbortError') {
-                            console.error(`[Audio ${cutId}] Playback failed:`, error);
-                            alert(`Playback failed: ${error.message}`);
-                        }
-                        setPlayingAudio(null);
-                    });
-                }
+        console.log(`[Audio ${cutId}] ⏯️ Playback requested. Current State:`, {
+            src: audio.src.substring(0, 50) + '...',
+            readyState: audio.readyState,
+            paused: audio.paused,
+            currentTime: audio.currentTime
+        });
 
-                setPlayingAudio(cutId);
-                audio.onended = () => setPlayingAudio(null);
-                audio.onerror = () => {
-                    console.error(`[Audio ${cutId}] Element error:`, audio.error);
+        if (playingAudio === cutId) {
+            audio.pause();
+            audio.currentTime = 0;
+            setPlayingAudio(null);
+        } else {
+            // Ensure audio is loaded
+            audio.load();
+
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    console.log(`[Audio ${cutId}] ▶️ Playback started successfully`);
+                }).catch((error) => {
+                    // Ignore AbortError (happens when clicking fast)
+                    if (error.name !== 'AbortError') {
+                        console.error(`[Audio ${cutId}] ❌ Playback failed:`, error);
+                        alert(`재생 실패: ${error.message}`);
+                    }
                     setPlayingAudio(null);
-                };
+                });
             }
+
+            setPlayingAudio(cutId);
+            audio.onended = () => {
+                console.log(`[Audio ${cutId}] ⏹️ Playback ended`);
+                setPlayingAudio(null);
+            };
+            audio.onerror = () => {
+                console.error(`[Audio ${cutId}] ❌ Element error:`, audio.error);
+                setPlayingAudio(null);
+            };
         }
     }, [playingAudio]);
 
@@ -1360,19 +1382,24 @@ export const Step3_Production: React.FC = () => {
                                 'ko-KR-Chirp3-HD-Puck': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Puck.wav',
                                 'ko-KR-Neural2-A': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Neural2-A.wav',
                                 'ko-KR-Neural2-B': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Neural2-B.wav',
-                                'ko-KR-Neural2-C': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Neural2-C.wav',
+                                'ko-KR-Standard-A': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-A.wav',
+                                'ko-KR-Standard-B': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-B.wav',
+                                'ko-KR-Standard-C': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-C.wav',
+                                'ko-KR-Standard-D': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-D.wav',
+                                'ko-KR-Wavenet-C': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Wavenet-C.wav',
+                                'ko-KR-Wavenet-D': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Wavenet-D.wav',
                                 'en-US-Neural2-C': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-C.wav',
                                 'en-US-Neural2-G': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-G.wav',
                                 'en-US-Neural2-J': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-J.wav',
                                 'en-US-Neural2-I': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-I.wav',
-                                // Gemini Voices (Mapped to nearest Google Cloud samples for preview)
-                                'Aoede': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Neural2-A.wav',
-                                'Leda': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Neural2-B.wav',
-                                'Kore': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Neural2-C.wav',
+                                // Gemini Voices (Mapped to official high-fidelity Chirp3-HD samples)
+                                'Aoede': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Aoede.wav',
+                                'Leda': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Leda.wav',
+                                'Kore': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-B.wav',
                                 'Puck': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Puck.wav',
                                 'Fenrir': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Fenrir.wav',
-                                'Charon': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Wavenet-C.wav',
-                                'Orus': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-C.wav',
+                                'Charon': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Charon.wav',
+                                'Orus': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Orus.wav',
                                 'Zephyr': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-A.wav',
                             };
                             const playVoiceSample = (voiceId: string) => {
