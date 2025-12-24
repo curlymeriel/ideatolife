@@ -4,7 +4,7 @@ import type { ScriptCut, ChatMessage } from '../services/gemini';
 // Domain Types
 // ====================
 
-export type TtsModel = 'standard' | 'wavenet' | 'neural2' | 'chirp3-hd';
+export type TtsModel = 'standard' | 'wavenet' | 'neural2' | 'chirp3-hd' | 'gemini-tts';
 export type ImageModel = 'gemini-1.5-flash' | 'gemini-2.0-flash-exp' | 'gemini-2.0-flash' | 'gemini-2.5-flash' | 'gemini-2.5-pro' | 'gemini-3.0-pro';
 export type AspectRatio = '16:9' | '9:16' | '1:1' | '2.35:1';
 

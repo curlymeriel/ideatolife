@@ -168,16 +168,15 @@ export const Step6_Final = () => {
 
                 // Handle idb:// URLs - resolve from IndexedDB first
                 if (isIdbUrl(url)) {
-                    const resolved = await resolveUrl(url); // Returns Data URL
+                    // Use asBlob: true for efficient handling of large files (Step 6 optimization)
+                    const resolved = await resolveUrl(url, { asBlob: true });
 
                     if (!resolved) {
                         console.warn(`[Step6] Failed to resolve IDB URL (returned empty): ${url}`);
-                        return undefined; // Return undefined so we don't try to play broken URL
+                        return undefined;
                     }
 
                     console.log(`[Step6] Resolved IDB URL: ${url} -> ${resolved.substring(0, 30)}...`);
-                    // Return the Data URL directly instead of converting to Blob
-                    // This reduces overhead and prevents "Step 6 only" hangs
                     return resolved;
                 }
 
@@ -220,7 +219,8 @@ export const Step6_Final = () => {
                     // 1. Audio
                     if (cut.audioUrl) {
                         let url: string | undefined = await processUrl(cut.audioUrl);
-                        // Convert Data URL to Blob URL for Audio
+
+                        // Fallback: If we got a Data URL (not from IDB but direct), convert to Blob for stability
                         if (url && url.startsWith('data:')) {
                             try {
                                 const res = await fetch(url);
@@ -241,6 +241,7 @@ export const Step6_Final = () => {
                     // 2. SFX
                     if (cut.sfxUrl) {
                         let sfxUrl = await processUrl(cut.sfxUrl);
+                        // Fallback: Convert direct Data URLs to Blob
                         if (sfxUrl && sfxUrl.startsWith('data:')) {
                             try {
                                 const res = await fetch(sfxUrl);

@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useWorkflowStore } from '../store/workflowStore';
 import { generateImage } from '../services/imageGen';
 import { generateSpeech } from '../services/tts';
+import { generateGeminiSpeech } from '../services/geminiTts';
 import { useNavigate } from 'react-router-dom';
 import { Play, Loader2, Image as ImageIcon, Music, ArrowRight, ArrowLeft, BarChart3, CheckCircle, Pause } from 'lucide-react';
-import { resolveUrl, isIdbUrl } from '../utils/imageStorage';
+import { resolveUrl, isIdbUrl, generateAudioKey, saveToIdb } from '../utils/imageStorage';
 
 export const Step4_QualityAssurance: React.FC = () => {
     const { id: projectId, script, apiKeys, ttsModel, imageModel, nextStep, prevStep, assetDefinitions, aspectRatio, masterStyle, styleAnchor, setScript } = useWorkflowStore();
@@ -59,9 +60,9 @@ export const Step4_QualityAssurance: React.FC = () => {
                     console.log(`[Step4] Cut ${cut.id} audioUrl:`, cut.audioUrl.substring(0, 50) + '...');
                     if (isIdbUrl(cut.audioUrl)) {
                         console.log(`[Step4] Cut ${cut.id} - Resolving idb:// URL`);
-                        const resolvedUrl = await resolveUrl(cut.audioUrl);
+                        const resolvedUrl = await resolveUrl(cut.audioUrl, { asBlob: true });
                         if (resolvedUrl) {
-                            console.log(`[Step4] Cut ${cut.id} - Resolved successfully (${resolvedUrl.substring(0, 30)}...)`);
+                            console.log(`[Step4] Cut ${cut.id} - Resolved successfully (Blob URL)`);
                             resolved[cut.id] = resolvedUrl;
                         } else {
                             console.warn(`[Step4] Cut ${cut.id} - Failed to resolve idb:// URL`);
@@ -77,6 +78,14 @@ export const Step4_QualityAssurance: React.FC = () => {
             setResolvedAudios(resolved);
         };
         resolveAllAudios();
+
+        return () => {
+            // Cleanup: Revoke all audio blob URLs
+            const audios = resolvedAudios;
+            Object.values(audios).forEach(url => {
+                if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+            });
+        };
     }, [script]);
 
     // Resolve all SFX URLs
@@ -86,7 +95,7 @@ export const Step4_QualityAssurance: React.FC = () => {
             for (const cut of script) {
                 if (cut.sfxUrl) {
                     if (isIdbUrl(cut.sfxUrl)) {
-                        const resolvedUrl = await resolveUrl(cut.sfxUrl);
+                        const resolvedUrl = await resolveUrl(cut.sfxUrl, { asBlob: true });
                         if (resolvedUrl) resolved[cut.id] = resolvedUrl;
                     } else {
                         // Direct URL (data:, http:, etc.)
@@ -98,6 +107,14 @@ export const Step4_QualityAssurance: React.FC = () => {
             setResolvedSfx(resolved);
         };
         resolveAllSfx();
+
+        return () => {
+            // Cleanup: Revoke all SFX blob URLs
+            const sfxs = resolvedSfx;
+            Object.values(sfxs).forEach(url => {
+                if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+            });
+        };
     }, [script]);
 
     // Calculate statistics
@@ -242,11 +259,29 @@ export const Step4_QualityAssurance: React.FC = () => {
 
                 try {
                     console.log(`[Batch Audio] Generating for cut ${cut.id}`);
-                    const audioUrl = await generateSpeech(cut.dialogue, 'en-US-Neural2-A', apiKeys.googleCloud, ttsModel);
+                    let audioUrl: string | Blob = '';
+
+                    if (ttsModel === 'gemini-tts') {
+                        // Use Gemini TTS for batch if selected
+                        const geminiConfig = {
+                            voiceName: cut.voiceId || 'Puck',
+                            languageCode: cut.language || 'ko-KR',
+                            actingDirection: cut.actingDirection
+                        };
+                        const audioData = await generateGeminiSpeech(cut.dialogue, apiKeys.gemini, geminiConfig);
+                        audioUrl = audioData as any; // Temporary cast to match existing logic if needed, or better: update audioUrl type
+                    } else {
+                        // Default to Google Cloud TTS
+                        audioUrl = await generateSpeech(cut.dialogue, cut.voiceId || 'en-US-Neural2-A', apiKeys.googleCloud, ttsModel as any);
+                    }
+
+                    // Save to IndexedDB
+                    const audioKey = generateAudioKey(projectId, cut.id);
+                    const idbAudioUrl = await saveToIdb('audio', audioKey, audioUrl);
 
                     // Update script
                     const updatedScript = script.map(c =>
-                        c.id === cut.id ? { ...c, audioUrl } : c
+                        c.id === cut.id ? { ...c, audioUrl: idbAudioUrl } : c
                     );
                     setScript(updatedScript);
                     console.log(`[Batch Audio] Success for cut ${cut.id}`);
@@ -513,13 +548,13 @@ export const Step4_QualityAssurance: React.FC = () => {
                                                 <>
                                                     <audio
                                                         id="sequential-audio"
-                                                        src={resolvedAudios[currentCut.id] || ''}
+                                                        src={resolvedAudios[currentCut.id] || undefined}
                                                         preload="metadata"
                                                     />
                                                     {/* SFX Audio Element */}
                                                     <audio
                                                         id="sequential-sfx"
-                                                        src={resolvedSfx[currentCut.id] || ''}
+                                                        src={resolvedSfx[currentCut.id] || undefined}
                                                         preload="metadata"
                                                     />
                                                 </>

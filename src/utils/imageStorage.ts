@@ -122,32 +122,52 @@ export function isIdbUrl(url: string | null | undefined): boolean {
  * @param type - Category of data (images, assets, audio, video)
  * @param key - Unique identifier within the category
  * @param base64Data - The base64 data URL (data:image/png;base64,...)
+ * @param options - Optional compression settings
  * @returns The idb:// reference URL
  */
 export async function saveToIdb(
     type: 'images' | 'assets' | 'audio' | 'video',
     key: string,
-    base64Data: string,
+    data: string | Blob,
     options: { compress?: boolean; quality?: number; maxWidth?: number } = {}
 ): Promise<string> {
-    let dataToSave = base64Data;
+    let dataToSave: string | Blob = data;
 
-    // Auto-compress images/assets if requested or by default for large images
-    // EXEMPTION: Don't compress if 'frame' is in the key (preserves transparency)
-    const isFrame = key.toLowerCase().includes('frame');
-    const shouldCompress = !isFrame && (options.compress || (base64Data.length > 1024 * 512 && (type === 'images' || type === 'assets')));
+    // Auto-compress images/assets if it's a base64 string
+    if (typeof data === 'string' && data.startsWith('data:image')) {
+        const isFrame = key.toLowerCase().includes('frame');
+        const shouldCompress = !isFrame && (options.compress || (data.length > 1024 * 512 && (type === 'images' || type === 'assets')));
 
-    if (shouldCompress && base64Data.startsWith('data:image')) {
-        const startTime = performance.now();
-        dataToSave = await compressImage(base64Data, options.maxWidth || 1920, options.quality || 0.85);
-        const ratio = Math.round((dataToSave.length / base64Data.length) * 100);
-        console.log(`[ImageStorage] Compressed ${key}: ${ratio}% of original (${Math.round((performance.now() - startTime))}ms)`);
+        if (shouldCompress) {
+            const startTime = performance.now();
+            dataToSave = await compressImage(data, options.maxWidth || 1920, options.quality || 0.85);
+            const ratio = Math.round((dataToSave.length / data.length) * 100);
+            console.log(`[ImageStorage] Compressed ${key}: ${ratio}% of original (${Math.round((performance.now() - startTime))}ms)`);
+        }
+    }
+
+    // Convert data URLs to Blobs for more efficient storage if not already a Blob
+    if (typeof dataToSave === 'string' && dataToSave.startsWith('data:')) {
+        try {
+            const [header, base64] = dataToSave.split(',');
+            if (base64) {
+                const mime = header.match(/:(.*?);/)?.[1] || 'application/octet-stream';
+                const binary = atob(base64);
+                const array = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) {
+                    array[i] = binary.charCodeAt(i);
+                }
+                dataToSave = new Blob([array], { type: mime });
+            }
+        } catch (e) {
+            console.warn(`[ImageStorage] Manual Blob conversion failed, saving as string: ${key}`);
+        }
     }
 
     const storageKey = `${STORAGE_PREFIX}${type}-${key}`;
     await set(storageKey, dataToSave);
     const idbUrl = generateIdbUrl(type, key);
-    console.log(`[ImageStorage] Saved ${type}/${key} (${Math.round(dataToSave.length / 1024)}KB)`);
+    console.log(`[ImageStorage] Saved ${type}/${key} (${typeof dataToSave === 'string' ? Math.round(dataToSave.length / 1024) : Math.round((dataToSave as Blob).size / 1024)}KB)`);
     return idbUrl;
 }
 
@@ -182,74 +202,60 @@ export async function deleteFromIdb(idbUrl: string): Promise<void> {
  * Resolve any URL to a displayable format
  * - If it's an idb:// URL, loads from IndexedDB
  * - If it's already a data: URL or http URL, returns as-is
+ * 
+ * @param url - The URL to resolve
+ * @param options - Resolution options (e.g., return as blob URL)
  */
-export async function resolveUrl(url: string | null | undefined): Promise<string> {
+export async function resolveUrl(
+    url: string | null | undefined,
+    options: { asBlob?: boolean } = {}
+): Promise<string> {
     if (!url) return '';
     if (!isIdbUrl(url)) return url;
 
-    const parsed = parseIdbUrl(url);
-    if (!parsed) return '';
-
     try {
         const rawData = await loadFromIdb(url);
-        if (!rawData) {
-            // Optional: verbose log if needed for debugging
-            // console.warn(`[ImageStorage] No data found for ${url}`);
-            return '';
-        }
+        if (!rawData) return '';
 
-        let data = '';
-        if (rawData instanceof Blob || (typeof rawData === 'object' && rawData !== null && 'size' in rawData && 'type' in rawData)) {
-            data = await new Promise((resolve, reject) => {
+        // Case 1: Already a Blob (modern storage)
+        if (rawData instanceof Blob) {
+            if (options.asBlob) return URL.createObjectURL(rawData);
+
+            // Convert to Data URL if needed as string
+            return new Promise((resolve) => {
                 const reader = new FileReader();
                 reader.onloadend = () => resolve(reader.result as string);
-                reader.onerror = reject;
-                reader.readAsDataURL(rawData as Blob);
+                reader.readAsDataURL(rawData);
             });
-        } else if (typeof rawData === 'string') {
-            data = rawData.trim();
-        } else {
-            console.warn(`[ImageStorage] Unknown data type for ${url}:`, typeof rawData);
-            return '';
         }
 
-        if (!data) return '';
+        // Case 2: String/Data URL (legacy storage)
+        const dataStr = typeof rawData === 'string' ? rawData : String(rawData);
+        if (!dataStr) return '';
 
-        // HEURISTIC: Find actual content type by looking at the base64 start
-        // This is much safer than relying on the stored header or file extension
-        const base64Part = data.includes(',') ? data.split(',')[1].trim() : data;
-
-        // Detect actual content type
-        let actualMime = '';
-        if (base64Part.startsWith('iVBOR')) actualMime = 'image/png';
-        else if (base64Part.startsWith('/9j/')) actualMime = 'image/jpeg';
-        else if (base64Part.startsWith('UklG')) actualMime = 'image/webp';
-        else if (base64Part.startsWith('SUQz') || base64Part.startsWith('//O') || base64Part.startsWith('//u')) actualMime = 'audio/mp3';
-        else if (base64Part.startsWith('T2dn')) actualMime = 'audio/ogg';
-        else if (base64Part.startsWith('UklGR')) {
-            actualMime = parsed.type === 'audio' ? 'audio/wav' : 'video/webm';
+        if (options.asBlob) {
+            try {
+                const dataStr = typeof rawData === 'string' ? rawData : String(rawData);
+                if (dataStr.startsWith('data:')) {
+                    const [header, base64] = dataStr.split(',');
+                    const mime = header.match(/:(.*?);/)?.[1] || 'application/octet-stream';
+                    const binary = atob(base64);
+                    const array = new Uint8Array(binary.length);
+                    for (let i = 0; i < binary.length; i++) {
+                        array[i] = binary.charCodeAt(i);
+                    }
+                    return URL.createObjectURL(new Blob([array], { type: mime }));
+                }
+                return dataStr;
+            } catch (e) {
+                console.error("[ImageStorage] resolveUrl manual conversion failed:", e);
+                return typeof rawData === 'string' ? rawData : String(rawData);
+            }
         }
 
-        // If we detected a valid content type, return it with the correct header
-        if (actualMime) {
-            return `data:${actualMime};base64,${base64Part}`;
-        }
-
-        // If heuristics fail, check if it already has a "good enough" header
-        if (data.startsWith('data:') && data.includes(';base64,')) {
-            return data;
-        }
-
-        // Last resort: guess from extension
-        const isJpeg = parsed.key.toLowerCase().endsWith('.jpg') || parsed.key.toLowerCase().endsWith('.jpeg');
-        const isWebp = parsed.key.toLowerCase().endsWith('.webp');
-        const guessedMime = isJpeg ? 'image/jpeg' : (isWebp ? 'image/webp' :
-            (parsed.type === 'audio' ? 'audio/mpeg' :
-                (parsed.type === 'video' ? 'video/mp4' : 'image/png')));
-
-        return `data:${guessedMime};base64,${base64Part}`;
+        return dataStr;
     } catch (e) {
-        console.error(`[ImageStorage] Error resolving URL ${url}:`, e);
+        console.error(`[ImageStorage] Failed to resolve URL ${url}:`, e);
         return '';
     }
 }

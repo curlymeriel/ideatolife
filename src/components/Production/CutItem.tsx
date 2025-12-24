@@ -84,6 +84,7 @@ interface CutItemProps {
     playingAudio: number | null;
     aspectRatio: AspectRatio;
     speakerList: string[];
+    ttsModel?: string;
     onToggleAudioConfirm: (id: number) => void;
     onToggleImageConfirm: (id: number) => void;
     onUpdateCut: (id: number, updates: Partial<ScriptCut>) => void;
@@ -117,6 +118,7 @@ export const CutItem = memo(({
     playingAudio,
     // aspectRatio,
     speakerList,
+    ttsModel,
     onToggleAudioConfirm,
     onToggleImageConfirm,
     onUpdateCut,
@@ -142,10 +144,10 @@ export const CutItem = memo(({
     const isFocusedRef = useRef(false);
     const isVisualPromptFocusedRef = useRef(false);
 
-    // Resolved URLs for IndexedDB
-    const [resolvedImageUrl, setResolvedImageUrl] = useState<string>('');
-    const [resolvedAudioUrl, setResolvedAudioUrl] = useState<string>('');
-    const [resolvedUserRefUrl, setResolvedUserRefUrl] = useState<string>('');
+    // Resolved URLs for IndexedDB - Use null instead of '' to prevent React src="" warnings
+    const [resolvedImageUrl, setResolvedImageUrl] = useState<string | null>(null);
+    const [resolvedAudioUrl, setResolvedAudioUrl] = useState<string | null>(null);
+    const [resolvedUserRefUrl, setResolvedUserRefUrl] = useState<string | null>(null);
     const [actualAudioDuration, setActualAudioDuration] = useState<number | null>(null);
 
     // Panel expand states
@@ -166,36 +168,46 @@ export const CutItem = memo(({
     useEffect(() => {
         if (cut.finalImageUrl) {
             if (isIdbUrl(cut.finalImageUrl)) {
-                resolveUrl(cut.finalImageUrl).then(url => setResolvedImageUrl(url || ''));
+                resolveUrl(cut.finalImageUrl).then(url => setResolvedImageUrl(url || null));
             } else {
-                setResolvedImageUrl(cut.finalImageUrl);
+                setResolvedImageUrl(cut.finalImageUrl || null);
             }
         } else {
-            setResolvedImageUrl('');
+            setResolvedImageUrl(null);
         }
     }, [cut.finalImageUrl]);
 
     useEffect(() => {
+        let currentBlobUrl = '';
         if (cut.audioUrl) {
             if (isIdbUrl(cut.audioUrl)) {
-                resolveUrl(cut.audioUrl).then(url => setResolvedAudioUrl(url || ''));
+                resolveUrl(cut.audioUrl, { asBlob: true }).then(url => {
+                    currentBlobUrl = url;
+                    setResolvedAudioUrl(url);
+                });
             } else {
                 setResolvedAudioUrl(cut.audioUrl);
             }
         } else {
-            setResolvedAudioUrl('');
+            setResolvedAudioUrl(null);
         }
+
+        return () => {
+            if (currentBlobUrl && currentBlobUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(currentBlobUrl);
+            }
+        };
     }, [cut.audioUrl]);
 
     useEffect(() => {
         if (cut.userReferenceImage) {
             if (isIdbUrl(cut.userReferenceImage)) {
-                resolveUrl(cut.userReferenceImage).then(url => setResolvedUserRefUrl(url || ''));
+                resolveUrl(cut.userReferenceImage).then(url => setResolvedUserRefUrl(url || null));
             } else {
-                setResolvedUserRefUrl(cut.userReferenceImage);
+                setResolvedUserRefUrl(cut.userReferenceImage || null);
             }
         } else {
-            setResolvedUserRefUrl('');
+            setResolvedUserRefUrl(null);
         }
     }, [cut.userReferenceImage]);
 
@@ -496,8 +508,31 @@ export const CutItem = memo(({
                                     </select>
                                 </div>
                             </div>
+
+                            {/* Acting Direction (Gemini TTS only) */}
+                            {ttsModel === 'gemini-tts' && cut.speaker !== 'SILENT' && (
+                                <div className="mt-3 pt-3 border-t border-white/10">
+                                    <label className="text-xs text-[var(--color-primary)] block mb-1 flex items-center gap-1">
+                                        <Sparkles size={10} className="text-[var(--color-primary)]" />
+                                        🎭 연기 지시 (Gemini TTS)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        className={`w-full bg-black/50 border border-[var(--color-primary)]/30 rounded px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-[var(--color-primary)] outline-none ${isAudioConfirmed ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                        value={cut.actingDirection || ''}
+                                        disabled={isAudioConfirmed}
+                                        placeholder="예: 슬픔을 참으며 떨리는 목소리로, 마지막에 한숨..."
+                                        onChange={(e) => {
+                                            onUpdateCut(cut.id, { actingDirection: e.target.value });
+                                        }}
+                                        onBlur={onSave}
+                                    />
+                                    <p className="text-[10px] text-gray-500 mt-1">💡 스크립트 생성 시 AI가 자동 작성. 원하면 수정 가능</p>
+                                </div>
+                            )}
                         </div>
                     )}
+
 
                     {/* SFX Section */}
                     {(cut.sfxDescription || cut.sfxUrl) && (
@@ -674,7 +709,7 @@ export const CutItem = memo(({
                             {/* Image Preview (full aspect ratio) */}
                             {hasImage && (
                                 <div className="rounded-lg overflow-hidden border border-white/10 bg-black">
-                                    <img src={resolvedImageUrl} alt="Preview" className="w-full max-h-[300px] object-contain mx-auto" />
+                                    <img src={resolvedImageUrl || undefined} alt="Preview" className="w-full max-h-[300px] object-contain mx-auto" />
                                 </div>
                             )}
 
@@ -738,7 +773,11 @@ export const CutItem = memo(({
                                 <div className="flex items-center gap-2">
                                     {cut.userReferenceImage && (
                                         <div className="relative w-8 h-8 rounded overflow-hidden border border-white/20">
-                                            <img src={resolvedUserRefUrl} className="w-full h-full object-cover" />
+                                            <img
+                                                src={resolvedUserRefUrl || undefined}
+                                                className="w-full h-full object-cover"
+                                                alt="Reference"
+                                            />
                                             <button onClick={() => onUpdateCut(cut.id, { userReferenceImage: undefined })} className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 hover:opacity-100"><X size={10} className="text-white" /></button>
                                         </div>
                                     )}
@@ -785,7 +824,7 @@ export const CutItem = memo(({
                     <audio
                         key={resolvedAudioUrl}
                         id={`audio-${cut.id}`}
-                        src={resolvedAudioUrl}
+                        src={resolvedAudioUrl || undefined}
                         preload="metadata"
                         onLoadedMetadata={(e) => setActualAudioDuration(e.currentTarget.duration)}
                         onError={(e) => console.error(`[CutItem ${cut.id}] Audio error:`, e.currentTarget.error)}

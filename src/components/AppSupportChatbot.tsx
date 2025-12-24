@@ -153,7 +153,7 @@ export const AppSupportChatbot: React.FC<AppSupportChatbotProps> = ({ isOpen, on
             </div>
 
             {/* Input Overlay if No Key */}
-            {!apiKeys?.gemini && (
+            {isOpen && !apiKeys?.gemini && (
                 <div className="absolute inset-x-0 bottom-0 top-16 bg-black/60 backdrop-blur-sm flex items-center justify-center z-10">
                     <div className="text-center p-6">
                         <AlertCircle className="mx-auto text-red-400 mb-2" size={32} />

@@ -4,6 +4,8 @@ import { generateScript, DEFAULT_SCRIPT_INSTRUCTIONS, DEFAULT_VIDEO_PROMPT_INSTR
 import type { ScriptCut } from '../services/gemini';
 import { generateImage } from '../services/imageGen';
 import { generateSpeech, type VoiceConfig } from '../services/tts';
+import { generateGeminiSpeech, getDefaultGeminiVoice, isGeminiTtsVoice, GEMINI_TTS_VOICES } from '../services/geminiTts';
+
 import { useNavigate } from 'react-router-dom';
 import { Wand2, Loader2, ArrowRight, Lock, Unlock } from 'lucide-react';
 import { CutItem } from '../components/Production/CutItem';
@@ -11,7 +13,7 @@ import { SfxSearchModal } from '../components/Production/SfxSearchModal';
 import { AiInstructionHelper } from '../components/Production/AiInstructionHelper';
 import { getMatchedAssets } from '../utils/assetUtils';
 import { linkCutsToStoryline } from '../utils/storylineUtils';
-import { saveToIdb, generateCutImageKey, resolveUrl } from '../utils/imageStorage';
+import { saveToIdb, generateCutImageKey, generateAudioKey, resolveUrl } from '../utils/imageStorage';
 
 export const Step3_Production: React.FC = () => {
     const {
@@ -82,7 +84,9 @@ export const Step3_Production: React.FC = () => {
         { value: 'wavenet' as const, label: 'WaveNet', cost: '$$', hint: 'High quality, moderate cost' },
         { value: 'neural2' as const, label: 'Neural2 (영어)', cost: '$$$', hint: 'Premium English voices with pitch control' },
         { value: 'chirp3-hd' as const, label: 'Chirp 3 HD (한국어)', cost: '$$$', hint: '최신 한국어 AI 목소리 - 자연스러운 억양' },
+        { value: 'gemini-tts' as const, label: 'Gemini TTS ✨', cost: '$$', hint: '자연어 연기 지시 지원 - 감정 표현 최고' },
     ];
+
 
     const IMAGE_MODELS = [
         { value: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash', cost: '$', hint: 'Fast, efficient' },
@@ -537,6 +541,68 @@ export const Step3_Production: React.FC = () => {
             const currentCut = currentScript.find(c => c.id === cutId);
             const speaker = currentCut?.speaker || 'Narrator';
 
+            // ===== GEMINI TTS BRANCH =====
+            if (ttsModel === 'gemini-tts') {
+                console.log(`[Audio ${cutId}] Using Gemini TTS for dialogue...`);
+
+                // Determine language from cut metadata or auto-detect
+                const rawLanguage = (currentCut?.language || detectLanguageFromText(dialogue)) as string;
+                let language: 'ko-KR' | 'en-US';
+                if (rawLanguage === 'ko' || rawLanguage.startsWith('ko')) {
+                    language = 'ko-KR';
+                } else if (rawLanguage === 'en' || rawLanguage.startsWith('en')) {
+                    language = 'en-US';
+                } else {
+                    language = 'ko-KR'; // Default to Korean for Gemini TTS
+                }
+
+                // Get voice: check if voiceId is a valid Gemini TTS voice, otherwise use gender/age-based default
+                let voiceName = currentCut?.voiceId;
+                const gender = (currentCut?.voiceGender || 'female') as 'male' | 'female' | 'neutral';
+                const age = (currentCut?.voiceAge || 'adult') as 'child' | 'young' | 'adult' | 'senior';
+
+                if (!voiceName || !isGeminiTtsVoice(voiceName)) {
+                    voiceName = getDefaultGeminiVoice(gender, age);
+                    console.log(`[Audio ${cutId}] Using default Gemini voice: ${voiceName} (${gender}, ${age})`);
+                } else {
+                    console.log(`[Audio ${cutId}] Using assigned Gemini voice: ${voiceName}`);
+                }
+
+                // Build config with acting direction and volume/rate from UI
+                const geminiConfig = {
+                    voiceName,
+                    languageCode: language,
+                    actingDirection: currentCut?.actingDirection,
+                    volume: currentCut?.voiceVolume ? parseFloat(String(currentCut.voiceVolume)) : 1.0,
+                    rate: currentCut?.voiceRate ? parseFloat(String(currentCut.voiceRate)) : 1.0
+                };
+
+                console.log(`[Audio ${cutId}] Gemini TTS Config:`, geminiConfig);
+
+                const audioData = await generateGeminiSpeech(dialogue, apiKeys.gemini, geminiConfig);
+
+                // Save to IndexedDB to keep state clean
+                const audioKey = generateAudioKey(projectId, cutId);
+                const idbAudioUrl = await saveToIdb('audio', audioKey, audioData);
+
+                console.log(`[Audio ${cutId}] Gemini TTS generated and saved to IDB`);
+
+                const updatedScript = currentScript.map(cut =>
+                    cut.id === cutId ? {
+                        ...cut,
+                        audioUrl: idbAudioUrl,
+                        language,
+                        voiceId: voiceName,
+                        voiceGender: gender,
+                        voiceAge: age
+                    } as ScriptCut : cut
+                );
+                setLocalScript(updatedScript);
+                saveToStore(updatedScript);
+                return; // Exit early for Gemini TTS
+            }
+
+            // ===== CLOUD TTS BRANCH (existing logic) =====
             // 1. Determine language based on TTS model selection and dialogue content
             // If user selected Chirp 3 HD (Korean model), force Korean language
             // If user selected Neural2 (English model), force English language
@@ -562,6 +628,7 @@ export const Step3_Production: React.FC = () => {
                 }
                 console.log(`[Audio ${cutId}] Auto-detected language: ${language}`);
             }
+
 
             // 2. Find character voice settings or use defaults
             const allCharacters = [...(characters || []), ...(episodeCharacters || [])];
@@ -645,19 +712,24 @@ export const Step3_Production: React.FC = () => {
             console.log(`[Audio ${cutId}] VoiceConfig:`, voiceConfig);
 
             const apiKeyToUse = (apiKeys.googleCloud || apiKeys.gemini)?.trim() || '';
-            const audioUrl = await generateSpeech(dialogue, voiceName, apiKeyToUse, model, voiceConfig);
-            console.log(`[Audio ${cutId}] Generated successfully`);
+            const audioDataUrl = await generateSpeech(dialogue, voiceName, apiKeyToUse, model, voiceConfig);
+
+            // Save to IndexedDB
+            const audioKey = generateAudioKey(projectId, cutId);
+            const idbAudioUrl = await saveToIdb('audio', audioKey, audioDataUrl);
+
+            console.log(`[Audio ${cutId}] Generated and saved to IDB`);
 
             const updatedScript = currentScript.map(cut =>
                 cut.id === cutId ? {
                     ...cut,
-                    audioUrl,
+                    audioUrl: idbAudioUrl,
                     language,
                     emotion: currentCut?.emotion,
                     emotionIntensity: currentCut?.emotionIntensity,
-                    voiceGender: genderToUse,
-                    voiceAge: currentCut?.voiceAge || 'adult'
-                } : cut
+                    voiceGender: genderToUse as any,
+                    voiceAge: (currentCut?.voiceAge || 'adult') as any
+                } as ScriptCut : cut
             );
             setLocalScript(updatedScript);
             saveToStore(updatedScript);
@@ -1097,8 +1169,19 @@ export const Step3_Production: React.FC = () => {
                             const currentLanguage = localScript[0]?.language || '';
                             const currentSpeed = localScript[0]?.voiceSpeed || '';
 
-                            // Combined Voice Options
-                            const VOICE_OPTIONS = [
+                            // Combined Voice Options - Conditional based on TTS Model
+                            const GEMINI_VOICE_OPTIONS = [
+                                {
+                                    optgroup: '✨ Gemini TTS (Multilingual)', options: GEMINI_TTS_VOICES.map(v => ({
+                                        value: v.id,
+                                        label: `${v.label} (${v.style})`,
+                                        gender: v.gender,
+                                        lang: 'multilingual'
+                                    }))
+                                }
+                            ];
+
+                            const CLOUD_VOICE_OPTIONS = [
                                 {
                                     optgroup: '🇰🇷 Korean (Neural2/Standard)', options: [
                                         { value: 'ko-KR-Neural2-A', label: 'Neural2-A (여성)', gender: 'female', lang: 'ko-KR' },
@@ -1125,14 +1208,22 @@ export const Step3_Production: React.FC = () => {
                                     ]
                                 }
                             ];
+
+                            // Select voice options based on TTS model
+                            const VOICE_OPTIONS = ttsModel === 'gemini-tts' ? GEMINI_VOICE_OPTIONS : CLOUD_VOICE_OPTIONS;
                             const FLAT_VOICE_OPTIONS = VOICE_OPTIONS.flatMap(g => g.options);
 
                             const getDefaultVoice = (gender?: string) => {
+                                if (ttsModel === 'gemini-tts') {
+                                    // For Gemini TTS, use gender-based default
+                                    return gender === 'male' ? 'Puck' : 'Aoede';
+                                }
                                 if (gender === 'male') {
                                     return FLAT_VOICE_OPTIONS.find(v => v.gender === 'male' && v.lang === currentLanguage)?.value || FLAT_VOICE_OPTIONS[0]?.value;
                                 }
                                 return FLAT_VOICE_OPTIONS.find(v => v.gender === 'female' && v.lang === currentLanguage)?.value || FLAT_VOICE_OPTIONS[0]?.value;
                             };
+
 
                             const applyVoiceToSpeaker = (speakerName: string, voiceValue: string) => {
                                 const voice = FLAT_VOICE_OPTIONS.find(v => v.value === voiceValue);
@@ -1226,6 +1317,15 @@ export const Step3_Production: React.FC = () => {
                                 'en-US-Neural2-G': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-G.wav',
                                 'en-US-Neural2-J': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-J.wav',
                                 'en-US-Neural2-I': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-I.wav',
+                                // Gemini Voices (Mapped to nearest Google Cloud samples for preview)
+                                'Aoede': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Neural2-A.wav',
+                                'Leda': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Neural2-B.wav',
+                                'Kore': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Neural2-C.wav',
+                                'Puck': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Puck.wav',
+                                'Fenrir': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Fenrir.wav',
+                                'Charon': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Wavenet-C.wav',
+                                'Orus': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-C.wav',
+                                'Zephyr': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-A.wav',
                             };
                             const playVoiceSample = (voiceId: string) => {
                                 const sampleUrl = VOICE_SAMPLES[voiceId];
@@ -1446,7 +1546,9 @@ export const Step3_Production: React.FC = () => {
                                 playingAudio={playingAudio}
                                 aspectRatio={aspectRatio || '16:9'}
                                 speakerList={speakerList}
+                                ttsModel={ttsModel}
                                 onToggleAudioConfirm={toggleAudioConfirm}
+
                                 onToggleImageConfirm={toggleImageConfirm}
                                 onUpdateCut={handleUpdateCut}
                                 onGenerateAudio={handleGenerateAudio}

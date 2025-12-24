@@ -25,7 +25,9 @@ export interface ScriptCut {
     voiceRate?: string;            // SSML rate (e.g., '85%', '110%', 'slow', 'fast')
     voiceVolume?: string;          // SSML volume (e.g., 'soft', 'loud', '-2dB', '+3dB')
     voiceId?: string;              // NEW: Explicit voice ID selection (from bulk settings)
+    actingDirection?: string;      // NEW: Natural language acting direction for Gemini TTS
     audioPadding?: number;         // NEW: Pause after audio finishes (seconds)
+
     storylineSceneId?: string;     // Link to source storyline scene
 
     // Step 4.5: Video Composition
@@ -162,6 +164,19 @@ export const DEFAULT_SCRIPT_INSTRUCTIONS = `
       - emotion: Emotional tone of the dialogue (neutral/happy/sad/angry/excited/calm/tense)
       - emotionIntensity: Strength of the emotion (low/moderate/high)
       
+      - actingDirection: **VOICE ACTING DIRECTION (REQUIRED FOR ALL DIALOGUE):**
+        - Write a brief direction for how the voice actor should deliver this line
+        - Include: tone, pacing, underlying emotion, and specific vocal nuances
+        - Write in Korean or English (match dialogue language)
+        - Keep it concise: 1-2 sentences maximum
+        - Examples:
+          • "슬픔을 참으며 떨리는 목소리로, 마지막에 한숨"
+          • "Speak softly, holding back tears, with a slight tremor"
+          • "자신감 있게 힘있는 목소리로, 마지막에 미소"
+          • "Deliver confidently with rising excitement"
+          • "속삭이듯 긴장된 목소리로"
+        - For SILENT cuts: leave empty or omit
+
       - visualPrompt: **STATIC IMAGE ONLY - NO MOTION (WRITE IN ENGLISH):**
         - **LANGUAGE: MUST BE WRITTEN IN ENGLISH** (except for asset names which may be in any language)
         - This prompt generates a **STILL IMAGE** (first frame of cut). Describe a "frozen moment".
@@ -218,9 +233,10 @@ export const DEFAULT_SCRIPT_INSTRUCTIONS = `
       - Visual prompts should reference specific characters/locations by name for consistency
       - Total duration should approximately match the target duration
       
-      Return ONLY a raw JSON array of objects with keys: id, speaker, dialogue, language, emotion, emotionIntensity, visualPrompt, visualPromptKR, sfxDescription, estimatedDuration.
+      Return ONLY a raw JSON array of objects with keys: id, speaker, dialogue, language, emotion, emotionIntensity, actingDirection, visualPrompt, visualPromptKR, sfxDescription, estimatedDuration.
       Do not include markdown formatting like \`\`\`json.
     `;
+
 
 // Default video prompt instructions (for Step 3 Video Prompt Generation)
 export const DEFAULT_VIDEO_PROMPT_INSTRUCTIONS = `
