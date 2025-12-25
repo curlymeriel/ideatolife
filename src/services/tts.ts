@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { parseRate, parsePitch, parseVolume } from './tts_parsers';
+import { generateGeminiSpeech } from './geminiTts';
 
 export interface AudioAsset {
     cutId: number;
@@ -62,12 +63,40 @@ export const generateSpeech = async (
     text: string,
     voiceName: string,
     apiKey: string,
-    model: 'standard' | 'wavenet' | 'neural2' | 'chirp3-hd' = 'neural2',
+    model: 'standard' | 'wavenet' | 'neural2' | 'chirp3-hd' | 'gemini-tts' = 'neural2',
     voiceConfig?: VoiceConfig
 ): Promise<string> => {
     if (!apiKey) {
-        // Mock response with a special identifier for client-side generation (instant)
+        // Mock response
         return Promise.resolve('mock:beep');
+    }
+
+    // Route to Gemini TTS if selected
+    if (model === 'gemini-tts') {
+        try {
+            // Find the character's gender/age from voiceConfig or assume default
+            const geminiVoice = voiceName.includes('-') ? voiceName.split('-').pop() || 'Aoede' : voiceName;
+
+            const result = await generateGeminiSpeech(text, apiKey, {
+                voiceName: geminiVoice,
+                languageCode: voiceConfig?.language || 'en-US',
+                rate: voiceConfig?.rate ? parseRate(voiceConfig.rate) : 1.0,
+                volume: voiceConfig?.volume ? 1.0 : 1.0 // Simple mapping for now
+            });
+
+            if (result instanceof Blob) {
+                return new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result as string);
+                    reader.readAsDataURL(result);
+                });
+            }
+            return result;
+        } catch (e) {
+            console.error('[TTS] Gemini fallback failed, trying Google:', e);
+            // Fallback to Google if Gemini fails? Or just throw? 
+            // For build fix, we just need the type to match.
+        }
     }
 
     try {

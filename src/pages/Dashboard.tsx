@@ -6,7 +6,7 @@ import { Image, FileText, Music, ArrowRight, BarChart3, Plus, Download, Trash2, 
 import { StorageInspector } from '../components/StorageInspector';
 import { migrateAllProjects } from '../utils/migration';
 
-import { debugListKeys, loadFromIdb, resolveUrl } from '../utils/imageStorage';
+import { debugListKeys, resolveUrl } from '../utils/imageStorage';
 
 export const Dashboard: React.FC = () => {
     // Expose for debugging
