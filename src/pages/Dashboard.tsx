@@ -6,7 +6,7 @@ import { Image, FileText, Music, ArrowRight, BarChart3, Plus, Download, Trash2, 
 import { StorageInspector } from '../components/StorageInspector';
 import { migrateAllProjects } from '../utils/migration';
 
-import { debugListKeys, loadFromIdb } from '../utils/imageStorage';
+import { debugListKeys, loadFromIdb, resolveUrl } from '../utils/imageStorage';
 
 export const Dashboard: React.FC = () => {
     // Expose for debugging
@@ -353,9 +353,9 @@ export const Dashboard: React.FC = () => {
                 // Case 1: IDB URL (Fastest, direct lookup)
                 if (p.thumbnailUrl?.startsWith('idb://')) {
                     try {
-                        const blob = await loadFromIdb(p.thumbnailUrl);
-                        if (blob) {
-                            updates[p.id] = blob;
+                        const resolved = await resolveUrl(p.thumbnailUrl);
+                        if (resolved) {
+                            updates[p.id] = resolved;
                             hasNewData = true;
                         }
                     } catch (e) { console.warn('Thumbnail load failed', e); }
