@@ -7,7 +7,7 @@ import { generateSpeech, type VoiceConfig } from '../services/tts';
 import { generateGeminiSpeech, getDefaultGeminiVoice, isGeminiTtsVoice, GEMINI_TTS_VOICES } from '../services/geminiTts';
 
 import { useNavigate } from 'react-router-dom';
-import { Wand2, Loader2, ArrowRight, Lock, Unlock, Settings, Mic, Image, Sparkles } from 'lucide-react';
+import { Wand2, Loader2, ArrowRight, Lock, Unlock, Settings, Mic, Image, Sparkles, Sliders } from 'lucide-react';
 import { CutItem } from '../components/Production/CutItem';
 import { SfxSearchModal } from '../components/Production/SfxSearchModal';
 import { AiInstructionHelper } from '../components/Production/AiInstructionHelper';
@@ -1137,23 +1137,49 @@ export const Step3_Production: React.FC = () => {
                         {/* Bulk Lock Buttons - Inside header for visibility before regeneration */}
                         {localScript.length > 0 && (
                             <div className="pt-3 border-t border-white/5">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <span className="text-[10px] text-gray-400 uppercase font-bold">🔒 Bulk Lock</span>
-                                    <span className="text-[10px] text-gray-500">- Lock before regenerating script</span>
+                                <div className="flex items-center gap-2 mb-2 justify-between">
+                                    <span className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
+                                        <Lock size={10} />
+                                        컷별 잠금 관리
+                                    </span>
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
-                                    <div className="flex flex-col gap-1">
-                                        <span className="text-[9px] text-gray-500">🎵 Audio ({audioLockedCount}/{audioGeneratedCount})</span>
-                                        <div className="flex gap-1">
-                                            <button onClick={lockAllAudio} className="flex-1 px-2 py-1 text-[9px] bg-green-500/20 text-green-400 hover:bg-green-500/30 rounded font-bold">Lock All</button>
-                                            <button onClick={unlockAllAudio} className="flex-1 px-2 py-1 text-[9px] bg-red-500/10 text-red-400/70 hover:bg-red-500/20 rounded">Unlock</button>
+                                    <div className="flex flex-col gap-1 items-end">
+                                        <span className="text-[9px] text-gray-500 uppercase font-bold tracking-wider">Audio ({audioLockedCount}/{audioGeneratedCount})</span>
+                                        <div className="flex gap-1.5">
+                                            <button
+                                                onClick={lockAllAudio}
+                                                className="w-7 h-7 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded-lg flex items-center justify-center transition-all hover:scale-105"
+                                                title="일괄 잠금"
+                                            >
+                                                <Lock size={12} strokeWidth={2.5} />
+                                            </button>
+                                            <button
+                                                onClick={unlockAllAudio}
+                                                className="w-7 h-7 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded-lg flex items-center justify-center transition-all hover:scale-105"
+                                                title="일괄 해제"
+                                            >
+                                                <Unlock size={12} strokeWidth={2.5} />
+                                            </button>
                                         </div>
                                     </div>
-                                    <div className="flex flex-col gap-1">
-                                        <span className="text-[9px] text-gray-500">🖼️ Image ({imageLockedCount}/{imageGeneratedCount})</span>
-                                        <div className="flex gap-1">
-                                            <button onClick={lockAllImages} className="flex-1 px-2 py-1 text-[9px] bg-green-500/20 text-green-400 hover:bg-green-500/30 rounded font-bold">Lock All</button>
-                                            <button onClick={unlockAllImages} className="flex-1 px-2 py-1 text-[9px] bg-red-500/10 text-red-400/70 hover:bg-red-500/20 rounded">Unlock</button>
+                                    <div className="flex flex-col gap-1 items-end">
+                                        <span className="text-[9px] text-gray-500 uppercase font-bold tracking-wider">Image ({imageLockedCount}/{imageGeneratedCount})</span>
+                                        <div className="flex gap-1.5">
+                                            <button
+                                                onClick={lockAllImages}
+                                                className="w-7 h-7 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded-lg flex items-center justify-center transition-all hover:scale-105"
+                                                title="일괄 잠금"
+                                            >
+                                                <Lock size={12} strokeWidth={2.5} />
+                                            </button>
+                                            <button
+                                                onClick={unlockAllImages}
+                                                className="w-7 h-7 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded-lg flex items-center justify-center transition-all hover:scale-105"
+                                                title="일괄 해제"
+                                            >
+                                                <Unlock size={12} strokeWidth={2.5} />
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
@@ -1432,8 +1458,8 @@ export const Step3_Production: React.FC = () => {
                         return (
                             <div className="mt-2 p-3 bg-black/20 rounded-lg border border-white/5 space-y-3">
                                 <div className="text-[10px] text-gray-400 font-bold flex items-center gap-1 uppercase tracking-wider">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)]"></div>
-                                    일괄 오디오 세팅
+                                    <Sliders size={11} className="text-white" />
+                                    <span className="text-[11px] text-white font-bold uppercase tracking-wider">일괄 오디오 세팅</span>
                                 </div>
 
                                 {/* Global Settings */}
@@ -1530,17 +1556,17 @@ export const Step3_Production: React.FC = () => {
                                                         </button>
                                                         <button
                                                             onClick={() => handleBulkLockAudio(speaker, true)}
-                                                            className="px-2 bg-green-500/10 hover:bg-green-500/20 text-green-400 text-[10px] py-1 rounded transition-colors"
+                                                            className="w-7 h-7 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded-lg flex items-center justify-center transition-all hover:scale-105"
                                                             title="일괄 잠금"
                                                         >
-                                                            <Lock size={10} />
+                                                            <Lock size={12} strokeWidth={2.5} />
                                                         </button>
                                                         <button
                                                             onClick={() => handleBulkLockAudio(speaker, false)}
-                                                            className="px-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-[10px] py-1 rounded transition-colors"
+                                                            className="w-7 h-7 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded-lg flex items-center justify-center transition-all hover:scale-105"
                                                             title="일괄 해제"
                                                         >
-                                                            <Unlock size={10} />
+                                                            <Unlock size={12} strokeWidth={2.5} />
                                                         </button>
                                                     </div>
                                                 </div>
