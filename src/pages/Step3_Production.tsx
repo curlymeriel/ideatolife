@@ -1137,10 +1137,13 @@ export const Step3_Production: React.FC = () => {
                         {/* Bulk Lock Buttons - Inside header for visibility before regeneration */}
                         {localScript.length > 0 && (
                             <div className="pt-3 border-t border-white/5">
-                                <div className="flex items-center gap-2 mb-2 justify-between">
+                                <div className="flex flex-col mb-2 gap-1">
                                     <span className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
                                         <Lock size={10} />
-                                        컷별 잠금 관리
+                                        이미 생성된 자산 일괄 잠금/해제
+                                    </span>
+                                    <span className="text-[10px] text-gray-500 pl-3.5">
+                                        - 스크립트 재생성 전, 유지하고 싶은 자산을 잠금 설정하세요.
                                     </span>
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
