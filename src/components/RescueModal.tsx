@@ -70,38 +70,37 @@ export const RescueModal: React.FC<RescueModalProps> = ({ isOpen, onClose }) => 
         let found: BackupItem[] = [];
 
         try {
-            // 1. First Pass: Scan Projects to build ownership map
+            // 1. Gather all projects first (from IDB and LS)
             const dbKeys = await idbKeys() as string[];
-            const projectKeys = dbKeys.filter(k => String(k).startsWith('project-'));
-
             const projectsData: { key: string, data: any, name: string }[] = [];
 
+            // From IndexedDB
+            const projectKeys = dbKeys.filter(k => String(k).startsWith('project-'));
             for (const pk of projectKeys) {
                 try {
                     const data = await idbGet(pk);
-                    if (!data) continue;
-                    const p = typeof data === 'string' ? JSON.parse(data) : data;
-                    const pName = `[${p.seriesName || '무제'}] ${p.episodeName || '제목 없음'}`;
-                    projectsData.push({ key: String(pk), data, name: pName });
+                    if (data) {
+                        const p = typeof data === 'string' ? JSON.parse(data) : data;
+                        projectsData.push({ key: String(pk), data: p, name: resolveName(p, String(pk)) });
+                    }
                 } catch (e) { /* skip */ }
             }
 
-            // Also check LocalStorage for projects
+            // From LocalStorage
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
                 if (key && (key.startsWith('project-') || key.includes('idea-lab-storage'))) {
                     try {
                         const val = localStorage.getItem(key);
-                        if (!val) continue;
-                        const p = JSON.parse(val);
-                        const pName = `[${p.seriesName || '무제'}] ${p.episodeName || '제목 없음'}`;
-                        projectsData.push({ key, data: p, name: pName });
+                        if (val) {
+                            const p = JSON.parse(val);
+                            projectsData.push({ key, data: p, name: resolveName(p, key) });
+                        }
                     } catch (e) { /* skip */ }
                 }
             }
 
-            // 2. Second Pass: Actual Scan & Map Ownership
-            // Scan IndexedDB
+            // 2. Scan ALL items (IndexedDB)
             for (const key of dbKeys) {
                 const keyStr = String(key);
                 try {
@@ -123,29 +122,14 @@ export const RescueModal: React.FC<RescueModalProps> = ({ isOpen, onClose }) => 
                         preview = json.substring(0, 50);
                     }
 
-                    const category = getCategory(keyStr);
-
-                    // Ownership check: If it's an asset, check which project mentions it
-                    let owner: AssetOwnership | undefined = undefined;
-                    if (category !== 'projects') {
-                        for (const proj of projectsData) {
-                            const projectStr = typeof proj.data === 'string' ? proj.data : JSON.stringify(proj.data);
-                            if (projectStr.includes(keyStr)) {
-                                owner = { projectId: proj.key, projectName: proj.name };
-                                break;
-                            }
-                        }
-                    }
-
                     found.push({
                         key: keyStr,
                         source: 'IndexedDB',
                         size,
                         name: resolveName(value, keyStr),
-                        category,
+                        category: getCategory(keyStr),
                         type,
                         preview,
-                        owner,
                         rawData: value
                     });
                 } catch (e) {
@@ -153,11 +137,10 @@ export const RescueModal: React.FC<RescueModalProps> = ({ isOpen, onClose }) => 
                 }
             }
 
-            // LocalStorage Scan (Avoid duplicates)
+            // 3. Scan ALL items (LocalStorage)
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
-                if (key && (key.includes('idea-lab') || key.includes('project'))) {
-                    // Check if already in found
+                if (key && (key.includes('idea-lab') || key.includes('project') || key.includes('media-') || key.includes('backup'))) {
                     if (found.some(f => f.key === key)) continue;
 
                     const value = localStorage.getItem(key) || '';
@@ -170,6 +153,20 @@ export const RescueModal: React.FC<RescueModalProps> = ({ isOpen, onClose }) => 
                         preview: value.substring(0, 50),
                         rawData: value
                     });
+                }
+            }
+
+            // 4. Final Pass: Map Ownership for ALL found items
+            for (const item of found) {
+                if (item.category !== 'projects') {
+                    for (const proj of projectsData) {
+                        const projectStr = typeof proj.data === 'string' ? proj.data : JSON.stringify(proj.data);
+                        // Search for the asset key within the project's data string
+                        if (projectStr.includes(item.key)) {
+                            item.owner = { projectId: proj.key, projectName: proj.name };
+                            break; // Assume it belongs to the first project that mentions it
+                        }
+                    }
                 }
             }
 
@@ -191,7 +188,7 @@ export const RescueModal: React.FC<RescueModalProps> = ({ isOpen, onClose }) => 
             if (!data) return alert("데이터가 비어있습니다.");
 
             if (data instanceof Blob) {
-                saveAs(data, `Rescue_${item.key}.${data.type.split('/')[1] || 'bin'}`);
+                saveAs(data, `Rescue_${item.key.replace(/[^\w.-]/g, '_')}.${data.type.split('/')[1] || 'bin'}`);
             } else {
                 const jsonString = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
                 const blob = new Blob([jsonString], { type: 'application/json' });
@@ -203,21 +200,40 @@ export const RescueModal: React.FC<RescueModalProps> = ({ isOpen, onClose }) => 
     const downloadProjectPackage = async (project: BackupItem) => {
         if (!confirm(`${project.name}에 속한 모든 자산을 ZIP으로 묶어 다운로드하시겠습니까?`)) return;
 
-        const zip = new JSZip();
-        zip.file('project.json', typeof project.rawData === 'string' ? project.rawData : JSON.stringify(project.rawData, null, 2));
-
-        // Find ALL assets that mention this project as owner
-        const related = items.filter(i => i.owner?.projectId === project.key);
-
         setLoading(true);
         try {
+            const zip = new JSZip();
+            const projectData = project.rawData;
+            const projectStr = typeof projectData === 'string' ? projectData : JSON.stringify(projectData, null, 2);
+
+            zip.file('project.json', projectStr);
+
+            // Double check: identify related assets by searching for their keys in the project JSON string
+            // This is a safety measure in case the 'owner' property mapping was incomplete
+            const related = items.filter(i =>
+                i.category !== 'projects' &&
+                (i.owner?.projectId === project.key || projectStr.includes(i.key))
+            );
+
+            console.log(`[Rescue] Harvesting ${related.length} assets for zip package`);
+
             for (const asset of related) {
                 const data = asset.rawData;
+                // Clean filename to prevent zip corruption
                 const fileName = asset.key.replace(/[^\w.-]/g, '_');
+
                 if (data instanceof Blob) {
                     zip.file(`assets/${fileName}`, data);
                 } else if (typeof data === 'string') {
-                    zip.file(`assets/${fileName}`, data);
+                    // Check if it's base64 image data stored as string
+                    if (data.startsWith('data:')) {
+                        const parts = data.split(',');
+                        const mime = parts[0].match(/:(.*?);/)?.[1] || 'bin';
+                        const ext = mime.split('/')[1] || 'bin';
+                        zip.file(`assets/${fileName}.${ext}`, data.split(',')[1], { base64: true });
+                    } else {
+                        zip.file(`assets/${fileName}.txt`, data);
+                    }
                 } else {
                     zip.file(`assets/${fileName}.json`, JSON.stringify(data, null, 2));
                 }
