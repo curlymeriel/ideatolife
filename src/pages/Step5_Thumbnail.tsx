@@ -673,13 +673,13 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                             <div className="flex bg-black/40 rounded-xl p-1 border border-white/5 shadow-inner">
                                 <button
                                     onClick={() => setMode('framing')}
-                                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all ${mode === 'framing' ? 'bg-blue-500 text-white shadow-lg' : 'text-gray-500 hover:text-white'}`}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all ${mode === 'framing' ? 'bg-[var(--color-primary)] text-black shadow-lg' : 'text-gray-500 hover:text-white'}`}
                                 >
                                     <ImageIcon size={14} /> Framing
                                 </button>
                                 <button
                                     onClick={() => setMode('ai-gen')}
-                                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all ${mode === 'ai-gen' ? 'bg-purple-600 text-white shadow-lg' : 'text-gray-500 hover:text-white'}`}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all ${mode === 'ai-gen' ? 'bg-[var(--color-primary)] text-black shadow-lg' : 'text-gray-500 hover:text-white'}`}
                                 >
                                     <Sparkles size={14} /> AI Gen
                                 </button>
@@ -768,7 +768,7 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                                         <button
                                             onClick={handleSuggestPrompt}
                                             disabled={isSuggesting}
-                                            className="w-full py-2.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 rounded-xl text-[10px] font-bold uppercase tracking-widest border border-purple-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="w-full py-2.5 bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 text-[var(--color-primary)] rounded-xl text-[10px] font-bold uppercase tracking-widest border border-[var(--color-primary)]/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                             {isSuggesting ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
                                             {isSuggesting ? 'Analyzing Visuals...' : 'Suggest AI Prompt'}
@@ -784,13 +784,13 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                                     <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-4">
                                         <div className="flex items-center justify-between">
                                             <span className="text-[10px] text-gray-400 font-bold uppercase px-1">외부 스타일 참고</span>
-                                            <label className="cursor-pointer text-[10px] text-purple-400 hover:text-purple-300 font-bold flex items-center gap-1 transition-colors">
+                                            <label className="cursor-pointer text-[10px] text-[var(--color-primary)] hover:opacity-80 font-bold flex items-center gap-1 transition-colors">
                                                 <Upload size={12} /> UPLOAD
                                                 <input type="file" accept="image/*" className="hidden" onChange={handleStyleRefUpload} />
                                             </label>
                                         </div>
                                         {resolvedStyleRef ? (
-                                            <div className="relative aspect-video rounded-xl overflow-hidden border border-purple-500/30 group">
+                                            <div className="relative aspect-video rounded-xl overflow-hidden border border-[var(--color-primary)]/30 group">
                                                 <img src={resolvedStyleRef} alt="Style Reference" className="w-full h-full object-cover" />
                                                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                                     <button onClick={() => setStyleReferenceId(null)} className="p-2 bg-red-500 text-white rounded-full"><X size={14} /></button>
@@ -819,7 +819,7 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                                     <div className="space-y-3">
                                         <div className="flex justify-between items-center px-1">
                                             <label className="text-[10px] text-gray-500 font-bold uppercase">Visual Guidance ({selectedReferenceIds.length})</label>
-                                            <button onClick={() => setShowCutSelector(true)} className="text-[10px] text-purple-400 hover:text-purple-300 font-bold transition-colors font-bold">+ ADD REFS</button>
+                                            <button onClick={() => setShowCutSelector(true)} className="text-[10px] text-[var(--color-primary)] hover:opacity-80 font-bold transition-colors">+ ADD REFS</button>
                                         </div>
                                         <div className="flex flex-wrap gap-2.5 p-3 bg-black/40 rounded-xl border border-white/5 min-h-[56px] shadow-inner">
                                             {selectedReferenceIds.length === 0 ? (
@@ -838,7 +838,7 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                                     <button
                                         onClick={handleGenerateAIThumbnail}
                                         disabled={isGeneratingAI || !aiPrompt.trim()}
-                                        className="w-full py-4 bg-gradient-to-br from-purple-600 to-indigo-700 hover:from-purple-500 hover:to-indigo-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-xl shadow-purple-900/20 active:scale-[0.97]"
+                                        className="w-full py-4 bg-[var(--color-primary)] hover:opacity-90 text-black rounded-xl font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-xl shadow-[var(--color-primary)]/20 active:scale-[0.97]"
                                     >
                                         {isGeneratingAI ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
                                         {isGeneratingAI ? 'Generating Image...' : 'Synthesize Thumbnail'}
