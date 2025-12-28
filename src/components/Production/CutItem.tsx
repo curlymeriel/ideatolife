@@ -481,9 +481,9 @@ export const CutItem = memo(({
                                         </div>
                                     )}
 
-                                    {/* Gen Button */}
-                                    {cut.speaker !== 'SILENT' ? (
-                                        <>
+                                    {/* Buttons Area */}
+                                    <div className="flex flex-col gap-1">
+                                        {cut.speaker !== 'SILENT' ? (
                                             <button
                                                 onClick={() => onGenerateAudio(cut.id, cut.dialogue)}
                                                 disabled={audioLoading || !cut.dialogue || isAudioConfirmed}
@@ -492,22 +492,22 @@ export const CutItem = memo(({
                                                 {audioLoading ? <Loader2 size={10} className="animate-spin" /> : <Mic size={10} />}
                                                 {hasRealAudio ? '재생성' : '생성'}
                                             </button>
+                                        ) : (
+                                            <div className="flex items-center justify-center gap-1.5 w-[84px] px-2 py-1.5 rounded text-[9px] font-bold bg-white/5 text-gray-500 border border-white/5 opacity-60">
+                                                <Mic size={10} className="opacity-40" />
+                                                <span>SILENT</span>
+                                            </div>
+                                        )}
 
-                                            {/* Settings Button - Simplified label */}
-                                            <button
-                                                onClick={() => setShowAudioSettings(!showAudioSettings)}
-                                                className={`flex items-center justify-center w-[84px] px-1 py-1 gap-1 rounded text-[10px] transition-all ${showAudioSettings ? 'bg-[var(--color-primary)]/40 text-white border border-[var(--color-primary)]/50' : 'bg-white/10 text-gray-400 hover:text-white border border-white/5'}`}
-                                            >
-                                                <Settings size={10} />
-                                                <span className="font-bold">세팅</span>
-                                            </button>
-                                        </>
-                                    ) : (
-                                        <div className="flex flex-col items-center justify-center w-[84px] h-[52px] rounded border border-white/5 bg-white/5 opacity-40">
-                                            <Mic size={12} className="text-gray-500 mb-1" />
-                                            <span className="text-[9px] text-gray-400 font-bold uppercase tracking-tighter">No Audio</span>
-                                        </div>
-                                    )}
+                                        {/* Settings Button - Always visible */}
+                                        <button
+                                            onClick={() => setShowAudioSettings(!showAudioSettings)}
+                                            className={`flex items-center justify-center w-[84px] px-1 py-1 gap-1 rounded text-[10px] transition-all ${showAudioSettings ? 'bg-[var(--color-primary)]/40 text-white border border-[var(--color-primary)]/50' : 'bg-white/10 text-gray-400 hover:text-white border border-white/5'}`}
+                                        >
+                                            <Settings size={10} />
+                                            <span className="font-bold">세팅</span>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 
@@ -861,7 +861,7 @@ export const CutItem = memo(({
                                                     {showAssetSelector && (
                                                         <>
                                                             <div className="fixed inset-0 z-[100]" onClick={onCloseAssetSelector} />
-                                                            <div className="absolute top-full right-0 mt-1 w-56 bg-[#1a1a1a] border border-[var(--color-border)] rounded-lg shadow-2xl z-[101] max-h-64 overflow-y-auto">
+                                                            <div className="absolute top-full left-0 mt-1 w-56 bg-[#1a1a1a] border border-[var(--color-border)] rounded-lg shadow-2xl z-[101] max-h-64 overflow-y-auto">
                                                                 <div className="p-2 text-xs text-gray-500 font-bold uppercase">Assets</div>
                                                                 {uniqueAssets.map((asset: any) => (
                                                                     <button key={asset.id} onClick={() => onAddAsset(cut.id, asset.id)} className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-white/10 hover:text-white flex items-center gap-2">
