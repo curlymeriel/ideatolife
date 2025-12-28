@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { X, AlertTriangle, RotateCcw, Database, HelpCircle, Download, Upload, RefreshCw, Trash2, Zap, Search } from 'lucide-react';
+import { X, AlertTriangle, RotateCcw, Database, HelpCircle, Download, Upload, Zap, Search, HardDrive } from 'lucide-react';
 import { useWorkflowStore } from '../store/workflowStore';
 import { get as idbGet } from 'idb-keyval';
 
@@ -10,7 +9,6 @@ interface SupportModalProps {
 }
 
 export const SupportModal: React.FC<SupportModalProps> = ({ isOpen, onClose }) => {
-    const navigate = useNavigate();
     const [diagnosisResult, setDiagnosisResult] = useState<string | null>(null);
     const [isRunning, setIsRunning] = useState(false);
 
@@ -103,16 +101,16 @@ ${isMatch ? '✅ 데이터 일치: 메모리와 디스크 데이터가 동일합
                         <button
                             onClick={() => {
                                 onClose();
-                                navigate('/rescue');
+                                window.dispatchEvent(new Event('openRescueModal'));
                             }}
-                            className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl hover:bg-red-500/20 transition-all group text-left"
+                            className="p-4 bg-orange-500/10 border border-orange-500/30 rounded-xl hover:bg-orange-500/20 transition-all group text-left"
                         >
                             <div className="flex items-center gap-2 mb-2">
-                                <AlertTriangle className="text-red-400" size={20} />
-                                <h3 className="text-base font-bold text-red-400">Rescue Center</h3>
+                                <AlertTriangle className="text-[var(--color-primary)]" size={20} />
+                                <h3 className="text-base font-bold text-[var(--color-primary)]">복구 센터 (Rescue)</h3>
                             </div>
                             <p className="text-xs text-gray-400">
-                                앱이 정상 작동하지 않을 때 데이터를 안전하게 백업
+                                앱이 정상 작동하지 않을 때 데이터를 안전하게 백업 및 추출
                             </p>
                         </button>
 
@@ -128,7 +126,7 @@ ${isMatch ? '✅ 데이터 일치: 메모리와 디스크 데이터가 동일합
                                 </h3>
                             </div>
                             <p className="text-xs text-gray-400">
-                                현재 프로젝트의 메모리/디스크 데이터 비교
+                                현재 프로젝트의 메모리/디스크 데이터 무결성 검사
                             </p>
                         </button>
 
@@ -164,22 +162,22 @@ ${isMatch ? '✅ 데이터 일치: 메모리와 디스크 데이터가 동일합
 
                     {/* Troubleshooting Sections */}
                     <div className="space-y-6">
-                        {/* Data Recovery Section */}
+                        {/* Data Management Section */}
                         <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-6">
                             <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                                <Database className="text-blue-400" size={18} />
-                                데이터 복구 도구
+                                <Database className="text-[var(--color-primary)]" size={18} />
+                                데이터 관리 및 복구 도구
                             </h2>
 
                             <div className="space-y-4">
-                                {/* Restore Data */}
+                                {/* Session Restore */}
                                 <div className="p-4 bg-[var(--color-bg)] rounded-lg border border-[var(--color-border)]">
                                     <div className="flex items-start gap-3">
                                         <RotateCcw className="text-green-400 mt-1 flex-shrink-0" size={16} />
                                         <div>
-                                            <h4 className="font-bold text-white mb-1 text-sm">Restore Data (사이드바)</h4>
+                                            <h4 className="font-bold text-white mb-1 text-sm">세션 복구 (Dashboard 사이드바)</h4>
                                             <p className="text-xs text-gray-400 mb-2">
-                                                IndexedDB에 저장된 마지막 상태로 현재 세션을 복원합니다.
+                                                데이터베이스에 저장된 마지막 상태로 현재 세션을 즉시 복원합니다.
                                             </p>
                                         </div>
                                     </div>
@@ -188,37 +186,37 @@ ${isMatch ? '✅ 데이터 일치: 메모리와 디스크 데이터가 동일합
                                 {/* Rescue Center */}
                                 <div className="p-4 bg-[var(--color-bg)] rounded-lg border border-[var(--color-border)]">
                                     <div className="flex items-start gap-3">
-                                        <AlertTriangle className="text-red-400 mt-1 flex-shrink-0" size={16} />
+                                        <AlertTriangle className="text-[var(--color-primary)] mt-1 flex-shrink-0" size={16} />
                                         <div>
-                                            <h4 className="font-bold text-white mb-1 text-sm">Rescue Center (사이드바)</h4>
+                                            <h4 className="font-bold text-white mb-1 text-sm">긴급 복구 (Dashboard 사이드바 / Support)</h4>
                                             <p className="text-xs text-gray-400 mb-2">
-                                                LocalStorage와 IndexedDB의 모든 데이터를 스캔하고 JSON으로 다운로드합니다.
+                                                브라우저 내부 데이터를 스캔하여 프로젝트와 애셋을 ZIP 패키지로 강제 추출합니다.
                                             </p>
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Storage Cleanup */}
+                                {/* Storage Hub */}
                                 <div className="p-4 bg-[var(--color-bg)] rounded-lg border border-[var(--color-border)]">
                                     <div className="flex items-start gap-3">
-                                        <Trash2 className="text-orange-400 mt-1 flex-shrink-0" size={16} />
+                                        <HardDrive className="text-blue-400 mt-1 flex-shrink-0" size={16} />
                                         <div>
-                                            <h4 className="font-bold text-white mb-1 text-sm">Storage Cleanup (Dashboard)</h4>
+                                            <h4 className="font-bold text-white mb-1 text-sm">저장소 통합 관리 (Dashboard 사이드바)</h4>
                                             <p className="text-xs text-gray-400 mb-2">
-                                                저장소에 있는 모든 항목을 상세하게 보고 개별적으로 삭제하거나 다운로드합니다.
+                                                사용 현황 확인, 이미지 압축, 고아 데이터 정리 등 종합 유지보수 도구입니다.
                                             </p>
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Optimize Storage */}
+                                {/* Optimization */}
                                 <div className="p-4 bg-[var(--color-bg)] rounded-lg border border-[var(--color-border)]">
                                     <div className="flex items-start gap-3">
-                                        <RefreshCw className="text-blue-400 mt-1 flex-shrink-0" size={16} />
+                                        <Database className="text-purple-400 mt-1 flex-shrink-0" size={16} />
                                         <div>
-                                            <h4 className="font-bold text-white mb-1 text-sm">Optimize Storage (Dashboard)</h4>
+                                            <h4 className="font-bold text-white mb-1 text-sm">데이터 최적화 (Dashboard 사이드바)</h4>
                                             <p className="text-xs text-gray-400 mb-2">
-                                                Base64로 저장된 이미지/오디오를 IndexedDB로 마이그레이션하여 메모리 사용량을 최적화합니다.
+                                                구식 데이터 구조를 최신 저장 방식으로 일괄 변환하여 앱 성능을 최적화합니다.
                                             </p>
                                         </div>
                                     </div>
@@ -238,9 +236,9 @@ ${isMatch ? '✅ 데이터 일치: 메모리와 디스크 데이터가 동일합
                                     <div className="flex items-start gap-3">
                                         <Upload className="text-blue-400 mt-1 flex-shrink-0" size={16} />
                                         <div>
-                                            <h4 className="font-bold text-white mb-1 text-sm">Import Project (ZIP/JSON)</h4>
+                                            <h4 className="font-bold text-white mb-1 text-sm">Import (Dashboard 헤더 우측)</h4>
                                             <p className="text-xs text-gray-400 mb-2">
-                                                ZIP 또는 JSON 파일을 통해 프로젝트를 복원합니다.
+                                                ZIP 패키지 또는 JSON 파일을 업로드하여 프로젝트를 복원합니다.
                                             </p>
                                         </div>
                                     </div>
@@ -250,9 +248,9 @@ ${isMatch ? '✅ 데이터 일치: 메모리와 디스크 데이터가 동일합
                                     <div className="flex items-start gap-3">
                                         <Download className="text-green-400 mt-1 flex-shrink-0" size={16} />
                                         <div>
-                                            <h4 className="font-bold text-white mb-1 text-sm">Export Selected (ZIP)</h4>
+                                            <h4 className="font-bold text-white mb-1 text-sm">Export (Dashboard 헤더 우측)</h4>
                                             <p className="text-xs text-gray-400 mb-2">
-                                                선택한 프로젝트들을 ZIP 파일로 백업합니다.
+                                                선택한 프로젝트들을 애셋을 포함한 ZIP 파일로 일괄 백업합니다.
                                             </p>
                                         </div>
                                     </div>
@@ -278,14 +276,14 @@ ${isMatch ? '✅ 데이터 일치: 메모리와 디스크 데이터가 동일합
                                 <div className="p-4 bg-[var(--color-bg)] rounded-lg border border-[var(--color-border)]">
                                     <h4 className="font-bold text-white mb-2 text-sm">🔴 이미지/오디오가 안 보여요</h4>
                                     <p className="text-xs text-gray-400 mb-2">
-                                        idb:// URL 형식의 이미지가 로드되지 않는 경우: 페이지 새로고침 또는 "Optimize Storage" 실행.
+                                        idb:// URL 형식의 이미지가 로드되지 않는 경우: 페이지 새로고침 또는 "저장소 통합 관리"의 이미지 최적화 상태 확인.
                                     </p>
                                 </div>
 
                                 <div className="p-4 bg-[var(--color-bg)] rounded-lg border border-[var(--color-border)]">
                                     <h4 className="font-bold text-white mb-2 text-sm">🔴 앱이 느려요</h4>
                                     <p className="text-xs text-gray-400 mb-2">
-                                        Dashboard에서 "Optimize Storage"를 실행하거나 불필요한 데이터를 정리하세요.
+                                        Dashboard에서 "데이터 최적화"를 실행하거나 "저장소 통합 관리"를 통해 불필요한 데이터를 정리하세요.
                                     </p>
                                 </div>
                             </div>

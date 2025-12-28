@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import { Image, FileText, Music, ArrowRight, BarChart3, Plus, Download, Trash2, Database, Loader2, Copy, Check, HardDrive, AlertTriangle, RotateCcw, Settings } from 'lucide-react';
 
 import { UnifiedStorageManager } from '../components/UnifiedStorageManager';
-import { RescueModal } from '../components/RescueModal';
 import { migrateAllProjects } from '../utils/migration';
 
 import { debugListKeys, resolveUrl } from '../utils/imageStorage';
@@ -20,7 +19,7 @@ export const Dashboard: React.FC = () => {
     const isLoadingProjects = !isHydrated;
     const navigate = useNavigate();
     const [showStorageManager, setShowStorageManager] = React.useState(false);
-    const [showRescueModal, setShowRescueModal] = React.useState(false);
+    // RescueModal is now handled globally in MainLayout via 'openRescueModal' event
     // Removed projectsData state - we now use savedProjects metadata exclusively
 
     // Local state for resolved IDB thumbnails and first cut images (lazy loaded)
@@ -439,11 +438,6 @@ export const Dashboard: React.FC = () => {
                     <UnifiedStorageManager onClose={() => setShowStorageManager(false)} />
                 )}
 
-                <RescueModal
-                    isOpen={showRescueModal}
-                    onClose={() => setShowRescueModal(false)}
-                />
-
                 {/* Left Sidebar */}
                 <div className="col-span-12 lg:col-span-3 space-y-8">
                     <div className="py-6">
@@ -483,10 +477,10 @@ export const Dashboard: React.FC = () => {
                             <button
                                 onClick={handleMigrateProjects}
                                 disabled={isMigrating}
-                                className="w-full group flex flex-col items-start p-3 bg-purple-500/5 hover:bg-purple-500/10 border border-purple-500/10 rounded-xl transition-all disabled:opacity-50"
+                                className="w-full group flex flex-col items-start p-3 bg-[var(--color-primary)]/5 hover:bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/10 rounded-xl transition-all disabled:opacity-50"
                             >
                                 <div className="flex items-center gap-2 mb-1">
-                                    {isMigrating ? <Loader2 size={14} className="animate-spin text-purple-400" /> : <Database size={14} className="text-purple-400" />}
+                                    {isMigrating ? <Loader2 size={14} className="animate-spin text-white" /> : <Database size={14} className="text-white" />}
                                     <span className="text-[11px] font-bold text-white uppercase">데이터 최적화 (구조 개편)</span>
                                 </div>
                                 <p className="text-[10px] text-gray-500 leading-tight text-left">구식 데이터 구조를 최신 저장소 방식으로 전환하여 전체적인 앱 성능을 극대화합니다.</p>
@@ -500,39 +494,45 @@ export const Dashboard: React.FC = () => {
                             {/* 2. 저장소 통합 관리 (유지보수) */}
                             <button
                                 onClick={() => setShowStorageManager(true)}
-                                className="w-full group flex flex-col items-start p-3 bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/10 rounded-xl transition-all"
+                                className="w-full group flex flex-col items-start p-3 bg-[var(--color-primary)]/5 hover:bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/10 rounded-xl transition-all"
                             >
                                 <div className="flex items-center gap-2 mb-1">
-                                    <HardDrive size={14} className="text-blue-400" />
+                                    <HardDrive size={14} className="text-white" />
                                     <span className="text-[11px] font-bold text-white uppercase">저장소 통합 관리 (유지보수)</span>
                                 </div>
                                 <p className="text-[10px] text-gray-500 leading-tight text-left">사용량 요약, 이미지 압축, 고아 파일 등 일상적인 유지보수 도구를 제공합니다.</p>
                             </button>
 
                             {/* 3. 복구 센터 (긴급 및 세션) */}
-                            <div className="space-y-2">
-                                <div className="flex items-center gap-2 px-1 py-1">
-                                    <AlertTriangle size={12} className="text-[var(--color-primary)]" />
-                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">데이터 복구 센터</span>
+                            <div className="w-full p-3 bg-[var(--color-primary)]/5 border border-[var(--color-primary)]/10 rounded-xl space-y-3">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <AlertTriangle size={14} className="text-white" />
+                                    <span className="text-[11px] font-bold text-white uppercase">데이터 복구 센터</span>
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
-                                    <button
-                                        onClick={() => setShowRescueModal(true)}
-                                        className="flex flex-col items-center justify-center p-2 bg-[var(--color-primary)]/5 hover:bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/10 rounded-xl transition-all"
-                                        title="긴급 데이터 복구"
-                                    >
-                                        <AlertTriangle size={14} className="text-[var(--color-primary)] mb-1" />
-                                        <span className="text-[10px] font-bold text-white text-center leading-tight">긴급 복구</span>
-                                    </button>
+                                    <div className="space-y-2">
+                                        <button
+                                            onClick={() => setShowRescueModal(true)}
+                                            className="w-full flex flex-col items-center justify-center p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all"
+                                            title="긴급 데이터 복구"
+                                        >
+                                            <AlertTriangle size={14} className="text-white mb-1" />
+                                            <span className="text-[10px] font-bold text-white text-center leading-tight">긴급 복구</span>
+                                        </button>
+                                        <p className="text-[9px] text-gray-500 leading-tight text-center">브라우저 심부의 데이터를 <br />직접 탐색 및 추출합니다.</p>
+                                    </div>
 
-                                    <button
-                                        onClick={() => store.restoreData()}
-                                        className="flex flex-col items-center justify-center p-2 bg-green-500/5 hover:bg-green-500/10 border border-green-500/10 rounded-xl transition-all"
-                                        title="마지막 저장된 상태로 세션 복구"
-                                    >
-                                        <RotateCcw size={14} className="text-green-400 mb-1" />
-                                        <span className="text-[10px] font-bold text-white text-center leading-tight">세션 복구</span>
-                                    </button>
+                                    <div className="space-y-2">
+                                        <button
+                                            onClick={() => store.restoreData()}
+                                            className="w-full flex flex-col items-center justify-center p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all"
+                                            title="마지막 저장된 상태로 세션 복구"
+                                        >
+                                            <RotateCcw size={14} className="text-white mb-1" />
+                                            <span className="text-[10px] font-bold text-white text-center leading-tight">세션 복구</span>
+                                        </button>
+                                        <p className="text-[9px] text-gray-500 leading-tight text-center">마지막 저장 지점으로 <br />현재 세션을 복구합니다.</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>

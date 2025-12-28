@@ -91,8 +91,9 @@ const STEPS = [
                 <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3">
                     <p className="text-green-400 font-bold text-sm mb-1">✅ 해결책: 안전한 백업</p>
                     <ul className="text-gray-300 text-xs space-y-1">
-                        <li>• <strong>Export (ZIP):</strong> 이미지/오디오 포함 전체 백업</li>
-                        <li>• <strong>Rescue Center:</strong> 비상시 데이터 추출 도구</li>
+                        <li>• <strong>Export/Import:</strong> 프로젝트 ZIP 패키지로 전체 백업 및 복원</li>
+                        <li>• <strong>복구 센터 (Rescue):</strong> 브라우저 내부 데이터를 추출하는 마지막 보루</li>
+                        <li>• <strong>저장소 통합 관리:</strong> 주기적인 이미지 압축 및 데이터 정리</li>
                     </ul>
                 </div>
             </div>

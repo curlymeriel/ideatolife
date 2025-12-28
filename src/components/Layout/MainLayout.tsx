@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Film, Palette, FileText, CheckCircle2, Image, Play, Box, Home, RotateCcw, Settings, ChevronDown, Circle, HelpCircle, BookOpen, MessageCircle } from 'lucide-react';
 import { WelcomeGuide } from '../WelcomeGuide';
 import { SupportModal } from '../SupportModal';
+import { RescueModal } from '../RescueModal';
 import { AppSupportChatbot } from '../AppSupportChatbot';
 
 
@@ -37,13 +38,19 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     // Modal States
     const [showGuide, setShowGuide] = useState(false);
     const [showSupport, setShowSupport] = useState(false);
+    const [showRescue, setShowRescue] = useState(false);
     const [showChatbot, setShowChatbot] = useState(false);
 
     // Listen for custom event to open guide (from other components)
     useEffect(() => {
         const handleOpenGuide = () => setShowGuide(true);
+        const handleOpenRescue = () => setShowRescue(true);
         window.addEventListener('openWelcomeGuide', handleOpenGuide);
-        return () => window.removeEventListener('openWelcomeGuide', handleOpenGuide);
+        window.addEventListener('openRescueModal', handleOpenRescue);
+        return () => {
+            window.removeEventListener('openWelcomeGuide', handleOpenGuide);
+            window.removeEventListener('openRescueModal', handleOpenRescue);
+        };
     }, []);
 
     // === ZOMBIE PROJECT CLEANUP ===
@@ -400,6 +407,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             {/* Global Modals */}
             <WelcomeGuide isOpen={showGuide} onClose={() => setShowGuide(false)} />
             <SupportModal isOpen={showSupport} onClose={() => setShowSupport(false)} />
+            <RescueModal isOpen={showRescue} onClose={() => setShowRescue(false)} />
             <AppSupportChatbot isOpen={showChatbot} onClose={() => setShowChatbot(false)} />
         </div>
     );

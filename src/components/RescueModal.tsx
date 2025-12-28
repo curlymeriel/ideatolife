@@ -202,46 +202,47 @@ export const RescueModal: React.FC<RescueModalProps> = ({ isOpen, onClose }) => 
 
         setLoading(true);
         try {
-            const zip = new JSZip();
-            const projectData = project.rawData;
-            const projectStr = typeof projectData === 'string' ? projectData : JSON.stringify(projectData, null, 2);
+            const { exportProjectToZip } = await import('../utils/zipExporter');
+            let blob: Blob;
 
-            zip.file('project.json', projectStr);
+            // Prepare clear data for exporter
+            const rawData = project.rawData;
+            const projectData = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
 
-            // Double check: identify related assets by searching for their keys in the project JSON string
-            // This is a safety measure in case the 'owner' property mapping was incomplete
-            const related = items.filter(i =>
-                i.category !== 'projects' &&
-                (i.owner?.projectId === project.key || projectStr.includes(i.key))
-            );
+            // Case A: Correct ProjectData structure - use dedicated exporter
+            if (projectData && (projectData.script || projectData.assetDefinitions)) {
+                console.log("[Rescue] Using dedicated exporter for project package");
+                blob = await exportProjectToZip(projectData);
+            } else {
+                // Case B: Incomplete or unknown structure - use manual harvester
+                console.log("[Rescue] Using manual fallback harvester");
+                const zip = new JSZip();
+                const projectStr = JSON.stringify(projectData, null, 2);
+                zip.file('project.json', projectStr);
 
-            console.log(`[Rescue] Harvesting ${related.length} assets for zip package`);
+                // Find all assets mentioned in the project string anywhere
+                const related = items.filter(i =>
+                    i.category !== 'projects' &&
+                    (i.owner?.projectId === project.key || projectStr.includes(i.key))
+                );
 
-            for (const asset of related) {
-                const data = asset.rawData;
-                // Clean filename to prevent zip corruption
-                const fileName = asset.key.replace(/[^\w.-]/g, '_');
-
-                if (data instanceof Blob) {
-                    zip.file(`assets/${fileName}`, data);
-                } else if (typeof data === 'string') {
-                    // Check if it's base64 image data stored as string
-                    if (data.startsWith('data:')) {
-                        const parts = data.split(',');
-                        const mime = parts[0].match(/:(.*?);/)?.[1] || 'bin';
-                        const ext = mime.split('/')[1] || 'bin';
-                        zip.file(`assets/${fileName}.${ext}`, data.split(',')[1], { base64: true });
+                for (const asset of related) {
+                    const data = asset.rawData;
+                    const fileName = asset.key.replace(/[^\w.-]/g, '_');
+                    if (data instanceof Blob) {
+                        zip.file(`assets/${fileName}`, data);
+                    } else if (typeof data === 'string' && data.startsWith('data:')) {
+                        zip.file(`assets/${fileName}`, data.split(',')[1], { base64: true });
                     } else {
-                        zip.file(`assets/${fileName}.txt`, data);
+                        zip.file(`assets/${fileName}`, typeof data === 'string' ? data : JSON.stringify(data, null, 2));
                     }
-                } else {
-                    zip.file(`assets/${fileName}.json`, JSON.stringify(data, null, 2));
                 }
+                blob = await zip.generateAsync({ type: 'blob' });
             }
 
-            const content = await zip.generateAsync({ type: 'blob' });
-            saveAs(content, `Project_Package_${project.name.replace(/[^\w\s가-힣]/g, '_')}.zip`);
+            saveAs(blob, `Project_Package_${project.name.replace(/[^\w\s가-힣]/g, '_')}.zip`);
         } catch (e: any) {
+            console.error("[Rescue] Export failed:", e);
             alert(`ZIP 생성 실패: ${e.message}`);
         } finally {
             setLoading(false);
