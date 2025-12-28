@@ -66,7 +66,10 @@ export interface ThumbnailSettings {
     imagePosition: { x: number; y: number };
     textPosition: { x: number; y: number };
     titleSize: number;
-    epNumSize: number;
+    episodeTitle?: string;
+    seriesTitle?: string;
+    seriesTitleSize?: number;
+    textAlign?: 'left' | 'center' | 'right';
     textColor: string;
     fontFamily: string;
     frameImage: string;

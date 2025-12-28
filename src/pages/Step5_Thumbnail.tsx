@@ -10,7 +10,7 @@ import { resolveUrl, saveToIdb, isIdbUrl } from '../utils/imageStorage';
 export const Step5_Thumbnail: React.FC = () => {
     const {
         id: projectId,
-        episodeName, episodeNumber,
+        episodeName, seriesName,
         setThumbnail, nextStep, prevStep,
         thumbnailSettings, setThumbnailSettings,
         isHydrated,
@@ -50,8 +50,8 @@ export const Step5_Thumbnail: React.FC = () => {
     const [frameImage, setFrameImage] = useState<string>(thumbnailSettings?.frameImage || '/frame_bg.svg');
     const [resolvedFrameImage, setResolvedFrameImage] = useState<string>(thumbnailSettings?.frameImage || '/frame_bg.svg');
     const [titleFont, setTitleFont] = useState(thumbnailSettings?.fontFamily || 'Inter');
-    const [customTitle, setCustomTitle] = useState(episodeName || '');
-    const [customEpNum, setCustomEpNum] = useState(episodeNumber?.toString() || '1');
+    const [customTitle, setCustomTitle] = useState(thumbnailSettings?.episodeTitle || episodeName || '');
+
 
     // Image Transform State
     const [scale, setScale] = useState(thumbnailSettings?.scale || 1);
@@ -59,8 +59,10 @@ export const Step5_Thumbnail: React.FC = () => {
 
     // Text Transform State
     const [textPosition, setTextPosition] = useState(thumbnailSettings?.textPosition || { x: 0, y: 0 });
-    const [titleSize, setTitleSize] = useState(thumbnailSettings?.titleSize || 48);
-    const [epNumSize, setEpNumSize] = useState(thumbnailSettings?.epNumSize || 60);
+    const [titleSize, setTitleSize] = useState(thumbnailSettings?.titleSize || 60);
+    const [seriesTitle, setSeriesTitle] = useState(thumbnailSettings?.seriesTitle || seriesName || '');
+    const [seriesTitleSize, setSeriesTitleSize] = useState(thumbnailSettings?.seriesTitleSize || 36);
+    const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>(thumbnailSettings?.textAlign || 'left');
     const [textColor, setTextColor] = useState(thumbnailSettings?.textColor || '#ffffff');
 
     // Resolve style reference if it exists
@@ -118,7 +120,9 @@ export const Step5_Thumbnail: React.FC = () => {
                 if (settings.imagePosition) setPosition(settings.imagePosition);
                 if (settings.textPosition) setTextPosition(settings.textPosition);
                 if (settings.titleSize) setTitleSize(settings.titleSize);
-                if (settings.epNumSize) setEpNumSize(settings.epNumSize);
+                if (settings.seriesTitle) setSeriesTitle(settings.seriesTitle);
+                if (settings.seriesTitleSize) setSeriesTitleSize(settings.seriesTitleSize);
+                if (settings.textAlign) setTextAlign(settings.textAlign);
                 if (settings.textColor) setTextColor(settings.textColor);
                 if (settings.fontFamily) setTitleFont(settings.fontFamily);
                 if (settings.frameImage) setFrameImage(settings.frameImage);
@@ -143,8 +147,8 @@ export const Step5_Thumbnail: React.FC = () => {
     // Sync with store when it changes
     useEffect(() => {
         if (episodeName) setCustomTitle(episodeName);
-        if (episodeNumber) setCustomEpNum(episodeNumber.toString());
-    }, [episodeName, episodeNumber]);
+        if (seriesName) setSeriesTitle(seriesName);
+    }, [episodeName, seriesName]);
 
     // Sync local state with store when hydrated
     useEffect(() => {
@@ -157,7 +161,9 @@ export const Step5_Thumbnail: React.FC = () => {
             setPosition(thumbnailSettings.imagePosition);
             setTextPosition(thumbnailSettings.textPosition);
             setTitleSize(thumbnailSettings.titleSize);
-            setEpNumSize(thumbnailSettings.epNumSize);
+            if (thumbnailSettings.seriesTitle) setSeriesTitle(thumbnailSettings.seriesTitle);
+            if (thumbnailSettings.seriesTitleSize) setSeriesTitleSize(thumbnailSettings.seriesTitleSize);
+            if (thumbnailSettings.textAlign) setTextAlign(thumbnailSettings.textAlign);
             setTextColor(thumbnailSettings.textColor);
             setTitleFont(thumbnailSettings.fontFamily);
             setFrameImage(thumbnailSettings.frameImage);
@@ -189,7 +195,10 @@ export const Step5_Thumbnail: React.FC = () => {
                 imagePosition: position,
                 textPosition,
                 titleSize,
-                epNumSize,
+                episodeTitle: customTitle,
+                seriesTitle,
+                seriesTitleSize,
+                textAlign,
                 textColor,
                 fontFamily: titleFont,
                 frameImage
@@ -197,7 +206,7 @@ export const Step5_Thumbnail: React.FC = () => {
         }, 500); // Debounce save
 
         return () => clearTimeout(timer);
-    }, [mode, aiPrompt, aiTitle, selectedReferenceIds, styleReferenceId, scale, position, textPosition, titleSize, epNumSize, textColor, titleFont, frameImage, setThumbnailSettings, isHydrated]);
+    }, [mode, aiPrompt, aiTitle, selectedReferenceIds, styleReferenceId, scale, position, textPosition, titleSize, seriesTitle, seriesTitleSize, textAlign, textColor, titleFont, frameImage, customTitle, setThumbnailSettings, isHydrated]);
 
 
     // Calculate scale factor on resize
@@ -320,9 +329,9 @@ export const Step5_Thumbnail: React.FC = () => {
                 downloadLink.href = url;
 
                 // Sanitize filename
-                const safeEpNum = (customEpNum || '1').replace(/[^a-z0-9]/gi, '_');
                 const safeTitle = (customTitle || 'Episode').replace(/[^a-z0-9]/gi, '_');
-                downloadLink.download = `Thumbnail_Ep${safeEpNum}_${safeTitle}.jpeg`;
+                const safeSeries = (seriesTitle || 'Series').replace(/[^a-z0-9]/gi, '_');
+                downloadLink.download = `Thumbnail_${safeTitle}_${safeSeries}.jpeg`;
 
                 document.body.appendChild(downloadLink);
                 downloadLink.click();
@@ -581,36 +590,41 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                 {/* LAYER 3: TEXT (TOP) - Z-20 */}
                 <div className="absolute inset-0 z-20 pointer-events-none flex flex-col justify-end p-[5%] pb-[8%]">
                     <div
-                        className="flex items-end gap-8 px-12"
+                        className="flex flex-col gap-2 px-12"
                         style={{
                             transform: `translate(${textPosition.x}px, ${textPosition.y}px)`,
-                            transition: forCapture ? 'none' : 'transform 0.1s ease-out'
+                            transition: forCapture ? 'none' : 'transform 0.1s ease-out',
+                            textAlign: textAlign
                         }}
                     >
-                        <span
-                            className="font-bold"
-                            style={{
-                                fontFamily: 'Oswald, Arial, sans-serif',
-                                fontSize: `${epNumSize}px`,
-                                lineHeight: 1.2,
-                                color: textColor,
-                                textShadow: '0 2px 10px rgba(0,0,0,0.5)',
-                            }}
-                        >
-                            #{customEpNum}
-                        </span>
+                        {/* Episode Title (Top) */}
                         <h1
                             style={{
                                 fontFamily: `${titleFont}, Arial, sans-serif`,
                                 fontSize: `${titleSize}px`,
-                                lineHeight: 1.3,
+                                lineHeight: 1.2,
                                 color: textColor,
-                                textShadow: '0 2px 10px rgba(0,0,0,0.5)',
+                                textShadow: '0 4px 20px rgba(0,0,0,0.7)',
                                 fontWeight: 'bold',
                             }}
                         >
                             {customTitle}
                         </h1>
+                        {/* Series Title (Bottom) */}
+                        {seriesTitle && (
+                            <p
+                                style={{
+                                    fontFamily: `${titleFont}, Arial, sans-serif`,
+                                    fontSize: `${seriesTitleSize}px`,
+                                    lineHeight: 1.3,
+                                    color: textColor,
+                                    textShadow: '0 2px 10px rgba(0,0,0,0.5)',
+                                    opacity: 0.85,
+                                }}
+                            >
+                                {seriesTitle}
+                            </p>
+                        )}
                     </div>
                 </div>
             </div>
@@ -890,6 +904,7 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                                 </label>
 
                                 <div className="space-y-4">
+                                    {/* Episode Title Input */}
                                     <div className="space-y-2">
                                         <label className="text-[10px] text-gray-500 font-bold uppercase tracking-widest px-1">Episode Title</label>
                                         <input
@@ -900,18 +915,21 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                                         />
                                     </div>
 
-                                    <div className="flex gap-4">
-                                        <div className="flex-[1] space-y-2">
-                                            <label className="text-[10px] text-gray-500 font-bold uppercase tracking-widest px-1">Ep. #</label>
-                                            <input
-                                                type="text"
-                                                value={customEpNum}
-                                                onChange={(e) => setCustomEpNum(e.target.value)}
-                                                className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm text-center font-bold focus:border-white/20 outline-none shadow-inner"
-                                            />
-                                        </div>
-                                        <div className="flex-[2] space-y-2">
-                                            <label className="text-[10px] text-gray-500 font-bold uppercase tracking-widest px-1">Font Family</label>
+                                    {/* Series Title Input */}
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] text-gray-500 font-bold uppercase tracking-widest px-1">Series Title</label>
+                                        <input
+                                            type="text"
+                                            value={seriesTitle}
+                                            onChange={(e) => setSeriesTitle(e.target.value)}
+                                            className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm text-white focus:border-white/20 outline-none shadow-inner"
+                                        />
+                                    </div>
+
+                                    {/* Font & Alignment Row */}
+                                    <div className="flex gap-3">
+                                        <div className="flex-1 space-y-2">
+                                            <label className="text-[10px] text-gray-500 font-bold uppercase tracking-widest px-1">Font</label>
                                             <select
                                                 value={titleFont}
                                                 onChange={(e) => setTitleFont(e.target.value)}
@@ -922,11 +940,29 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                                                 ))}
                                             </select>
                                         </div>
+                                        <div className="w-24 space-y-2">
+                                            <label className="text-[10px] text-gray-500 font-bold uppercase tracking-widest px-1">Align</label>
+                                            <div className="flex bg-black/40 border border-white/10 rounded-xl overflow-hidden">
+                                                <button
+                                                    onClick={() => setTextAlign('left')}
+                                                    className={`flex-1 py-2.5 text-[10px] font-bold transition-colors ${textAlign === 'left' ? 'bg-white/20 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                                                >L</button>
+                                                <button
+                                                    onClick={() => setTextAlign('center')}
+                                                    className={`flex-1 py-2.5 text-[10px] font-bold transition-colors border-x border-white/10 ${textAlign === 'center' ? 'bg-white/20 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                                                >C</button>
+                                                <button
+                                                    onClick={() => setTextAlign('right')}
+                                                    className={`flex-1 py-2.5 text-[10px] font-bold transition-colors ${textAlign === 'right' ? 'bg-white/20 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                                                >R</button>
+                                            </div>
+                                        </div>
                                     </div>
 
+                                    {/* Size & Position Controls */}
                                     <div className="space-y-3 p-4 bg-white/5 rounded-2xl border border-white/5">
                                         <div className="flex justify-between items-center px-1">
-                                            <span className="text-[10px] text-gray-500 font-bold uppercase">Manual Adjustments</span>
+                                            <span className="text-[10px] text-gray-500 font-bold uppercase">Size & Position</span>
                                             <input
                                                 type="color"
                                                 value={textColor}
@@ -935,6 +971,7 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                                             />
                                         </div>
                                         <div className="space-y-4 pt-2">
+                                            {/* Position Controls */}
                                             <div className="grid grid-cols-2 gap-4">
                                                 <div className="space-y-1">
                                                     <div className="flex justify-between text-[9px] text-gray-500 font-bold uppercase px-1">X Offset</div>
@@ -955,9 +992,10 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                                                     />
                                                 </div>
                                             </div>
+                                            {/* Size Controls */}
                                             <div className="grid grid-cols-2 gap-4">
                                                 <div className="space-y-1">
-                                                    <div className="flex justify-between text-[9px] text-gray-500 font-bold uppercase px-1">Title Size</div>
+                                                    <div className="flex justify-between text-[9px] text-gray-500 font-bold uppercase px-1">Episode Size <span className="text-gray-600">{titleSize}px</span></div>
                                                     <input
                                                         type="range" min="20" max="150" step="1"
                                                         value={titleSize}
@@ -966,11 +1004,11 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                                                     />
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <div className="flex justify-between text-[9px] text-gray-500 font-bold uppercase px-1">Num Size</div>
+                                                    <div className="flex justify-between text-[9px] text-gray-500 font-bold uppercase px-1">Series Size <span className="text-gray-600">{seriesTitleSize}px</span></div>
                                                     <input
-                                                        type="range" min="20" max="150" step="1"
-                                                        value={epNumSize}
-                                                        onChange={(e) => setEpNumSize(parseInt(e.target.value))}
+                                                        type="range" min="16" max="100" step="1"
+                                                        value={seriesTitleSize}
+                                                        onChange={(e) => setSeriesTitleSize(parseInt(e.target.value))}
                                                         className="w-full accent-white/30"
                                                     />
                                                 </div>
