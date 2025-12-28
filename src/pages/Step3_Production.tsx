@@ -365,9 +365,9 @@ export const Step3_Production: React.FC = () => {
                     stylePrompt += `\n${masterStyle.backgroundModifier}`;
                 }
             }
-            if (styleAnchor?.prompts) {
-                stylePrompt += `\n\n[Style Details]\n${JSON.stringify(styleAnchor.prompts)}`;
-            }
+            // NOTE: styleAnchor.prompts removed from image prompt
+            // Reason: Raw JSON like {"font":"Inter, sans-serif"} was being rendered as text in images
+            // masterStyle.description already provides sufficient style context
 
             // REORDERED PROMPT STRUCTURE: Asset Details First -> Style -> Scene Action
             // This ensures the "Who" and "What" (Orange Uniform) are established before the "Action"

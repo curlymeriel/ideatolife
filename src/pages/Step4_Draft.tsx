@@ -244,9 +244,8 @@ export const Step4_Draft: React.FC = () => {
             if (masterStyle?.description) {
                 stylePrompt += `\n\n[Master Visual Style]\n${masterStyle.description}`;
             }
-            if (styleAnchor?.prompts) {
-                stylePrompt += `\n\n[Style Details]\n${JSON.stringify(styleAnchor.prompts)}`;
-            }
+            // NOTE: styleAnchor.prompts removed from image prompt
+            // Reason: Raw JSON like {"font":"Inter, sans-serif"} was being rendered as text in images
 
             const finalPrompt = prompt + characterDetails + stylePrompt;
 
