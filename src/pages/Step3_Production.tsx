@@ -80,17 +80,17 @@ export const Step3_Production: React.FC = () => {
     }, [characters, episodeCharacters]);
 
     const TTS_MODELS = [
-        { value: 'standard' as const, label: 'Standard', cost: '$', hint: 'Basic quality, lowest cost' },
-        { value: 'wavenet' as const, label: 'WaveNet', cost: '$$', hint: 'High quality, moderate cost' },
-        { value: 'neural2' as const, label: 'Neural2 (영어)', cost: '$$$', hint: 'Premium English voices with pitch control' },
+        { value: 'standard' as const, label: 'Standard', cost: '$', hint: '기본 품질, 가장 저렴한 비용' },
+        { value: 'wavenet' as const, label: 'WaveNet', cost: '$$', hint: '고품질, 합리적인 비용' },
+        { value: 'neural2' as const, label: 'Neural2 (다국어/일반)', cost: '$$$', hint: '피치 조절이 가능한 프리미엄 보이스 (영어 특화)' },
         { value: 'chirp3-hd' as const, label: 'Chirp 3 HD (한국어)', cost: '$$$', hint: '최신 한국어 AI 목소리 - 자연스러운 억양' },
         { value: 'gemini-tts' as const, label: 'Gemini TTS ✨', cost: '$$', hint: '자연어 연기 지시 지원 - 감정 표현 최고' },
     ];
 
 
     const IMAGE_MODELS = [
-        { value: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash', cost: '$', hint: 'Fast, efficient' },
-        { value: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro Image', cost: '$$$', hint: 'High fidelity, premium' },
+        { value: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash', cost: '$', hint: '빠르고 효율적인 기본 모델' },
+        { value: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro Image', cost: '$$$', hint: '고품질 프리미엄 이미지 생성' },
     ];
 
     const handleGenerateScript = async () => {
@@ -1433,7 +1433,7 @@ export const Step3_Production: React.FC = () => {
                             <div className="mt-2 p-3 bg-black/20 rounded-lg border border-white/5 space-y-3">
                                 <div className="text-[10px] text-gray-400 font-bold flex items-center gap-1 uppercase tracking-wider">
                                     <div className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)]"></div>
-                                    Bulk Audio Settings
+                                    일괄 오디오 세팅
                                 </div>
 
                                 {/* Global Settings */}
@@ -1523,7 +1523,7 @@ export const Step3_Production: React.FC = () => {
                                                         <button
                                                             onClick={() => handleBulkGenerateAudio(speaker)}
                                                             className="flex-1 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 hover:text-orange-300 text-[10px] py-1 rounded flex items-center justify-center gap-1 transition-colors font-medium border border-orange-500/30"
-                                                            title="Generate audio for all unlocked cuts for this speaker"
+                                                            title="해당 화자의 잠금 해제된 모든 컷 오디오 생성"
                                                         >
                                                             <Wand2 size={10} />
                                                             Gen All
@@ -1531,14 +1531,14 @@ export const Step3_Production: React.FC = () => {
                                                         <button
                                                             onClick={() => handleBulkLockAudio(speaker, true)}
                                                             className="px-2 bg-green-500/10 hover:bg-green-500/20 text-green-400 text-[10px] py-1 rounded transition-colors"
-                                                            title="Lock all generated audio for this speaker"
+                                                            title="해당 화자의 생성된 모든 오디오 잠금"
                                                         >
                                                             <Lock size={10} />
                                                         </button>
                                                         <button
                                                             onClick={() => handleBulkLockAudio(speaker, false)}
                                                             className="px-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-[10px] py-1 rounded transition-colors"
-                                                            title="Unlock all audio for this speaker"
+                                                            title="해당 화자의 모든 컷 오디오 잠금 해제"
                                                         >
                                                             <Unlock size={10} />
                                                         </button>
@@ -1559,7 +1559,7 @@ export const Step3_Production: React.FC = () => {
                 <div className="glass-panel p-4 space-y-3">
                     <div className="flex items-center justify-between mb-1">
                         <span className="text-sm font-bold text-white flex items-center gap-2">
-                            <Sparkles size={14} className="text-[var(--color-primary)]" />
+                            <Sparkles size={14} className="text-white" />
                             프롬프트 작성 Gemini 지시문 관리
                         </span>
                     </div>
