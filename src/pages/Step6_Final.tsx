@@ -1529,7 +1529,7 @@ export const Step6_Final = () => {
                                 <Film size={28} className="text-[var(--color-primary)]" />
                                 Export Video
                             </h3>
-                            <p className="text-gray-400 mb-6">Choose your preferred export method</p>
+                            <p className="text-gray-400 mb-6">원하는 내보내기 방식을 선택하세요</p>
 
                             {/* Export Visual Mode Selector */}
                             <div className="mb-6 p-4 bg-black/30 rounded-xl border border-white/5 space-y-3">
@@ -1550,8 +1550,8 @@ export const Step6_Final = () => {
                                 </div>
                                 <p className="text-[10px] text-gray-500 italic">
                                     {exportHybrid
-                                        ? "Includes video clips where available."
-                                        : "Exports images for all cuts, ignoring video clips."}
+                                        ? "비디오 클립이 있는 컷은 비디오로 포함됩니다."
+                                        : "모든 컷을 이미지로 내보냅니다. (비디오 클립 무시)"}
                                 </p>
                             </div>
 
@@ -1571,7 +1571,7 @@ export const Step6_Final = () => {
                                                 ⚡ Quick Export (WebM)
                                             </h4>
                                             <p className="text-sm text-gray-400 mt-1">
-                                                Fast real-time recording. Good quality, includes subtitles.
+                                                빠른 실시간 녹화. 양호한 화질, 자막 포함.
                                             </p>
                                             <div className="flex gap-2 mt-2">
                                                 <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs rounded-full">Fast</span>
@@ -1595,13 +1595,13 @@ export const Step6_Final = () => {
                                                 🎥 High Quality (MP4)
                                             </h4>
                                             <p className="text-sm text-gray-400 mt-1">
-                                                H.264 encoding via FFmpeg. Best quality, universal compatibility.
+                                                FFmpeg 기반 H.264 인코딩. 최고 화질, 범용 호환성.
                                             </p>
                                             <div className="flex gap-2 mt-2">
                                                 <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 text-xs rounded-full">Best Quality</span>
                                                 <span className="px-2 py-0.5 bg-orange-500/20 text-orange-400 text-xs rounded-full">MP4</span>
                                                 {!isFFmpegSupported() && (
-                                                    <span className="px-2 py-0.5 bg-red-500/20 text-red-400 text-xs rounded-full">Requires CORS headers</span>
+                                                    <span className="px-2 py-0.5 bg-red-500/20 text-red-400 text-xs rounded-full">CORS 설정 필요</span>
                                                 )}
                                             </div>
                                         </div>
@@ -1622,7 +1622,7 @@ export const Step6_Final = () => {
                                                 📦 Video Kit (ZIP)
                                             </h4>
                                             <p className="text-sm text-gray-400 mt-1">
-                                                Download all assets with FFmpeg script. Create video with external tools.
+                                                모든 에셋과 FFmpeg 스크립트를 다운로드. 외부 도구로 영상 제작.
                                             </p>
                                             <div className="flex gap-2 mt-2">
                                                 <span className="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 text-xs rounded-full">Offline</span>
