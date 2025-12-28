@@ -70,13 +70,28 @@ async function loadSubtitleFont(ffmpeg: any, onProgress?: (progress: number, sta
 
 /**
  * Escape text for FFmpeg drawtext filter
+ * FFmpeg drawtext has VERY strict escaping requirements
  */
 function escapeFFmpegDrawtext(text: string): string {
     if (!text) return '';
-    return text
-        .replace(/\\/g, '\\\\')
-        .replace(/'/g, "'\\''")
-        .replace(/:/g, '\\:');
+    // Step 1: Escape backslashes first
+    let escaped = text.replace(/\\/g, '\\\\');
+    // Step 2: Escape single quotes
+    escaped = escaped.replace(/'/g, "'\\''");
+    // Step 3: Escape colons
+    escaped = escaped.replace(/:/g, '\\:');
+    // Step 4: Escape semicolons (breaks filter chains)
+    escaped = escaped.replace(/;/g, '\\;');
+    // Step 5: Escape percent signs
+    escaped = escaped.replace(/%/g, '\\%');
+    // Step 6: Escape brackets and parentheses
+    escaped = escaped.replace(/\[/g, '\\[');
+    escaped = escaped.replace(/\]/g, '\\]');
+    escaped = escaped.replace(/\(/g, '\\(');
+    escaped = escaped.replace(/\)/g, '\\)');
+    // Step 7: Remove control characters
+    escaped = escaped.replace(/[\x00-\x1F\x7F]/g, ' ');
+    return escaped;
 }
 
 /**
