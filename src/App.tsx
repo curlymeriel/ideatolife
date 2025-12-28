@@ -1,20 +1,21 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { Suspense, lazy } from 'react';
+import { Suspense } from 'react';
 import { MainLayout } from './components/Layout/MainLayout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Loader2 } from 'lucide-react';
+import { lazyImport } from './utils/lazyImport';
 
-// Lazy load pages
-const Dashboard = lazy(() => import('./pages/Dashboard').then(module => ({ default: module.Dashboard })));
-const Step1_Setup = lazy(() => import('./pages/Step1_Setup').then(module => ({ default: module.Step1_Setup })));
-const Step2_Style = lazy(() => import('./pages/Step2_Style').then(module => ({ default: module.Step2_Style })));
-const Step3_Production = lazy(() => import('./pages/Step3_Production').then(module => ({ default: module.Step3_Production })));
-const Step4_QualityAssurance = lazy(() => import('./pages/Step4_QualityAssurance').then(module => ({ default: module.Step4_QualityAssurance })));
-const Step4_5_VideoComposition = lazy(() => import('./pages/Step4_5_VideoComposition').then(module => ({ default: module.Step4_5_VideoComposition })));
-const Step5_Thumbnail = lazy(() => import('./pages/Step5_Thumbnail').then(module => ({ default: module.Step5_Thumbnail })));
-const Step6_Final = lazy(() => import('./pages/Step6_Final').then(module => ({ default: module.Step6_Final })));
+// Lazy load pages with auto-reload recovery
+const Dashboard = lazyImport(() => import('./pages/Dashboard').then(module => ({ default: module.Dashboard })));
+const Step1_Setup = lazyImport(() => import('./pages/Step1_Setup').then(module => ({ default: module.Step1_Setup })));
+const Step2_Style = lazyImport(() => import('./pages/Step2_Style').then(module => ({ default: module.Step2_Style })));
+const Step3_Production = lazyImport(() => import('./pages/Step3_Production').then(module => ({ default: module.Step3_Production })));
+const Step4_QualityAssurance = lazyImport(() => import('./pages/Step4_QualityAssurance').then(module => ({ default: module.Step4_QualityAssurance })));
+const Step4_5_VideoComposition = lazyImport(() => import('./pages/Step4_5_VideoComposition').then(module => ({ default: module.Step4_5_VideoComposition })));
+const Step5_Thumbnail = lazyImport(() => import('./pages/Step5_Thumbnail').then(module => ({ default: module.Step5_Thumbnail })));
+const Step6_Final = lazyImport(() => import('./pages/Step6_Final').then(module => ({ default: module.Step6_Final })));
 
-const SharedView = lazy(() => import('./pages/SharedView').then(module => ({ default: module.SharedView })));
+const SharedView = lazyImport(() => import('./pages/SharedView').then(module => ({ default: module.SharedView })));
 
 
 const PageLoader = () => (
