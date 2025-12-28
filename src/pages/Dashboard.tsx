@@ -471,57 +471,63 @@ export const Dashboard: React.FC = () => {
                             <h3 className="text-xs font-bold text-white uppercase tracking-wider">데이터 관리</h3>
                         </div>
 
-                        <div className="space-y-2">
-                            {/* 저장소 통합 관리 (Unified) */}
+                        <div className="space-y-4">
+                            {/* 1. 데이터 최적화 (구조 개편) */}
+                            <button
+                                onClick={handleMigrateProjects}
+                                disabled={isMigrating}
+                                className="w-full group flex flex-col items-start p-3 bg-purple-500/5 hover:bg-purple-500/10 border border-purple-500/10 rounded-xl transition-all disabled:opacity-50"
+                            >
+                                <div className="flex items-center gap-2 mb-1">
+                                    {isMigrating ? <Loader2 size={14} className="animate-spin text-purple-400" /> : <Database size={14} className="text-purple-400" />}
+                                    <span className="text-[11px] font-bold text-white uppercase">데이터 최적화 (구조 개편)</span>
+                                </div>
+                                <p className="text-[10px] text-gray-500 leading-tight text-left">구식 데이터 구조를 최신 저장소 방식으로 전환하여 전체적인 앱 성능을 극대화합니다.</p>
+                                {migrationResult && (
+                                    <p className="text-[9px] text-green-500 mt-2 font-mono animate-pulse">
+                                        ✅ Optimized: {migrationResult.freed}MB Freed
+                                    </p>
+                                )}
+                            </button>
+
+                            {/* 2. 저장소 통합 관리 (유지보수) */}
                             <button
                                 onClick={() => setShowStorageManager(true)}
-                                className="w-full group flex flex-col items-start p-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all"
+                                className="w-full group flex flex-col items-start p-3 bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/10 rounded-xl transition-all"
                             >
                                 <div className="flex items-center gap-2 mb-1">
                                     <HardDrive size={14} className="text-blue-400" />
-                                    <span className="text-[11px] font-bold text-white uppercase">저장소 통합 관리</span>
+                                    <span className="text-[11px] font-bold text-white uppercase">저장소 통합 관리 (유지보수)</span>
                                 </div>
-                                <p className="text-[10px] text-gray-500 leading-tight text-left">사용 현황 요약, 고아 파일 정리, 상세 내역 확인을 한데 모아 관리합니다.</p>
+                                <p className="text-[10px] text-gray-500 leading-tight text-left">사용량 요약, 이미지 압축, 고아 파일 등 일상적인 유지보수 도구를 제공합니다.</p>
                             </button>
 
-                            {/* 긴급 데이터 복구 (End User) */}
-                            <button
-                                onClick={() => navigate('/rescue')}
-                                className="w-full group flex flex-col items-start p-3 bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 rounded-xl transition-all"
-                            >
-                                <div className="flex items-center gap-2 mb-1">
-                                    <AlertTriangle size={14} className="text-red-400" />
-                                    <span className="text-[11px] font-bold text-white uppercase">긴급 데이터 복구</span>
+                            {/* 3. 복구 센터 (긴급 및 세션) */}
+                            <div className="space-y-2">
+                                <div className="flex items-center gap-2 px-1 py-1">
+                                    <AlertTriangle size={12} className="text-red-400" />
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">데이터 복구 센터</span>
                                 </div>
-                                <p className="text-[10px] text-gray-500 leading-tight text-left">오류로 인해 유실된 데이터를 응급 복구합니다.</p>
-                            </button>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        onClick={() => navigate('/rescue')}
+                                        className="flex flex-col items-center justify-center p-2 bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 rounded-xl transition-all"
+                                        title="긴급 데이터 복구"
+                                    >
+                                        <AlertTriangle size={14} className="text-red-400 mb-1" />
+                                        <span className="text-[10px] font-bold text-white text-center leading-tight">긴급 복구</span>
+                                    </button>
 
-                            {/* 세션 복구 및 최적화 (Mixed) */}
-                            <div className="grid grid-cols-2 gap-2">
-                                <button
-                                    onClick={() => store.restoreData()}
-                                    className="flex flex-col items-center justify-center p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all h-full"
-                                    title="마지막 저장된 상태로 세션 복구"
-                                >
-                                    <RotateCcw size={14} className="text-green-400 mb-1" />
-                                    <span className="text-[10px] font-bold text-white text-center">세션 복구</span>
-                                </button>
-
-                                <button
-                                    onClick={handleMigrateProjects}
-                                    disabled={isMigrating}
-                                    className="flex flex-col items-center justify-center p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all h-full disabled:opacity-50"
-                                    title="데이터 마이그레이션 및 최적화"
-                                >
-                                    {isMigrating ? <Loader2 size={14} className="animate-spin text-purple-400 mb-1" /> : <Database size={14} className="text-purple-400 mb-1" />}
-                                    <span className="text-[10px] font-bold text-white text-center">데이터 최적화</span>
-                                </button>
+                                    <button
+                                        onClick={() => store.restoreData()}
+                                        className="flex flex-col items-center justify-center p-2 bg-green-500/5 hover:bg-green-500/10 border border-green-500/10 rounded-xl transition-all"
+                                        title="마지막 저장된 상태로 세션 복구"
+                                    >
+                                        <RotateCcw size={14} className="text-green-400 mb-1" />
+                                        <span className="text-[10px] font-bold text-white text-center leading-tight">세션 복구</span>
+                                    </button>
+                                </div>
                             </div>
-                            {migrationResult && (
-                                <p className="text-[9px] text-green-500 text-center font-mono animate-pulse">
-                                    ✅ Optimized: {migrationResult.freed}MB Freed
-                                </p>
-                            )}
                         </div>
                     </div>
                 </div>
