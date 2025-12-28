@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useWorkflowStore } from '../../store/workflowStore';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { StorageManager } from '../StorageManager';
-import { Film, Palette, FileText, CheckCircle2, Image, Play, Box, Home, RotateCcw, Settings, ChevronDown, HardDrive, AlertTriangle, Circle, HelpCircle, BookOpen, MessageCircle } from 'lucide-react';
+
+import { Film, Palette, FileText, CheckCircle2, Image, Play, Box, Home, RotateCcw, Settings, ChevronDown, Circle, HelpCircle, BookOpen, MessageCircle } from 'lucide-react';
 import { WelcomeGuide } from '../WelcomeGuide';
 import { SupportModal } from '../SupportModal';
 import { AppSupportChatbot } from '../AppSupportChatbot';
@@ -25,12 +25,11 @@ const STEPS = [
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     const store = useWorkflowStore();
     const {
-        currentStep, seriesName, episodeName, episodeNumber, episodePlot, apiKeys, setApiKeys, restoreData,
+        currentStep, seriesName, episodeName, episodeNumber, episodePlot, apiKeys, setApiKeys,
         script, masterStyle, characters, episodeCharacters, seriesLocations, episodeLocations,
         seriesProps, episodeProps, assetDefinitions
     } = store;
     const [showApiConfig, setShowApiConfig] = useState(false);
-    const [showStorageManager, setShowStorageManager] = useState(false);
     const location = useLocation();
     const navigate = useNavigate();
     // const currentPath = location.pathname;
@@ -296,49 +295,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                     })}
                 </nav>
 
-                {/* Footer Actions */}
                 <div className="border-t border-[var(--color-border)] bg-[var(--color-surface)]">
-                    {/* Restore Data Button */}
-                    <button
-                        onClick={restoreData}
-                        className="w-full p-3 flex items-center gap-3 text-[var(--color-text-muted)] hover:text-white hover:bg-[rgba(255,255,255,0.05)] transition-colors border-b border-[var(--color-border)]"
-                        title="Restore data from Database or LocalStorage"
-                    >
-                        <RotateCcw size={16} />
-                        <span className="text-sm font-medium">Restore Data</span>
-                    </button>
-
-
-
-                    {/* Storage Manager Button */}
-                    <button
-                        onClick={() => setShowStorageManager(true)}
-                        className="w-full p-3 flex items-center gap-3 text-[var(--color-primary)] hover:text-white hover:bg-[rgba(255,173,117,0.1)] transition-colors border-b border-[var(--color-border)]"
-                        title="Manage Storage and Clean up Orphans"
-                    >
-                        <HardDrive size={16} />
-                        <span className="text-sm font-medium">Storage Manager</span>
-                    </button>
-
-
-
-                    {showStorageManager && (
-                        <React.Suspense fallback={null}>
-                            <StorageManager onClose={() => setShowStorageManager(false)} />
-                        </React.Suspense>
-                    )}
-
-                    {/* Rescue Center Button */}
-                    <button
-                        onClick={() => navigate('/rescue')}
-                        className="w-full p-3 flex items-center gap-3 text-red-400 hover:text-red-300 hover:bg-[rgba(255,0,0,0.1)] transition-colors border-b border-[var(--color-border)]"
-                        title="Emergency Data Recovery"
-                    >
-                        <AlertTriangle size={16} />
-                        <span className="text-sm font-medium">Rescue Center</span>
-                    </button>
-
-
                     {/* API Config Toggle with Status */}
                     <button
                         onClick={() => setShowApiConfig(!showApiConfig)}

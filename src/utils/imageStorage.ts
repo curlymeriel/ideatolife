@@ -353,11 +353,15 @@ export async function optimizeAllStoredImages(
 
             if (!base64Data) continue;
 
-            // Detect PNG or large blobs
-            const isPng = base64Data.includes('image/png') || (base64Data.includes('application/octet-stream') && base64Data.length > 50000);
-            const isLarge = base64Data.length > 150 * 1024; // 150KB threshold
+            // Detection Logic:
+            // 1. PNGs are always optimizable (transparency frames skipped below)
+            // 2. Large strings (Base64) are optimizable because converting to Blob saves 33% space
+            // 3. Very large existing JPEGs (>200KB) might benefit from quality 0.8 reduction
+            const isPng = base64Data.includes('image/png') || base64Data.startsWith('data:application/octet-stream');
+            const isBase64 = typeof rawData === 'string' && base64Data.length > 30000;
+            const isLarge = base64Data.length > 200 * 1024;
 
-            if (!isPng && !isLarge) continue;
+            if (!isPng && !isBase64 && !isLarge) continue;
 
             // EXEMPTION: Skip anything with 'frame' for transparency
             if (key.toLowerCase().includes('frame')) {
@@ -373,12 +377,19 @@ export async function optimizeAllStoredImages(
 
             const compressed = await compressImage(normalizedData, 1920, 0.80, 'image/jpeg');
 
-            if (compressed && compressed.length < base64Data.length) {
-                const diff = base64Data.length - compressed.length;
-                savedBytes += diff;
+            if (compressed && (compressed.length < base64Data.length || typeof rawData === 'string')) {
+                // Convert to Blob for binary efficiency (saves 33% overhead vs string)
+                const [, base64] = compressed.split(',');
+                const binary = atob(base64);
+                const array = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
+                const blob = new Blob([array], { type: 'image/jpeg' });
+
+                await set(key, blob);
+                const diff = (typeof rawData === 'string' ? rawData.length : rawData.size) - blob.size;
+                savedBytes += Math.max(0, diff);
                 optimized++;
-                await set(key, compressed);
-                console.log(`[Optimizer] ✅ FIXED ${key}: ${Math.round(base64Data.length / 1024)}KB -> ${Math.round(compressed.length / 1024)}KB (Saved ${Math.round(diff / 1024)}KB)`);
+                console.log(`[Optimizer] ✅ OPTIMIZED ${key}: ${Math.round(base64Data.length / 1024)}KB -> ${Math.round(blob.size / 1024)}KB Blob (Saved ${Math.round(diff / 1024)}KB)`);
             }
         } catch (e) {
             console.error(`[Optimizer] ❌ Error processing ${key}:`, e);

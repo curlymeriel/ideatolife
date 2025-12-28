@@ -1,9 +1,9 @@
 import React from 'react';
 import { useWorkflowStore, type ProjectData, type ProjectMetadata } from '../store/workflowStore';
 import { useNavigate } from 'react-router-dom';
-import { Image, FileText, Music, ArrowRight, BarChart3, Plus, Download, Trash2, Database, Loader2, Copy, Check } from 'lucide-react';
+import { Image, FileText, Music, ArrowRight, BarChart3, Plus, Download, Trash2, Database, Loader2, Copy, Check, HardDrive, AlertTriangle, RotateCcw, Settings } from 'lucide-react';
 
-import { StorageInspector } from '../components/StorageInspector';
+import { UnifiedStorageManager } from '../components/UnifiedStorageManager';
 import { migrateAllProjects } from '../utils/migration';
 
 import { debugListKeys, resolveUrl } from '../utils/imageStorage';
@@ -18,7 +18,7 @@ export const Dashboard: React.FC = () => {
     const { savedProjects, loadProject, createProject, deleteProject, duplicateProject, deleteSeries, isHydrated } = store;
     const isLoadingProjects = !isHydrated;
     const navigate = useNavigate();
-    const [showInspector, setShowInspector] = React.useState(false);
+    const [showStorageManager, setShowStorageManager] = React.useState(false);
     // Removed projectsData state - we now use savedProjects metadata exclusively
 
     // Local state for resolved IDB thumbnails and first cut images (lazy loaded)
@@ -433,19 +433,8 @@ export const Dashboard: React.FC = () => {
     return (
         <>
             <div className="grid grid-cols-12 gap-8 relative">
-                {showInspector && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center">
-                        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowInspector(false)} />
-                        <div className="relative z-10 w-full max-w-4xl">
-                            <StorageInspector />
-                            <button
-                                onClick={() => setShowInspector(false)}
-                                className="absolute top-4 right-4 text-white hover:text-red-400"
-                            >
-                                Close
-                            </button>
-                        </div>
-                    </div>
+                {showStorageManager && (
+                    <UnifiedStorageManager onClose={() => setShowStorageManager(false)} />
                 )}
 
                 {/* Left Sidebar */}
@@ -475,33 +464,62 @@ export const Dashboard: React.FC = () => {
                         </button>
                     </div>
 
-                    {/* Data Management */}
-                    <div className="space-y-2 max-w-[200px]">
-                        <div className="flex items-center gap-2">
-                            <div className="w-2.5 h-2.5 bg-gray-500 flex-shrink-0" />
+                    {/* 데이터 관리 섹션 (Data Management) */}
+                    <div className="pt-6 border-t border-white/5 space-y-4">
+                        <div className="flex items-center gap-2 px-1">
+                            <Settings size={14} className="text-[var(--color-primary)]" />
                             <h3 className="text-xs font-bold text-white uppercase tracking-wider">데이터 관리</h3>
                         </div>
-                        <div className="space-y-1.5">
+
+                        <div className="space-y-2">
+                            {/* 저장소 통합 관리 (Unified) */}
                             <button
-                                onClick={() => setShowInspector(true)}
-                                className="w-full flex items-center justify-between px-2.5 py-1 rounded-md bg-[var(--color-surface)] hover:bg-orange-500/20 hover:border-orange-500 border border-[var(--color-border)] transition-all text-xs text-white"
+                                onClick={() => setShowStorageManager(true)}
+                                className="w-full group flex flex-col items-start p-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all"
                             >
-                                <span>🧹 저장소 정리</span>
-                                <Trash2 size={10} />
+                                <div className="flex items-center gap-2 mb-1">
+                                    <HardDrive size={14} className="text-blue-400" />
+                                    <span className="text-[11px] font-bold text-white uppercase">저장소 통합 관리</span>
+                                </div>
+                                <p className="text-[10px] text-gray-500 leading-tight text-left">사용 현황 요약, 고아 파일 정리, 상세 내역 확인을 한데 모아 관리합니다.</p>
                             </button>
 
-                            {/* Migration Button */}
+                            {/* 긴급 데이터 복구 (End User) */}
                             <button
-                                onClick={handleMigrateProjects}
-                                disabled={isMigrating}
-                                className="w-full flex items-center justify-between px-2.5 py-1 rounded-md bg-[var(--color-surface)] hover:bg-blue-500/20 hover:border-blue-500 border border-[var(--color-border)] transition-all text-xs text-white disabled:opacity-50"
+                                onClick={() => navigate('/rescue')}
+                                className="w-full group flex flex-col items-start p-3 bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 rounded-xl transition-all"
                             >
-                                <span>{isMigrating ? '⏳ 마이그레이션 중...' : '💾 저장소 최적화'}</span>
-                                {isMigrating ? <Loader2 size={10} className="animate-spin" /> : <Database size={10} />}
+                                <div className="flex items-center gap-2 mb-1">
+                                    <AlertTriangle size={14} className="text-red-400" />
+                                    <span className="text-[11px] font-bold text-white uppercase">긴급 데이터 복구</span>
+                                </div>
+                                <p className="text-[10px] text-gray-500 leading-tight text-left">오류로 인해 유실된 데이터를 응급 복구합니다.</p>
                             </button>
+
+                            {/* 세션 복구 및 최적화 (Mixed) */}
+                            <div className="grid grid-cols-2 gap-2">
+                                <button
+                                    onClick={() => store.restoreData()}
+                                    className="flex flex-col items-center justify-center p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all h-full"
+                                    title="마지막 저장된 상태로 세션 복구"
+                                >
+                                    <RotateCcw size={14} className="text-green-400 mb-1" />
+                                    <span className="text-[10px] font-bold text-white text-center">세션 복구</span>
+                                </button>
+
+                                <button
+                                    onClick={handleMigrateProjects}
+                                    disabled={isMigrating}
+                                    className="flex flex-col items-center justify-center p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all h-full disabled:opacity-50"
+                                    title="데이터 마이그레이션 및 최적화"
+                                >
+                                    {isMigrating ? <Loader2 size={14} className="animate-spin text-purple-400 mb-1" /> : <Database size={14} className="text-purple-400 mb-1" />}
+                                    <span className="text-[10px] font-bold text-white text-center">데이터 최적화</span>
+                                </button>
+                            </div>
                             {migrationResult && (
-                                <p className="text-[10px] text-green-500 text-center">
-                                    ✅ Freed {migrationResult.freed}MB
+                                <p className="text-[9px] text-green-500 text-center font-mono animate-pulse">
+                                    ✅ Optimized: {migrationResult.freed}MB Freed
                                 </p>
                             )}
                         </div>
