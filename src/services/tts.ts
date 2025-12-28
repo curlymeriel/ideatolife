@@ -59,6 +59,8 @@ function buildSSML(text: string, config: VoiceConfig): string {
     return ssml;
 }
 
+
+
 export const generateSpeech = async (
     text: string,
     voiceName: string,
@@ -71,8 +73,28 @@ export const generateSpeech = async (
         return Promise.resolve('mock:beep');
     }
 
+    // Smart Model Routing: Detect model from voice name if possible
+    // This allows mixed usage of Gemini, Chirp, Neural2, and WaveNet voices in the same project
+    let effectiveModel = model;
+
+    // Check if it's a Gemini voice
+    // Import dynamically to avoid circular dependency issues during initialization
+    const { isGeminiTtsVoice } = await import('./geminiTts');
+
+    if (isGeminiTtsVoice(voiceName)) {
+        effectiveModel = 'gemini-tts';
+    } else if (voiceName.includes('Chirp3-HD')) {
+        effectiveModel = 'chirp3-hd';
+    } else if (voiceName.includes('Neural2')) {
+        effectiveModel = 'neural2';
+    } else if (voiceName.includes('Wavenet')) {
+        effectiveModel = 'wavenet';
+    } else if (voiceName.includes('Standard')) {
+        effectiveModel = 'standard';
+    }
+
     // Route to Gemini TTS if selected
-    if (model === 'gemini-tts') {
+    if (effectiveModel === 'gemini-tts') {
         try {
             // Find the character's gender/age from voiceConfig or assume default
             const geminiVoiceName = voiceName.includes('-') ? voiceName.split('-').pop() || 'Aoede' : voiceName;
@@ -121,18 +143,18 @@ export const generateSpeech = async (
         // If voiceName doesn't look like a full Google Cloud voice name, construct one
         if (!voiceName.includes('-')) {
             // Use model parameter to construct full voice name
-            if (model === 'chirp3-hd') {
+            if (effectiveModel === 'chirp3-hd') {
                 fullVoiceName = `ko-KR-Chirp3-HD-Aoede`; // Default Korean Chirp 3 HD voice
             } else {
                 // neural2/wavenet/standard voices use format: en-US-{Model}-{A-J}
-                const modelSuffix = model === 'neural2' ? 'Neural2' : model === 'wavenet' ? 'Wavenet' : 'Standard';
+                const modelSuffix = effectiveModel === 'neural2' ? 'Neural2' : effectiveModel === 'wavenet' ? 'Wavenet' : 'Standard';
                 fullVoiceName = `en-US-${modelSuffix}-C`;
             }
         }
 
         const language = voiceConfig?.language || 'en-US';
 
-        console.log(`[TTS] Generating speech with voice: ${fullVoiceName}, model: ${model}, language: ${language}`);
+        console.log(`[TTS] Generating speech with voice: ${fullVoiceName}, model: ${effectiveModel}, language: ${language}`);
         console.log(`[TTS] Text length: ${text.length} characters`);
         if (voiceConfig) {
             console.log(`[TTS] VoiceConfig:`, voiceConfig);
