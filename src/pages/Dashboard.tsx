@@ -512,7 +512,7 @@ export const Dashboard: React.FC = () => {
                                 <div className="grid grid-cols-2 gap-2">
                                     <div className="space-y-2">
                                         <button
-                                            onClick={() => setShowRescueModal(true)}
+                                            onClick={() => window.dispatchEvent(new CustomEvent('openRescueModal'))}
                                             className="w-full flex flex-col items-center justify-center p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all"
                                             title="긴급 데이터 복구"
                                         >

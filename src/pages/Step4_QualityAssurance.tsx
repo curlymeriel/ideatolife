@@ -8,7 +8,7 @@ import { Play, Loader2, Image as ImageIcon, Music, ArrowRight, ArrowLeft, BarCha
 import { resolveUrl, isIdbUrl, generateAudioKey, saveToIdb } from '../utils/imageStorage';
 
 export const Step4_QualityAssurance: React.FC = () => {
-    const { id: projectId, script, apiKeys, ttsModel, imageModel, nextStep, prevStep, assetDefinitions, aspectRatio, masterStyle, styleAnchor, setScript } = useWorkflowStore();
+    const { id: projectId, script, apiKeys, ttsModel, imageModel, nextStep, prevStep, assetDefinitions, aspectRatio, masterStyle, setScript } = useWorkflowStore();
     const navigate = useNavigate();
 
     const [batchLoading, setBatchLoading] = useState(false);

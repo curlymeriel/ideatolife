@@ -80,8 +80,8 @@ const getEmptyProjectState = (id: string, apiKeys: any = {}): ProjectData => ({
         scale: 1,
         imagePosition: { x: 0, y: 0 },
         textPosition: { x: 0, y: 0 },
-        titleSize: 48,
-        epNumSize: 60,
+        titleSize: 60,
+        seriesTitleSize: 36,
         textColor: '#ffffff',
         fontFamily: 'Inter',
         frameImage: ''
