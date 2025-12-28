@@ -54,8 +54,8 @@ async function loadFFmpeg(
 async function loadSubtitleFont(ffmpeg: any, onProgress?: (progress: number, status: string) => void) {
     try {
         onProgress?.(10, 'Loading Korean font for subtitles...');
-        // Standard Noto Sans KR from a flat source
-        const fontURL = 'https://raw.githubusercontent.com/googlefonts/noto-cjk/main/Sans/OTF/Korean/NotoSansCJKkr-Bold.otf';
+        // Stable Noto Sans KR from jsDelivr (avoid raw.githubusercontent 404/throttling)
+        const fontURL = 'https://cdn.jsdelivr.net/gh/googlefonts/noto-cjk@main/Sans/OTF/Korean/NotoSansCJKkr-Bold.otf';
         const response = await fetch(fontURL);
         if (!response.ok) throw new Error(`Font download failed: ${response.status}`);
         const fontData = await response.arrayBuffer();
@@ -68,29 +68,7 @@ async function loadSubtitleFont(ffmpeg: any, onProgress?: (progress: number, sta
     }
 }
 
-/**
- * Escape text for FFmpeg drawtext filter
- * FFmpeg drawtext has VERY strict escaping requirements
- */
-function escapeFFmpegDrawtext(text: string): string {
-    if (!text) return '';
-    // Step 1: Escape backslashes first
-    let escaped = text.replace(/\\/g, '\\\\');
-    // Step 2: Escape single quotes
-    escaped = escaped.replace(/'/g, "'\\''");
-    // Step 3: Escape colons
-    escaped = escaped.replace(/:/g, '\\:');
-    // Step 4: Escape semicolons (breaks filter chains)
-    escaped = escaped.replace(/;/g, '\\;');
-    // Step 5: Escape brackets and parentheses
-    escaped = escaped.replace(/\[/g, '\\[');
-    escaped = escaped.replace(/\]/g, '\\]');
-    escaped = escaped.replace(/\(/g, '\\(');
-    escaped = escaped.replace(/\)/g, '\\)');
-    // Step 6: Remove control characters
-    escaped = escaped.replace(/[\x00-\x1F\x7F]/g, ' ');
-    return escaped;
-}
+
 
 /**
  * Estimate pixel width of a string for Noto Sans KR Bold at 48px
@@ -184,6 +162,9 @@ export async function exportWithFFmpeg(
     const concatList: string[] = [];
     const crf = quality === 'high' ? 18 : quality === 'medium' ? 23 : 28;
 
+    // Track temporary files for cleanup
+    const tempFiles: string[] = [];
+
     for (let i = 0; i < cuts.length; i++) {
         const cut = cuts[i];
         const padNum = String(i).padStart(4, '0');
@@ -198,6 +179,7 @@ export async function exportWithFFmpeg(
             // Write input files
             const imgData = await fetchFile(cut.imageUrl);
             await ffmpeg.writeFile(`img_${padNum}.jpg`, imgData);
+            tempFiles.push(`img_${padNum}.jpg`);
 
             let hasVideo = false;
             if (cut.videoUrl) {
@@ -205,6 +187,7 @@ export async function exportWithFFmpeg(
                     const videoData = await fetchFile(cut.videoUrl);
                     await ffmpeg.writeFile(`video_${padNum}.mp4`, videoData);
                     hasVideo = true;
+                    tempFiles.push(`video_${padNum}.mp4`);
                 } catch { /* ignore */ }
             }
 
@@ -214,6 +197,7 @@ export async function exportWithFFmpeg(
                     const audioData = await fetchFile(cut.audioUrl);
                     await ffmpeg.writeFile(`audio_${padNum}.mp3`, audioData);
                     hasAudio = true;
+                    tempFiles.push(`audio_${padNum}.mp3`);
                 } catch { /* ignore */ }
             }
 
@@ -223,6 +207,7 @@ export async function exportWithFFmpeg(
                     const sfxData = await fetchFile(cut.sfxUrl);
                     await ffmpeg.writeFile(`sfx_${padNum}.mp3`, sfxData);
                     hasSfx = true;
+                    tempFiles.push(`sfx_${padNum}.mp3`);
                 } catch { /* ignore */ }
             }
 
@@ -271,14 +256,25 @@ export async function exportWithFFmpeg(
                     filterChain += `[${lastVideoOutput}]drawbox=x=${boxX}:y=${boxY}:w=${boxWidth}:h=${boxHeight}:color=black@0.6:t=fill[${boxOutput}];`;
                     lastVideoOutput = boxOutput;
 
-                    lines.forEach((lineObj, index) => {
-                        const nextOutput = `vsub_${index}`;
-                        const lineY = Math.round(startY + (index * lineHeight));
-                        const escapedText = escapeFFmpegDrawtext(lineObj.text);
+                    // Use for...of to handle awaits cleanly if needed, though map/Promise.all is faster. 
+                    // Since ffmpeg.writeFile is async, we need to be careful inside filter generation.
+                    // We'll prepare files first.
+                    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+                        const lineObj = lines[lineIdx];
+                        const nextOutput = `vsub_${lineIdx}`;
+                        const lineY = Math.round(startY + (lineIdx * lineHeight));
 
-                        filterChain += `[${lastVideoOutput}]drawtext=fontfile=${fontFile}:text='${escapedText}':expansion=none:fontcolor=white:fontsize=48:x=(w-text_w)/2:y=${lineY}[${nextOutput}];`;
+                        // v10.0: Robust Text Handling using textfile
+                        // Prevents any escaping issues with special chars like %, ', :, etc.
+                        const subFileName = `sub_${padNum}_${lineIdx}.txt`;
+                        await ffmpeg.writeFile(subFileName, lineObj.text);
+                        tempFiles.push(subFileName);
+
+                        // Note: reload=1 is technically not needed for static file but good practice if reusing names
+                        // expansion=none is CRITICAL here to prevent % from being interpreted
+                        filterChain += `[${lastVideoOutput}]drawtext=fontfile=${fontFile}:textfile=${subFileName}:expansion=none:fontcolor=white:fontsize=48:x=(w-text_w)/2:y=${lineY}[${nextOutput}];`;
                         lastVideoOutput = nextOutput;
-                    });
+                    }
                 }
             }
             filterChain += `[${lastVideoOutput}]null[vout];`;
@@ -308,13 +304,11 @@ export async function exportWithFFmpeg(
 
             concatList.push(`file '${segmentName}'`);
 
-            // Cleanup Inputs
-            try {
-                await ffmpeg.deleteFile(`img_${padNum}.jpg`);
-                if (hasVideo) await ffmpeg.deleteFile(`video_${padNum}.mp4`);
-                if (hasAudio) await ffmpeg.deleteFile(`audio_${padNum}.mp3`);
-                if (hasSfx) await ffmpeg.deleteFile(`sfx_${padNum}.mp3`);
-            } catch (e) { /* ignore */ }
+            // Clean up files for this cut immediately to save memory (except segment)
+            for (const file of tempFiles) {
+                try { await ffmpeg.deleteFile(file); } catch { }
+            }
+            tempFiles.length = 0; // Clear list
 
         } catch (e) {
             console.error(`[FFmpeg] Failed to encode cut ${i}:`, e);
