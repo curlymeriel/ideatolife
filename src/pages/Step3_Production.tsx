@@ -1113,7 +1113,7 @@ export const Step3_Production: React.FC = () => {
                         <div className="flex items-center justify-between">
                             <div>
                                 <h2 className="text-2xl font-bold text-white tracking-tight">Production</h2>
-                                <p className="text-xs text-[var(--color-text-muted)] mt-1">컷별로 에셋을 생성하고 준비되면 확정하세요.</p>
+                                <p className="text-xs text-[var(--color-text-muted)] mt-1">컷별로 자산(오디오,이미지)을 생성하고 준비되면 확정하세요.</p>
                             </div>
                             <div className="flex flex-col items-end gap-2">
                                 <button
