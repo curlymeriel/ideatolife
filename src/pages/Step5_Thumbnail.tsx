@@ -242,27 +242,25 @@ export const Step5_Thumbnail: React.FC = () => {
         }
     };
 
-    // const handleFrameUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    //     const file = e.target.files?.[0];
-    //     if (file) {
-    //         const reader = new FileReader();
-    //         reader.onloadend = async () => {
-    //             const base64 = reader.result as string;
-    //             // Save to IDB immediately using standardized storage
-    //             // Use a key containing 'frame' to exempt from compression
-    //             const { saveToIdb } = await import('../utils/imageStorage');
-    //             const idbUrl = await saveToIdb('images', `${projectId}-thumbnail-frame`, base64);
+    const handleFrameUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = async () => {
+                const base64 = reader.result as string;
+                // Save to IDB immediately using standardized storage
+                const idbUrl = await saveToIdb('images', `${projectId}-thumbnail-frame`, base64);
 
-    //             setFrameImage(idbUrl);
-    //             // Also update settings in store immediately
-    //             setThumbnailSettings({
-    //                 ...thumbnailSettings,
-    //                 frameImage: idbUrl
-    //             });
-    //         };
-    //         reader.readAsDataURL(file);
-    //     }
-    // };
+                setFrameImage(idbUrl);
+                // Also update settings in store immediately
+                setThumbnailSettings({
+                    ...thumbnailSettings,
+                    frameImage: idbUrl
+                });
+            };
+            reader.readAsDataURL(file);
+        }
+    };
 
     const handleSelectCutImage = async (imageUrl: string) => {
         // 1. Save the reference to the store
@@ -628,9 +626,8 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                         <div>
                             <h2 className="text-xl font-bold text-white flex items-center gap-2">
                                 <Layers size={20} className="text-[var(--color-primary)]" />
-                                Thumbnail Design
+                                Thumbnail
                             </h2>
-                            <p className="text-[10px] text-[var(--color-primary)] uppercase tracking-widest ml-7 font-bold">Step 5: Visual Branding</p>
                         </div>
 
                         <div className="flex gap-2">
@@ -678,7 +675,7 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                         {/* 1. Image Source (Framing Mode) */}
                         {mode === 'framing' && (
                             <div className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
-                                <label className="text-[10px] font-bold text-blue-400 uppercase tracking-widest flex items-center gap-2">
+                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
                                     <ImageIcon size={14} /> 1. Background Source
                                 </label>
 
@@ -696,6 +693,41 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                                         <RefreshCw size={24} className="mb-2 text-gray-500 group-hover:text-blue-400 group-hover:rotate-180 transition-all duration-500" />
                                         <span className="text-[10px] font-bold text-gray-500 group-hover:text-white lowercase">from library</span>
                                     </button>
+                                </div>
+
+                                {/* 2. Frame Overlay */}
+                                <div className="space-y-3 pt-4 border-t border-white/5">
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                                        <Layers size={14} /> 2. Frame Overlay
+                                    </label>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <label className="cursor-pointer flex flex-col items-center justify-center p-4 border-2 border-dashed border-white/5 hover:border-yellow-500/50 hover:bg-yellow-500/5 transition-all rounded-2xl group">
+                                            <Upload size={20} className="mb-2 text-gray-500 group-hover:text-yellow-400 group-hover:scale-110 transition-transform" />
+                                            <span className="text-[10px] font-bold text-gray-500 group-hover:text-white lowercase">upload frame</span>
+                                            <input type="file" accept="image/*" className="hidden" onChange={handleFrameUpload} />
+                                        </label>
+
+                                        <button
+                                            onClick={() => setFrameImage('/frame_bg.svg')}
+                                            className="flex flex-col items-center justify-center p-4 border border-white/5 bg-white/5 hover:bg-white/10 hover:border-white/10 transition-all rounded-2xl group"
+                                        >
+                                            <RefreshCw size={20} className="mb-2 text-gray-500 group-hover:text-yellow-400 group-hover:rotate-180 transition-all duration-500" />
+                                            <span className="text-[10px] font-bold text-gray-500 group-hover:text-white lowercase">reset default</span>
+                                        </button>
+                                    </div>
+                                    {resolvedFrameImage && resolvedFrameImage !== '/frame_bg.svg' && (
+                                        <div className="relative aspect-video rounded-xl overflow-hidden border border-yellow-500/30 bg-black/40">
+                                            <img src={resolvedFrameImage} alt="Current Frame" className="w-full h-full object-contain" />
+                                            <div className="absolute top-2 right-2">
+                                                <button
+                                                    onClick={() => setFrameImage('/frame_bg.svg')}
+                                                    className="p-1.5 bg-red-500/80 text-white rounded-full hover:bg-red-500 transition-colors"
+                                                >
+                                                    <X size={12} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -805,7 +837,7 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                         {mode === 'framing' && selectedImage && (
                             <div className="space-y-6 pt-4 border-t border-white/5">
                                 <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                                    <Move size={14} /> 2. Image Framing
+                                    <Move size={14} /> 3. Background Position
                                 </label>
                                 <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-5">
                                     <div className="space-y-2">
@@ -824,25 +856,25 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                                         <div className="space-y-2">
                                             <div className="flex justify-between text-[10px] text-gray-400 uppercase font-bold tracking-tighter">
                                                 <span>Offset X</span>
-                                                <span className="text-blue-400">{position.x}px</span>
+                                                <span>{position.x}px</span>
                                             </div>
                                             <input
                                                 type="range" min="-500" max="500" step="10"
                                                 value={position.x}
                                                 onChange={(e) => setPosition({ ...position, x: parseInt(e.target.value) })}
-                                                className="w-full accent-blue-500 opacity-80 hover:opacity-100 transition-opacity"
+                                                className="w-full accent-[var(--color-primary)] opacity-80 hover:opacity-100 transition-opacity"
                                             />
                                         </div>
                                         <div className="space-y-2">
                                             <div className="flex justify-between text-[10px] text-gray-400 uppercase font-bold tracking-tighter">
                                                 <span>Offset Y</span>
-                                                <span className="text-blue-400">{position.y}px</span>
+                                                <span>{position.y}px</span>
                                             </div>
                                             <input
                                                 type="range" min="-500" max="500" step="10"
                                                 value={position.y}
                                                 onChange={(e) => setPosition({ ...position, y: parseInt(e.target.value) })}
-                                                className="w-full accent-blue-500 opacity-80 hover:opacity-100 transition-opacity"
+                                                className="w-full accent-[var(--color-primary)] opacity-80 hover:opacity-100 transition-opacity"
                                             />
                                         </div>
                                     </div>
@@ -854,7 +886,7 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                         {mode === 'framing' && (
                             <div className="space-y-6 pt-4 border-t border-white/5 pb-10">
                                 <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                                    <Type size={14} /> 3. Typography Overlay
+                                    <Type size={14} /> 4. Typography Overlay
                                 </label>
 
                                 <div className="space-y-4">
