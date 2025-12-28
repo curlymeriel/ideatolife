@@ -145,7 +145,9 @@ export const CutItem = memo(({
     // Local state for debounced inputs
     const [localDialogue, setLocalDialogue] = useState(cut.dialogue || '');
     const [localVisualPrompt, setLocalVisualPrompt] = useState(cut.visualPrompt || '');
+    const [localActingDirection, setLocalActingDirection] = useState(cut.actingDirection || '');
     const isFocusedRef = useRef(false);
+    const isActingDirectionFocusedRef = useRef(false);
     const isVisualPromptFocusedRef = useRef(false);
 
     // Resolved URLs for IndexedDB
@@ -196,6 +198,10 @@ export const CutItem = memo(({
     useEffect(() => {
         if (!isVisualPromptFocusedRef.current) setLocalVisualPrompt(cut.visualPrompt || '');
     }, [cut.visualPrompt]);
+
+    useEffect(() => {
+        if (!isActingDirectionFocusedRef.current) setLocalActingDirection(cut.actingDirection || '');
+    }, [cut.actingDirection]);
 
     // Resolve IDB URLs
     useEffect(() => {
@@ -257,6 +263,12 @@ export const CutItem = memo(({
     const handleVisualPromptChange = useCallback((value: string) => {
         setLocalVisualPrompt(value);
         onUpdateCut(cut.id, { visualPrompt: value });
+    }, [cut.id, onUpdateCut]);
+
+    // Debounced acting direction update
+    const handleActingDirectionChange = useCallback((value: string) => {
+        setLocalActingDirection(value);
+        onUpdateCut(cut.id, { actingDirection: value });
     }, [cut.id, onUpdateCut]);
 
     // Auto-generate video prompt from visual prompt
@@ -461,6 +473,24 @@ export const CutItem = memo(({
                                             onSave();
                                         }}
                                         placeholder="Dialogue..."
+                                    />
+                                </div>
+
+                                <div className="flex-1">
+                                    <label className="text-[10px] text-gray-500 uppercase font-bold block mb-1 tracking-wider flex items-center gap-1">
+                                        <Sparkles size={10} className="text-[var(--color-primary)]" /> 연기 지시 (Acting Direction)
+                                    </label>
+                                    <textarea
+                                        className={`w-full bg-[rgba(0,0,0,0.3)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-white text-[11px] min-h-[60px] focus:border-[var(--color-primary)] outline-none resize-none ${isAudioConfirmed ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                        value={localActingDirection}
+                                        disabled={isAudioConfirmed}
+                                        onChange={(e) => handleActingDirectionChange(e.target.value)}
+                                        onFocus={() => { isActingDirectionFocusedRef.current = true; }}
+                                        onBlur={() => {
+                                            isActingDirectionFocusedRef.current = false;
+                                            onSave();
+                                        }}
+                                        placeholder="톤, 감정, 속도 등 연기 지침 (예: 슬픈 목소리로 천천히)"
                                     />
                                 </div>
 

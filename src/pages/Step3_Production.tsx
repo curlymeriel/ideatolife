@@ -162,6 +162,7 @@ export const Step3_Production: React.FC = () => {
                             voiceGender: existingCut.voiceGender,
                             voiceAge: existingCut.voiceAge,
                             voiceSpeed: existingCut.voiceSpeed,
+                            actingDirection: existingCut.actingDirection,
                             audioUrl: existingCut.audioUrl,
                             // SFX preservation Linked to Audio Lock
                             sfxUrl: existingCut.sfxUrl,
@@ -174,6 +175,9 @@ export const Step3_Production: React.FC = () => {
                         };
                     } else {
                         // Auto-populate logic for NEW audio content
+                        // Ensure actingDirection is preserved or generated
+                        finalCut.actingDirection = newCut.actingDirection || existingCut.actingDirection;
+
                         // Priority: 1. Character gender/age from Step 1, 2. Name-based detection / default
                         const speakerChar = allCharacters.find(c => c.name.toLowerCase() === (newCut.speaker || 'Narrator').toLowerCase());
                         if (speakerChar?.gender && speakerChar.gender !== 'other') {
@@ -1349,6 +1353,19 @@ export const Step3_Production: React.FC = () => {
                         const applyVoiceToSpeaker = (speakerName: string, voiceValue: string) => {
                             const voice = FLAT_VOICE_OPTIONS.find(v => v.value === voiceValue);
                             if (voice) {
+                                // Auto-switch TTS model based on selected voice
+                                if (isGeminiTtsVoice(voiceValue)) {
+                                    setTtsModel('gemini-tts');
+                                } else if (voiceValue.includes('Chirp3-HD')) {
+                                    setTtsModel('chirp3-hd');
+                                } else if (voiceValue.includes('Neural2')) {
+                                    setTtsModel('neural2');
+                                } else if (voiceValue.includes('Wavenet')) {
+                                    setTtsModel('wavenet');
+                                } else {
+                                    setTtsModel('standard');
+                                }
+
                                 setLocalScript(prev => {
                                     const updated = prev.map(cut => {
                                         const isLocked = cut.isAudioConfirmed || cut.isConfirmed;
@@ -1650,13 +1667,13 @@ export const Step3_Production: React.FC = () => {
                             <Wand2 size={40} className="text-[var(--color-primary)]" />
                         </div>
                         <div>
-                            <h3 className="text-xl font-bold text-white">Ready to Write</h3>
+                            <h3 className="text-xl font-bold text-white">스크립트 생성 준비 완료</h3>
                             <p className="text-[var(--color-text-muted)] max-w-md mx-auto mt-2">
-                                Gemini will generate a script broken down into shots, complete with dialogue and visual descriptions.
+                                Gemini가 대사와 시각적 묘사를 포함하여 컷별로 분할된 스크립트를 생성합니다.
                             </p>
                         </div>
                         <button onClick={handleGenerateScript} className="btn-primary">
-                            Start Magic Generation
+                            마법처럼 스크립트 생성 시작
                         </button>
                     </div>
                 ) : (
