@@ -1136,18 +1136,22 @@ export const Step3_Production: React.FC = () => {
 
                         {/* Bulk Lock Buttons - Inside header for visibility before regeneration */}
                         {localScript.length > 0 && (
-                            <div className="pt-3 border-t border-white/5">
-                                <div className="flex flex-col mb-2 gap-1">
+                            <div className="pt-3 border-t border-white/5 flex gap-4">
+                                {/* Left Side: Title & Description */}
+                                <div className="flex-1 flex flex-col justify-center gap-1">
                                     <span className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
                                         <Lock size={10} />
                                         이미 생성된 자산 일괄 잠금/해제
                                     </span>
-                                    <span className="text-[10px] text-gray-500 pl-3.5">
+                                    <span className="text-[10px] text-gray-500 pl-3.5 leading-snug">
                                         - 스크립트 재생성 전, 유지하고 싶은 자산을 잠금 설정하세요.
                                     </span>
                                 </div>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div className="flex flex-col gap-1 items-end">
+
+                                {/* Right Side: Controls */}
+                                <div className="flex-1 flex flex-col gap-2 justify-center">
+                                    {/* Row 1: Audio */}
+                                    <div className="flex items-center justify-end gap-3">
                                         <span className="text-[9px] text-gray-500 uppercase font-bold tracking-wider">Audio ({audioLockedCount}/{audioGeneratedCount})</span>
                                         <div className="flex gap-1.5">
                                             <button
@@ -1166,7 +1170,9 @@ export const Step3_Production: React.FC = () => {
                                             </button>
                                         </div>
                                     </div>
-                                    <div className="flex flex-col gap-1 items-end">
+
+                                    {/* Row 2: Image */}
+                                    <div className="flex items-center justify-end gap-3">
                                         <span className="text-[9px] text-gray-500 uppercase font-bold tracking-wider">Image ({imageLockedCount}/{imageGeneratedCount})</span>
                                         <div className="flex gap-1.5">
                                             <button
