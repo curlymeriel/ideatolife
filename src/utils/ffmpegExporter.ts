@@ -82,14 +82,12 @@ function escapeFFmpegDrawtext(text: string): string {
     escaped = escaped.replace(/:/g, '\\:');
     // Step 4: Escape semicolons (breaks filter chains)
     escaped = escaped.replace(/;/g, '\\;');
-    // Step 5: Escape percent signs
-    escaped = escaped.replace(/%/g, '\\%');
-    // Step 6: Escape brackets and parentheses
+    // Step 5: Escape brackets and parentheses
     escaped = escaped.replace(/\[/g, '\\[');
     escaped = escaped.replace(/\]/g, '\\]');
     escaped = escaped.replace(/\(/g, '\\(');
     escaped = escaped.replace(/\)/g, '\\)');
-    // Step 7: Remove control characters
+    // Step 6: Remove control characters
     escaped = escaped.replace(/[\x00-\x1F\x7F]/g, ' ');
     return escaped;
 }
@@ -278,7 +276,7 @@ export async function exportWithFFmpeg(
                         const lineY = Math.round(startY + (index * lineHeight));
                         const escapedText = escapeFFmpegDrawtext(lineObj.text);
 
-                        filterChain += `[${lastVideoOutput}]drawtext=fontfile=${fontFile}:text='${escapedText}':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=${lineY}[${nextOutput}];`;
+                        filterChain += `[${lastVideoOutput}]drawtext=fontfile=${fontFile}:text='${escapedText}':expansion=none:fontcolor=white:fontsize=48:x=(w-text_w)/2:y=${lineY}[${nextOutput}];`;
                         lastVideoOutput = nextOutput;
                     });
                 }
