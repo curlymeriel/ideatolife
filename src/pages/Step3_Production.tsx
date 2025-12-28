@@ -1443,25 +1443,25 @@ export const Step3_Production: React.FC = () => {
                                         value={currentLanguage}
                                         onChange={(e) => applyToAll('language', e.target.value || undefined)}
                                     >
-                                        <option value="">🌐 Auto Lang</option>
-                                        <option value="ko-KR">🇰🇷 Korean</option>
-                                        <option value="en-US">🇺🇸 English</option>
+                                        <option value="">🌐 언어: 자동</option>
+                                        <option value="ko-KR">🇰🇷 한국어</option>
+                                        <option value="en-US">🇺🇸 영어</option>
                                     </select>
                                     <select
                                         className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs text-white focus:border-[var(--color-primary)] outline-none"
                                         value={currentSpeed}
                                         onChange={(e) => applyToAll('voiceSpeed', e.target.value ? parseFloat(e.target.value) : undefined)}
                                     >
-                                        <option value="">⚡ Auto Rate</option>
-                                        <option value="0.85">85% Slow</option>
-                                        <option value="1.0">100% Normal</option>
-                                        <option value="1.15">115% Fast</option>
+                                        <option value="">⚡ 속도: 자동</option>
+                                        <option value="0.85">85% 느리게</option>
+                                        <option value="1.0">100% 보통</option>
+                                        <option value="1.15">115% 빠르게</option>
                                     </select>
                                 </div>
 
                                 {/* Per Speaker */}
                                 <div className="space-y-2 pt-2 border-t border-[var(--color-border)]">
-                                    <div className="text-[9px] text-[var(--color-text-muted)] uppercase font-bold">Per Speaker Voice</div>
+                                    <div className="text-[9px] text-[var(--color-text-muted)] uppercase font-bold">화자별 보이스 설정</div>
                                     <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
                                         {speakers.map(([speaker, settings]) => {
                                             const currentVoice = settings.voiceId || getDefaultVoice(settings.gender);
@@ -1492,7 +1492,7 @@ export const Step3_Production: React.FC = () => {
                                                                     value={settings.voiceSpeed ?? ''}
                                                                     onChange={(e) => applyToSpeaker(speaker, 'voiceSpeed', e.target.value === '' ? undefined : parseFloat(e.target.value))}
                                                                 >
-                                                                    <option value="">Rate: Auto</option>
+                                                                    <option value="">속도: 자동</option>
                                                                     <option value="0.8">0.8x</option>
                                                                     <option value="0.9">0.9x</option>
                                                                     <option value="1.0">1.0x</option>
@@ -1526,19 +1526,19 @@ export const Step3_Production: React.FC = () => {
                                                             title="해당 화자의 잠금 해제된 모든 컷 오디오 생성"
                                                         >
                                                             <Wand2 size={10} />
-                                                            Gen All
+                                                            일괄 생성
                                                         </button>
                                                         <button
                                                             onClick={() => handleBulkLockAudio(speaker, true)}
                                                             className="px-2 bg-green-500/10 hover:bg-green-500/20 text-green-400 text-[10px] py-1 rounded transition-colors"
-                                                            title="해당 화자의 생성된 모든 오디오 잠금"
+                                                            title="일괄 잠금"
                                                         >
                                                             <Lock size={10} />
                                                         </button>
                                                         <button
                                                             onClick={() => handleBulkLockAudio(speaker, false)}
                                                             className="px-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-[10px] py-1 rounded transition-colors"
-                                                            title="해당 화자의 모든 컷 오디오 잠금 해제"
+                                                            title="일괄 해제"
                                                         >
                                                             <Unlock size={10} />
                                                         </button>
