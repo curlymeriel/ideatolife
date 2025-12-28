@@ -966,7 +966,28 @@ export const useWorkflowStore = create<WorkflowStore>()(
 
             importZip: async (file: File) => {
                 try {
-                    const { processImportZip } = await import('../utils/zipImporter');
+                    let processImportZip;
+                    try {
+                        const module = await import('../utils/zipImporter');
+                        processImportZip = module.processImportZip;
+                        // Clear reload flag on success
+                        window.sessionStorage.removeItem('chunk_load_error_reload');
+                    } catch (error: any) {
+                        const message = error?.message || '';
+                        const isChunkError = message.includes('dynamically imported module') || message.includes('Importing a module script failed');
+
+                        if (isChunkError) {
+                            console.warn('[Store] Chunk load error detected for zipImporter, reloading...');
+                            const storageKey = 'chunk_load_error_reload';
+                            if (!window.sessionStorage.getItem(storageKey)) {
+                                window.sessionStorage.setItem(storageKey, 'true');
+                                window.location.reload();
+                                return; // Stop execution
+                            }
+                        }
+                        throw error;
+                    }
+
                     const projects = await processImportZip(file);
 
                     if (projects.length === 0) {
