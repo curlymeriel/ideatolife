@@ -754,8 +754,8 @@ export const Step1_Setup: React.FC = () => {
                         {chatHistory.length === 0 && (
                             <div className="text-center text-[var(--color-text-muted)] py-12">
                                 <Bot size={48} className="mx-auto mb-4 opacity-50" />
-                                <p className="text-lg">Start a conversation to get AI-powered story suggestions!</p>
-                                <p className="text-sm mt-2">Ask about your series, characters, plot ideas, or anything else.</p>
+                                <p className="text-lg">AI 스토리 제안을 받으려면 대화를 시작하세요!</p>
+                                <p className="text-sm mt-2">시리즈, 캐릭터, 플롯 아이디어 등 무엇이든 물어보세요.</p>
                             </div>
                         )}
 

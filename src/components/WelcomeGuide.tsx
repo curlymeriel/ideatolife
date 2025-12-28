@@ -23,7 +23,8 @@ const STEPS = [
                         <li>• <strong>Step 1 Setup:</strong> 시리즈/에피소드 기획 및 기본 설정</li>
                         <li>• <strong>Step 2 Style:</strong> 캐릭터, 장소, 소품의 일관된 스타일 정의</li>
                         <li>• <strong>Step 3 Production:</strong> AI 스크립트 작성 및 이미지/오디오 생성</li>
-                        <li>• <strong>Step 4.5 Video:</strong> 이미지 → 비디오 변환 (Replicate/Kling)</li>
+                        <li>• <strong>Step 4.5 Video:</strong> 이미지 → 비디오 변환 (Grok/Kling/Replicate)</li>
+                        <li>• <strong>Step 5 Thumbnail:</strong> 에피소드 썸네일 제작</li>
                         <li>• <strong>Step 6 Final:</strong> 최종 결과물 확인 및 내보내기</li>
                     </ul>
                 </div>
@@ -39,33 +40,36 @@ const STEPS = [
                 <p className="text-gray-300 text-xs">
                     좌측 하단 <strong>⚙️ API Config</strong>에서 키를 입력해주세요.
                 </p>
-                <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1 text-xs">
-                    <div className="bg-[var(--color-surface)] p-2 rounded border border-[var(--color-border)] flex justify-between items-center group">
-                        <div>
-                            <span className="text-white font-bold block">🧠 Gemini API (필수)</span>
-                            <span className="text-gray-500">스크립트 작성 및 기본 이미지 생성</span>
+                <div className="space-y-3 max-h-[280px] overflow-y-auto pr-1 text-xs">
+                    {/* Gemini API Section */}
+                    <div className="bg-[var(--color-surface)] p-3 rounded border border-[var(--color-border)]">
+                        <div className="flex justify-between items-start mb-2">
+                            <span className="text-white font-bold">🧠 Gemini API (필수)</span>
+                            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="bg-white/10 hover:bg-white/20 text-white p-1.5 rounded transition-colors" title="Get API Key">
+                                <ExternalLink size={12} />
+                            </a>
                         </div>
-                        <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="bg-white/10 hover:bg-white/20 text-white p-2 rounded transition-colors" title="Get API Key">
-                            <ExternalLink size={14} />
-                        </a>
+                        <div className="text-gray-400 space-y-1 text-[10px]">
+                            <p><strong className="text-gray-300">#1.</strong> Google AI Studio 접속 → <span className="text-[var(--color-primary)]">Create API Key</span> 클릭</p>
+                            <p><strong className="text-gray-300">#2.</strong> 프로젝트 선택 후 키 생성 → 복사 <span className="text-gray-500">(약 39자)</span></p>
+                            <p><strong className="text-gray-300">#3.</strong> <span className="text-blue-400">(TTS=Text To Speech, 텍스트→오디오 변환 기능 사용시)</span></p>
+                            <p className="pl-4"><a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-[var(--color-primary)] underline hover:text-orange-300">Google Cloud Console</a> → APIs & Services → Credentials → 생성된 키 클릭 → API restrictions를 "Don't restrict key"로 변경</p>
+                        </div>
                     </div>
-                    <div className="bg-[var(--color-surface)] p-2 rounded border border-[var(--color-border)] flex justify-between items-center group">
-                        <div>
-                            <span className="text-white font-bold block">🎙️ Google Cloud (TTS)</span>
-                            <span className="text-gray-500">고품질 음성 합성 (Studio Voice)</span>
+
+                    {/* Freesound API Section */}
+                    <div className="bg-[var(--color-surface)] p-3 rounded border border-[var(--color-border)]">
+                        <div className="flex justify-between items-start mb-2">
+                            <span className="text-white font-bold">🔊 Freesound API (SFX)</span>
+                            <a href="https://freesound.org/apiv2/apply" target="_blank" rel="noopener noreferrer" className="bg-white/10 hover:bg-white/20 text-white p-1.5 rounded transition-colors" title="Get API Key">
+                                <ExternalLink size={12} />
+                            </a>
                         </div>
-                        <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="bg-white/10 hover:bg-white/20 text-white p-2 rounded transition-colors" title="Get API Key">
-                            <ExternalLink size={14} />
-                        </a>
-                    </div>
-                    <div className="bg-[var(--color-surface)] p-2 rounded border border-[var(--color-border)] flex justify-between items-center group">
-                        <div>
-                            <span className="text-white font-bold block">🔊 Freesound API (SFX)</span>
-                            <span className="text-gray-500">배경음 및 효과음 검색/다운로드</span>
+                        <div className="text-gray-400 space-y-1 text-[10px]">
+                            <p><strong className="text-gray-300">#1.</strong> Freesound.org 회원가입/로그인</p>
+                            <p><strong className="text-gray-300">#2.</strong> Apply for API → Name, Description 입력 후 제출</p>
+                            <p><strong className="text-gray-300">#3.</strong> 승인 후 <span className="text-purple-400">Client secret/API key</span> 값을 복사 <span className="text-gray-500">(약 40자)</span></p>
                         </div>
-                        <a href="https://freesound.org/apiv2/apply" target="_blank" rel="noopener noreferrer" className="bg-white/10 hover:bg-white/20 text-white p-2 rounded transition-colors" title="Get API Key">
-                            <ExternalLink size={14} />
-                        </a>
                     </div>
                 </div>
             </div>

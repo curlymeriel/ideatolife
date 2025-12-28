@@ -1262,8 +1262,8 @@ export const Step6_Final = () => {
                 {!assetsLoaded ? (
                     <div className="flex flex-col items-center justify-center h-full text-white">
                         <div className="w-12 h-12 border-4 border-white/20 border-t-[var(--color-primary)] rounded-full animate-spin mb-4" />
-                        <p className="text-lg font-medium">Optimizing Assets...</p>
-                        <p className="text-sm text-gray-400">Converting for smooth playback</p>
+                        <p className="text-lg font-medium">에셋 최적화 중...</p>
+                        <p className="text-sm text-gray-400">부드러운 재생을 위해 변환 중</p>
                     </div>
                 ) : (
                     <>
@@ -1371,7 +1371,7 @@ export const Step6_Final = () => {
                                     >
                                         <span className="relative z-10 flex items-center gap-3">
                                             <Play size={24} fill="currentColor" />
-                                            Start Episode
+                                            에피소드 시작
                                         </span>
                                         <div className="absolute inset-0 rounded-full bg-white blur-lg opacity-50 group-hover:opacity-80 transition-opacity" />
                                     </button>
@@ -1533,7 +1533,7 @@ export const Step6_Final = () => {
 
                             {/* Export Visual Mode Selector */}
                             <div className="mb-6 p-4 bg-black/30 rounded-xl border border-white/5 space-y-3">
-                                <label className="text-sm font-bold text-gray-400 block mb-1">Visual Coverage</label>
+                                <label className="text-sm font-bold text-gray-400 block mb-1">비주얼 모드</label>
                                 <div className="flex gap-2">
                                     <button
                                         onClick={() => setExportHybrid(true)}
@@ -1642,7 +1642,7 @@ export const Step6_Final = () => {
                 isExportingVideo && (
                     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100000]">
                         <div className="glass-panel p-8 max-w-md w-full">
-                            <h3 className="text-2xl font-bold text-white mb-4">Exporting Video</h3>
+                            <h3 className="text-2xl font-bold text-white mb-4">비디오 내보내기</h3>
                             <div className="w-full bg-white/10 rounded-full h-3 mb-4 overflow-hidden">
                                 <div
                                     className="bg-[var(--color-primary)] h-full transition-all duration-300"

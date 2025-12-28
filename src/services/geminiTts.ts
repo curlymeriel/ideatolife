@@ -10,7 +10,7 @@ export const GEMINI_TTS_VOICES = [
     { id: 'Leda', label: 'Leda', gender: 'female', style: 'Youthful, energetic', lang: 'multilingual' },
     { id: 'Kore', label: 'Kore', gender: 'female', style: 'Calm, warm', lang: 'multilingual' },
     { id: 'Puck', label: 'Puck', gender: 'male', style: 'Upbeat, lively', lang: 'multilingual' },
-    { id: 'Fenrir', label: 'Fenrir', gender: 'male', style: 'Strong, authoritative', lang: 'multilingual' },
+    { id: 'Fenrir', label: 'Fenrir', gender: 'male', style: 'Deep, resonant, commanding tone, authoritative', lang: 'multilingual' },
     { id: 'Charon', label: 'Charon', gender: 'male', style: 'Deep, mature', lang: 'multilingual' },
     { id: 'Orus', label: 'Orus', gender: 'male', style: 'Neutral, professional', lang: 'multilingual' },
     { id: 'Zephyr', label: 'Zephyr', gender: 'neutral', style: 'Gentle, soothing', lang: 'multilingual' },

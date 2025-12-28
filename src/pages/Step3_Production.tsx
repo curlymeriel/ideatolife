@@ -7,7 +7,7 @@ import { generateSpeech, type VoiceConfig } from '../services/tts';
 import { generateGeminiSpeech, getDefaultGeminiVoice, isGeminiTtsVoice, GEMINI_TTS_VOICES } from '../services/geminiTts';
 
 import { useNavigate } from 'react-router-dom';
-import { Wand2, Loader2, ArrowRight, Lock, Unlock } from 'lucide-react';
+import { Wand2, Loader2, ArrowRight, Lock, Unlock, Settings, Mic, Image, Sparkles } from 'lucide-react';
 import { CutItem } from '../components/Production/CutItem';
 import { SfxSearchModal } from '../components/Production/SfxSearchModal';
 import { AiInstructionHelper } from '../components/Production/AiInstructionHelper';
@@ -1112,8 +1112,8 @@ export const Step3_Production: React.FC = () => {
                     <div className="flex flex-col gap-3">
                         <div className="flex items-center justify-between">
                             <div>
-                                <h2 className="text-2xl font-bold text-white tracking-tight">Script & Production</h2>
-                                <p className="text-xs text-[var(--color-text-muted)] mt-1">Generate assets per cut and confirm when ready.</p>
+                                <h2 className="text-2xl font-bold text-white tracking-tight">Production</h2>
+                                <p className="text-xs text-[var(--color-text-muted)] mt-1">컷별로 에셋을 생성하고 준비되면 확정하세요.</p>
                             </div>
                             <div className="flex flex-col items-end gap-2">
                                 <button
@@ -1166,383 +1166,401 @@ export const Step3_Production: React.FC = () => {
                 <div className="glass-panel p-4 space-y-5">
                     <div className="flex items-center justify-between">
                         <span className="text-sm font-bold text-white flex items-center gap-2">
-                            ⚙️ AI Production Settings
+                            <Settings size={14} className="text-white" />
+                            이미지/오디오 생성 AI모델 세팅
                         </span>
                     </div>
 
-                    {/* 1) Image Generation AI Model */}
-                    <div className="space-y-2">
-                        <label className="text-[11px] text-[var(--color-primary)] font-bold uppercase tracking-wider block">
-                            1) 이미지 생성 AI모델
-                        </label>
-                        <select
-                            className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
-                            value={imageModel}
-                            onChange={(e) => setImageModel(e.target.value as any)}
-                        >
-                            {IMAGE_MODELS.map(model => (
-                                <option key={model.value} value={model.value}>
-                                    {model.label} {model.cost}
-                                </option>
-                            ))}
-                        </select>
-                        <span className="text-[10px] text-[var(--color-text-muted)] block">
-                            {IMAGE_MODELS.find(m => m.value === imageModel)?.hint}
-                        </span>
+                    <div className="grid grid-cols-[70px_1fr] gap-3 items-start">
+                        <div className="flex items-center gap-1.5 pt-2 justify-end">
+                            <Image size={11} className="text-white" />
+                            <span className="text-[11px] text-white font-bold uppercase tracking-wider">이미지</span>
+                        </div>
+                        <div className="space-y-1">
+                            <select
+                                className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
+                                value={imageModel}
+                                onChange={(e) => setImageModel(e.target.value as any)}
+                            >
+                                {IMAGE_MODELS.map(model => (
+                                    <option key={model.value} value={model.value}>
+                                        {model.label} {model.cost}
+                                    </option>
+                                ))}
+                            </select>
+                            <span className="text-[10px] text-[var(--color-text-muted)] block">
+                                {IMAGE_MODELS.find(m => m.value === imageModel)?.hint}
+                            </span>
+                        </div>
                     </div>
 
                     <div className="h-px bg-white/5 my-2" />
 
-                    {/* 2) Audio Generation AI Model & Bulk Settings */}
-                    <div className="space-y-2">
-                        <label className="text-[11px] text-[var(--color-primary)] font-bold uppercase tracking-wider block">
-                            2) 오디오(TTS) 생성 AI모델
-                        </label>
-                        <select
-                            className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
-                            value={ttsModel}
-                            onChange={(e) => setTtsModel(e.target.value as any)}
-                        >
-                            {TTS_MODELS.map(model => (
-                                <option key={model.value} value={model.value}>
-                                    {model.label} {model.cost}
-                                </option>
-                            ))}
-                        </select>
-                        <span className="text-[10px] text-[var(--color-text-muted)] block mb-3">
-                            {TTS_MODELS.find(m => m.value === ttsModel)?.hint}
-                        </span>
-
-                        {/* BULK AUDIO SUB-PANEL */}
-                        {localScript.length > 0 && (() => {
-                            // ... (Re-using logic from original Voice Settings)
-                            const speakerMap = new Map<string, { gender?: string; age?: string; voiceId?: string; voiceSpeed?: number; language?: string; cutCount: number }>();
-                            const speakerCuts = new Map<string, ScriptCut[]>();
-                            localScript.forEach(cut => {
-                                const s = cut.speaker || 'Narrator';
-                                if (s === 'SILENT') return; // Skip SILENT speaker for bulk audio settings
-                                if (!speakerCuts.has(s)) speakerCuts.set(s, []);
-                                speakerCuts.get(s)!.push(cut);
+                    <div className="grid grid-cols-[70px_1fr] gap-3 items-start">
+                        <div className="flex items-center gap-1.5 pt-2 justify-end">
+                            <Mic size={11} className="text-white" />
+                            <span className="text-[11px] text-white font-bold uppercase tracking-wider">오디오</span>
+                        </div>
+                        <div className="space-y-1">
+                            <select
+                                className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
+                                value={ttsModel}
+                                onChange={(e) => setTtsModel(e.target.value as any)}
+                            >
+                                {TTS_MODELS.map(model => (
+                                    <option key={model.value} value={model.value}>
+                                        {model.label} {model.cost}
+                                    </option>
+                                ))}
+                            </select>
+                            <span className="text-[10px] text-[var(--color-text-muted)] block mb-3">
+                                {TTS_MODELS.find(m => m.value === ttsModel)?.hint}
+                            </span>
+                        </div>
+                    </div>      {/* BULK AUDIO SUB-PANEL */}
+                    {localScript.length > 0 && (() => {
+                        // ... (Re-using logic from original Voice Settings)
+                        const speakerMap = new Map<string, { gender?: string; age?: string; voiceId?: string; voiceSpeed?: number; language?: string; cutCount: number }>();
+                        const speakerCuts = new Map<string, ScriptCut[]>();
+                        localScript.forEach(cut => {
+                            const s = cut.speaker || 'Narrator';
+                            if (s === 'SILENT') return; // Skip SILENT speaker for bulk audio settings
+                            if (!speakerCuts.has(s)) speakerCuts.set(s, []);
+                            speakerCuts.get(s)!.push(cut);
+                        });
+                        speakerCuts.forEach((cuts, speaker) => {
+                            const primaryCut = cuts.find(c => !c.isAudioConfirmed && !c.isConfirmed) || cuts[0];
+                            speakerMap.set(speaker, {
+                                gender: primaryCut.voiceGender,
+                                age: primaryCut.voiceAge,
+                                voiceId: primaryCut.voiceId,
+                                voiceSpeed: primaryCut.voiceSpeed,
+                                language: primaryCut.language,
+                                cutCount: cuts.length
                             });
-                            speakerCuts.forEach((cuts, speaker) => {
-                                const primaryCut = cuts.find(c => !c.isAudioConfirmed && !c.isConfirmed) || cuts[0];
-                                speakerMap.set(speaker, {
-                                    gender: primaryCut.voiceGender,
-                                    age: primaryCut.voiceAge,
-                                    voiceId: primaryCut.voiceId,
-                                    voiceSpeed: primaryCut.voiceSpeed,
-                                    language: primaryCut.language,
-                                    cutCount: cuts.length
-                                });
-                            });
-                            const speakers = Array.from(speakerMap.entries());
-                            const currentLanguage = localScript[0]?.language || '';
-                            const currentSpeed = localScript[0]?.voiceSpeed || '';
+                        });
+                        const speakers = Array.from(speakerMap.entries());
+                        const currentLanguage = localScript[0]?.language || '';
+                        const currentSpeed = localScript[0]?.voiceSpeed || '';
 
-                            // Combined Voice Options - Conditional based on TTS Model
-                            const GEMINI_VOICE_OPTIONS = [
-                                {
-                                    optgroup: '✨ Gemini TTS (Multilingual)', options: GEMINI_TTS_VOICES.map(v => ({
-                                        value: v.id,
-                                        label: `${v.label} (${v.style})`,
-                                        gender: v.gender,
-                                        lang: 'multilingual'
-                                    }))
-                                }
-                            ];
+                        // Combined Voice Options - Conditional based on TTS Model
+                        const GEMINI_VOICE_OPTIONS = [
+                            {
+                                optgroup: '✨ Gemini TTS (Multilingual)', options: GEMINI_TTS_VOICES.map(v => ({
+                                    value: v.id,
+                                    label: `${v.label} (${v.style})`,
+                                    gender: v.gender,
+                                    lang: 'multilingual'
+                                }))
+                            }
+                        ];
 
-                            const CLOUD_VOICE_OPTIONS = [
-                                {
-                                    optgroup: '🇰🇷 Korean (Neural2/Standard)', options: [
-                                        { value: 'ko-KR-Neural2-A', label: 'Neural2-A (여성)', gender: 'female', lang: 'ko-KR' },
-                                        { value: 'ko-KR-Neural2-B', label: 'Neural2-B (여성, 차분함)', gender: 'female', lang: 'ko-KR' },
-                                        { value: 'ko-KR-Neural2-C', label: 'Neural2-C (남성)', gender: 'male', lang: 'ko-KR' },
-                                        { value: 'ko-KR-Standard-A', label: 'Standard-A (여성)', gender: 'female', lang: 'ko-KR' },
-                                        { value: 'ko-KR-Standard-C', label: 'Standard-C (남성)', gender: 'male', lang: 'ko-KR' },
-                                    ]
-                                },
-                                {
-                                    optgroup: '🇰🇷 Korean (Chirp HD)', options: [
-                                        { value: 'ko-KR-Chirp3-HD-Aoede', label: 'Aoede (여성, 성인)', gender: 'female', lang: 'ko-KR' },
-                                        { value: 'ko-KR-Chirp3-HD-Leda', label: 'Leda (여성, 젊음)', gender: 'female', lang: 'ko-KR' },
-                                        { value: 'ko-KR-Chirp3-HD-Fenrir', label: 'Fenrir (남성, 성인)', gender: 'male', lang: 'ko-KR' },
-                                        { value: 'ko-KR-Chirp3-HD-Puck', label: 'Puck (남성, 젊음)', gender: 'male', lang: 'ko-KR' },
-                                    ]
-                                },
-                                {
-                                    optgroup: '🇺🇸 English (Neural2)', options: [
-                                        { value: 'en-US-Neural2-C', label: 'Neural2-C (Female)', gender: 'female', lang: 'en-US' },
-                                        { value: 'en-US-Neural2-G', label: 'Neural2-G (Female, Young)', gender: 'female', lang: 'en-US' },
-                                        { value: 'en-US-Neural2-J', label: 'Neural2-J (Male)', gender: 'male', lang: 'en-US' },
-                                        { value: 'en-US-Neural2-I', label: 'Neural2-I (Male, Young)', gender: 'male', lang: 'en-US' },
-                                    ]
-                                }
-                            ];
+                        const CLOUD_VOICE_OPTIONS = [
+                            {
+                                optgroup: '🇰🇷 Korean (Standard)', options: [
+                                    { value: 'ko-KR-Standard-A', label: 'Standard-A (여성)', gender: 'female', lang: 'ko-KR' },
+                                    { value: 'ko-KR-Standard-C', label: 'Standard-C (남성)', gender: 'male', lang: 'ko-KR' },
+                                ]
+                            },
+                            {
+                                optgroup: '🇰🇷 Korean (WaveNet)', options: [
+                                    { value: 'ko-KR-Wavenet-A', label: 'WaveNet-A (여성)', gender: 'female', lang: 'ko-KR' },
+                                    { value: 'ko-KR-Wavenet-B', label: 'WaveNet-B (여성, 차분함)', gender: 'female', lang: 'ko-KR' },
+                                    { value: 'ko-KR-Wavenet-C', label: 'WaveNet-C (남성)', gender: 'male', lang: 'ko-KR' },
+                                    { value: 'ko-KR-Wavenet-D', label: 'WaveNet-D (남성, 중후함)', gender: 'male', lang: 'ko-KR' },
+                                ]
+                            },
+                            {
+                                optgroup: '🇰🇷 Korean (Neural2)', options: [
+                                    { value: 'ko-KR-Neural2-A', label: 'Neural2-A (여성)', gender: 'female', lang: 'ko-KR' },
+                                    { value: 'ko-KR-Neural2-B', label: 'Neural2-B (여성, 차분함)', gender: 'female', lang: 'ko-KR' },
+                                    { value: 'ko-KR-Neural2-C', label: 'Neural2-C (남성)', gender: 'male', lang: 'ko-KR' },
+                                ]
+                            },
+                            {
+                                optgroup: '🇰🇷 Korean (Chirp HD)', options: [
+                                    { value: 'ko-KR-Chirp3-HD-Aoede', label: 'Aoede (여성, 성인)', gender: 'female', lang: 'ko-KR' },
+                                    { value: 'ko-KR-Chirp3-HD-Leda', label: 'Leda (여성, 젊음)', gender: 'female', lang: 'ko-KR' },
+                                    { value: 'ko-KR-Chirp3-HD-Fenrir', label: 'Fenrir (남성, 성인)', gender: 'male', lang: 'ko-KR' },
+                                    { value: 'ko-KR-Chirp3-HD-Puck', label: 'Puck (남성, 젊음)', gender: 'male', lang: 'ko-KR' },
+                                ]
+                            },
+                            {
+                                optgroup: '🇺🇸 English (Neural2)', options: [
+                                    { value: 'en-US-Neural2-C', label: 'Neural2-C (Female)', gender: 'female', lang: 'en-US' },
+                                    { value: 'en-US-Neural2-G', label: 'Neural2-G (Female, Young)', gender: 'female', lang: 'en-US' },
+                                    { value: 'en-US-Neural2-J', label: 'Neural2-J (Male)', gender: 'male', lang: 'en-US' },
+                                    { value: 'en-US-Neural2-I', label: 'Neural2-I (Male, Young)', gender: 'male', lang: 'en-US' },
+                                ]
+                            }
+                        ];
 
-                            // Select voice options based on TTS model
-                            const VOICE_OPTIONS = ttsModel === 'gemini-tts' ? GEMINI_VOICE_OPTIONS : CLOUD_VOICE_OPTIONS;
-                            const FLAT_VOICE_OPTIONS = VOICE_OPTIONS.flatMap(g => g.options);
+                        // Combine all voice options - show all voices regardless of TTS model
+                        const VOICE_OPTIONS = [...CLOUD_VOICE_OPTIONS, ...GEMINI_VOICE_OPTIONS];
+                        const FLAT_VOICE_OPTIONS = VOICE_OPTIONS.flatMap(g => g.options);
 
-                            const getDefaultVoice = (gender?: string) => {
-                                if (ttsModel === 'gemini-tts') {
-                                    // For Gemini TTS, use gender-based default
-                                    return gender === 'male' ? 'Puck' : 'Aoede';
-                                }
-                                if (gender === 'male') {
-                                    return FLAT_VOICE_OPTIONS.find(v => v.gender === 'male' && v.lang === currentLanguage)?.value || FLAT_VOICE_OPTIONS[0]?.value;
-                                }
-                                return FLAT_VOICE_OPTIONS.find(v => v.gender === 'female' && v.lang === currentLanguage)?.value || FLAT_VOICE_OPTIONS[0]?.value;
-                            };
+                        const getDefaultVoice = (gender?: string) => {
+                            if (ttsModel === 'gemini-tts') {
+                                // For Gemini TTS, use gender-based default
+                                return gender === 'male' ? 'Puck' : 'Aoede';
+                            }
+                            if (gender === 'male') {
+                                return FLAT_VOICE_OPTIONS.find(v => v.gender === 'male' && v.lang === currentLanguage)?.value || FLAT_VOICE_OPTIONS[0]?.value;
+                            }
+                            return FLAT_VOICE_OPTIONS.find(v => v.gender === 'female' && v.lang === currentLanguage)?.value || FLAT_VOICE_OPTIONS[0]?.value;
+                        };
 
 
-                            const applyVoiceToSpeaker = (speakerName: string, voiceValue: string) => {
-                                const voice = FLAT_VOICE_OPTIONS.find(v => v.value === voiceValue);
-                                if (voice) {
-                                    setLocalScript(prev => {
-                                        const updated = prev.map(cut => {
-                                            const isLocked = cut.isAudioConfirmed || cut.isConfirmed;
-                                            const isMatch = (cut.speaker || 'Narrator') === speakerName;
-                                            if (isMatch && !isLocked) {
-                                                return {
-                                                    ...cut,
-                                                    voiceId: voiceValue,
-                                                    voiceGender: voice.gender as 'male' | 'female' | 'neutral',
-                                                    language: voice.lang
-                                                } as ScriptCut;
-                                            }
-                                            return cut;
-                                        });
-                                        saveToStore(updated);
-                                        return updated;
-                                    });
-                                }
-                            };
-                            const applyToSpeaker = (speakerName: string, field: keyof ScriptCut, value: any) => {
+                        const applyVoiceToSpeaker = (speakerName: string, voiceValue: string) => {
+                            const voice = FLAT_VOICE_OPTIONS.find(v => v.value === voiceValue);
+                            if (voice) {
                                 setLocalScript(prev => {
                                     const updated = prev.map(cut => {
                                         const isLocked = cut.isAudioConfirmed || cut.isConfirmed;
                                         const isMatch = (cut.speaker || 'Narrator') === speakerName;
                                         if (isMatch && !isLocked) {
-                                            return { ...cut, [field]: value };
+                                            return {
+                                                ...cut,
+                                                voiceId: voiceValue,
+                                                voiceGender: voice.gender as 'male' | 'female' | 'neutral',
+                                                language: voice.lang
+                                            } as ScriptCut;
                                         }
                                         return cut;
                                     });
                                     saveToStore(updated);
                                     return updated;
                                 });
-                            };
-                            const applyToAll = (field: string, value: any) => {
-                                setLocalScript(prev => {
-                                    const updated = prev.map(cut => {
-                                        const isLocked = cut.isAudioConfirmed || cut.isConfirmed;
-                                        if (!isLocked) {
-                                            return { ...cut, [field]: value };
-                                        }
-                                        return cut;
-                                    });
-                                    saveToStore(updated);
-                                    return updated;
+                            }
+                        };
+                        const applyToSpeaker = (speakerName: string, field: keyof ScriptCut, value: any) => {
+                            setLocalScript(prev => {
+                                const updated = prev.map(cut => {
+                                    const isLocked = cut.isAudioConfirmed || cut.isConfirmed;
+                                    const isMatch = (cut.speaker || 'Narrator') === speakerName;
+                                    if (isMatch && !isLocked) {
+                                        return { ...cut, [field]: value };
+                                    }
+                                    return cut;
                                 });
-                            };
-
-                            const handleBulkGenerateAudio = async (speakerName: string) => {
-                                const cutsToGenerate = localScriptRef.current.filter(c =>
-                                    (c.speaker || 'Narrator') === speakerName &&
-                                    !c.isAudioConfirmed
-                                );
-                                if (cutsToGenerate.length === 0) {
-                                    alert('No unlocked cuts found for this speaker.');
-                                    return;
-                                }
-                                if (!confirm(`Generate audio for ${cutsToGenerate.length} cuts for "${speakerName}"?\n(This will process sequentially)`)) return;
-                                for (const cut of cutsToGenerate) {
-                                    if (!cut.dialogue) continue;
-                                    await handleGenerateAudio(cut.id, cut.dialogue);
-                                    await new Promise(r => setTimeout(r, 200));
-                                }
-                            };
-                            const handleBulkLockAudio = (speakerName: string, lock: boolean) => {
-                                setLocalScript(prev => {
-                                    const updated = prev.map(cut => {
-                                        if ((cut.speaker || 'Narrator') === speakerName) {
-                                            if (lock && (!cut.audioUrl && cut.speaker !== 'SILENT')) return cut;
-                                            return { ...cut, isAudioConfirmed: lock };
-                                        }
-                                        return cut;
-                                    });
-                                    saveToStore(updated);
-                                    return updated;
+                                saveToStore(updated);
+                                return updated;
+                            });
+                        };
+                        const applyToAll = (field: string, value: any) => {
+                            setLocalScript(prev => {
+                                const updated = prev.map(cut => {
+                                    const isLocked = cut.isAudioConfirmed || cut.isConfirmed;
+                                    if (!isLocked) {
+                                        return { ...cut, [field]: value };
+                                    }
+                                    return cut;
                                 });
-                            };
+                                saveToStore(updated);
+                                return updated;
+                            });
+                        };
 
-                            const VOICE_SAMPLES: Record<string, string> = {
-                                'ko-KR-Chirp3-HD-Aoede': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Aoede.wav',
-                                'ko-KR-Chirp3-HD-Fenrir': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Fenrir.wav',
-                                'ko-KR-Chirp3-HD-Leda': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Leda.wav',
-                                'ko-KR-Chirp3-HD-Puck': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Puck.wav',
-                                'ko-KR-Neural2-A': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Neural2-A.wav',
-                                'ko-KR-Neural2-B': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Neural2-B.wav',
-                                'ko-KR-Standard-A': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-A.wav',
-                                'ko-KR-Standard-B': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-B.wav',
-                                'ko-KR-Standard-C': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-C.wav',
-                                'ko-KR-Standard-D': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-D.wav',
-                                'ko-KR-Wavenet-C': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Wavenet-C.wav',
-                                'ko-KR-Wavenet-D': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Wavenet-D.wav',
-                                'en-US-Neural2-C': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-C.wav',
-                                'en-US-Neural2-G': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-G.wav',
-                                'en-US-Neural2-J': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-J.wav',
-                                'en-US-Neural2-I': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-I.wav',
-                                // Gemini Voices (Mapped to official high-fidelity Chirp3-HD samples)
-                                'Aoede': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Aoede.wav',
-                                'Leda': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Leda.wav',
-                                'Kore': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-B.wav',
-                                'Puck': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Puck.wav',
-                                'Fenrir': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Fenrir.wav',
-                                'Charon': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Charon.wav',
-                                'Orus': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Orus.wav',
-                                'Zephyr': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-A.wav',
-                            };
-                            const playVoiceSample = (voiceId: string) => {
-                                const sampleUrl = VOICE_SAMPLES[voiceId];
-                                if (sampleUrl) {
-                                    const audio = new Audio(sampleUrl);
-                                    audio.play().catch(e => console.warn('Sample playback failed:', e));
-                                } else {
-                                    alert('Sample not available for this voice');
-                                }
-                            };
-
-
-                            return (
-                                <div className="mt-2 p-3 bg-black/20 rounded-lg border border-white/5 space-y-3">
-                                    <div className="text-[10px] text-gray-400 font-bold flex items-center gap-1 uppercase tracking-wider">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)]"></div>
-                                        Bulk Audio Settings
-                                    </div>
-
-                                    {/* Global Settings */}
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <select
-                                            className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs text-white focus:border-[var(--color-primary)] outline-none"
-                                            value={currentLanguage}
-                                            onChange={(e) => applyToAll('language', e.target.value || undefined)}
-                                        >
-                                            <option value="">🌐 Auto Lang</option>
-                                            <option value="ko-KR">🇰🇷 Korean</option>
-                                            <option value="en-US">🇺🇸 English</option>
-                                        </select>
-                                        <select
-                                            className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs text-white focus:border-[var(--color-primary)] outline-none"
-                                            value={currentSpeed}
-                                            onChange={(e) => applyToAll('voiceSpeed', e.target.value ? parseFloat(e.target.value) : undefined)}
-                                        >
-                                            <option value="">⚡ Auto Rate</option>
-                                            <option value="0.85">85% Slow</option>
-                                            <option value="1.0">100% Normal</option>
-                                            <option value="1.15">115% Fast</option>
-                                        </select>
-                                    </div>
-
-                                    {/* Per Speaker */}
-                                    <div className="space-y-2 pt-2 border-t border-[var(--color-border)]">
-                                        <div className="text-[9px] text-[var(--color-text-muted)] uppercase font-bold">Per Speaker Voice</div>
-                                        <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
-                                            {speakers.map(([speaker, settings]) => {
-                                                const currentVoice = settings.voiceId || getDefaultVoice(settings.gender);
-                                                return (
-                                                    <div key={speaker} className="bg-[var(--color-surface)] p-2 rounded border border-[var(--color-border)] space-y-2">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="flex-1 text-xs text-white truncate font-medium" title={speaker}>{speaker}</span>
-                                                            <span className="text-[10px] text-gray-500">{settings.cutCount} cuts</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-1">
-                                                            <div className="flex-1 space-y-1">
-                                                                <select
-                                                                    className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-1.5 py-1 text-[10px] text-white outline-none"
-                                                                    value={currentVoice}
-                                                                    onChange={(e) => applyVoiceToSpeaker(speaker, e.target.value)}
-                                                                >
-                                                                    {VOICE_OPTIONS.map(group => (
-                                                                        <optgroup key={group.optgroup} label={group.optgroup}>
-                                                                            {group.options.map(v => (
-                                                                                <option key={v.value} value={v.value}>{v.label}</option>
-                                                                            ))}
-                                                                        </optgroup>
-                                                                    ))}
-                                                                </select>
-                                                                <div className="flex gap-1">
-                                                                    <select
-                                                                        className="flex-1 bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-1 py-0.5 text-[9px] text-gray-400 outline-none"
-                                                                        value={settings.voiceSpeed ?? ''}
-                                                                        onChange={(e) => applyToSpeaker(speaker, 'voiceSpeed', e.target.value === '' ? undefined : parseFloat(e.target.value))}
-                                                                    >
-                                                                        <option value="">Rate: Auto</option>
-                                                                        <option value="0.8">0.8x</option>
-                                                                        <option value="0.9">0.9x</option>
-                                                                        <option value="1.0">1.0x</option>
-                                                                        <option value="1.1">1.1x</option>
-                                                                    </select>
-                                                                    <select
-                                                                        className="flex-1 bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-1 py-0.5 text-[9px] text-gray-400 outline-none"
-                                                                        value={settings.age || 'adult'}
-                                                                        onChange={(e) => applyToSpeaker(speaker, 'voiceAge', e.target.value)}
-                                                                    >
-                                                                        <option value="child">Child</option>
-                                                                        <option value="young">Young</option>
-                                                                        <option value="adult">Adult</option>
-                                                                        <option value="senior">Senior</option>
-                                                                    </select>
-                                                                </div>
-                                                            </div>
-                                                            <button
-                                                                onClick={() => playVoiceSample(currentVoice || '')}
-                                                                className="px-2 py-2 bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30 rounded text-[12px] font-bold self-start"
-                                                                title="Play voice sample"
-                                                            >
-                                                                🔊
-                                                            </button>
-                                                        </div>
-                                                        {/* Bulk Operations Row */}
-                                                        <div className="flex gap-1 pt-1 border-t border-white/5">
-                                                            <button
-                                                                onClick={() => handleBulkGenerateAudio(speaker)}
-                                                                className="flex-1 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 hover:text-orange-300 text-[10px] py-1 rounded flex items-center justify-center gap-1 transition-colors font-medium border border-orange-500/30"
-                                                                title="Generate audio for all unlocked cuts for this speaker"
-                                                            >
-                                                                <Wand2 size={10} />
-                                                                Gen All
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleBulkLockAudio(speaker, true)}
-                                                                className="px-2 bg-green-500/10 hover:bg-green-500/20 text-green-400 text-[10px] py-1 rounded transition-colors"
-                                                                title="Lock all generated audio for this speaker"
-                                                            >
-                                                                <Lock size={10} />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleBulkLockAudio(speaker, false)}
-                                                                className="px-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-[10px] py-1 rounded transition-colors"
-                                                                title="Unlock all audio for this speaker"
-                                                            >
-                                                                <Unlock size={10} />
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                </div>
+                        const handleBulkGenerateAudio = async (speakerName: string) => {
+                            const cutsToGenerate = localScriptRef.current.filter(c =>
+                                (c.speaker || 'Narrator') === speakerName &&
+                                !c.isAudioConfirmed
                             );
-                        })()}
-                    </div>
+                            if (cutsToGenerate.length === 0) {
+                                alert('No unlocked cuts found for this speaker.');
+                                return;
+                            }
+                            if (!confirm(`Generate audio for ${cutsToGenerate.length} cuts for "${speakerName}"?\n(This will process sequentially)`)) return;
+                            for (const cut of cutsToGenerate) {
+                                if (!cut.dialogue) continue;
+                                await handleGenerateAudio(cut.id, cut.dialogue);
+                                await new Promise(r => setTimeout(r, 200));
+                            }
+                        };
+                        const handleBulkLockAudio = (speakerName: string, lock: boolean) => {
+                            setLocalScript(prev => {
+                                const updated = prev.map(cut => {
+                                    if ((cut.speaker || 'Narrator') === speakerName) {
+                                        if (lock && (!cut.audioUrl && cut.speaker !== 'SILENT')) return cut;
+                                        return { ...cut, isAudioConfirmed: lock };
+                                    }
+                                    return cut;
+                                });
+                                saveToStore(updated);
+                                return updated;
+                            });
+                        };
+
+                        const VOICE_SAMPLES: Record<string, string> = {
+                            'ko-KR-Chirp3-HD-Aoede': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Aoede.wav',
+                            'ko-KR-Chirp3-HD-Fenrir': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Fenrir.wav',
+                            'ko-KR-Chirp3-HD-Leda': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Leda.wav',
+                            'ko-KR-Chirp3-HD-Puck': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Puck.wav',
+                            'ko-KR-Neural2-A': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Neural2-A.wav',
+                            'ko-KR-Neural2-B': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Neural2-B.wav',
+                            'ko-KR-Standard-A': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-A.wav',
+                            'ko-KR-Standard-B': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-B.wav',
+                            'ko-KR-Standard-C': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-C.wav',
+                            'ko-KR-Standard-D': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-D.wav',
+                            'ko-KR-Wavenet-C': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Wavenet-C.wav',
+                            'ko-KR-Wavenet-D': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Wavenet-D.wav',
+                            'en-US-Neural2-C': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-C.wav',
+                            'en-US-Neural2-G': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-G.wav',
+                            'en-US-Neural2-J': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-J.wav',
+                            'en-US-Neural2-I': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-I.wav',
+                            // Gemini Voices (Mapped to official high-fidelity Chirp3-HD samples)
+                            'Aoede': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Aoede.wav',
+                            'Leda': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Leda.wav',
+                            'Kore': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-B.wav',
+                            'Puck': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Puck.wav',
+                            'Fenrir': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Fenrir.wav',
+                            'Charon': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Charon.wav',
+                            'Orus': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Orus.wav',
+                            'Zephyr': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-A.wav',
+                        };
+                        const playVoiceSample = (voiceId: string) => {
+                            const sampleUrl = VOICE_SAMPLES[voiceId];
+                            if (sampleUrl) {
+                                const audio = new Audio(sampleUrl);
+                                audio.play().catch(e => console.warn('Sample playback failed:', e));
+                            } else {
+                                alert('Sample not available for this voice');
+                            }
+                        };
+
+
+                        return (
+                            <div className="mt-2 p-3 bg-black/20 rounded-lg border border-white/5 space-y-3">
+                                <div className="text-[10px] text-gray-400 font-bold flex items-center gap-1 uppercase tracking-wider">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)]"></div>
+                                    Bulk Audio Settings
+                                </div>
+
+                                {/* Global Settings */}
+                                <div className="grid grid-cols-2 gap-2">
+                                    <select
+                                        className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs text-white focus:border-[var(--color-primary)] outline-none"
+                                        value={currentLanguage}
+                                        onChange={(e) => applyToAll('language', e.target.value || undefined)}
+                                    >
+                                        <option value="">🌐 Auto Lang</option>
+                                        <option value="ko-KR">🇰🇷 Korean</option>
+                                        <option value="en-US">🇺🇸 English</option>
+                                    </select>
+                                    <select
+                                        className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs text-white focus:border-[var(--color-primary)] outline-none"
+                                        value={currentSpeed}
+                                        onChange={(e) => applyToAll('voiceSpeed', e.target.value ? parseFloat(e.target.value) : undefined)}
+                                    >
+                                        <option value="">⚡ Auto Rate</option>
+                                        <option value="0.85">85% Slow</option>
+                                        <option value="1.0">100% Normal</option>
+                                        <option value="1.15">115% Fast</option>
+                                    </select>
+                                </div>
+
+                                {/* Per Speaker */}
+                                <div className="space-y-2 pt-2 border-t border-[var(--color-border)]">
+                                    <div className="text-[9px] text-[var(--color-text-muted)] uppercase font-bold">Per Speaker Voice</div>
+                                    <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
+                                        {speakers.map(([speaker, settings]) => {
+                                            const currentVoice = settings.voiceId || getDefaultVoice(settings.gender);
+                                            return (
+                                                <div key={speaker} className="bg-[var(--color-surface)] p-2 rounded border border-[var(--color-border)] space-y-2">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="flex-1 text-xs text-white truncate font-medium" title={speaker}>{speaker}</span>
+                                                        <span className="text-[10px] text-gray-500">{settings.cutCount} cuts</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1">
+                                                        <div className="flex-1 space-y-1">
+                                                            <select
+                                                                className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-1.5 py-1 text-[10px] text-white outline-none"
+                                                                value={currentVoice}
+                                                                onChange={(e) => applyVoiceToSpeaker(speaker, e.target.value)}
+                                                            >
+                                                                {VOICE_OPTIONS.map(group => (
+                                                                    <optgroup key={group.optgroup} label={group.optgroup}>
+                                                                        {group.options.map(v => (
+                                                                            <option key={v.value} value={v.value}>{v.label}</option>
+                                                                        ))}
+                                                                    </optgroup>
+                                                                ))}
+                                                            </select>
+                                                            <div className="flex gap-1">
+                                                                <select
+                                                                    className="flex-1 bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-1 py-0.5 text-[9px] text-gray-400 outline-none"
+                                                                    value={settings.voiceSpeed ?? ''}
+                                                                    onChange={(e) => applyToSpeaker(speaker, 'voiceSpeed', e.target.value === '' ? undefined : parseFloat(e.target.value))}
+                                                                >
+                                                                    <option value="">Rate: Auto</option>
+                                                                    <option value="0.8">0.8x</option>
+                                                                    <option value="0.9">0.9x</option>
+                                                                    <option value="1.0">1.0x</option>
+                                                                    <option value="1.1">1.1x</option>
+                                                                </select>
+                                                                <select
+                                                                    className="flex-1 bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-1 py-0.5 text-[9px] text-gray-400 outline-none"
+                                                                    value={settings.age || 'adult'}
+                                                                    onChange={(e) => applyToSpeaker(speaker, 'voiceAge', e.target.value)}
+                                                                >
+                                                                    <option value="child">Child</option>
+                                                                    <option value="young">Young</option>
+                                                                    <option value="adult">Adult</option>
+                                                                    <option value="senior">Senior</option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            onClick={() => playVoiceSample(currentVoice || '')}
+                                                            className="px-2 py-2 bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30 rounded text-[12px] font-bold self-start"
+                                                            title="Play voice sample"
+                                                        >
+                                                            🔊
+                                                        </button>
+                                                    </div>
+                                                    {/* Bulk Operations Row */}
+                                                    <div className="flex gap-1 pt-1 border-t border-white/5">
+                                                        <button
+                                                            onClick={() => handleBulkGenerateAudio(speaker)}
+                                                            className="flex-1 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 hover:text-orange-300 text-[10px] py-1 rounded flex items-center justify-center gap-1 transition-colors font-medium border border-orange-500/30"
+                                                            title="Generate audio for all unlocked cuts for this speaker"
+                                                        >
+                                                            <Wand2 size={10} />
+                                                            Gen All
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleBulkLockAudio(speaker, true)}
+                                                            className="px-2 bg-green-500/10 hover:bg-green-500/20 text-green-400 text-[10px] py-1 rounded transition-colors"
+                                                            title="Lock all generated audio for this speaker"
+                                                        >
+                                                            <Lock size={10} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleBulkLockAudio(speaker, false)}
+                                                            className="px-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-[10px] py-1 rounded transition-colors"
+                                                            title="Unlock all audio for this speaker"
+                                                        >
+                                                            <Unlock size={10} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
+
 
                 {/* System Instruction Management Panel */}
                 <div className="glass-panel p-4 space-y-3">
                     <div className="flex items-center justify-between mb-1">
                         <span className="text-sm font-bold text-white flex items-center gap-2">
-                            📝 텍스트 AI 지시문 관리
+                            <Sparkles size={14} className="text-[var(--color-primary)]" />
+                            프롬프트 작성 Gemini 지시문 관리
                         </span>
                     </div>
 
@@ -1553,7 +1571,7 @@ export const Step3_Production: React.FC = () => {
                             className="w-full flex items-center justify-between p-3 bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)] rounded-lg transition-colors group text-left"
                         >
                             <span className="text-xs font-medium text-white group-hover:text-[var(--color-primary)] transition-colors">
-                                1) Script / Image 프롬프트 작성
+                                Script/Image
                             </span>
                             <span className="text-[10px] text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-2 py-1 rounded">
                                 Edit ✏️
@@ -1566,7 +1584,7 @@ export const Step3_Production: React.FC = () => {
                             className="w-full flex items-center justify-between p-3 bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-purple-400 rounded-lg transition-colors group text-left"
                         >
                             <span className="text-xs font-medium text-white group-hover:text-purple-400 transition-colors">
-                                2) Video 프롬프트 작성
+                                Video
                             </span>
                             <span className="text-[10px] text-purple-400 bg-purple-500/10 px-2 py-1 rounded">
                                 Edit ✏️
@@ -1576,18 +1594,20 @@ export const Step3_Production: React.FC = () => {
                 </div>
 
                 {/* Next Step Button */}
-                {localScript.length > 0 && (
-                    <button
-                        onClick={handleApprove}
-                        className="w-full btn-primary flex items-center justify-center gap-2 py-3 rounded-xl font-bold shadow-lg hover:shadow-[0_0_20px_rgba(255,159,89,0.4)] hover:scale-[1.02] transition-all"
-                    >
-                        Next Step
-                        <ArrowRight size={20} />
-                    </button>
-                )}
+                {
+                    localScript.length > 0 && (
+                        <button
+                            onClick={handleApprove}
+                            className="w-full btn-primary flex items-center justify-center gap-2 py-3 rounded-xl font-bold shadow-lg hover:shadow-[0_0_20px_rgba(255,159,89,0.4)] hover:scale-[1.02] transition-all"
+                        >
+                            Next Step
+                            <ArrowRight size={20} />
+                        </button>
+                    )
+                }
             </div>
 
-            {/* RIGHT CONTENT - 3/4 width */}
+
             <div className="flex-1 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-[var(--color-border)] scrollbar-track-transparent">
                 {localScript.length === 0 ? (
                     <div className="glass-panel p-12 text-center space-y-6 h-full flex flex-col items-center justify-center">

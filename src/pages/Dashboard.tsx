@@ -458,9 +458,9 @@ export const Dashboard: React.FC = () => {
                     {/* New Series Section */}
                     <div className="space-y-3 max-w-[220px]">
                         <div className="space-y-1">
-                            <h3 className="text-sm font-bold text-white uppercase tracking-wider">Start Fresh</h3>
+                            <h3 className="text-sm font-bold text-white uppercase tracking-wider">새 시리즈 시작</h3>
                             <p className="text-xs text-gray-400 leading-relaxed">
-                                Create a completely new series with its own characters, locations, and style
+                                새로운 캐릭터, 장소, 스타일을 가진 완전히 새 시리즈를 만들어보세요
                             </p>
                         </div>
                         <button
@@ -469,7 +469,7 @@ export const Dashboard: React.FC = () => {
                         >
                             <span className="flex items-center gap-2">
                                 <Plus size={16} />
-                                New Series
+                                새 시리즈
                             </span>
                             <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
                         </button>
@@ -479,14 +479,14 @@ export const Dashboard: React.FC = () => {
                     <div className="space-y-2 max-w-[200px]">
                         <div className="flex items-center gap-2">
                             <div className="w-2.5 h-2.5 bg-gray-500 flex-shrink-0" />
-                            <h3 className="text-xs font-bold text-white uppercase tracking-wider">Data Management</h3>
+                            <h3 className="text-xs font-bold text-white uppercase tracking-wider">데이터 관리</h3>
                         </div>
                         <div className="space-y-1.5">
                             <button
                                 onClick={() => setShowInspector(true)}
                                 className="w-full flex items-center justify-between px-2.5 py-1 rounded-md bg-[var(--color-surface)] hover:bg-orange-500/20 hover:border-orange-500 border border-[var(--color-border)] transition-all text-xs text-white"
                             >
-                                <span>🧹 Storage Cleanup</span>
+                                <span>🧹 저장소 정리</span>
                                 <Trash2 size={10} />
                             </button>
 
@@ -496,7 +496,7 @@ export const Dashboard: React.FC = () => {
                                 disabled={isMigrating}
                                 className="w-full flex items-center justify-between px-2.5 py-1 rounded-md bg-[var(--color-surface)] hover:bg-blue-500/20 hover:border-blue-500 border border-[var(--color-border)] transition-all text-xs text-white disabled:opacity-50"
                             >
-                                <span>{isMigrating ? '⏳ Migrating...' : '💾 Optimize Storage'}</span>
+                                <span>{isMigrating ? '⏳ 마이그레이션 중...' : '💾 저장소 최적화'}</span>
                                 {isMigrating ? <Loader2 size={10} className="animate-spin" /> : <Database size={10} />}
                             </button>
                             {migrationResult && (
@@ -625,7 +625,7 @@ export const Dashboard: React.FC = () => {
                         <div className="glass-panel p-8 text-center">
                             <div className="flex flex-col items-center gap-4">
                                 <div className="w-8 h-8 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
-                                <p className="text-[var(--color-text-muted)]">Loading {Object.keys(savedProjects).length} projects...</p>
+                                <p className="text-[var(--color-text-muted)]">{Object.keys(savedProjects).length}개 프로젝트 로딩 중...</p>
                             </div>
                         </div>
                     )}
@@ -635,8 +635,8 @@ export const Dashboard: React.FC = () => {
                         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px]">
                             <div className="glass-panel p-8 text-center flex flex-col items-center gap-4 animate-in fade-in zoom-in duration-200">
                                 <Loader2 size={32} className="text-[var(--color-primary)] animate-spin" />
-                                <h3 className="text-xl font-bold text-white">Opening Project...</h3>
-                                <p className="text-[var(--color-text-muted)]">Loading your masterpiece</p>
+                                <h3 className="text-xl font-bold text-white">프로젝트 열기...</h3>
+                                <p className="text-[var(--color-text-muted)]">작품을 불러오는 중입니다</p>
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();
@@ -644,7 +644,7 @@ export const Dashboard: React.FC = () => {
                                     }}
                                     className="mt-4 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-[var(--color-text-muted)] text-xs transition-colors"
                                 >
-                                    Cancel & Return
+                                    취소 후 돌아가기
                                 </button>
                             </div>
                         </div>
@@ -652,7 +652,7 @@ export const Dashboard: React.FC = () => {
 
                     {!isLoadingProjects && allSeries.length === 0 && (
                         <div className="glass-panel p-8 text-center text-[var(--color-text-muted)]">
-                            No projects found. Start a new one!
+                            프로젝트가 없습니다. 새로 시작해보세요!
                         </div>
                     )}
 
@@ -682,7 +682,7 @@ export const Dashboard: React.FC = () => {
                                         title={`Create new episode for ${series.name}`}
                                     >
                                         <Plus size={14} />
-                                        New Episode
+                                        새 에피소드
                                     </button>
                                 </div>
                                 <div className="flex items-center gap-4">

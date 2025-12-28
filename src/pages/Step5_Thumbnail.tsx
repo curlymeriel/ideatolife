@@ -565,7 +565,7 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                         ) : (
                             <div className="w-full h-full flex flex-col items-center justify-center text-gray-600">
                                 <ImageIcon size={100} className="mb-4 opacity-50" />
-                                <span className="text-4xl">No Image Selected</span>
+                                <span className="text-4xl">이미지를 선택해주세요</span>
                             </div>
                         )}
                 </div>
@@ -710,7 +710,7 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                                     </label>
                                     <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-4">
                                         <div className="space-y-2">
-                                            <label className="text-[10px] text-gray-400 font-bold uppercase px-1">Thumbnail Title</label>
+                                            <label className="text-[10px] text-gray-400 font-bold uppercase px-1">썸네일 제목</label>
                                             <input
                                                 type="text"
                                                 placeholder="Main headline for AI to render"
@@ -737,7 +737,7 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                                     </label>
                                     <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-4">
                                         <div className="flex items-center justify-between">
-                                            <span className="text-[10px] text-gray-400 font-bold uppercase px-1">External Style Ref</span>
+                                            <span className="text-[10px] text-gray-400 font-bold uppercase px-1">외부 스타일 참고</span>
                                             <label className="cursor-pointer text-[10px] text-purple-400 hover:text-purple-300 font-bold flex items-center gap-1 transition-colors">
                                                 <Upload size={12} /> UPLOAD
                                                 <input type="file" accept="image/*" className="hidden" onChange={handleStyleRefUpload} />
@@ -1014,7 +1014,7 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                     onClick={() => { prevStep(); navigate('/step/4'); }}
                     className="flex items-center gap-2 px-6 py-3 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 hover:border-white/10 text-gray-400 hover:text-white transition-all shadow-lg backdrop-blur-md"
                 >
-                    Back to Design
+                    디자인으로 돌아가기
                 </button>
             </div>
 
@@ -1027,7 +1027,7 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                         : 'bg-white/5 text-gray-600 cursor-not-allowed border border-white/5'
                         }`}
                 >
-                    Finalize Episode
+                    에피소드 확정
                     <ArrowRight size={20} />
                 </button>
             </div>
@@ -1115,9 +1115,9 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                         <div className="p-6 border-t border-white/5 bg-[var(--color-bg)] flex justify-between items-center">
                             <div className="text-sm text-gray-400">
                                 {mode === 'ai-gen' ? (
-                                    <p>Selected <span className="text-purple-400 font-bold">{selectedReferenceIds.length}</span> guiding references</p>
+                                    <p>선택된 <span className="text-purple-400 font-bold">{selectedReferenceIds.length}</span>개 참고 이미지</p>
                                 ) : (
-                                    <p>Select an image to use as background</p>
+                                    <p>배경으로 사용할 이미지를 선택하세요</p>
                                 )}
                             </div>
                             <button

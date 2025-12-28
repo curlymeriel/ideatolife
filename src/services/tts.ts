@@ -75,13 +75,28 @@ export const generateSpeech = async (
     if (model === 'gemini-tts') {
         try {
             // Find the character's gender/age from voiceConfig or assume default
-            const geminiVoice = voiceName.includes('-') ? voiceName.split('-').pop() || 'Aoede' : voiceName;
+            const geminiVoiceName = voiceName.includes('-') ? voiceName.split('-').pop() || 'Aoede' : voiceName;
+
+            // Import GEMINI_TTS_VOICES to look up voice style
+            const { GEMINI_TTS_VOICES } = await import('./geminiTts');
+            const voiceDef = GEMINI_TTS_VOICES.find(v => v.id === geminiVoiceName);
+            const baseStyle = voiceDef?.style || '';
+
+            // Combine scene-specific acting direction (from voiceConfig extended prop) with base style
+            // Note: voiceConfig currently lacks 'actingDirection' type definition in this file, we cast it
+            const sceneDirection = (voiceConfig as any)?.actingDirection || '';
+
+            let combinedDirection = baseStyle;
+            if (sceneDirection) {
+                combinedDirection = baseStyle ? `${baseStyle}. ${sceneDirection}` : sceneDirection;
+            }
 
             const result = await generateGeminiSpeech(text, apiKey, {
-                voiceName: geminiVoice,
+                voiceName: geminiVoiceName,
                 languageCode: voiceConfig?.language || 'en-US',
                 rate: voiceConfig?.rate ? parseRate(voiceConfig.rate) : 1.0,
-                volume: voiceConfig?.volume ? 1.0 : 1.0 // Simple mapping for now
+                volume: voiceConfig?.volume ? 1.0 : 1.0, // Simple mapping for now
+                actingDirection: combinedDirection // Pass the combined direction
             });
 
             if (result instanceof Blob) {

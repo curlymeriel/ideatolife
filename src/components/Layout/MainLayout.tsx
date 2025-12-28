@@ -375,17 +375,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                             </div>
 
                             <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Google Cloud Key</label>
-                                <input
-                                    type="password"
-                                    className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-2 py-1 text-xs text-white focus:border-[var(--color-primary)] outline-none"
-                                    value={apiKeys?.googleCloud || ''}
-                                    onChange={(e) => setApiKeys({ ...apiKeys, googleCloud: e.target.value })}
-                                    placeholder="For TTS"
-                                />
-                            </div>
-
-                            <div className="space-y-1">
                                 <label className="text-[10px] font-bold text-purple-400 uppercase">🔊 Freesound API Key</label>
                                 <input
                                     type="password"
@@ -426,7 +415,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-all text-xs"
                             >
                                 <BookOpen size={14} />
-                                사용가이드
+                                시작 가이드
                             </button>
                             <button
                                 onClick={() => setShowSupport(true)}
