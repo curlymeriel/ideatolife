@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Image, FileText, Music, ArrowRight, BarChart3, Plus, Download, Trash2, Database, Loader2, Copy, Check, HardDrive, AlertTriangle, RotateCcw, Settings } from 'lucide-react';
 
 import { UnifiedStorageManager } from '../components/UnifiedStorageManager';
+import { RescueModal } from '../components/RescueModal';
 import { migrateAllProjects } from '../utils/migration';
 
 import { debugListKeys, resolveUrl } from '../utils/imageStorage';
@@ -19,6 +20,7 @@ export const Dashboard: React.FC = () => {
     const isLoadingProjects = !isHydrated;
     const navigate = useNavigate();
     const [showStorageManager, setShowStorageManager] = React.useState(false);
+    const [showRescueModal, setShowRescueModal] = React.useState(false);
     // Removed projectsData state - we now use savedProjects metadata exclusively
 
     // Local state for resolved IDB thumbnails and first cut images (lazy loaded)
@@ -437,6 +439,11 @@ export const Dashboard: React.FC = () => {
                     <UnifiedStorageManager onClose={() => setShowStorageManager(false)} />
                 )}
 
+                <RescueModal
+                    isOpen={showRescueModal}
+                    onClose={() => setShowRescueModal(false)}
+                />
+
                 {/* Left Sidebar */}
                 <div className="col-span-12 lg:col-span-3 space-y-8">
                     <div className="py-6">
@@ -505,16 +512,16 @@ export const Dashboard: React.FC = () => {
                             {/* 3. 복구 센터 (긴급 및 세션) */}
                             <div className="space-y-2">
                                 <div className="flex items-center gap-2 px-1 py-1">
-                                    <AlertTriangle size={12} className="text-red-400" />
+                                    <AlertTriangle size={12} className="text-[var(--color-primary)]" />
                                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">데이터 복구 센터</span>
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
                                     <button
-                                        onClick={() => navigate('/rescue')}
-                                        className="flex flex-col items-center justify-center p-2 bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 rounded-xl transition-all"
+                                        onClick={() => setShowRescueModal(true)}
+                                        className="flex flex-col items-center justify-center p-2 bg-[var(--color-primary)]/5 hover:bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/10 rounded-xl transition-all"
                                         title="긴급 데이터 복구"
                                     >
-                                        <AlertTriangle size={14} className="text-red-400 mb-1" />
+                                        <AlertTriangle size={14} className="text-[var(--color-primary)] mb-1" />
                                         <span className="text-[10px] font-bold text-white text-center leading-tight">긴급 복구</span>
                                     </button>
 
