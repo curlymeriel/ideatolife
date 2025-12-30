@@ -95,7 +95,8 @@ export const exportVideoGenerationKit = async (
 
         if (res) {
             const ext = getExtension(res.mimeType);
-            imageFilename = `cut_${String(cut.id).padStart(3, '0')}.${ext}`;
+            // Use Index for filename to ensure sequential numbering (matches Bulk Upload logic)
+            imageFilename = `cut_${String(i + 1).padStart(3, '0')}.${ext}`;
 
             // Add to ZIP
             if (imagesFolder) {
@@ -128,7 +129,7 @@ export const exportVideoGenerationKit = async (
             videoPrompt: finalVideoPrompt,
             originalVisualPrompt: cut.visualPrompt,
             dialogue: cut.dialogue,
-            duration: cut.estimatedDuration || 5
+            duration: cut.videoDuration || cut.estimatedDuration || 5
         });
     }
 

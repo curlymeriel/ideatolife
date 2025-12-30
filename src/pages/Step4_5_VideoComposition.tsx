@@ -71,7 +71,8 @@ const VideoCompositionRow = React.memo(({
     onEditPrompt,
     onUpload,
     onConfirm,
-    onUnconfirm
+    onUnconfirm,
+    index
 }: {
     cut: ScriptCut;
     status: VideoClipStatus;
@@ -84,6 +85,7 @@ const VideoCompositionRow = React.memo(({
     onUpload: (file: File) => void;
     onConfirm: () => void;
     onUnconfirm: () => void;
+    index: number;
 }) => {
     const [resolvedVideoUrl, setResolvedVideoUrl] = useState('');
 
@@ -218,7 +220,7 @@ const VideoCompositionRow = React.memo(({
                     )
                 )}
                 <div className="absolute bottom-0 right-0 bg-black/70 text-xs px-1 text-white">
-                    #{cut.id}
+                    #{index + 1}
                 </div>
             </div>
 
@@ -1140,9 +1142,10 @@ export const Step4_5_VideoComposition: React.FC = () => {
                 </div>
 
                 <div className="divide-y divide-[var(--color-border)]">
-                    {script.map((cut) => (
+                    {script.map((cut, idx) => (
                         <VideoCompositionRow
                             key={cut.id}
+                            index={idx}
                             cut={cut}
                             status={clipStatuses[cut.id]}
                             isSelected={selectedCuts.has(cut.id)}

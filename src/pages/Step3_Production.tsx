@@ -1009,14 +1009,11 @@ export const Step3_Production: React.FC = () => {
 
     const handleDeleteCut = useCallback((id: number) => {
         setLocalScript(prev => {
+            // Just filter out the cut, DO NOT re-index IDs
+            // This preserves videoUrl references to IDB keys
             const updated = prev.filter(cut => cut.id !== id);
-            // Re-index remaining cuts
-            const reindexed = updated.map((cut, idx) => ({
-                ...cut,
-                id: idx + 1
-            }));
-            saveToStore(reindexed);
-            return reindexed;
+            saveToStore(updated);
+            return updated;
         });
     }, []);
 
@@ -1029,15 +1026,10 @@ export const Step3_Production: React.FC = () => {
 
             const newIndex = direction === 'up' ? index - 1 : index + 1;
             const updated = [...prev];
+            // Just swap positions, DO NOT re-index IDs
             [updated[index], updated[newIndex]] = [updated[newIndex], updated[index]];
-
-            // Re-index
-            const reindexed = updated.map((cut, idx) => ({
-                ...cut,
-                id: idx + 1
-            }));
-            saveToStore(reindexed);
-            return reindexed;
+            saveToStore(updated);
+            return updated;
         });
     }, []);
 
@@ -1046,8 +1038,10 @@ export const Step3_Production: React.FC = () => {
             const index = prev.findIndex(c => c.id === id);
             if (index === -1) return prev;
 
+            // Generate new unique ID (max existing + 1)
+            const maxId = Math.max(...prev.map(c => c.id), 0);
             const newCut: ScriptCut = {
-                id: 0, // Placeholder
+                id: maxId + 1,
                 speaker: 'Narrator',
                 dialogue: '',
                 visualPrompt: '',
@@ -1056,14 +1050,9 @@ export const Step3_Production: React.FC = () => {
 
             const updated = [...prev];
             updated.splice(index + 1, 0, newCut);
-
-            // Re-index
-            const reindexed = updated.map((cut, idx) => ({
-                ...cut,
-                id: idx + 1
-            }));
-            saveToStore(reindexed);
-            return reindexed;
+            // DO NOT re-index - preserve original IDs
+            saveToStore(updated);
+            return updated;
         });
     }, []);
 
