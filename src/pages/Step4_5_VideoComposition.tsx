@@ -668,6 +668,66 @@ const AudioComparisonModal: React.FC<{
                         </div>
                     </div>
 
+                    {/* Sync Preview Button */}
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={async () => {
+                                if (!videoRef.current) return;
+
+                                // Stop any previous playback
+                                videoRef.current.pause();
+                                videoRef.current.currentTime = 0;
+                                if (ttsAudioRef.current) {
+                                    ttsAudioRef.current.pause();
+                                    ttsAudioRef.current.currentTime = 0;
+                                }
+
+                                // Set audio based on selection
+                                if (selectedAudioSource === 'tts') {
+                                    videoRef.current.muted = true;
+                                    if (ttsAudioRef.current && resolvedTtsUrl) {
+                                        ttsAudioRef.current.muted = false;
+                                        ttsAudioRef.current.volume = 1;
+                                    }
+                                } else {
+                                    videoRef.current.muted = false;
+                                    videoRef.current.volume = 1;
+                                }
+
+                                // Start playback
+                                try {
+                                    await videoRef.current.play();
+                                    if (selectedAudioSource === 'tts' && ttsAudioRef.current && resolvedTtsUrl) {
+                                        await ttsAudioRef.current.play();
+                                        setIsTtsPlaying(true);
+                                    }
+                                } catch (e) {
+                                    console.warn('Sync preview play failed:', e);
+                                }
+
+                                // Stop after customDuration
+                                setTimeout(() => {
+                                    if (videoRef.current) {
+                                        videoRef.current.pause();
+                                        videoRef.current.currentTime = 0;
+                                    }
+                                    if (ttsAudioRef.current) {
+                                        ttsAudioRef.current.pause();
+                                        ttsAudioRef.current.currentTime = 0;
+                                        setIsTtsPlaying(false);
+                                    }
+                                }, customDuration * 1000);
+                            }}
+                            className="flex-1 px-4 py-3 bg-purple-500/20 border border-purple-500/50 text-purple-300 rounded-lg hover:bg-purple-500/30 transition-colors flex items-center justify-center gap-2 font-semibold"
+                        >
+                            <Play size={18} />
+                            싱크 미리보기 ({customDuration.toFixed(1)}초)
+                        </button>
+                        <div className="text-xs text-gray-500 w-48">
+                            {selectedAudioSource === 'video' ? '비디오 오디오' : 'TTS 오디오'}와 함께 {customDuration.toFixed(1)}초 재생
+                        </div>
+                    </div>
+
                     {/* Action Buttons */}
                     <div className="flex justify-end gap-3 pt-2">
                         <button
