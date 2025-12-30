@@ -815,10 +815,13 @@ export const Step4_5_VideoComposition: React.FC = () => {
 
     // Remove video
     const removeVideo = (cutId: number) => {
+        const cutToRemove = script.find(c => c.id === cutId);
+        console.log(`[Video Remove] Cut ${cutId}: Removing videoUrl "${cutToRemove?.videoUrl}"`);
         const updatedScript = script.map(c =>
             c.id === cutId ? { ...c, videoUrl: undefined, videoSource: undefined, isVideoConfirmed: false } : c
         );
         setScript(updatedScript);
+        console.log(`[Video Remove] Cut ${cutId}: State updated, videoUrl set to undefined`);
     };
 
     // Save prompt
@@ -843,6 +846,29 @@ export const Step4_5_VideoComposition: React.FC = () => {
     const unconfirmSelectedVideos = () => {
         const updatedScript = script.map(c =>
             selectedCuts.has(c.id) ? { ...c, isVideoConfirmed: false } : c
+        );
+        setScript(updatedScript);
+        setSelectedCuts(new Set());
+    };
+
+    const removeSelectedVideos = () => {
+        const count = Array.from(selectedCuts).filter(id => {
+            const cut = script.find(c => c.id === id);
+            return cut?.videoUrl && !cut.isVideoConfirmed;
+        }).length;
+
+        if (count === 0) {
+            alert('삭제할 비디오가 없습니다. (확정된 비디오는 제외됩니다)');
+            return;
+        }
+
+        if (!confirm(`선택된 ${count}개의 비디오를 삭제하시겠습니까?`)) return;
+
+        console.log(`[Video Remove] Bulk removing ${count} videos`);
+        const updatedScript = script.map(c =>
+            selectedCuts.has(c.id) && c.videoUrl && !c.isVideoConfirmed
+                ? { ...c, videoUrl: undefined, videoSource: undefined, useVideoAudio: undefined, videoDuration: undefined }
+                : c
         );
         setScript(updatedScript);
         setSelectedCuts(new Set());
@@ -873,13 +899,16 @@ export const Step4_5_VideoComposition: React.FC = () => {
             // Extract extension safely
             const extension = file.name.split('.').pop() || 'mp4';
             const videoKey = generateVideoKey(currentProjectId, cutId, extension);
+            console.log(`[Video Upload] Cut ${cutId}: Saving with key "${videoKey}"`);
             const idbUrl = await saveToIdb('video', videoKey, dataUrl);
+            console.log(`[Video Upload] Cut ${cutId}: Saved as "${idbUrl}"`);
 
             useWorkflowStore.setState(state => ({
                 script: state.script.map(c =>
                     c.id === cutId ? { ...c, videoUrl: idbUrl, videoSource: 'upload' as const } : c
                 )
             }));
+            console.log(`[Video Upload] Cut ${cutId}: State updated with videoUrl "${idbUrl}"`);
             await useWorkflowStore.getState().saveProject();
 
             setClipStatuses(prev => ({ ...prev, [cutId]: { cutId, status: 'ready' } }));
@@ -1070,6 +1099,12 @@ export const Step4_5_VideoComposition: React.FC = () => {
                         className="px-3 py-1.5 bg-gray-700 text-gray-300 rounded text-xs hover:bg-gray-600"
                     >
                         확정 해제
+                    </button>
+                    <button
+                        onClick={removeSelectedVideos}
+                        className="px-3 py-1.5 bg-red-600/80 text-white rounded text-xs hover:bg-red-600"
+                    >
+                        선택 삭제
                     </button>
                 </div>
             )}
