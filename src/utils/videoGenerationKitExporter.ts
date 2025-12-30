@@ -63,6 +63,7 @@ interface VideoKitCut {
     originalVisualPrompt: string;
     dialogue: string;
     duration: number;
+    useVideoAudio?: boolean;
 }
 
 export const exportVideoGenerationKit = async (
@@ -129,7 +130,8 @@ export const exportVideoGenerationKit = async (
             videoPrompt: finalVideoPrompt,
             originalVisualPrompt: cut.visualPrompt,
             dialogue: cut.dialogue,
-            duration: cut.videoDuration || cut.estimatedDuration || 5
+            duration: cut.videoDuration || cut.estimatedDuration || 5,
+            useVideoAudio: cut.useVideoAudio
         });
     }
 
@@ -143,6 +145,7 @@ export const exportVideoGenerationKit = async (
         return `[Cut ${m.id}]
 Filename: ${m.filename}
 Duration: ${m.duration}s
+Audio Source: ${m.useVideoAudio ? 'VIDEO (Use Original Audio)' : 'TTS (AI Voice)'}
 Video Prompt: ${m.videoPrompt}
 Dialogue: "${m.dialogue}"
 ----------------------------------------`;
