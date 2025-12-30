@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import {
     Video, Upload, Play, Edit3, Check, X, Loader2,
     ChevronLeft, ChevronRight, FileVideo, Image as ImageIcon,
-    FolderOpen, CheckCircle2, Lock, Download, Package, Zap
+    FolderOpen, CheckCircle2, Lock, Download, Package, Zap,
+    Volume2, VolumeX, Pause
 } from 'lucide-react';
 import type { ScriptCut } from '../services/gemini';
 import { resolveUrl, isIdbUrl } from '../utils/imageStorage';
@@ -399,6 +400,294 @@ const repairVideoData = async (_project: any, script: ScriptCut[], onProgress: (
         }
     }
     return fixedCount;
+};
+
+// Audio Comparison Modal Component
+const AudioComparisonModal: React.FC<{
+    previewCut: ScriptCut | undefined;
+    previewVideoUrl: string;
+    onClose: () => void;
+    onSave: (useVideoAudio: boolean, videoDuration: number | undefined) => void;
+}> = ({ previewCut, previewVideoUrl, onClose, onSave }) => {
+    const [selectedAudioSource, setSelectedAudioSource] = useState<'video' | 'tts'>(
+        previewCut?.useVideoAudio ? 'video' : 'tts'
+    );
+    const [isTtsPlaying, setIsTtsPlaying] = useState(false);
+    const [resolvedTtsUrl, setResolvedTtsUrl] = useState<string>('');
+    const [actualVideoDuration, setActualVideoDuration] = useState<number>(0);
+    const [customDuration, setCustomDuration] = useState<number>(previewCut?.videoDuration || 0);
+    const ttsAudioRef = useRef<HTMLAudioElement>(null);
+    const videoRef = useRef<HTMLVideoElement>(null);
+
+    // Get actual video duration when loaded
+    useEffect(() => {
+        if (videoRef.current) {
+            const handleLoadedMetadata = () => {
+                const dur = videoRef.current?.duration || 0;
+                setActualVideoDuration(dur);
+                // Set initial custom duration if not already set
+                if (!customDuration && dur > 0) {
+                    setCustomDuration(previewCut?.videoDuration || dur);
+                }
+            };
+            videoRef.current.addEventListener('loadedmetadata', handleLoadedMetadata);
+            // If already loaded
+            if (videoRef.current.duration) handleLoadedMetadata();
+            return () => videoRef.current?.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        }
+    }, [previewVideoUrl]);
+
+    // Resolve TTS audio URL
+    useEffect(() => {
+        if (!previewCut?.audioUrl) return;
+        if (isIdbUrl(previewCut.audioUrl)) {
+            resolveUrl(previewCut.audioUrl).then(url => setResolvedTtsUrl(url));
+        } else {
+            setResolvedTtsUrl(previewCut.audioUrl);
+        }
+    }, [previewCut?.audioUrl]);
+
+    // Handle TTS playback
+    const toggleTtsPlayback = async () => {
+        if (!ttsAudioRef.current) {
+            console.warn('[TTS] No audio ref');
+            return;
+        }
+        if (!resolvedTtsUrl) {
+            console.warn('[TTS] No resolved URL. Raw URL:', previewCut?.audioUrl);
+            return;
+        }
+
+        console.log('[TTS] Toggle playback. URL:', resolvedTtsUrl.substring(0, 50), 'Playing:', isTtsPlaying);
+
+        if (isTtsPlaying) {
+            ttsAudioRef.current.pause();
+            ttsAudioRef.current.currentTime = 0;
+            setIsTtsPlaying(false);
+        } else {
+            // Mute video when playing TTS
+            if (videoRef.current) videoRef.current.muted = true;
+
+            // Ensure audio element has correct source
+            if (ttsAudioRef.current.src !== resolvedTtsUrl) {
+                ttsAudioRef.current.src = resolvedTtsUrl;
+            }
+
+            // Wait for audio to be ready
+            await new Promise<void>((resolve) => {
+                if (ttsAudioRef.current!.readyState >= 2) {
+                    resolve();
+                } else {
+                    ttsAudioRef.current!.oncanplay = () => resolve();
+                    ttsAudioRef.current!.load();
+                }
+            });
+
+            ttsAudioRef.current.currentTime = 0;
+            ttsAudioRef.current.muted = false;
+            ttsAudioRef.current.volume = 1;
+
+            try {
+                await ttsAudioRef.current.play();
+                console.log('[TTS] Playing successfully');
+                setIsTtsPlaying(true);
+            } catch (e) {
+                console.error('[TTS] Play failed:', e);
+            }
+        }
+    };
+
+    // Handle video audio toggle
+    const handleVideoAudioToggle = (muted: boolean) => {
+        if (videoRef.current) {
+            videoRef.current.muted = muted;
+        }
+        // Stop TTS if playing and switching to video audio
+        if (!muted && ttsAudioRef.current && isTtsPlaying) {
+            ttsAudioRef.current.pause();
+            setIsTtsPlaying(false);
+        }
+    };
+
+    if (!previewCut) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4 overflow-y-auto" onClick={onClose}>
+            <div className="max-w-4xl w-full relative bg-[var(--color-surface)] rounded-2xl overflow-hidden max-h-[90vh] flex flex-col my-auto" onClick={(e) => e.stopPropagation()}>
+                {/* Header */}
+                <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
+                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                        <Video size={20} className="text-blue-400" />
+                        Cut #{previewCut.id} - 오디오 소스 선택
+                    </h3>
+                    <button
+                        onClick={onClose}
+                        className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-full transition-colors"
+                    >
+                        <X size={20} />
+                    </button>
+                </div>
+
+                {/* Video Player */}
+                <div className="bg-black">
+                    <video
+                        ref={videoRef}
+                        src={previewVideoUrl}
+                        controls
+                        autoPlay
+                        loop
+                        playsInline
+                        muted={selectedAudioSource === 'tts'}
+                        className="w-full max-h-[50vh] object-contain"
+                        onError={(e) => {
+                            console.error("Preview playback failed:", e);
+                        }}
+                    />
+                </div>
+
+                {/* Audio Comparison Controls - Scrollable */}
+                <div className="p-6 space-y-6 overflow-y-auto flex-1">
+                    {/* TTS Audio Player (hidden but functional) */}
+                    {resolvedTtsUrl && (
+                        <audio
+                            ref={ttsAudioRef}
+                            src={resolvedTtsUrl}
+                            preload="auto"
+                            onEnded={() => setIsTtsPlaying(false)}
+                        />
+                    )}
+
+                    {/* Audio Source Selection */}
+                    <div className="space-y-3">
+                        <label className="text-sm font-bold text-gray-400 block">최종 오디오 소스 선택</label>
+
+                        {/* Option 1: Video Audio */}
+                        <label
+                            className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedAudioSource === 'video'
+                                ? 'border-blue-500 bg-blue-500/10'
+                                : 'border-[var(--color-border)] hover:border-gray-600'
+                                }`}
+                            onClick={() => {
+                                setSelectedAudioSource('video');
+                                handleVideoAudioToggle(false);
+                            }}
+                        >
+                            <input
+                                type="radio"
+                                name="audioSource"
+                                checked={selectedAudioSource === 'video'}
+                                onChange={() => { }}
+                                className="w-5 h-5 accent-blue-500"
+                            />
+                            <Volume2 size={24} className={selectedAudioSource === 'video' ? 'text-blue-400' : 'text-gray-500'} />
+                            <div className="flex-1">
+                                <div className="text-white font-medium">비디오 오디오 사용</div>
+                                <div className="text-xs text-gray-400">업로드한 비디오 파일에 포함된 오디오를 사용합니다.</div>
+                            </div>
+                        </label>
+
+                        {/* Option 2: TTS Audio */}
+                        <label
+                            className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedAudioSource === 'tts'
+                                ? 'border-green-500 bg-green-500/10'
+                                : 'border-[var(--color-border)] hover:border-gray-600'
+                                }`}
+                            onClick={() => {
+                                setSelectedAudioSource('tts');
+                                handleVideoAudioToggle(true);
+                            }}
+                        >
+                            <input
+                                type="radio"
+                                name="audioSource"
+                                checked={selectedAudioSource === 'tts'}
+                                onChange={() => { }}
+                                className="w-5 h-5 accent-green-500"
+                            />
+                            <VolumeX size={24} className={selectedAudioSource === 'tts' ? 'text-green-400' : 'text-gray-500'} />
+                            <div className="flex-1">
+                                <div className="text-white font-medium">Step 3 TTS 오디오 사용</div>
+                                <div className="text-xs text-gray-400">AI 음성 생성(TTS) 오디오를 사용합니다. (비디오는 음소거)</div>
+                            </div>
+                            {/* TTS Preview Button */}
+                            {resolvedTtsUrl && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleTtsPlayback();
+                                    }}
+                                    className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all ${isTtsPlaying
+                                        ? 'bg-red-500/20 text-red-300 hover:bg-red-500/30'
+                                        : 'bg-green-500/20 text-green-300 hover:bg-green-500/30'
+                                        }`}
+                                >
+                                    {isTtsPlaying ? <><Pause size={16} /> 정지</> : <><Play size={16} /> TTS 미리듣기</>}
+                                </button>
+                            )}
+                        </label>
+                    </div>
+
+                    {/* Dialogue Preview */}
+                    {previewCut.dialogue && (
+                        <div className="p-3 bg-[var(--color-bg)] rounded-lg">
+                            <div className="text-xs text-gray-500 mb-1">대사</div>
+                            <div className="text-sm text-white">{previewCut.speaker}: "{previewCut.dialogue}"</div>
+                        </div>
+                    )}
+
+                    {/* Video Duration Control */}
+                    <div className="space-y-2">
+                        <label className="text-sm font-bold text-gray-400 block">
+                            비디오 재생 시간 {actualVideoDuration > 0 && <span className="text-gray-500 font-normal">(원본: {actualVideoDuration.toFixed(1)}초)</span>}
+                        </label>
+                        <div className="flex items-center gap-4">
+                            <input
+                                type="range"
+                                min="0.5"
+                                max={Math.max(actualVideoDuration, 30)}
+                                step="0.1"
+                                value={customDuration}
+                                onChange={(e) => setCustomDuration(parseFloat(e.target.value))}
+                                className="flex-1 accent-[var(--color-primary)]"
+                            />
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="number"
+                                    min="0.5"
+                                    max="60"
+                                    step="0.1"
+                                    value={customDuration.toFixed(1)}
+                                    onChange={(e) => setCustomDuration(parseFloat(e.target.value) || 0.5)}
+                                    className="w-20 px-2 py-1.5 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg text-white text-center"
+                                />
+                                <span className="text-gray-400">초</span>
+                            </div>
+                        </div>
+                        <div className="text-xs text-gray-500">
+                            Hybrid 모드에서 이 값이 TTS 오디오 길이보다 우선 적용됩니다.
+                        </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex justify-end gap-3 pt-2">
+                        <button
+                            onClick={onClose}
+                            className="px-5 py-2.5 bg-[var(--color-bg)] text-gray-400 rounded-lg hover:text-white transition-colors"
+                        >
+                            취소
+                        </button>
+                        <button
+                            onClick={() => onSave(selectedAudioSource === 'video', customDuration > 0 ? customDuration : undefined)}
+                            className="px-5 py-2.5 bg-[var(--color-primary)] text-black font-semibold rounded-lg hover:bg-[var(--color-primary-hover)] transition-colors flex items-center gap-2"
+                        >
+                            <Check size={18} />
+                            저장
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 export const Step4_5_VideoComposition: React.FC = () => {
@@ -864,31 +1153,26 @@ export const Step4_5_VideoComposition: React.FC = () => {
                 </div>
             )}
 
-            {/* Video Preview Modal */}
-            {previewVideoUrl && (
-                <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4" onClick={() => setPreviewCutId(null)}>
-                    <div className="max-w-4xl w-full relative" onClick={(e) => e.stopPropagation()}>
-                        <button
-                            onClick={() => setPreviewCutId(null)}
-                            className="absolute -top-10 right-0 p-2 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors"
-                        >
-                            <X size={24} />
-                        </button>
-                        <video
-                            src={previewVideoUrl}
-                            controls
-                            autoPlay
-                            playsInline
-                            className="w-full rounded-xl"
-                            onError={(e) => {
-                                console.error("Preview playback failed:", e);
-                                alert("비디오 재생에 실패했습니다. 파일 형식이 브라우저에서 지원되지 않거나, 파일이 손상되었을 수 있습니다.");
-                            }}
-                        />
-                        <div className="text-center mt-4 text-white">Cut #{previewCutId}</div>
-                    </div>
-                </div>
-            )}
+            {/* Video Preview Modal with Audio Comparison */}
+            {previewVideoUrl && previewCutId !== null && (() => {
+                const previewCut = script.find(c => c.id === previewCutId);
+                return (
+                    <AudioComparisonModal
+                        previewCut={previewCut}
+                        previewVideoUrl={previewVideoUrl}
+                        onClose={() => setPreviewCutId(null)}
+                        onSave={(useVideoAudio, videoDuration) => {
+                            if (previewCut) {
+                                const updatedScript = script.map(c =>
+                                    c.id === previewCut.id ? { ...c, useVideoAudio, videoDuration } : c
+                                );
+                                setScript(updatedScript);
+                            }
+                            setPreviewCutId(null);
+                        }}
+                    />
+                );
+            })()}
         </div>
     );
 };

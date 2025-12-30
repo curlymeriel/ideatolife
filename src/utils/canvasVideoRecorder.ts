@@ -9,6 +9,7 @@ export interface RecordingCut {
     audioUrl?: string;
     sfxUrl?: string;      // Sound effect URL
     sfxVolume?: number;   // SFX volume (0.0 to 1.0, default 0.3)
+    useVideoAudio?: boolean; // If true, use video's embedded audio instead of TTS
     duration: number; // seconds
     dialogue?: string;
     speaker?: string;
@@ -183,17 +184,38 @@ export async function recordCanvasVideo(
         const progressPercent = 5 + ((cutIndex) / cuts.length) * 90;
         onProgress?.(progressPercent, `Recording cut ${cutIndex + 1}/${cuts.length}...`);
 
-        // Start audio playback for this cut (TTS + SFX)
+        // Start audio playback for this cut (TTS + SFX or Video Audio + SFX)
         const now = audioContext.currentTime;
-        if (audioBuffer) {
-            const source = audioContext.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(destination);
-            source.start(now);
-            source.stop(now + safeDuration);
+
+        // Check if we should use video audio instead of TTS
+        const shouldUseVideoAudio = cut.useVideoAudio && video;
+
+        if (shouldUseVideoAudio) {
+            // Use video's embedded audio - unmute and connect to destination
+            video.muted = false;
+            video.volume = 1;
+
+            // Create MediaElementSource to route video audio to recording
+            try {
+                const videoSource = audioContext.createMediaElementSource(video);
+                videoSource.connect(destination);
+                console.log(`[Recorder] Cut ${cutIndex}: Using VIDEO AUDIO`);
+            } catch (e) {
+                // MediaElementSource can only be created once per element
+                console.warn(`[Recorder] Cut ${cutIndex}: Video audio source already connected or failed:`, e);
+            }
+        } else {
+            // Use TTS audio buffer (default behavior)
+            if (audioBuffer) {
+                const source = audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(destination);
+                source.start(now);
+                source.stop(now + safeDuration);
+            }
         }
 
-        // Start SFX playback (at configured volume)
+        // Start SFX playback (at configured volume) - always plays regardless of audio source
         const sfxBuffer = sfxBuffers[cutIndex];
         if (sfxBuffer) {
             const sfxSource = audioContext.createBufferSource();
@@ -212,6 +234,10 @@ export async function recordCanvasVideo(
         // Prepare Video Playback
         if (video) {
             video.currentTime = 0;
+            // If NOT using video audio, ensure it's muted
+            if (!shouldUseVideoAudio) {
+                video.muted = true;
+            }
             try {
                 await video.play();
             } catch (e) {

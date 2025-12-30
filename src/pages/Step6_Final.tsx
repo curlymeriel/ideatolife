@@ -386,6 +386,13 @@ export const Step6_Final = () => {
     const getCutDuration = (index: number) => {
         const cut = script[index];
         if (!cut) return 0;
+
+        // NEW: Prioritize custom videoDuration if set (from Step 4.5 popup)
+        // This allows video clips to have their own timing independent of TTS
+        if (cut.videoDuration && cut.videoDuration > 0) {
+            return cut.videoDuration;
+        }
+
         const audioDur = audioDurations[index] || 0;
         // Prioritize actual audio duration if available
         if (audioDur > 0) {
@@ -549,8 +556,11 @@ export const Step6_Final = () => {
             const currentPlayer = getPlayerForIndex(currentCutIndex);
             const nextPlayer = getPlayerForIndex(currentCutIndex + 1);
 
-            // 1. PLAY CURRENT
-            if (currentPlayer) {
+            // 1. PLAY CURRENT (TTS Audio)
+            // Skip TTS if this cut uses video audio instead
+            const shouldPlayTts = !currentCut?.useVideoAudio || !currentCut?.videoUrl;
+
+            if (currentPlayer && shouldPlayTts) {
                 // Use Ref for lookup to avoid dependency on blobCache state updates
                 // This prevents audio stopping when background assets load
                 const rawUrl = currentCut?.audioUrl;
@@ -665,6 +675,14 @@ export const Step6_Final = () => {
                 if (currentVideo) {
                     // Reset if new cut
                     if (Math.abs(currentVideo.currentTime) > 0.5) currentVideo.currentTime = 0;
+
+                    // NEW: Control video mute based on useVideoAudio flag
+                    const shouldUseVideoAudio = currentCut?.useVideoAudio && currentCut?.videoUrl;
+                    currentVideo.muted = !shouldUseVideoAudio;
+                    if (shouldUseVideoAudio) {
+                        currentVideo.volume = 1;
+                        console.log(`[Video ${currentCutIndex}] Using VIDEO AUDIO (unmuted)`);
+                    }
 
                     const playVideo = async () => {
                         try {
@@ -988,6 +1006,7 @@ export const Step6_Final = () => {
             audioUrl: getOptimizedUrl(cut.audioUrl),
             sfxUrl: getOptimizedUrl(cut.sfxUrl),
             sfxVolume: cut.sfxVolume,
+            useVideoAudio: cut.useVideoAudio, // NEW: Pass audio source preference
             duration: getCutDuration(index),
             dialogue: cut.dialogue,
             speaker: cut.speaker

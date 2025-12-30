@@ -35,6 +35,8 @@ export interface ScriptCut {
     videoUrl?: string;              // AI-generated or uploaded video clip URL
     videoSource?: 'kling' | 'veo' | 'runway' | 'upload' | 'image' | 'ai';  // Origin of the video
     isVideoConfirmed?: boolean;     // Locks video clip for final export
+    useVideoAudio?: boolean;         // If true, use video's embedded audio instead of TTS
+    videoDuration?: number;          // Override duration for video clips (seconds)
 
     // SFX: Background Sound Effects
     sfxUrl?: string;                // Sound effect audio URL (from Freesound or other source)

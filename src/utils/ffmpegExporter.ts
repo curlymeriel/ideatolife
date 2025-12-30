@@ -280,8 +280,18 @@ export async function exportWithFFmpeg(
             filterChain += `[${lastVideoOutput}]null[vout];`;
 
             // 3. Audio Mixing
+            // Check if we should use video's embedded audio instead of TTS
+            const shouldUseVideoAudio = cut.useVideoAudio && hasVideo;
             const sfxVol = cut.sfxVolume ?? 0.3;
-            filterChain += `[1:a]volume=1.0[a_base];[2:a]volume=${sfxVol}[a_sfx];[a_base][a_sfx]amix=inputs=2:duration=first[aout]`;
+
+            if (shouldUseVideoAudio) {
+                // Use video's audio track [0:a] as base instead of TTS [1:a]
+                console.log(`[FFmpeg] Cut ${i}: Using VIDEO AUDIO`);
+                filterChain += `[0:a]volume=1.0[a_base];[2:a]volume=${sfxVol}[a_sfx];[a_base][a_sfx]amix=inputs=2:duration=first[aout]`;
+            } else {
+                // Default: Use TTS audio [1:a] as base
+                filterChain += `[1:a]volume=1.0[a_base];[2:a]volume=${sfxVol}[a_sfx];[a_base][a_sfx]amix=inputs=2:duration=first[aout]`;
+            }
 
             // Execute Encoding
             await ffmpeg.exec([

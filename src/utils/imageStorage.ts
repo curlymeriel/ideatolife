@@ -219,13 +219,27 @@ export async function resolveUrl(
 
         // Case 1: Already a Blob (modern storage)
         if (rawData instanceof Blob) {
-            if (options.asBlob) return URL.createObjectURL(rawData);
+            // Fix audio MIME type if stored incorrectly as octet-stream
+            let blobToUse = rawData;
+            const parsed = parseIdbUrl(url);
+            if (parsed?.type === 'audio' && rawData.type === 'application/octet-stream') {
+                blobToUse = new Blob([rawData], { type: 'audio/mpeg' });
+            }
+
+            if (options.asBlob) return URL.createObjectURL(blobToUse);
 
             // Convert to Data URL if needed as string
             return new Promise((resolve) => {
                 const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result as string);
-                reader.readAsDataURL(rawData);
+                reader.onloadend = () => {
+                    let result = reader.result as string;
+                    // Fix MIME type in data URL if needed
+                    if (parsed?.type === 'audio' && result.startsWith('data:application/octet-stream')) {
+                        result = result.replace('data:application/octet-stream', 'data:audio/mpeg');
+                    }
+                    resolve(result);
+                };
+                reader.readAsDataURL(blobToUse);
             });
         }
 
