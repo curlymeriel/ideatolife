@@ -926,8 +926,16 @@ export const Step4_5_VideoComposition: React.FC = () => {
             return;
         }
 
-        // Target cuts: if overwrite is true, target ALL cuts with images. If false, only unconfirmed.
-        const targetCuts = script.filter(cut => cut.finalImageUrl && (overwrite || !cut.isVideoConfirmed));
+        // Target cuts:
+        // - Must have finalImageUrl (has generated image)
+        // - If overwrite=false: skip confirmed cuts AND cuts that already have video
+        // - If overwrite=true: target all cuts including those with existing videos (but still skip confirmed)
+        const targetCuts = script.filter(cut => {
+            if (!cut.finalImageUrl) return false;
+            if (cut.isVideoConfirmed) return false; // Never overwrite confirmed
+            if (!overwrite && cut.videoUrl) return false; // Skip if already has video (unless overwrite)
+            return true;
+        });
 
         let sortedFiles: File[];
 
@@ -1219,7 +1227,7 @@ export const Step4_5_VideoComposition: React.FC = () => {
                                 <input type="checkbox" id="overwrite-check" className="w-4 h-4 accent-red-500" />
                                 <div>
                                     <div className="text-white text-sm font-medium text-red-300">기존 비디오 덮어쓰기</div>
-                                    <div className="text-xs text-[var(--color-text-muted)]">이미 확정(Confirmed)된 컷의 비디오도 교체합니다.</div>
+                                    <div className="text-xs text-[var(--color-text-muted)]">체크 해제 시: 이미 비디오가 있는 컷은 건너뜁니다.</div>
                                 </div>
                             </label>
                         </div>
