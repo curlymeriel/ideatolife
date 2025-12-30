@@ -196,7 +196,7 @@ export const exportProjectToZip = async (projectData: ProjectData): Promise<Blob
         // Sheet 1: Detailed Cuts
         let cumulativeTime = 0;
         const cutData = projectData.script.map((cut, index) => {
-            const duration = cut.estimatedDuration || 0;
+            const duration = cut.videoDuration || cut.estimatedDuration || 0;
             const startTime = cumulativeTime;
             const endTime = startTime + duration;
             cumulativeTime = endTime;
@@ -215,6 +215,7 @@ export const exportProjectToZip = async (projectData: ProjectData): Promise<Blob
                 'End': endTime.toFixed(2),
                 'Emotion': cut.emotion || '',
                 'Voice ID': resolvedVoice,
+                'Audio Source': cut.useVideoAudio ? 'VIDEO (Original)' : 'TTS (AI)',
                 'Voice Settings': `G:${cut.voiceGender || 'N'}, A:${cut.voiceAge || 'Adult'}, S:${cut.voiceSpeed || 1.0}, R:${cut.voiceRate || '100%'}, V:${cut.voiceVolume || '0dB'}`,
                 'Audio Padding': cut.audioPadding || 0,
                 'SFX Name': cut.sfxName || '',
