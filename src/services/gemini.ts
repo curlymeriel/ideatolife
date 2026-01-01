@@ -95,6 +95,14 @@ export interface ConsultationResult {
     suggestedStorylineScenes?: StorylineScene[];  // NEW: AI-suggested storyline breakdown
     suggestedSeriesProps?: AiProp[]; // NEW
     suggestedEpisodeProps?: AiProp[]; // NEW
+    suggestedDeletions?: {
+        characters?: string[];
+        seriesLocations?: string[];
+        episodeCharacters?: string[];
+        episodeLocations?: string[];
+        seriesProps?: string[];
+        episodeProps?: string[];
+    };
 }
 
 export interface ProjectContext {

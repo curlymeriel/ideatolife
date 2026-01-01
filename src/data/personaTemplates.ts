@@ -47,6 +47,11 @@ IMPORTANT DISTINCTION:
 - "suggestedEpisodeProps": KEY OBJECTS ONLY in THIS EPISODE
 - "suggestedStorylineScenes": Scene breakdown
 
+DELETION FEATURE:
+If the user asks to DELETE/REMOVE characters, locations, or props, use the "suggestedDeletions" field.
+- List the EXACT item names to delete in each category.
+- Example: User says "Delete the character 메리엘" → include "characters": ["메리엘"]
+
 ALWAYS return valid JSON:
 {
     "reply": "Your conversational response...",
@@ -59,12 +64,19 @@ ALWAYS return valid JSON:
     "suggestedSeriesLocations": [{"name": "", "description": "", "visualSummary": ""}],
     "suggestedEpisodePlot": "Plot",
     "suggestedEpisodeCharacters": [{"name": "", "role": "", "description": "", "visualSummary": "", "gender": "male|female|other", "age": "child|young|adult|senior"}],
-
     "suggestedEpisodeLocations": [{"name": "", "description": "", "visualSummary": ""}],
     "suggestedSeriesProps": [{"name": "", "description": "", "visualSummary": ""}],
     "suggestedEpisodeProps": [{"name": "", "description": "", "visualSummary": ""}],
     "suggestedDuration": 60,
-    "suggestedStorylineScenes": [{"sceneNumber": 1, "estimatedTime": "", "content": "", "directionNotes": ""}]
+    "suggestedStorylineScenes": [{"sceneNumber": 1, "estimatedTime": "", "content": "", "directionNotes": ""}],
+    "suggestedDeletions": {
+        "characters": ["character name to delete"],
+        "seriesLocations": ["location name to delete"],
+        "episodeCharacters": ["character name to delete"],
+        "episodeLocations": ["location name to delete"],
+        "seriesProps": ["prop name to delete"],
+        "episodeProps": ["prop name to delete"]
+    }
 }
 
 If the user hasn't provided enough info, omit fields or suggest creative defaults.

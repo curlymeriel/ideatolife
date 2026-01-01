@@ -605,6 +605,59 @@ export const Step1_Setup: React.FC = () => {
                     updates.storylineTable = newScenes;
                 }
 
+                // Handle deletions from AI
+                if (result.suggestedDeletions && typeof result.suggestedDeletions === 'object') {
+                    const del = result.suggestedDeletions;
+
+                    // Delete characters
+                    if (del.characters && Array.isArray(del.characters) && del.characters.length > 0) {
+                        const toDelete = new Set(del.characters.map((n: string) => n.toLowerCase().trim()));
+                        updates.characters = (updates.characters || localCharacters).filter(
+                            (c: any) => !toDelete.has(c.name.toLowerCase().trim())
+                        );
+                    }
+
+                    // Delete series locations
+                    if (del.seriesLocations && Array.isArray(del.seriesLocations) && del.seriesLocations.length > 0) {
+                        const toDelete = new Set(del.seriesLocations.map((n: string) => n.toLowerCase().trim()));
+                        updates.seriesLocations = (updates.seriesLocations || localSeriesLocations).filter(
+                            (l: any) => !toDelete.has(l.name.toLowerCase().trim())
+                        );
+                    }
+
+                    // Delete episode characters
+                    if (del.episodeCharacters && Array.isArray(del.episodeCharacters) && del.episodeCharacters.length > 0) {
+                        const toDelete = new Set(del.episodeCharacters.map((n: string) => n.toLowerCase().trim()));
+                        updates.episodeCharacters = (updates.episodeCharacters || localEpisodeCharacters).filter(
+                            (c: any) => !toDelete.has(c.name.toLowerCase().trim())
+                        );
+                    }
+
+                    // Delete episode locations
+                    if (del.episodeLocations && Array.isArray(del.episodeLocations) && del.episodeLocations.length > 0) {
+                        const toDelete = new Set(del.episodeLocations.map((n: string) => n.toLowerCase().trim()));
+                        updates.episodeLocations = (updates.episodeLocations || localEpisodeLocations).filter(
+                            (l: any) => !toDelete.has(l.name.toLowerCase().trim())
+                        );
+                    }
+
+                    // Delete series props
+                    if (del.seriesProps && Array.isArray(del.seriesProps) && del.seriesProps.length > 0) {
+                        const toDelete = new Set(del.seriesProps.map((n: string) => n.toLowerCase().trim()));
+                        updates.seriesProps = (updates.seriesProps || localSeriesProps).filter(
+                            (p: any) => !toDelete.has(p.name.toLowerCase().trim())
+                        );
+                    }
+
+                    // Delete episode props
+                    if (del.episodeProps && Array.isArray(del.episodeProps) && del.episodeProps.length > 0) {
+                        const toDelete = new Set(del.episodeProps.map((n: string) => n.toLowerCase().trim()));
+                        updates.episodeProps = (updates.episodeProps || localEpisodeProps).filter(
+                            (p: any) => !toDelete.has(p.name.toLowerCase().trim())
+                        );
+                    }
+                }
+
                 setProjectInfo(updates);
 
                 // Force View Mode to show new data
