@@ -160,7 +160,7 @@ export async function exportWithFFmpeg(
     onProgress?.(15, 'Preparing assets and encoding cuts...');
 
     const concatList: string[] = [];
-    const crf = quality === 'high' ? 18 : quality === 'medium' ? 23 : 28;
+    const crf = quality === 'high' ? 24 : quality === 'medium' ? 28 : 32;
 
     // Track temporary files for cleanup
     const tempFiles: string[] = [];
@@ -300,7 +300,7 @@ export async function exportWithFFmpeg(
                 '-map', '[vout]',
                 '-map', '[aout]',
                 '-c:v', 'libx264',
-                '-preset', 'ultrafast',
+                '-preset', 'superfast',
                 '-crf', String(crf),
                 '-pix_fmt', 'yuv420p',
                 '-c:a', 'aac',

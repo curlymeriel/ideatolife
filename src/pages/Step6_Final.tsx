@@ -796,7 +796,7 @@ export const Step6_Final = () => {
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = `${seriesName} - ${episodeName}.zip`;
+            a.download = getSafeFilename('zip');
             a.click();
             URL.revokeObjectURL(url);
 
@@ -956,8 +956,8 @@ export const Step6_Final = () => {
         XLSX.utils.book_append_sheet(wb, wsProject, "pj");
 
         // Generate safe filename with fallback
-        const safeSeriesName = seriesName || 'Untitled_Series';
-        const safeEpisodeName = episodeName || 'Untitled_Episode';
+        const safeSeriesName = (seriesName || 'Untitled_Series').replace(/[^a-z0-9가-힣\s-_]/gi, '_').trim();
+        const safeEpisodeName = (episodeName || 'Untitled_Episode').replace(/[^a-z0-9가-힣\s-_]/gi, '_').trim();
         const filename = `${safeSeriesName} - ${safeEpisodeName}.xlsx`;
         console.log('[Step6] Exporting Excel with filename:', filename);
 
@@ -1028,6 +1028,13 @@ export const Step6_Final = () => {
         return cuts;
     };
 
+    // Helper: Generate safe filename
+    const getSafeFilename = (extension: string) => {
+        const safeSeries = (seriesName || 'Untitled_Series').replace(/[^a-z0-9가-힣\s-_]/gi, '_').trim();
+        const safeEpisode = (episodeName || 'Untitled_Episode').replace(/[^a-z0-9가-힣\s-_]/gi, '_').trim();
+        return `${safeSeries} - ${safeEpisode}.${extension}`;
+    };
+
     // Quick Export (WebM via Canvas Recording)
     const handleQuickExport = async () => {
         setShowExportModal(false);
@@ -1057,7 +1064,7 @@ export const Step6_Final = () => {
             const url = URL.createObjectURL(result.blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `${seriesName} - ${episodeName}.${result.format}`;
+            a.download = getSafeFilename(result.format); // Use safe filename
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -1108,7 +1115,7 @@ export const Step6_Final = () => {
             const url = URL.createObjectURL(result.blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `${seriesName} - ${episodeName}.${result.format}`;
+            a.download = getSafeFilename(result.format); // Use safe filename
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -1170,7 +1177,11 @@ export const Step6_Final = () => {
             const url = URL.createObjectURL(result.blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `${seriesName} - ${episodeName} - VideoKit.${result.fileExtension}`;
+            // Kit uses a slightly different format
+            const safeSeries = (seriesName || 'Untitled_Series').replace(/[^a-z0-9가-힣\s-_]/gi, '_').trim();
+            const safeEpisode = (episodeName || 'Untitled_Episode').replace(/[^a-z0-9가-힣\s-_]/gi, '_').trim();
+            a.download = `${safeSeries} - ${safeEpisode} - VideoKit.${result.fileExtension}`;
+
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);

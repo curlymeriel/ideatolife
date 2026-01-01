@@ -5,7 +5,7 @@ import {
     Video, Upload, Play, Edit3, Check, X, Loader2,
     ChevronLeft, ChevronRight, FileVideo, Image as ImageIcon,
     FolderOpen, CheckCircle2, Lock, Download, Package, Zap,
-    Volume2, VolumeX, Pause
+    Volume2, VolumeX
 } from 'lucide-react';
 import type { ScriptCut } from '../services/gemini';
 import { resolveUrl, isIdbUrl } from '../utils/imageStorage';
@@ -416,7 +416,6 @@ const AudioComparisonModal: React.FC<{
     );
     const [isTtsPlaying, setIsTtsPlaying] = useState(false);
     const [resolvedTtsUrl, setResolvedTtsUrl] = useState<string>('');
-    const [actualVideoDuration, setActualVideoDuration] = useState<number>(0);
     const [customDuration, setCustomDuration] = useState<number>(previewCut?.videoDuration || 0);
     const ttsAudioRef = useRef<HTMLAudioElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -426,7 +425,6 @@ const AudioComparisonModal: React.FC<{
         if (videoRef.current) {
             const handleLoadedMetadata = () => {
                 const dur = videoRef.current?.duration || 0;
-                setActualVideoDuration(dur);
                 // Set initial custom duration if not already set
                 if (!customDuration && dur > 0) {
                     setCustomDuration(previewCut?.videoDuration || dur);
@@ -448,56 +446,6 @@ const AudioComparisonModal: React.FC<{
             setResolvedTtsUrl(previewCut.audioUrl);
         }
     }, [previewCut?.audioUrl]);
-
-    // Handle TTS playback
-    const toggleTtsPlayback = async () => {
-        if (!ttsAudioRef.current) {
-            console.warn('[TTS] No audio ref');
-            return;
-        }
-        if (!resolvedTtsUrl) {
-            console.warn('[TTS] No resolved URL. Raw URL:', previewCut?.audioUrl);
-            return;
-        }
-
-        console.log('[TTS] Toggle playback. URL:', resolvedTtsUrl.substring(0, 50), 'Playing:', isTtsPlaying);
-
-        if (isTtsPlaying) {
-            ttsAudioRef.current.pause();
-            ttsAudioRef.current.currentTime = 0;
-            setIsTtsPlaying(false);
-        } else {
-            // Mute video when playing TTS
-            if (videoRef.current) videoRef.current.muted = true;
-
-            // Ensure audio element has correct source
-            if (ttsAudioRef.current.src !== resolvedTtsUrl) {
-                ttsAudioRef.current.src = resolvedTtsUrl;
-            }
-
-            // Wait for audio to be ready
-            await new Promise<void>((resolve) => {
-                if (ttsAudioRef.current!.readyState >= 2) {
-                    resolve();
-                } else {
-                    ttsAudioRef.current!.oncanplay = () => resolve();
-                    ttsAudioRef.current!.load();
-                }
-            });
-
-            ttsAudioRef.current.currentTime = 0;
-            ttsAudioRef.current.muted = false;
-            ttsAudioRef.current.volume = 1;
-
-            try {
-                await ttsAudioRef.current.play();
-                console.log('[TTS] Playing successfully');
-                setIsTtsPlaying(true);
-            } catch (e) {
-                console.error('[TTS] Play failed:', e);
-            }
-        }
-    };
 
     // Handle video audio toggle
     const handleVideoAudioToggle = (muted: boolean) => {
@@ -559,100 +507,49 @@ const AudioComparisonModal: React.FC<{
                         />
                     )}
 
-                    {/* Audio Source Selection */}
-                    <div className="space-y-3">
-                        <label className="text-sm font-bold text-gray-400 block">최종 오디오 소스 선택</label>
+                    {/* Main Controls Row - Single Line */}
+                    <div className="flex items-center gap-4 bg-[var(--color-bg)] p-2 rounded-xl border border-[var(--color-border)]">
 
-                        {/* Option 1: Video Audio */}
-                        <label
-                            className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedAudioSource === 'video'
-                                ? 'border-blue-500 bg-blue-500/10'
-                                : 'border-[var(--color-border)] hover:border-gray-600'
-                                }`}
-                            onClick={() => {
-                                setSelectedAudioSource('video');
-                                handleVideoAudioToggle(false);
-                            }}
-                        >
-                            <input
-                                type="radio"
-                                name="audioSource"
-                                checked={selectedAudioSource === 'video'}
-                                onChange={() => { }}
-                                className="w-5 h-5 accent-blue-500"
-                            />
-                            <Volume2 size={24} className={selectedAudioSource === 'video' ? 'text-blue-400' : 'text-gray-500'} />
-                            <div className="flex-1">
-                                <div className="text-white font-medium">비디오 오디오 사용</div>
-                                <div className="text-xs text-gray-400">업로드한 비디오 파일에 포함된 오디오를 사용합니다.</div>
-                            </div>
-                        </label>
+                        {/* 1. Audio Source Selection (Compact) */}
+                        <div className="flex bg-black/40 rounded-lg p-1 gap-1 shrink-0">
+                            {/* Video Option */}
+                            <button
+                                onClick={() => {
+                                    setSelectedAudioSource('video');
+                                    handleVideoAudioToggle(false);
+                                }}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all ${selectedAudioSource === 'video'
+                                    ? 'bg-blue-500 text-white shadow-sm'
+                                    : 'text-gray-400 hover:text-white hover:bg-white/5'
+                                    }`}
+                            >
+                                <Volume2 size={16} />
+                                <span className="text-sm font-medium">Video</span>
+                            </button>
 
-                        {/* Option 2: TTS Audio */}
-                        <label
-                            className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedAudioSource === 'tts'
-                                ? 'border-green-500 bg-green-500/10'
-                                : 'border-[var(--color-border)] hover:border-gray-600'
-                                }`}
-                            onClick={() => {
-                                setSelectedAudioSource('tts');
-                                handleVideoAudioToggle(true);
-                            }}
-                        >
-                            <input
-                                type="radio"
-                                name="audioSource"
-                                checked={selectedAudioSource === 'tts'}
-                                onChange={() => { }}
-                                className="w-5 h-5 accent-green-500"
-                            />
-                            <VolumeX size={24} className={selectedAudioSource === 'tts' ? 'text-green-400' : 'text-gray-500'} />
-                            <div className="flex-1">
-                                <div className="text-white font-medium">Step 3 TTS 오디오 사용</div>
-                                <div className="text-xs text-gray-400">AI 음성 생성(TTS) 오디오를 사용합니다. (비디오는 음소거)</div>
-                            </div>
-                            {/* TTS Preview Button */}
-                            {resolvedTtsUrl && (
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        toggleTtsPlayback();
-                                    }}
-                                    className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all ${isTtsPlaying
-                                        ? 'bg-red-500/20 text-red-300 hover:bg-red-500/30'
-                                        : 'bg-green-500/20 text-green-300 hover:bg-green-500/30'
-                                        }`}
-                                >
-                                    {isTtsPlaying ? <><Pause size={16} /> 정지</> : <><Play size={16} /> TTS 미리듣기</>}
-                                </button>
-                            )}
-                        </label>
-                    </div>
-
-                    {/* Dialogue Preview */}
-                    {previewCut.dialogue && (
-                        <div className="p-3 bg-[var(--color-bg)] rounded-lg">
-                            <div className="text-xs text-gray-500 mb-1">대사</div>
-                            <div className="text-sm text-white">{previewCut.speaker}: "{previewCut.dialogue}"</div>
+                            {/* TTS Option */}
+                            <button
+                                onClick={() => {
+                                    setSelectedAudioSource('tts');
+                                    handleVideoAudioToggle(true);
+                                }}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all ${selectedAudioSource === 'tts'
+                                    ? 'bg-green-500 text-white shadow-sm'
+                                    : 'text-gray-400 hover:text-white hover:bg-white/5'
+                                    }`}
+                            >
+                                <VolumeX size={16} />
+                                <span className="text-sm font-medium">TTS</span>
+                            </button>
                         </div>
-                    )}
 
-                    {/* Video Duration Control */}
-                    <div className="space-y-2">
-                        <label className="text-sm font-bold text-gray-400 block">
-                            비디오 재생 시간 {actualVideoDuration > 0 && <span className="text-gray-500 font-normal">(원본: {actualVideoDuration.toFixed(1)}초)</span>}
-                        </label>
-                        <div className="flex items-center gap-4">
-                            <input
-                                type="range"
-                                min="0.5"
-                                max={Math.max(actualVideoDuration, 30)}
-                                step="0.1"
-                                value={customDuration}
-                                onChange={(e) => setCustomDuration(parseFloat(e.target.value))}
-                                className="flex-1 accent-[var(--color-primary)]"
-                            />
-                            <div className="flex items-center gap-2">
+                        {/* Divider */}
+                        <div className="w-px h-8 bg-[var(--color-border)] opacity-50 shrink-0" />
+
+                        {/* 2. Duration Input (Compact & Wide as requested) */}
+                        <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-xs text-gray-500 font-medium">Duration</span>
+                            <div className="relative w-24">
                                 <input
                                     type="number"
                                     min="0.5"
@@ -660,19 +557,20 @@ const AudioComparisonModal: React.FC<{
                                     step="0.1"
                                     value={customDuration.toFixed(1)}
                                     onChange={(e) => setCustomDuration(parseFloat(e.target.value) || 0.5)}
-                                    className="w-20 px-2 py-1.5 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg text-white text-center"
+                                    className="w-full pl-2 pr-5 py-1.5 bg-black/40 border border-[var(--color-border)] rounded-md text-white font-mono text-center text-sm focus:border-[var(--color-primary)] outline-none transition-colors"
                                 />
-                                <span className="text-gray-400">초</span>
+                                <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-500 pointer-events-none">s</span>
                             </div>
                         </div>
-                        <div className="text-xs text-gray-500">
-                            Hybrid 모드에서 이 값이 TTS 오디오 길이보다 우선 적용됩니다.
-                        </div>
-                    </div>
 
-                    {/* Sync Preview Button */}
-                    <div className="flex items-center gap-3">
+                        {/* Divider */}
+                        <div className="w-px h-8 bg-[var(--color-border)] opacity-50 shrink-0" />
+
+                        {/* 3. Sync Preview Button (Narrower as requested & Original Logic) */}
                         <button
+                            /**
+                             * ORIGINAL LOGIC RESTORED
+                             */
                             onClick={async () => {
                                 if (!videoRef.current) return;
 
@@ -720,15 +618,20 @@ const AudioComparisonModal: React.FC<{
                                     }
                                 }, customDuration * 1000);
                             }}
-                            className="flex-1 px-4 py-3 bg-purple-500/20 border border-purple-500/50 text-purple-300 rounded-lg hover:bg-purple-500/30 transition-colors flex items-center justify-center gap-2 font-semibold"
+                            className="px-6 h-10 bg-purple-500/20 border border-purple-500/50 text-purple-300 rounded-lg hover:bg-purple-500/30 transition-colors flex items-center justify-center gap-2 font-semibold text-sm group"
                         >
-                            <Play size={18} />
-                            싱크 미리보기 ({customDuration.toFixed(1)}초)
+                            <Play size={16} className="fill-purple-500/50 group-hover:fill-purple-500 transition-colors" />
+                            <span>Preview Sync</span>
                         </button>
-                        <div className="text-xs text-gray-500 w-48">
-                            {selectedAudioSource === 'video' ? '비디오 오디오' : 'TTS 오디오'}와 함께 {customDuration.toFixed(1)}초 재생
-                        </div>
                     </div>
+
+                    {/* Dialogue Preview (Below controls) */}
+                    {previewCut.dialogue && (
+                        <div className="px-3 py-2 border-l-2 border-[var(--color-border)] ml-1">
+                            <div className="text-xs text-gray-500 mb-0.5">{previewCut.speaker}</div>
+                            <div className="text-sm text-gray-300 italic">"{previewCut.dialogue}"</div>
+                        </div>
+                    )}
 
                     {/* Action Buttons */}
                     <div className="flex justify-end gap-3 pt-2">
