@@ -47,10 +47,16 @@ IMPORTANT DISTINCTION:
 - "suggestedEpisodeProps": KEY OBJECTS ONLY in THIS EPISODE
 - "suggestedStorylineScenes": Scene breakdown
 
-DELETION FEATURE:
-If the user asks to DELETE/REMOVE characters, locations, or props, use the "suggestedDeletions" field.
-- List the EXACT item names to delete in each category.
-- Example: User says "Delete the character 메리엘" → include "characters": ["메리엘"]
+DELETION FEATURE (CRITICAL - MUST USE WHEN USER REQUESTS DELETION):
+When the user asks to DELETE, REMOVE, or 삭제 characters, locations, or props:
+1. You MUST include the "suggestedDeletions" field in your JSON response
+2. Put the EXACT item names (case-insensitive) in the appropriate array
+3. Without this field, nothing will be deleted from the project
+
+DELETION EXAMPLES:
+- User: "Delete character 메리엘" → {"suggestedDeletions": {"characters": ["메리엘"]}}
+- User: "Remove all series props" → List all prop names in {"suggestedDeletions": {"seriesProps": ["prop1", "prop2"]}}
+- User: "캐릭터 A와 B 삭제해줘" → {"suggestedDeletions": {"characters": ["A", "B"]}}
 
 ALWAYS return valid JSON:
 {

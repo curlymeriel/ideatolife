@@ -410,12 +410,78 @@ export const Step1_Setup: React.FC = () => {
             };
 
             const result = await consultStory(updatedHistory, context, apiKeys.gemini, customInstructions);
+            console.log('[Step1] AI Response - suggestedDeletions:', result.suggestedDeletions, 'Full keys:', Object.keys(result));
+
+            // FALLBACK: If AI didn't return suggestedDeletions, try to detect deletion intent from user message
+            if (!result.suggestedDeletions) {
+                const userMsg = inputMessage.toLowerCase();
+                const deletionKeywords = ['삭제', 'delete', 'remove', '지워', '지우', '없애', 'drop'];
+                const hasDeleteIntent = deletionKeywords.some(kw => userMsg.includes(kw));
+
+                if (hasDeleteIntent) {
+                    console.log('[Step1] Fallback: Detected deletion intent in user message');
+                    const detectedDeletions: any = {};
+
+                    // Match against existing characters
+                    characters.forEach((c: any) => {
+                        if (userMsg.includes(c.name.toLowerCase())) {
+                            if (!detectedDeletions.characters) detectedDeletions.characters = [];
+                            detectedDeletions.characters.push(c.name);
+                        }
+                    });
+
+                    // Match against series locations
+                    seriesLocations.forEach((l: any) => {
+                        if (userMsg.includes(l.name.toLowerCase())) {
+                            if (!detectedDeletions.seriesLocations) detectedDeletions.seriesLocations = [];
+                            detectedDeletions.seriesLocations.push(l.name);
+                        }
+                    });
+
+                    // Match against episode characters
+                    episodeCharacters.forEach((c: any) => {
+                        if (userMsg.includes(c.name.toLowerCase())) {
+                            if (!detectedDeletions.episodeCharacters) detectedDeletions.episodeCharacters = [];
+                            detectedDeletions.episodeCharacters.push(c.name);
+                        }
+                    });
+
+                    // Match against episode locations
+                    episodeLocations.forEach((l: any) => {
+                        if (userMsg.includes(l.name.toLowerCase())) {
+                            if (!detectedDeletions.episodeLocations) detectedDeletions.episodeLocations = [];
+                            detectedDeletions.episodeLocations.push(l.name);
+                        }
+                    });
+
+                    // Match against series props
+                    seriesProps.forEach((p: any) => {
+                        if (userMsg.includes(p.name.toLowerCase())) {
+                            if (!detectedDeletions.seriesProps) detectedDeletions.seriesProps = [];
+                            detectedDeletions.seriesProps.push(p.name);
+                        }
+                    });
+
+                    // Match against episode props
+                    episodeProps.forEach((p: any) => {
+                        if (userMsg.includes(p.name.toLowerCase())) {
+                            if (!detectedDeletions.episodeProps) detectedDeletions.episodeProps = [];
+                            detectedDeletions.episodeProps.push(p.name);
+                        }
+                    });
+
+                    if (Object.keys(detectedDeletions).length > 0) {
+                        console.log('[Step1] Fallback: Auto-detected deletions:', detectedDeletions);
+                        result.suggestedDeletions = detectedDeletions;
+                    }
+                }
+            }
 
             const newAiMsg: ChatMessage = { role: 'model', content: result.reply };
             setChatHistory([...updatedHistory, newAiMsg]);
 
-            // Auto-populate fields if suggestions exist
-            if (result.suggestedSeriesName || result.suggestedEpisodeName || result.suggestedDuration || result.suggestedEpisodeNumber || result.suggestedSeriesStory || result.suggestedMainCharacters || result.suggestedEpisodePlot || result.suggestedEpisodeCharacters || result.suggestedCharacters || result.suggestedSeriesProps || result.suggestedEpisodeProps) {
+            // Auto-populate fields if suggestions exist (including deletions)
+            if (result.suggestedSeriesName || result.suggestedEpisodeName || result.suggestedDuration || result.suggestedEpisodeNumber || result.suggestedSeriesStory || result.suggestedMainCharacters || result.suggestedEpisodePlot || result.suggestedEpisodeCharacters || result.suggestedCharacters || result.suggestedSeriesProps || result.suggestedEpisodeProps || result.suggestedDeletions) {
                 const updates: Partial<Parameters<typeof setProjectInfo>[0]> = {
                     seriesName: result.suggestedSeriesName || seriesName,
                     episodeName: result.suggestedEpisodeName || episodeName,
@@ -608,18 +674,22 @@ export const Step1_Setup: React.FC = () => {
                 // Handle deletions from AI
                 if (result.suggestedDeletions && typeof result.suggestedDeletions === 'object') {
                     const del = result.suggestedDeletions;
+                    console.log('[Step1] Processing deletions:', del);
 
                     // Delete characters
                     if (del.characters && Array.isArray(del.characters) && del.characters.length > 0) {
                         const toDelete = new Set(del.characters.map((n: string) => n.toLowerCase().trim()));
+                        console.log('[Step1] Deleting characters:', Array.from(toDelete));
                         updates.characters = (updates.characters || localCharacters).filter(
                             (c: any) => !toDelete.has(c.name.toLowerCase().trim())
                         );
+                        console.log('[Step1] Characters after deletion:', updates.characters?.map((c: any) => c.name));
                     }
 
                     // Delete series locations
                     if (del.seriesLocations && Array.isArray(del.seriesLocations) && del.seriesLocations.length > 0) {
                         const toDelete = new Set(del.seriesLocations.map((n: string) => n.toLowerCase().trim()));
+                        console.log('[Step1] Deleting series locations:', Array.from(toDelete));
                         updates.seriesLocations = (updates.seriesLocations || localSeriesLocations).filter(
                             (l: any) => !toDelete.has(l.name.toLowerCase().trim())
                         );
@@ -628,6 +698,7 @@ export const Step1_Setup: React.FC = () => {
                     // Delete episode characters
                     if (del.episodeCharacters && Array.isArray(del.episodeCharacters) && del.episodeCharacters.length > 0) {
                         const toDelete = new Set(del.episodeCharacters.map((n: string) => n.toLowerCase().trim()));
+                        console.log('[Step1] Deleting episode characters:', Array.from(toDelete));
                         updates.episodeCharacters = (updates.episodeCharacters || localEpisodeCharacters).filter(
                             (c: any) => !toDelete.has(c.name.toLowerCase().trim())
                         );
@@ -636,6 +707,7 @@ export const Step1_Setup: React.FC = () => {
                     // Delete episode locations
                     if (del.episodeLocations && Array.isArray(del.episodeLocations) && del.episodeLocations.length > 0) {
                         const toDelete = new Set(del.episodeLocations.map((n: string) => n.toLowerCase().trim()));
+                        console.log('[Step1] Deleting episode locations:', Array.from(toDelete));
                         updates.episodeLocations = (updates.episodeLocations || localEpisodeLocations).filter(
                             (l: any) => !toDelete.has(l.name.toLowerCase().trim())
                         );
@@ -644,6 +716,7 @@ export const Step1_Setup: React.FC = () => {
                     // Delete series props
                     if (del.seriesProps && Array.isArray(del.seriesProps) && del.seriesProps.length > 0) {
                         const toDelete = new Set(del.seriesProps.map((n: string) => n.toLowerCase().trim()));
+                        console.log('[Step1] Deleting series props:', Array.from(toDelete));
                         updates.seriesProps = (updates.seriesProps || localSeriesProps).filter(
                             (p: any) => !toDelete.has(p.name.toLowerCase().trim())
                         );
@@ -652,6 +725,7 @@ export const Step1_Setup: React.FC = () => {
                     // Delete episode props
                     if (del.episodeProps && Array.isArray(del.episodeProps) && del.episodeProps.length > 0) {
                         const toDelete = new Set(del.episodeProps.map((n: string) => n.toLowerCase().trim()));
+                        console.log('[Step1] Deleting episode props:', Array.from(toDelete));
                         updates.episodeProps = (updates.episodeProps || localEpisodeProps).filter(
                             (p: any) => !toDelete.has(p.name.toLowerCase().trim())
                         );
