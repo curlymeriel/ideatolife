@@ -143,14 +143,15 @@ export const DEFAULT_SCRIPT_INSTRUCTIONS = `
       
       **AUDIO TYPE RULES (CRITICAL - MUST FOLLOW):**
       Every cut MUST have a clearly defined audio type. Choose ONE:
+
+      - **DIALOGUE (PREFERRED):** Has a speaker and spoken text.
+        • **PRIORITY:** Use dialogue or narration for 90% of cuts.
+        • **ALWAYS EXPLAIN:** Even if a character is alone, use "Narrator" or "Monologue" to explain the situation, feelings, or background context.
+        • **DO NOT BE SILENT:** Unless it is a strictly necessary dramatic pause, ALWAYS have someone speaking.
+        • speaker MUST be a specific character name. Use "Narrator" if the voice is omniscient.
       
-      - **DIALOGUE:** Has a speaker and spoken text.
-        • speaker MUST be a specific character name from the "Available Characters" list above.
-        • Do NOT use nicknames or placeholders. Use the exact name (e.g., "Max Fisher").
-        • If the speaker is a generic narrator, use exactly "Narrator".
-        • Every dialogue line MUST have a valid speaker. Do NOT leave it blank or as "Unknown".
-        
-      - **SILENT:** No spoken audio at all.
+      - **SILENT (AVOID):** No spoken audio at all.
+        • **USE SPARINGLY:** Only use for profound silence or specific dramatic timing (max 1-2 cuts per episode).
         • Set speaker = "SILENT"
         • Set dialogue = "..."
         

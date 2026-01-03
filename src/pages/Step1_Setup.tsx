@@ -169,18 +169,102 @@ export const Step1_Setup: React.FC = () => {
         }
     }, []);
 
+    // Helper to extraction visual prompt from description (mirroring Step 2 logic)
+    const extractVisualPrompt = (fullDescription: string): string => {
+        if (!fullDescription) return '';
+        // FIX: Added [\s\S]* to capture multiline content after the label
+        const visualMatch = fullDescription.match(/(?:Visual|Visual prompt):\s*([\s\S]*)/i);
+        if (visualMatch && visualMatch[1]) return visualMatch[1].trim();
+        return fullDescription;
+    };
+
+    // Helper to sync changes to Step 2 Asset Definitions
+    const syncAssetDefinitions = (
+        targetChars: any[],
+        targetLocs: any[],
+        targetEpiChars: any[],
+        targetEpiLocs: any[],
+        targetSeriesProps: any[],
+        targetEpiProps: any[]
+    ) => {
+        const currentDefs = { ...(store.assetDefinitions || {}) };
+        const mStyle = store.masterStyle || { description: '' };
+        let hasChanges = false;
+
+        const updateDef = (item: any, type: 'character' | 'location' | 'prop') => {
+            // Determine the base visual description from Step 1 data
+            // Priority: visualSummary > extracted visual prompt from description > description > empty
+            const baseVisual = item.visualSummary || extractVisualPrompt(item.description || '') || '';
+
+            console.log(`[SyncDebug] Processing ${type}: ${item.name} (${item.id})`);
+            console.log(`[SyncDebug] - visualSummary: "${item.visualSummary}"`);
+            console.log(`[SyncDebug] - description: "${item.description}"`);
+            console.log(`[SyncDebug] - extracted: "${baseVisual}"`);
+
+            // Construct the full prompt including Master Style context
+            let newDesc = `[Master Visual Style: ${mStyle.description || ''}]`;
+            if (type === 'character' && mStyle.characterModifier) {
+                newDesc += `\n[Character Modifier: ${mStyle.characterModifier}]`;
+            }
+            if (type === 'location' && mStyle.backgroundModifier) {
+                newDesc += `\n[Background Modifier: ${mStyle.backgroundModifier}]`;
+            }
+            newDesc += `\n\n${baseVisual}`;
+
+            // Check if this asset already exists in definitions OR if we should create it
+            // Logic: If it exists, update it. If it doesn't exist, we generally leave it for Step 2 to initialize,
+            // BUT if the user is explicitly saving Step 1 now, we might want to ensure consistency.
+            // However, to avoid "disappearing" issue, we primarily focus on existing definitions first.
+            if (currentDefs[item.id]) {
+                // Only update if description or name changed
+                if (currentDefs[item.id].description !== newDesc || currentDefs[item.id].name !== item.name) {
+                    currentDefs[item.id] = {
+                        ...currentDefs[item.id],
+                        description: newDesc,
+                        name: item.name,
+                        lastUpdated: Date.now()
+                    };
+                    hasChanges = true;
+                }
+            } else {
+                // If it doesn't exist, Create it? 
+                // Creating it ensures "Should bring Step 1 values" is satisfied immediately.
+                // But we must be careful about overwriting references.
+                currentDefs[item.id] = {
+                    id: item.id,
+                    type: type,
+                    name: item.name,
+                    description: newDesc,
+                    lastUpdated: Date.now()
+                };
+                hasChanges = true;
+            }
+        };
+
+        targetChars.forEach(c => updateDef(c, 'character'));
+        targetLocs.forEach(l => updateDef(l, 'location'));
+        targetEpiChars.forEach(c => updateDef(c, 'character'));
+        targetEpiLocs.forEach(l => updateDef(l, 'location'));
+        targetSeriesProps.forEach(p => updateDef(p, 'prop'));
+        targetEpiProps.forEach(p => updateDef(p, 'prop'));
+
+        return hasChanges ? currentDefs : undefined;
+    };
+
     const handleSave = () => {
         let finalStorylineTable = localStorylineTable;
-        // const isPlotChanged = store.episodePlot !== localEpisodePlot;
-        // const isTableUnchanged = JSON.stringify(store.storylineTable) === JSON.stringify(localStorylineTable);
 
-        // FIX: Removed auto-clear logic. We now keep the table even if plot changes.
-        // if (isPlotChanged && isTableUnchanged && localStorylineTable.length > 0) {
-        //    console.log("[Step1] Clearing stale storyline table.");
-        //    finalStorylineTable = [];
-        // }
+        // Sync Asset Definitions if Step 1 Data Changed
+        const syncedAssets = syncAssetDefinitions(
+            localCharacters,
+            localSeriesLocations,
+            localEpisodeCharacters,
+            localEpisodeLocations,
+            localSeriesProps,
+            localEpisodeProps
+        );
 
-        setProjectInfo({
+        const projectUpdate: Partial<Parameters<typeof setProjectInfo>[0]> = {
             seriesName: localSeriesName,
             episodeName: localEpisodeName,
             episodeNumber: localEpisodeNumber,
@@ -191,12 +275,18 @@ export const Step1_Setup: React.FC = () => {
             characters: localCharacters,
             seriesLocations: localSeriesLocations,
             episodeCharacters: localEpisodeCharacters,
-
             episodeLocations: localEpisodeLocations,
             seriesProps: localSeriesProps,
             episodeProps: localEpisodeProps,
             aspectRatio: localAspectRatio
-        });
+        };
+
+        if (syncedAssets) {
+            console.log("Step 1 Save: Updated Asset Definitions to match Step 1 changes.");
+            projectUpdate.assetDefinitions = syncedAssets;
+        }
+
+        setProjectInfo(projectUpdate);
         setIsEditing(false);
     };
 
@@ -733,6 +823,22 @@ export const Step1_Setup: React.FC = () => {
                 }
 
                 setProjectInfo(updates);
+
+                // Sync Asset Definitions if AI suggested changes
+                const syncedAssets = syncAssetDefinitions(
+                    updates.characters || localCharacters,
+                    updates.seriesLocations || localSeriesLocations,
+                    updates.episodeCharacters || localEpisodeCharacters,
+                    updates.episodeLocations || localEpisodeLocations,
+                    updates.seriesProps || localSeriesProps,
+                    updates.episodeProps || localEpisodeProps
+                );
+
+                if (syncedAssets) {
+                    console.log("Step 1 AI Update: Synced Asset Definitions.");
+                    updates.assetDefinitions = syncedAssets;
+                    setProjectInfo({ assetDefinitions: syncedAssets });
+                }
 
                 // Force View Mode to show new data
                 setIsEditing(false);
