@@ -541,10 +541,19 @@ export const useWorkflowStore = create<WorkflowStore>()(
 
                 // Merge script: preserve existing URLs and confirmed flags if current state has null/false
                 // ONLY if we actually loaded existingData
+                // IMPORTANT: Match by cut.id, NOT by array index, to prevent data corruption after cut deletion
                 let mergedScript = state.script;
                 if (existingData?.script && Array.isArray(state.script)) {
-                    mergedScript = state.script.map((cut: any, index: number) => {
-                        const existingCut = existingData?.script?.[index];
+                    // Build a lookup map from existing disk data by cut.id for O(1) access
+                    const existingCutMap = new Map<number, any>();
+                    existingData.script.forEach((cut: any) => {
+                        if (cut && cut.id !== undefined) {
+                            existingCutMap.set(cut.id, cut);
+                        }
+                    });
+
+                    mergedScript = state.script.map((cut: any) => {
+                        const existingCut = existingCutMap.get(cut.id);
                         if (!existingCut) return cut;
                         return {
                             ...cut,
@@ -859,6 +868,73 @@ export const useWorkflowStore = create<WorkflowStore>()(
                     lastModified: timestamp,
                     episodeName: `${projectToClone.episodeName} (Copy)`
                 };
+
+                // CRITICAL: Deep Copy IndexedDB Blobs
+                // We must iterate all idb:// references and copy the underlying blobs to new keys.
+                // Otherwise, deleting the original project will delete these blobs, breaking the copy.
+                const { resolveUrl, saveToIdb, generateAudioKey, generateCutImageKey, generateAssetImageKey } = await import('../utils/imageStorage');
+
+                // Helper to copy a single blob
+                const copyBlob = async (oldUrl: string | undefined | null, type: 'images' | 'audio' | 'assets', newKey: string): Promise<string | undefined> => {
+                    if (!oldUrl || !oldUrl.startsWith('idb://')) return oldUrl || undefined;
+                    try {
+                        const blobUrl = await resolveUrl(oldUrl);
+                        if (!blobUrl) return undefined;
+                        const response = await fetch(blobUrl);
+                        const blob = await response.blob();
+                        const reader = new FileReader();
+
+                        return new Promise((resolve) => {
+                            reader.onloadend = async () => {
+                                const base64 = reader.result as string;
+                                const newIdbUrl = await saveToIdb(type, newKey, base64);
+                                resolve(newIdbUrl);
+                            };
+                            reader.readAsDataURL(blob);
+                        });
+                    } catch (e) {
+                        console.error(`[Duplicate] Failed to copy blob ${oldUrl} to ${newKey}`, e);
+                        return undefined;
+                    }
+                };
+
+                // A. Copy Script Blobs (Audio & Images)
+                if (newProject.script && Array.isArray(newProject.script)) {
+                    for (let i = 0; i < newProject.script.length; i++) {
+                        const cut = newProject.script[i];
+                        const cutId = cut.id;
+
+                        if (cut.audioUrl) {
+                            cut.audioUrl = await copyBlob(cut.audioUrl, 'audio', generateAudioKey(newId, cutId)) || undefined;
+                        }
+                        if (cut.finalImageUrl) {
+                            cut.finalImageUrl = await copyBlob(cut.finalImageUrl, 'images', generateCutImageKey(newId, cutId, 'final')) || undefined;
+                        }
+                        if (cut.draftImageUrl) {
+                            cut.draftImageUrl = await copyBlob(cut.draftImageUrl, 'images', generateCutImageKey(newId, cutId, 'draft')) || undefined;
+                        }
+                    }
+                }
+
+                // B. Copy Asset Blobs
+                if (newProject.assetDefinitions) {
+                    const entries = Object.entries(newProject.assetDefinitions);
+                    for (const [assetId, asset] of entries) {
+                        asset.referenceImage = await copyBlob(asset.referenceImage, 'assets', generateAssetImageKey(newId, assetId, 'ref')) || undefined;
+                        asset.masterImage = await copyBlob(asset.masterImage, 'assets', generateAssetImageKey(newId, assetId, 'master')) || undefined;
+                        asset.draftImage = await copyBlob(asset.draftImage, 'assets', generateAssetImageKey(newId, assetId, 'draft')) || undefined;
+                    }
+                }
+
+                // C. Copy Master Style
+                if (newProject.masterStyle?.referenceImage) {
+                    newProject.masterStyle.referenceImage = await copyBlob(newProject.masterStyle.referenceImage, 'assets', `${newId}-master-style-ref`) || null;
+                }
+
+                // D. Copy Thumbnail
+                if (newProject.thumbnailUrl) {
+                    newProject.thumbnailUrl = await copyBlob(newProject.thumbnailUrl, 'images', `${newId}-thumbnail`) || null;
+                }
 
                 // 4. Save to Disk
                 await saveProjectToDisk(newProject);
