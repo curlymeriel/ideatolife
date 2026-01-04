@@ -81,7 +81,11 @@ export const Step2_Style: React.FC = () => {
         return ratioMap[ratio] || '56.25%';
     };
 
-    const isDefined = (id: string) => !!safeAssetDefinitions[id];
+    const isDefined = (id: string) => {
+        const def = safeAssetDefinitions[id];
+        // Requirement: Must have description AND (reference image OR draft image)
+        return !!def && !!def.description && (!!def.referenceImage || !!def.draftImage);
+    };
 
     const extractVisualPrompt = (fullDescription: string): string => {
         if (!fullDescription) return '';
@@ -337,7 +341,7 @@ export const Step2_Style: React.FC = () => {
                 apiKeys?.gemini || '',
                 referenceImage ? [referenceImage] : undefined,
                 currentAspectRatio,
-                'gemini-2.5-flash-image',
+                'gemini-3-pro-image-preview',
                 draftCount
             );
             const resolvedUrls = await Promise.all(result.urls.map(url => resolveUrl(url)));

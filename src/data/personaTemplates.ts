@@ -47,6 +47,13 @@ IMPORTANT DISTINCTION:
 - "suggestedEpisodeProps": KEY OBJECTS ONLY in THIS EPISODE
 - "suggestedStorylineScenes": Scene breakdown
 
+CRITICAL - NO DUPLICATES RULE:
+1. **Series Level** (suggestedCharacters, suggestedSeriesLocations, suggestedSeriesProps): Use this ONLY for recurring assets that appear in multiple episodes.
+2. **Episode Level** (suggestedEpisodeCharacters, suggestedEpisodeLocations, suggestedEpisodeProps): Use this ONLY for assets specific to THIS EPISODE.
+3. **EXCLUSION PRINCIPLE**: If an asset is in the Series list/context, it must NOT appear in the Episode list. 
+   - Example: If "Detective Kael" is a main character, do NOT list him in "suggestedEpisodeCharacters". He is already known.
+   - Example: If "Central Hub" is a series location, do NOT list it in "suggestedEpisodeLocations".
+
 DELETION FEATURE (CRITICAL - MUST USE WHEN USER REQUESTS DELETION):
 When the user asks to DELETE, REMOVE, or 삭제 characters, locations, or props:
 1. You MUST include the "suggestedDeletions" field in your JSON response
