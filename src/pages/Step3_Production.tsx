@@ -592,20 +592,22 @@ export const Step3_Production: React.FC = () => {
 
                 console.log(`[Audio ${cutId}] Gemini TTS generated and saved to IDB: ${cacheBustedUrl}`);
 
-                const updatedScript = currentScript.map(cut =>
-                    cut.id === cutId ? {
-                        ...cut,
-                        audioUrl: cacheBustedUrl,
-                        language,
-                        voiceId: voiceName,
-                        voiceGender: gender,
-                        voiceAge: age,
-                        voiceSpeed: geminiConfig.rate,
-                        voiceVolume: String(geminiConfig.volume)
-                    } as ScriptCut : cut
-                );
-                setLocalScript(updatedScript);
-                saveToStore(updatedScript);
+                setLocalScript(prev => {
+                    const updated = prev.map(cut =>
+                        cut.id === cutId ? {
+                            ...cut,
+                            audioUrl: cacheBustedUrl,
+                            language,
+                            voiceId: voiceName,
+                            voiceGender: gender,
+                            voiceAge: age,
+                            voiceSpeed: geminiConfig.rate,
+                            voiceVolume: String(geminiConfig.volume)
+                        } as ScriptCut : cut
+                    );
+                    saveToStore(updated);
+                    return updated;
+                });
                 return; // Exit early for Gemini TTS
             }
 
@@ -728,21 +730,23 @@ export const Step3_Production: React.FC = () => {
 
             console.log(`[Audio ${cutId}] Generated and saved to IDB: ${cacheBustedUrl}`);
 
-            const updatedScript = currentScript.map(cut =>
-                cut.id === cutId ? {
-                    ...cut,
-                    audioUrl: cacheBustedUrl,
-                    language,
-                    voiceId: voiceName,
-                    emotion: currentCut?.emotion,
-                    emotionIntensity: currentCut?.emotionIntensity,
-                    voiceGender: genderToUse as any,
-                    voiceAge: (currentCut?.voiceAge || 'adult') as any,
-                    voiceSpeed: currentCut?.voiceSpeed
-                } as ScriptCut : cut
-            );
-            setLocalScript(updatedScript);
-            saveToStore(updatedScript);
+            setLocalScript(prev => {
+                const updated = prev.map(cut =>
+                    cut.id === cutId ? {
+                        ...cut,
+                        audioUrl: cacheBustedUrl,
+                        language,
+                        voiceId: voiceName,
+                        emotion: currentCut?.emotion,
+                        emotionIntensity: currentCut?.emotionIntensity,
+                        voiceGender: genderToUse as any,
+                        voiceAge: (currentCut?.voiceAge || 'adult') as any,
+                        voiceSpeed: currentCut?.voiceSpeed
+                    } as ScriptCut : cut
+                );
+                saveToStore(updated);
+                return updated;
+            });
         } catch (error: any) {
             console.error(`[Audio ${cutId}] Failed:`, error);
             alert(`Audio generation failed: ${error.message}`);

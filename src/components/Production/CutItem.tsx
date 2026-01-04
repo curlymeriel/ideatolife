@@ -497,7 +497,7 @@ export const CutItem = memo(({
                                 {/* Audio Buttons (Play/Gen + Settings) */}
                                 <div className="flex flex-col gap-1 pt-5 shrink-0">
                                     {/* Play Button - Redesigned to be Circular + Text with Sand Orange Accent */}
-                                    {hasRealAudio && (
+                                    {hasRealAudio && resolvedAudioUrl && (
                                         <div className="flex items-center gap-2 py-1">
                                             <button
                                                 onClick={() => onPlayAudio(cut.id)}
