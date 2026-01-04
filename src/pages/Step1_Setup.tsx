@@ -5,7 +5,7 @@ import { consultStory, type ChatMessage, type AiCharacter } from '../services/ge
 import { PERSONA_TEMPLATES, DEFAULT_CONSULTANT_INSTRUCTION } from '../data/personaTemplates';
 import type { AspectRatio } from '../store/types';
 import { compressImage } from '../utils/imageUtils';
-import { CheckCircle, Save, ArrowRight, Bot, User, Sparkles, Film, Send, ChevronDown, Plus, Trash2, Edit2, X, MapPin, Clock, Paperclip, Package } from 'lucide-react';
+import { CheckCircle, Save, ArrowRight, Bot, User, Sparkles, Film, Send, ChevronDown, ChevronRight, Plus, Trash2, Edit2, X, MapPin, Clock, Paperclip, Package } from 'lucide-react';
 import { ChatMessageItem } from '../components/ChatMessageItem';
 
 export const Step1_Setup: React.FC = () => {
@@ -70,6 +70,15 @@ export const Step1_Setup: React.FC = () => {
     // Chat states
     const [inputMessage, setInputMessage] = useState('');
     const [isConsulting, setIsConsulting] = useState(false);
+    const { isHydrated } = useWorkflowStore();
+
+    // UI State for View Mode
+    const [isSeriesViewOpen, setIsSeriesViewOpen] = useState(true);
+    const [isEpisodeViewOpen, setIsEpisodeViewOpen] = useState(true);
+    const [viewingItem, setViewingItem] = useState<{
+        type: 'character' | 'location' | 'prop';
+        data: any;
+    } | null>(null);
 
     // Series selector state
     const [availableSeries, setAvailableSeries] = useState<string[]>([]);
@@ -885,7 +894,88 @@ export const Step1_Setup: React.FC = () => {
         </div>
     );
 
-    const { isHydrated } = useWorkflowStore();
+    // Item Detail Modal
+    const renderItemDetailModal = () => {
+        if (!viewingItem) return null;
+        const { type, data } = viewingItem;
+
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in" onClick={() => setViewingItem(null)}>
+                <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl w-full max-w-lg shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+                    <div className="p-4 border-b border-[var(--color-border)] flex justify-between items-center bg-[var(--color-surface-highlight)]">
+                        <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                            {type === 'character' && <User size={18} className="text-[var(--color-primary)]" />}
+                            {type === 'location' && <MapPin size={18} className="text-[var(--color-primary)]" />}
+                            {type === 'prop' && <Package size={18} className="text-[var(--color-primary)]" />}
+                            {data.name}
+                        </h3>
+                        <button onClick={() => setViewingItem(null)} className="text-gray-400 hover:text-white transition-colors">
+                            <X size={20} />
+                        </button>
+                    </div>
+                    <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-1">Type</label>
+                                <span className="text-sm font-mono text-[var(--color-primary)] capitalize">{type}</span>
+                            </div>
+                            {type === 'character' && (
+                                <div>
+                                    <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-1">Role</label>
+                                    <span className="text-sm text-white">{data.role || '-'}</span>
+                                </div>
+                            )}
+                        </div>
+
+                        {type === 'character' && (
+                            <div className="grid grid-cols-2 gap-4">
+                                {data.gender && (
+                                    <div>
+                                        <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-1">Gender</label>
+                                        <span className="text-sm text-white capitalize">{data.gender}</span>
+                                    </div>
+                                )}
+                                {data.age && (
+                                    <div>
+                                        <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-1">Age</label>
+                                        <span className="text-sm text-white capitalize">{data.age}</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        <div>
+                            <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-2">Description</label>
+                            <div className="p-3 bg-black/20 rounded-lg border border-[var(--color-border)]">
+                                <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{data.description || <span className="text-gray-600 italic">No description provided.</span>}</p>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-2 flex items-center gap-2">
+                                <Sparkles size={12} className="text-[var(--color-primary)]" />
+                                Visual Summary
+                            </label>
+                            <div className="p-3 bg-[var(--color-primary)]/5 rounded-lg border border-[var(--color-primary)]/20">
+                                <p className="text-sm text-[var(--color-primary)] leading-relaxed whitespace-pre-wrap">{data.visualSummary || extractVisualPrompt(data.description || '') || <span className="opacity-50 italic">No visual details.</span>}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="p-4 border-t border-[var(--color-border)] bg-[var(--color-bg)] flex justify-end">
+                        <button
+                            onClick={() => {
+                                setIsEditing(true);
+                                setViewingItem(null);
+                            }}
+                            className="px-4 py-2 rounded-lg bg-[var(--color-surface)] hover:bg-[var(--color-surface-highlight)] text-white text-xs font-bold border border-[var(--color-border)] transition-colors"
+                        >
+                            Edit in Project Settings
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
 
     if (!isHydrated) {
         return (
@@ -1133,185 +1223,225 @@ export const Step1_Setup: React.FC = () => {
                             <div className="space-y-8">
                                 {/* Series Info View */}
                                 <div className="space-y-4">
-                                    <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-2">
-                                        <h4 className="text-[var(--color-primary)] font-bold uppercase tracking-widest text-sm">Series Level</h4>
+                                    <div
+                                        className="flex items-center justify-between border-b border-[var(--color-border)] pb-2 cursor-pointer hover:opacity-80 transition-opacity"
+                                        onClick={() => setIsSeriesViewOpen(!isSeriesViewOpen)}
+                                    >
+                                        <h4 className="text-[var(--color-primary)] font-bold uppercase tracking-widest text-sm flex items-center gap-2">
+                                            {isSeriesViewOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                            Series Level
+                                        </h4>
                                         {isSeriesComplete && <CheckCircle size={18} className="text-green-500" />}
                                     </div>
 
-                                    <div className="grid grid-cols-1 gap-4">
-                                        <div>
-                                            <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-1">Series Name</label>
-                                            <p className="text-2xl font-bold text-white">{seriesName || <span className="text-gray-600 italic">Untitled Series</span>}</p>
+                                    {isSeriesViewOpen && (
+                                        <div className="grid grid-cols-1 gap-4 animate-fade-in">
+                                            <div>
+                                                <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-1">Series Name</label>
+                                                <p className="text-2xl font-bold text-white">{seriesName || <span className="text-gray-600 italic">Untitled Series</span>}</p>
+                                            </div>
+                                            {seriesStory && (
+                                                <div>
+                                                    <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-1">Series Story</label>
+                                                    <p className="text-gray-300 whitespace-pre-wrap leading-relaxed">{seriesStory}</p>
+                                                </div>
+                                            )}
+                                            {characters.length > 0 && (
+                                                <div>
+                                                    <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-2">Main Characters</label>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {characters.map(c => (
+                                                            <div
+                                                                key={c.id}
+                                                                className="px-3 py-1.5 rounded-full bg-[var(--color-surface-highlight)] border border-[var(--color-border)] flex items-center gap-2 cursor-pointer hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 transition-all"
+                                                                onClick={() => setViewingItem({ type: 'character', data: c })}
+                                                            >
+                                                                <User size={14} className="text-[var(--color-primary)]" />
+                                                                <span className="font-bold text-sm">{c.name}</span>
+                                                                <span className="text-xs text-gray-400">({c.role})</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {seriesLocations.length > 0 && (
+                                                <div>
+                                                    <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-2">Series Locations</label>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {seriesLocations.map(l => (
+                                                            <div
+                                                                key={l.id}
+                                                                className="px-3 py-1.5 rounded-full bg-[var(--color-surface-highlight)] border border-[var(--color-border)] flex items-center gap-2 cursor-pointer hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 transition-all"
+                                                                onClick={() => setViewingItem({ type: 'location', data: l })}
+                                                            >
+                                                                <MapPin size={14} className="text-[var(--color-primary)]" />
+                                                                <span className="font-bold text-sm">{l.name}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {seriesProps.length > 0 && (
+                                                <div>
+                                                    <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-2">Series Props</label>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {seriesProps.map(p => (
+                                                            <div
+                                                                key={p.id}
+                                                                className="px-3 py-1.5 rounded-full bg-[var(--color-surface-highlight)] border border-[var(--color-border)] flex items-center gap-2 cursor-pointer hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 transition-all"
+                                                                onClick={() => setViewingItem({ type: 'prop', data: p })}
+                                                            >
+                                                                <Package size={14} className="text-[var(--color-primary)]" />
+                                                                <span className="font-bold text-sm">{p.name}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {store.aspectRatio && (
+                                                <div>
+                                                    <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-1">Aspect Ratio</label>
+                                                    <span className="px-2 py-1 rounded bg-[var(--color-surface)] border border-[var(--color-border)] text-xs font-mono text-[var(--color-primary)]">
+                                                        {store.aspectRatio}
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div>
-                                        {seriesStory && (
-                                            <div>
-                                                <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-1">Series Story</label>
-                                                <p className="text-gray-300 whitespace-pre-wrap leading-relaxed">{seriesStory}</p>
-                                            </div>
-                                        )}
-                                        {characters.length > 0 && (
-                                            <div>
-                                                <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-2">Main Characters</label>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {characters.map(c => (
-                                                        <div key={c.id} className="px-3 py-1.5 rounded-full bg-[var(--color-surface-highlight)] border border-[var(--color-border)] flex items-center gap-2">
-                                                            <User size={14} className="text-[var(--color-primary)]" />
-                                                            <span className="font-bold text-sm">{c.name}</span>
-                                                            <span className="text-xs text-gray-400">({c.role})</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-                                        {seriesLocations.length > 0 && (
-                                            <div>
-                                                <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-2">Series Locations</label>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {seriesLocations.map(l => (
-                                                        <div key={l.id} className="px-3 py-1.5 rounded-full bg-[var(--color-surface-highlight)] border border-[var(--color-border)] flex items-center gap-2">
-                                                            <MapPin size={14} className="text-[var(--color-primary)]" />
-                                                            <span className="font-bold text-sm">{l.name}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-                                        {seriesProps.length > 0 && (
-                                            <div>
-                                                <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-2">Series Props</label>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {seriesProps.map(p => (
-                                                        <div key={p.id} className="px-3 py-1.5 rounded-full bg-[var(--color-surface-highlight)] border border-[var(--color-border)] flex items-center gap-2">
-                                                            <Package size={14} className="text-[var(--color-primary)]" />
-                                                            <span className="font-bold text-sm">{p.name}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-                                        {store.aspectRatio && (
-                                            <div>
-                                                <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-1">Aspect Ratio</label>
-                                                <span className="px-2 py-1 rounded bg-[var(--color-surface)] border border-[var(--color-border)] text-xs font-mono text-[var(--color-primary)]">
-                                                    {store.aspectRatio}
-                                                </span>
-                                            </div>
-                                        )}
-                                    </div>
+                                    )}
                                 </div>
 
                                 {/* Episode Info View */}
                                 <div className="space-y-4">
-                                    <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-2">
-                                        <h4 className="text-[var(--color-primary)] font-bold uppercase tracking-widest text-sm">Episode Level</h4>
+                                    <div
+                                        className="flex items-center justify-between border-b border-[var(--color-border)] pb-2 cursor-pointer hover:opacity-80 transition-opacity"
+                                        onClick={() => setIsEpisodeViewOpen(!isEpisodeViewOpen)}
+                                    >
+                                        <h4 className="text-[var(--color-primary)] font-bold uppercase tracking-widest text-sm flex items-center gap-2">
+                                            {isEpisodeViewOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                            Episode Level
+                                        </h4>
                                         {isEpisodeComplete && <CheckCircle size={18} className="text-green-500" />}
                                     </div>
 
-                                    <div className="grid grid-cols-1 gap-4">
-                                        <div className="flex gap-4">
-                                            <div className="flex-1">
-                                                <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-1">Episode Name</label>
-                                                <p className="text-xl font-bold text-white">{episodeName || <span className="text-gray-600 italic">Untitled Episode</span>}</p>
+                                    {isEpisodeViewOpen && (
+                                        <div className="grid grid-cols-1 gap-4 animate-fade-in">
+                                            <div className="flex gap-4">
+                                                <div className="flex-1">
+                                                    <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-1">Episode Name</label>
+                                                    <p className="text-xl font-bold text-white">{episodeName || <span className="text-gray-600 italic">Untitled Episode</span>}</p>
+                                                </div>
+                                                <div>
+                                                    <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-1">Ep. #</label>
+                                                    <p className="text-xl font-bold text-[var(--color-primary)]">#{episodeNumber}</p>
+                                                </div>
                                             </div>
-                                            <div>
-                                                <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-1">Ep. #</label>
-                                                <p className="text-xl font-bold text-[var(--color-primary)]">#{episodeNumber}</p>
-                                            </div>
-                                        </div>
-                                        {episodePlot && (
-                                            <div>
-                                                <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-1">Episode Plot</label>
-                                                <p className="text-gray-300 whitespace-pre-wrap leading-relaxed">{episodePlot}</p>
-                                            </div>
-                                        )}
+                                            {episodePlot && (
+                                                <div>
+                                                    <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-1">Episode Plot</label>
+                                                    <p className="text-gray-300 whitespace-pre-wrap leading-relaxed">{episodePlot}</p>
+                                                </div>
+                                            )}
 
-                                        {/* Storyline Table (View Mode - Compact) */}
-                                        {store.storylineTable && store.storylineTable.length > 0 && (
-                                            <div className="space-y-2">
-                                                <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-2 flex items-center gap-2">
-                                                    <Film size={14} className="text-[var(--color-primary)]" />
-                                                    Storyline Table ({store.storylineTable.length} scenes)
-                                                </label>
-                                                <div className="space-y-2 p-3 bg-[var(--color-bg)] rounded-lg border border-[var(--color-border)]">
-                                                    {store.storylineTable.map((scene) => (
-                                                        <div key={scene.id} className="bg-[var(--color-surface)] p-3 rounded-lg border border-[var(--color-border)] hover:border-[var(--color-primary)]/50 transition-colors">
-                                                            <div className="flex items-start gap-4">
-                                                                <div className="flex-shrink-0 w-8 text-center pt-1">
-                                                                    <div className="text-[var(--color-primary)] font-bold text-base">#{scene.sceneNumber}</div>
-                                                                </div>
-                                                                <div className="flex-1 min-w-0">
-                                                                    <div className="flex flex-col sm:flex-row sm:items-baseline gap-2 mb-1">
-                                                                        {scene.estimatedTime && (
-                                                                            <span className="flex-shrink-0 font-mono text-yellow-500 text-xs font-bold bg-yellow-500/10 px-1.5 py-0.5 rounded border border-yellow-500/20">
-                                                                                {scene.estimatedTime}
-                                                                            </span>
-                                                                        )}
-                                                                        <span className="text-sm font-semibold text-white leading-snug">
-                                                                            {scene.content || '-'}
-                                                                        </span>
+                                            {/* Storyline Table (View Mode - Compact) */}
+                                            {store.storylineTable && store.storylineTable.length > 0 && (
+                                                <div className="space-y-2">
+                                                    <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-2 flex items-center gap-2">
+                                                        <Film size={14} className="text-[var(--color-primary)]" />
+                                                        Storyline Table ({store.storylineTable.length} scenes)
+                                                    </label>
+                                                    <div className="space-y-2 p-3 bg-[var(--color-bg)] rounded-lg border border-[var(--color-border)]">
+                                                        {store.storylineTable.map((scene) => (
+                                                            <div key={scene.id} className="bg-[var(--color-surface)] p-3 rounded-lg border border-[var(--color-border)] hover:border-[var(--color-primary)]/50 transition-colors">
+                                                                <div className="flex items-start gap-4">
+                                                                    <div className="flex-shrink-0 w-8 text-center pt-1">
+                                                                        <div className="text-[var(--color-primary)] font-bold text-base">#{scene.sceneNumber}</div>
                                                                     </div>
-                                                                    {scene.directionNotes && (
-                                                                        <div className="text-xs text-gray-400 italic pl-0 sm:pl-0 border-l-2 border-gray-700 pl-2 mt-1">
-                                                                            {scene.directionNotes}
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <div className="flex flex-col sm:flex-row sm:items-baseline gap-2 mb-1">
+                                                                            {scene.estimatedTime && (
+                                                                                <span className="flex-shrink-0 font-mono text-yellow-500 text-xs font-bold bg-yellow-500/10 px-1.5 py-0.5 rounded border border-yellow-500/20">
+                                                                                    {scene.estimatedTime}
+                                                                                </span>
+                                                                            )}
+                                                                            <span className="text-sm font-semibold text-white leading-snug">
+                                                                                {scene.content || '-'}
+                                                                            </span>
                                                                         </div>
-                                                                    )}
+                                                                        {scene.directionNotes && (
+                                                                            <div className="text-xs text-gray-400 italic pl-0 sm:pl-0 border-l-2 border-gray-700 pl-2 mt-1">
+                                                                                {scene.directionNotes}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
                                                                 </div>
                                                             </div>
-                                                        </div>
-                                                    ))}
+                                                        ))}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        )}
+                                            )}
 
-                                        {episodeCharacters.length > 0 && (
-                                            <div>
-                                                <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-2">Episode Characters</label>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {episodeCharacters.map(c => (
-                                                        <div key={c.id} className="px-3 py-1.5 rounded-full bg-[var(--color-surface-highlight)] border border-[var(--color-border)] flex items-center gap-2">
-                                                            <User size={14} className="text-[var(--color-primary)]" />
-                                                            <span className="font-bold text-sm">{c.name}</span>
-                                                            <span className="text-xs text-gray-400">({c.role})</span>
-                                                        </div>
-                                                    ))}
+                                            {episodeCharacters.length > 0 && (
+                                                <div>
+                                                    <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-2">Episode Characters</label>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {episodeCharacters.map(c => (
+                                                            <div
+                                                                key={c.id}
+                                                                className="px-3 py-1.5 rounded-full bg-[var(--color-surface-highlight)] border border-[var(--color-border)] flex items-center gap-2 cursor-pointer hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 transition-all"
+                                                                onClick={() => setViewingItem({ type: 'character', data: c })}
+                                                            >
+                                                                <User size={14} className="text-[var(--color-primary)]" />
+                                                                <span className="font-bold text-sm">{c.name}</span>
+                                                                <span className="text-xs text-gray-400">({c.role})</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        )}
-                                        {episodeLocations.length > 0 && (
-                                            <div>
-                                                <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-2">Episode Locations</label>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {episodeLocations.map(l => (
-                                                        <div key={l.id} className="px-3 py-1.5 rounded-full bg-[var(--color-surface-highlight)] border border-[var(--color-border)] flex items-center gap-2">
-                                                            <MapPin size={14} className="text-[var(--color-primary)]" />
-                                                            <span className="font-bold text-sm">{l.name}</span>
-                                                        </div>
-                                                    ))}
+                                            )}
+                                            {episodeLocations.length > 0 && (
+                                                <div>
+                                                    <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-2">Episode Locations</label>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {episodeLocations.map(l => (
+                                                            <div
+                                                                key={l.id}
+                                                                className="px-3 py-1.5 rounded-full bg-[var(--color-surface-highlight)] border border-[var(--color-border)] flex items-center gap-2 cursor-pointer hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 transition-all"
+                                                                onClick={() => setViewingItem({ type: 'location', data: l })}
+                                                            >
+                                                                <MapPin size={14} className="text-[var(--color-primary)]" />
+                                                                <span className="font-bold text-sm">{l.name}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        )}
-                                        {episodeProps.length > 0 && (
-                                            <div>
-                                                <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-2">Episode Props</label>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {episodeProps.map(p => (
-                                                        <div key={p.id} className="px-3 py-1.5 rounded-full bg-[var(--color-surface-highlight)] border border-[var(--color-border)] flex items-center gap-2">
-                                                            <Package size={14} className="text-[var(--color-primary)]" />
-                                                            <span className="font-bold text-sm">{p.name}</span>
-                                                        </div>
-                                                    ))}
+                                            )}
+                                            {episodeProps.length > 0 && (
+                                                <div>
+                                                    <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-2">Episode Props</label>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {episodeProps.map(p => (
+                                                            <div
+                                                                key={p.id}
+                                                                className="px-3 py-1.5 rounded-full bg-[var(--color-surface-highlight)] border border-[var(--color-border)] flex items-center gap-2 cursor-pointer hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 transition-all"
+                                                                onClick={() => setViewingItem({ type: 'prop', data: p })}
+                                                            >
+                                                                <Package size={14} className="text-[var(--color-primary)]" />
+                                                                <span className="font-bold text-sm">{p.name}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        )}
-                                        <div>
-                                            <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-1">Target Duration</label>
-                                            <div className="flex items-center gap-2">
-                                                <Clock size={16} className="text-[var(--color-primary)]" />
-                                                <span className="font-bold text-white">{formatDuration(targetDuration)}</span>
-                                                <span className="text-gray-500 text-sm">({targetDuration}s, ~{estimateCuts(targetDuration)} cuts)</span>
+                                            )}
+                                            <div>
+                                                <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-1">Target Duration</label>
+                                                <div className="flex items-center gap-2">
+                                                    <Clock size={16} className="text-[var(--color-primary)]" />
+                                                    <span className="font-bold text-white">{formatDuration(targetDuration)}</span>
+                                                    <span className="text-gray-500 text-sm">({targetDuration}s, ~{estimateCuts(targetDuration)} cuts)</span>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
+                                    )}
                                 </div>
                             </div>
                         ) : (
@@ -2118,6 +2248,8 @@ export const Step1_Setup: React.FC = () => {
                     <ArrowRight size={24} />
                 </button>
             </div>
+            {/* Render Detail Modal */}
+            {renderItemDetailModal()}
         </div >
     );
 };
