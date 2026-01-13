@@ -55,6 +55,7 @@ export const Step1_Setup: React.FC = () => {
     const [localSeriesProps, setLocalSeriesProps] = useState<any[]>([]);
     const [localEpisodeProps, setLocalEpisodeProps] = useState<any[]>([]);
     const [localAspectRatio, setLocalAspectRatio] = useState<AspectRatio>('16:9');
+    const [localMasterStyleDescription, setLocalMasterStyleDescription] = useState('');
     const [localStorylineTable, setLocalStorylineTable] = useState<any[]>([]);
     const [customInstructions, setCustomInstructions] = useState(DEFAULT_CONSULTANT_INSTRUCTION);
     const [selectedPersonaKey, setSelectedPersonaKey] = useState<string>('default');
@@ -109,6 +110,7 @@ export const Step1_Setup: React.FC = () => {
             setLocalSeriesProps(JSON.parse(JSON.stringify(seriesProps)));
             setLocalEpisodeProps(JSON.parse(JSON.stringify(episodeProps)));
             setLocalAspectRatio(store.aspectRatio || '16:9');
+            setLocalMasterStyleDescription(store.masterStyle?.description || '');
             setLocalStorylineTable(JSON.parse(JSON.stringify(store.storylineTable || [])));
         }
     }, [isEditing, seriesName, episodeName, episodeNumber, seriesStory, episodePlot, targetDuration, characters, seriesLocations, episodeCharacters, episodeLocations, seriesProps, episodeProps, store.aspectRatio, store.storylineTable]);
@@ -141,6 +143,7 @@ export const Step1_Setup: React.FC = () => {
             setLocalSeriesProps(JSON.parse(JSON.stringify(seriesProps)));
             setLocalEpisodeProps(JSON.parse(JSON.stringify(episodeProps)));
             setLocalAspectRatio(store.aspectRatio || '16:9');
+            setLocalMasterStyleDescription(store.masterStyle?.description || '');
             setLocalStorylineTable(JSON.parse(JSON.stringify(store.storylineTable || [])));
 
             // If it's a fresh series, start in edit mode
@@ -287,7 +290,11 @@ export const Step1_Setup: React.FC = () => {
             episodeLocations: localEpisodeLocations,
             seriesProps: localSeriesProps,
             episodeProps: localEpisodeProps,
-            aspectRatio: localAspectRatio
+            aspectRatio: localAspectRatio,
+            masterStyle: {
+                ...(store.masterStyle || {}),
+                description: localMasterStyleDescription
+            }
         };
 
         if (syncedAssets) {
@@ -505,7 +512,8 @@ export const Step1_Setup: React.FC = () => {
                 episodeLocations,
                 episodeProps,
                 targetDuration,
-                aspectRatio: store.aspectRatio
+                aspectRatio: store.aspectRatio,
+                masterStyle: store.masterStyle?.description || ''
             };
 
             const result = await consultStory(updatedHistory, context, apiKeys.gemini, customInstructions);
@@ -598,7 +606,7 @@ export const Step1_Setup: React.FC = () => {
             setChatHistory([...updatedHistory, newAiMsg]);
 
             // Auto-populate fields if suggestions exist (including deletions)
-            if (result.suggestedSeriesName || result.suggestedEpisodeName || result.suggestedDuration || result.suggestedEpisodeNumber || result.suggestedSeriesStory || result.suggestedMainCharacters || result.suggestedEpisodePlot || result.suggestedEpisodeCharacters || result.suggestedCharacters || result.suggestedSeriesProps || result.suggestedEpisodeProps || result.suggestedDeletions || result.suggestedAspectRatio) {
+            if (result.suggestedSeriesName || result.suggestedEpisodeName || result.suggestedDuration || result.suggestedEpisodeNumber || result.suggestedSeriesStory || result.suggestedMainCharacters || result.suggestedEpisodePlot || result.suggestedEpisodeCharacters || result.suggestedCharacters || result.suggestedSeriesProps || result.suggestedEpisodeProps || result.suggestedDeletions || result.suggestedAspectRatio || result.suggestedMasterStyle) {
                 const updates: Partial<Parameters<typeof setProjectInfo>[0]> = {
                     seriesName: result.suggestedSeriesName || seriesName,
                     episodeName: result.suggestedEpisodeName || episodeName,
@@ -616,6 +624,17 @@ export const Step1_Setup: React.FC = () => {
                     setLocalAspectRatio(result.suggestedAspectRatio);
                 } else {
                     console.log('[Step1] No aspect ratio suggestion found in AI response');
+                }
+
+                // Handle Master Visual Style Suggestion
+                if (result.suggestedMasterStyle) {
+                    console.log('[Step1] Applying AI suggested master style:', result.suggestedMasterStyle);
+                    setLocalMasterStyleDescription(result.suggestedMasterStyle);
+                    // Also update the store's masterStyle immediately
+                    updates.masterStyle = {
+                        ...(store.masterStyle || {}),
+                        description: result.suggestedMasterStyle
+                    };
                 }
 
                 // Handle character array from AI - MERGE STRATEGY
@@ -1333,6 +1352,14 @@ export const Step1_Setup: React.FC = () => {
                                                     </span>
                                                 </div>
                                             )}
+                                            {store.masterStyle?.description && (
+                                                <div>
+                                                    <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-1">Master Visual Style</label>
+                                                    <p className="text-[var(--color-primary)] text-sm bg-[var(--color-bg)] border border-[var(--color-primary)]/30 rounded-lg p-3">
+                                                        {store.masterStyle.description}
+                                                    </p>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -1808,6 +1835,19 @@ export const Step1_Setup: React.FC = () => {
                                                     </button>
                                                 ))}
                                             </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            {renderLabel("Master Visual Style", !!localMasterStyleDescription)}
+                                            <textarea
+                                                placeholder="Describe the overall visual style for your series (e.g., 'Ghibli watercolor style with soft lighting', 'Cyberpunk neon aesthetic', 'Realistic cinematic look with high contrast')"
+                                                className="w-full bg-[var(--color-bg)] border border-[var(--color-primary)]/50 rounded-lg p-3 text-[var(--color-primary)] focus:border-[var(--color-primary)] outline-none resize-none h-24 placeholder-[var(--color-primary)]/40"
+                                                value={localMasterStyleDescription}
+                                                onChange={(e) => setLocalMasterStyleDescription(e.target.value)}
+                                            />
+                                            <p className="text-xs text-[var(--color-text-muted)]">
+                                                This style will be applied to all visual assets in Step 2. You can also describe this in the AI chat.
+                                            </p>
                                         </div>
                                     </div>
                                 </div>

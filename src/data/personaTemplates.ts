@@ -13,6 +13,7 @@ CURRENT PROJECT CONTEXT (Use this to inform your suggestions):
 - Episode Props: {{episodeProps}}
 - Target Duration: {{targetDuration}}s
 - Aspect Ratio: {{aspectRatio}}
+- Master Visual Style: {{masterStyle}}
 `;
 
 const SHARED_FORMAT_INSTRUCTIONS = `
@@ -82,6 +83,7 @@ ALWAYS return valid JSON:
     "suggestedEpisodeProps": [{"name": "", "description": "", "visualSummary": ""}],
     "suggestedDuration": 60,
     "suggestedAspectRatio": "16:9", // '16:9' | '9:16' | '1:1' | '2.35:1'
+    "suggestedMasterStyle": "Description of the overall visual style for the series (e.g., 'Ghibli watercolor style', 'Cyberpunk neon aesthetic', 'Realistic cinematic look')",
     "suggestedStorylineScenes": [{"sceneNumber": 1, "estimatedTime": "", "content": "", "directionNotes": ""}],
     "suggestedDeletions": {
         "characters": ["character name to delete"],

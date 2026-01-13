@@ -104,6 +104,7 @@ export interface ConsultationResult {
         episodeProps?: string[];
     };
     suggestedAspectRatio?: '16:9' | '9:16' | '1:1' | '2.35:1';
+    suggestedMasterStyle?: string;
 }
 
 export interface ProjectContext {
@@ -717,7 +718,8 @@ export const consultStory = async (
             .replace('{{episodeLocations}}', JSON.stringify(context.episodeLocations))
             .replace('{{episodeProps}}', JSON.stringify(context.episodeProps))
             .replace('{{targetDuration}}', String(context.targetDuration))
-            .replace('{{aspectRatio}}', context.aspectRatio);
+            .replace('{{aspectRatio}}', context.aspectRatio)
+            .replace('{{masterStyle}}', (context as any).masterStyle || '');
 
 
 
