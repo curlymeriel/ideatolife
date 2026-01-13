@@ -30,6 +30,8 @@ export const Step2_Style: React.FC = () => {
         cleanupOrphanedAssets
     } = store;
 
+    console.log('[Step2] Current Aspect Ratio from Store:', aspectRatio);
+
     useEffect(() => {
         cleanupOrphanedAssets();
     }, [cleanupOrphanedAssets]);
@@ -195,55 +197,71 @@ export const Step2_Style: React.FC = () => {
     }, [isHydrated]);
 
     const handleSaveAsset = async () => {
-        if (!setProjectInfo) return;
-        const { saveToIdb, generateAssetImageKey } = await import('../utils/imageStorage');
+        try {
+            console.log('[Step2] Saving Asset:', selectedAssetId);
+            if (!setProjectInfo) {
+                console.error('[Step2] setProjectInfo is missing');
+                return;
+            }
+            const { saveToIdb, generateAssetImageKey } = await import('../utils/imageStorage');
 
-        let finalRefUrl = referenceImage;
-        if (referenceImage && referenceImage.startsWith('data:')) {
-            const key = generateAssetImageKey(projectId, selectedAssetId, 'ref');
-            finalRefUrl = await saveToIdb('assets', key, referenceImage);
-        }
+            let finalRefUrl = referenceImage;
+            if (referenceImage && referenceImage.startsWith('data:')) {
+                const key = generateAssetImageKey(projectId, selectedAssetId, 'ref');
+                console.log('[Step2] Saving Reference Image to IDB:', key);
+                finalRefUrl = await saveToIdb('assets', key, referenceImage);
+            }
 
-        let finalDraftUrl = draftImage;
-        if (draftImage && draftImage.startsWith('data:')) {
-            const key = generateAssetImageKey(projectId, selectedAssetId, 'draft');
-            finalDraftUrl = await saveToIdb('assets', key, draftImage);
-        }
+            let finalDraftUrl = draftImage;
+            if (draftImage && draftImage.startsWith('data:')) {
+                const key = generateAssetImageKey(projectId, selectedAssetId, 'draft');
+                console.log('[Step2] Saving Draft Image to IDB:', key);
+                finalDraftUrl = await saveToIdb('assets', key, draftImage);
+            }
 
-        if (selectedAssetId === 'master_style') {
-            if (setMasterStyle) {
-                setMasterStyle({
+            if (selectedAssetId === 'master_style') {
+                if (setMasterStyle) {
+                    setMasterStyle({
+                        description: description,
+                        referenceImage: finalRefUrl || null,
+                        characterModifier: characterModifier || undefined,
+                        backgroundModifier: backgroundModifier || undefined
+                    });
+                }
+            } else {
+                const newDefinition: AssetDefinition = {
+                    id: selectedAssetId,
+                    type: selectedAssetType as 'character' | 'location' | 'prop',
+                    name: selectedAssetName,
                     description: description,
-                    referenceImage: finalRefUrl || null,
-                    characterModifier: characterModifier || undefined,
-                    backgroundModifier: backgroundModifier || undefined
+                    referenceImage: finalRefUrl || undefined,
+                    draftImage: finalDraftUrl || undefined,
+                    lastUpdated: Date.now()
+                };
+                console.log('[Step2] Updating Project Info with new definition:', newDefinition);
+                setProjectInfo({
+                    assetDefinitions: {
+                        ...safeAssetDefinitions,
+                        [selectedAssetId]: newDefinition
+                    }
                 });
             }
-        } else {
-            const newDefinition: AssetDefinition = {
-                id: selectedAssetId,
-                type: selectedAssetType as 'character' | 'location' | 'prop',
-                name: selectedAssetName,
-                description: description,
-                referenceImage: finalRefUrl || undefined,
-                draftImage: finalDraftUrl || undefined,
-                lastUpdated: Date.now()
-            };
-            setProjectInfo({
-                assetDefinitions: {
-                    ...safeAssetDefinitions,
-                    [selectedAssetId]: newDefinition
-                }
-            });
+            setIsEditing(false);
+            // alert('Asset saved successfully!'); // Optional: Feedback to user
+        } catch (error: any) {
+            console.error('[Step2] Failed to save asset:', error);
+            alert(`Failed to save asset: ${error.message || 'Unknown error'}`);
         }
-        setIsEditing(false);
     };
 
     const handleMagicExpand = async () => {
         if (!description) return;
         setIsProcessing(true);
         try {
-            const context = `Series: ${seriesName}, Episode: ${episodeName}`;
+            let context = `Series: ${seriesName}, Episode: ${episodeName}`;
+            if (selectedAssetId !== 'master_style' && safeMasterStyle.description) {
+                context += `\nMaster Visual Style: ${safeMasterStyle.description}`;
+            }
             const assetTypeForAi = selectedAssetType === 'master' ? 'style' : (selectedAssetType === 'prop' ? 'character' : selectedAssetType);
             const enhanced = await enhancePrompt(description, assetTypeForAi as any, context, apiKeys?.gemini || '');
             setDescription(enhanced);
@@ -312,7 +330,10 @@ export const Step2_Style: React.FC = () => {
             const analysis = await analyzeImage(referenceImage, apiKeys?.gemini || '');
 
             // 2. Then use enhancePrompt to categorize it into our strict Master Style format
-            const context = `Series: ${seriesName}, Episode: ${episodeName}`;
+            let context = `Series: ${seriesName}, Episode: ${episodeName}`;
+            if (selectedAssetId !== 'master_style' && safeMasterStyle.description) {
+                context += `\nMaster Visual Style: ${safeMasterStyle.description}`;
+            }
             const structured = await enhancePrompt(analysis, 'style', context, apiKeys?.gemini || '');
 
             setDescription(structured);

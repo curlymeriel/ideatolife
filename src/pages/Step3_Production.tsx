@@ -229,10 +229,7 @@ export const Step3_Production: React.FC = () => {
         } catch (error) {
             console.error(error);
             // ... (keep default fallback)
-            setLocalScript([
-                { id: 1, speaker: 'Narrator', dialogue: 'In a world of pure imagination...', visualPrompt: 'Wide shot of a fantasy landscape, golden hour', estimatedDuration: 5 },
-                { id: 2, speaker: 'Hero', dialogue: 'We have to keep moving.', visualPrompt: 'Close up of hero looking determined', estimatedDuration: 3 },
-            ]);
+            alert(`Script Generation Failed:\n${(error as any).message || 'Unknown error'}`);
         } finally {
             setLoading(false);
         }

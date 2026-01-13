@@ -576,11 +576,29 @@ export const Step1_Setup: React.FC = () => {
                 }
             }
 
+            // Fallback: Detect Aspect Ratio from User Message if AI missed it
+            if (!result.suggestedAspectRatio) {
+                const lowerMsg = inputMessage.toLowerCase();
+                if (lowerMsg.includes('vertical') || lowerMsg.includes('9:16') || lowerMsg.includes('shorts') || lowerMsg.includes('tiktok') || lowerMsg.includes('reels')) {
+                    result.suggestedAspectRatio = '9:16';
+                    console.log('[Step1] Fallback: Detected Vertical/9:16 intent');
+                } else if (lowerMsg.includes('square') || lowerMsg.includes('1:1') || lowerMsg.includes('instagram')) {
+                    result.suggestedAspectRatio = '1:1';
+                    console.log('[Step1] Fallback: Detected Square/1:1 intent');
+                } else if (lowerMsg.includes('cinematic') || lowerMsg.includes('2.35:1') || lowerMsg.includes('wide')) {
+                    result.suggestedAspectRatio = '2.35:1';
+                    console.log('[Step1] Fallback: Detected Cinematic/2.35:1 intent');
+                } else if (lowerMsg.includes('landscape') || lowerMsg.includes('16:9') || lowerMsg.includes('youtube')) {
+                    result.suggestedAspectRatio = '16:9';
+                    console.log('[Step1] Fallback: Detected Landscape/16:9 intent');
+                }
+            }
+
             const newAiMsg: ChatMessage = { role: 'model', content: result.reply };
             setChatHistory([...updatedHistory, newAiMsg]);
 
             // Auto-populate fields if suggestions exist (including deletions)
-            if (result.suggestedSeriesName || result.suggestedEpisodeName || result.suggestedDuration || result.suggestedEpisodeNumber || result.suggestedSeriesStory || result.suggestedMainCharacters || result.suggestedEpisodePlot || result.suggestedEpisodeCharacters || result.suggestedCharacters || result.suggestedSeriesProps || result.suggestedEpisodeProps || result.suggestedDeletions) {
+            if (result.suggestedSeriesName || result.suggestedEpisodeName || result.suggestedDuration || result.suggestedEpisodeNumber || result.suggestedSeriesStory || result.suggestedMainCharacters || result.suggestedEpisodePlot || result.suggestedEpisodeCharacters || result.suggestedCharacters || result.suggestedSeriesProps || result.suggestedEpisodeProps || result.suggestedDeletions || result.suggestedAspectRatio) {
                 const updates: Partial<Parameters<typeof setProjectInfo>[0]> = {
                     seriesName: result.suggestedSeriesName || seriesName,
                     episodeName: result.suggestedEpisodeName || episodeName,
@@ -588,8 +606,17 @@ export const Step1_Setup: React.FC = () => {
                     seriesStory: result.suggestedSeriesStory || seriesStory,
                     mainCharacters: result.suggestedMainCharacters || mainCharacters,
                     episodePlot: result.suggestedEpisodePlot || episodePlot,
-                    targetDuration: result.suggestedDuration || targetDuration
+                    targetDuration: result.suggestedDuration || targetDuration,
+                    aspectRatio: result.suggestedAspectRatio || store.aspectRatio // Ensure aspect ratio is updated in store
                 };
+
+                // Handle Aspect Ratio Suggestion (Local update for immediate feedback)
+                if (result.suggestedAspectRatio) {
+                    console.log('[Step1] Applying AI suggested aspect ratio:', result.suggestedAspectRatio);
+                    setLocalAspectRatio(result.suggestedAspectRatio);
+                } else {
+                    console.log('[Step1] No aspect ratio suggestion found in AI response');
+                }
 
                 // Handle character array from AI - MERGE STRATEGY
                 if (result.suggestedCharacters !== undefined && Array.isArray(result.suggestedCharacters)) {
@@ -1768,7 +1795,10 @@ export const Step1_Setup: React.FC = () => {
                                                 {(['16:9', '9:16', '1:1', '2.35:1'] as const).map((ratio) => (
                                                     <button
                                                         key={ratio}
-                                                        onClick={() => setLocalAspectRatio(ratio)}
+                                                        onClick={() => {
+                                                            setLocalAspectRatio(ratio);
+                                                            setProjectInfo({ aspectRatio: ratio });
+                                                        }}
                                                         className={`p-2 rounded-lg text-xs font-bold border transition-all ${localAspectRatio === ratio
                                                             ? 'bg-[var(--color-primary)] text-black border-[var(--color-primary)]'
                                                             : 'bg-[var(--color-bg)] text-[var(--color-text-muted)] border-[var(--color-border)] hover:border-[var(--color-primary)]'

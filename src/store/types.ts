@@ -113,6 +113,117 @@ export interface VisualAsset {
 }
 
 // ====================
+// YouTube Trend Analyzer Types (Step 0)
+// ====================
+
+export type RegionCode = 'KR' | 'JP' | 'FR' | 'DE' | 'ES' | 'US' | 'Global';
+
+export interface YouTubeTrendTopic {
+    id: string;
+    topic: string;                    // 원문 주제/해시태그
+    translatedTopic?: string;         // 한국어 번역
+    topicMeaning?: string;            // 키워드의 의미/설명 (한국어)
+    topicType: 'hashtag' | 'keyword' | 'category'; // 해시태그 vs 키워드 vs 주제 분류
+    avgViews: number;
+    avgEngagement: number;            // (좋아요 + 댓글) / 조회수
+    videoCount: number;
+    thumbnailUrl?: string;
+    relatedVideos?: YouTubeTrendVideo[]; // 트렌드를 생성한 원본 영상들
+}
+
+// YouTube 카테고리 (2025년 정책 변경 반영)
+export interface YouTubeCategory {
+    id: string;
+    title: string;
+    assignable: boolean;
+}
+
+// YouTube 카테고리 ID 상수 (chart=mostPopular에서 지원되는 카테고리)
+export type YouTubeCategoryId = '10' | '20' | '25' | '44'; // Music, Gaming, News, Movies
+
+export const YOUTUBE_CATEGORIES: Record<YouTubeCategoryId, { title: string; icon: string }> = {
+    '10': { title: 'Music', icon: '🎵' },
+    '20': { title: 'Gaming', icon: '🎮' },
+    '25': { title: 'News', icon: '📰' },
+    '44': { title: 'Trailers', icon: '🎬' },
+};
+
+export interface YouTubeTrendVideo {
+    id: string;
+    title: string;
+    titleKorean?: string;
+    channelName: string;
+    channelId: string;
+    categoryId?: string;        // Official YouTube category ID (e.g., '20' for Gaming)
+    categoryName?: string;      // Category name (e.g., 'Gaming')
+    thumbnailUrl: string;
+    viewCount: number;
+    likeCount: number;
+    commentCount: number;
+    publishedAt: string;
+    duration?: string;
+    analysis?: {
+        hookStyle?: string;
+        thumbnailKeyElements?: string;
+        titlePattern?: string;
+    };
+}
+
+// 워크플로우 연동을 위한 분석 결과 타입
+export interface TrendAnalysisInsights {
+    thumbnail: {
+        colorScheme?: string;
+        textStyle?: string;
+        composition?: string;
+        faceExpression?: string;      // 표정/구도 분석
+        recommendations: string[];
+    };
+    title: {
+        keywords?: string;            // 주요 키워드
+        length?: string;              // 제목 길이 패턴
+        emotionalTriggers?: string;   // 감정 트리거 (숫자, 질문, 충격)
+        recommendations: string[];
+    };
+    storytelling: {
+        hookMethods?: string;         // 0~10초 후킹 기법
+        narrativeStructure?: string;
+        cameraWorkPatterns?: string;
+        recommendations: string[];
+    };
+    videoLength?: {
+        avgDuration?: string;         // 평균 영상 길이
+        optimalRange?: string;        // 최적 길이 범위
+        recommendations: string[];
+    };
+    uploadSchedule?: {
+        bestDays?: string;            // 최적 업로드 요일
+        bestTimes?: string;           // 최적 업로드 시간
+        frequency?: string;           // 업로드 주기
+        recommendations: string[];
+    };
+}
+
+// 채널 분석 타입
+export interface ChannelAnalysis {
+    channelId: string;
+    channelName: string;
+    channelThumbnail?: string;
+    subscriberCount: number;
+    videoCount: number;
+    viewCount: number;
+    avgViews: number;
+    avgEngagement: number;
+    topVideos: YouTubeTrendVideo[];
+    recentVideos: YouTubeTrendVideo[];
+    improvementSuggestions?: {
+        thumbnail: string[];
+        title: string[];
+        content: string[];
+        uploadSchedule?: string;
+    };
+}
+
+// ====================
 // Project Data (Persisted Domain State)
 // ====================
 
@@ -167,6 +278,13 @@ export interface ProjectData {
         scriptConfirmed: number;
         assetsTotal: number;
         assetsDefined: number;
+    };
+
+    // Step 0: Market Research Insights (from YouTube Trend Analyzer)
+    trendInsights?: {
+        storytelling?: string;   // Step 1 → Step 3 전달용 (후킹멘트, 스토리 전개, 카메라워크)
+        thumbnail?: string;      // Step 5 전달용 (썸네일 색감, 텍스트, 구도)
+        appliedAt?: number;      // 적용 시간
     };
 }
 

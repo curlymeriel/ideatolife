@@ -103,6 +103,7 @@ export interface ConsultationResult {
         seriesProps?: string[];
         episodeProps?: string[];
     };
+    suggestedAspectRatio?: '16:9' | '9:16' | '1:1' | '2.35:1';
 }
 
 export interface ProjectContext {
@@ -124,8 +125,10 @@ export interface ProjectContext {
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 const GEMINI_2_5_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 const GEMINI_3_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent';
+const GEMINI_3_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent'; // Requested by user
 const GEMINI_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent';
 const GEMINI_2_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent';
+const GEMINI_1_5_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
 
 // Default instructions (can be overridden by UI)
 export const DEFAULT_SCRIPT_INSTRUCTIONS = `
@@ -139,7 +142,9 @@ export const DEFAULT_SCRIPT_INSTRUCTIONS = `
       - This is a HARD LIMIT - any cut exceeding 8 seconds is INVALID.
 
       **ASSET NAME RULE (CRITICAL):**
-      - Do NOT translate Character, Location, or Prop names. Use them EXACTLY as they appear in the provided lists (e.g., if "Stick" is English, keep it "Stick" even if writing in Korean).
+      - Do NOT translate Character, Location, or Prop names. Use them EXACTLY as they appear in the provided lists.
+      - If the asset name is Korean (e.g., "철수"), WRITE IT IN KOREAN inside the English prompt (e.g., "Wide shot of 철수 walking").
+      - This is crucial for linking the generated script to the visual references.
       
       **AUDIO TYPE RULES (CRITICAL - MUST FOLLOW):**
       Every cut MUST have a clearly defined audio type. Choose ONE:
@@ -206,7 +211,10 @@ export const DEFAULT_SCRIPT_INSTRUCTIONS = `
         - If you need multiple angles, CREATE SEPARATE CUTS for each angle.
         
         **ASSET NAME PRIORITY (CRITICAL FOR IMAGE CONSISTENCY):**
-        - ALWAYS use the EXACT asset names from "Available Characters" and "Available Locations" lists.
+        - **ALWAYS use the EXACT asset names** from "Available Characters" and "Available Locations" lists.
+        - **DO NOT TRANSLATE or ROMANIZE** the names. Keep them exactly as provided.
+        - ❌ BAD: "Close up of Cheolsu" (when asset name is "철수")
+        - ✅ GOOD: "Close up of 철수" (Mixed English/Korean is expected and required)
         - DO NOT use pronouns (his, her, the, that) to refer to assets.
         - ❌ BAD: "his sanctuary", "the hero's workshop", "she enters the room"
         - ✅ GOOD: "Max Fisher's Sanctuary", "Kael standing in The Ancient Workshop", "Dr. Aris enters Rain-Soaked Street"
@@ -367,21 +375,21 @@ export const generateScript = async (
                 }
 
                 // Merge Step 1 and Step 2 descriptions
-                // Visual source priority: Step 2 Asset Def (Highest) > Step 1 Visual Summary
+                // Visual source priority: Step 2 Asset Def ONLY (Step 1 visual is excluded to avoid outdated info)
                 const step1Desc = c.description || '';
-                const step1Visual = c.visualSummary || '';
                 const step2Desc = (assetDef as any)?.description || '';
 
-                const visualDetails = step2Desc || step1Visual;
+                // ONLY use Step 2 for visual details to prevent outdated Step 1 info leaking
+                const visualDetails = step2Desc;
 
-                if (visualDetails && visualDetails !== step1Desc) {
+                if (visualDetails) {
                     // EXPLICITLY separate Narrative vs Visual to prevent AI confusion
-                    // This ensures "Old Name" in visual details doesn't override "New Name" in narrative
                     return `- ${c.name} (${c.role}):
   * Story Context: ${step1Desc}
   * Visual Appearance: ${visualDetails}`;
                 }
 
+                // No Step 2 visual available, provide narrative context only
                 return `- ${c.name} (${c.role}): ${step1Desc}`;
             }).join('\n');
         } else {
@@ -410,19 +418,20 @@ export const generateScript = async (
                 }
 
                 // Merge Step 1 and Step 2 descriptions
-                // Visual source priority: Step 2 Asset Def (Highest) > Step 1 Visual Summary
+                // Visual source priority: Step 2 Asset Def ONLY (Step 1 visual is excluded to avoid outdated info)
                 const step1Desc = l.description || '';
-                const step1Visual = l.visualSummary || '';
                 const step2Desc = (assetDef as any)?.description || '';
 
-                const visualDetails = step2Desc || step1Visual;
+                // ONLY use Step 2 for visual details
+                const visualDetails = step2Desc;
 
-                if (visualDetails && visualDetails !== step1Desc) {
+                if (visualDetails) {
                     return `- ${l.name}:
   * Story Context: ${step1Desc}
   * Visual Appearance: ${visualDetails}`;
                 }
 
+                // No Step 2 visual available, provide narrative context only
                 return `- ${l.name}: ${step1Desc}`;
             }).join('\n');
         } else {
@@ -431,9 +440,9 @@ export const generateScript = async (
 
         // Build storyline context if available
         let storylineContext = '';
+        let sceneStructure = '';
         if (storylineTable && storylineTable.length > 0) {
             storylineContext = `
-
 **SCENE STRUCTURE (from user's storyline plan):**
 ${storylineTable.map(scene => `
 Scene ${scene.sceneNumber} (${scene.estimatedTime}):
@@ -447,6 +456,7 @@ CRITICAL INSTRUCTIONS:
 3. Expand the content into detailed dialogue and visual descriptions.
 4. Maintain the narrative flow across scenes.
 `;
+            sceneStructure = storylineContext;
         }
 
         // NEW: Build Locked Cuts Context
@@ -473,196 +483,189 @@ ${lockedCuts.map(c => `[established] SLOT #${c.id} | Speaker: ${c.speaker} | Dia
             }
         }
 
-        const prompt = `
-      You are a professional screenwriter. Create a video script for a YouTube short.
-      
-      **Series Information:**
-      Series: "${seriesName}"
-      Episode: "${episodeName}"
-      
-      **Episode Plot:**
-      ${episodePlot || 'Create an engaging short story'}
-      
-      **Available Characters:**
-      ${characterInfo}
-      
-      **Available Locations:**
-      ${locationInfo}
-      ${storylineContext}
-      ${lockedCutsContext}
-      
-      **Production Details:**
-      - Target Duration: ${targetDuration} seconds
-      - Visual Style: ${JSON.stringify(stylePrompts)}
-      
-      ${customInstructions || DEFAULT_SCRIPT_INSTRUCTIONS}
-    `;
+        let finalPrompt = `
+Generate a video script for:
+Series: ${seriesName}
+Episode: ${episodeName}
+Target Duration: ${targetDuration} seconds
+Style Context: ${JSON.stringify(stylePrompts)}
 
-        const response = await axios.post(
-            `${GEMINI_API_URL}?key=${apiKey}`,
-            {
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: {
-                    response_mime_type: "application/json"
-                }
-            }
-        );
+Characters:
+${characterInfo}
 
-        let generatedText = response.data.candidates[0].content.parts[0].text;
+Locations:
+${locationInfo}
 
-        // Remove markdown formatting if present
-        generatedText = generatedText.replace(/```json\n?|\n?```/g, '').trim();
+Episode Plot:
+${episodePlot || 'No specific plot provided.'}
 
-        const rawScript = JSON.parse(generatedText);
+${sceneStructure}
+${lockedCutsContext}
 
-        // Create a list of valid speaker names for normalization
-        const validSpeakerNames = [
-            'Narrator',
-            'SILENT',
-            ...(characters || []).map((c: any) => c.name)
-        ].filter(Boolean);
+${customInstructions || DEFAULT_SCRIPT_INSTRUCTIONS}
+`;
 
-        // Normalize and ensure IDs are numbers
-        return rawScript.map((cut: any, index: number) => {
-            // ... (Rest of locked cut logic stays same)
-            // NEW: LOCKED CUT OVERRIDE
-            // Before applying ANY AI-correction logic, check if this cut slot belongs to a locked cut.
-            // We align based on Index (since ID might shift if AI inserts checks, though we asked it not to).
-            // Better: aligned by content match? No, that's impossible if content changed.
-            // Best: Use the existingScript array index if available, assuming AI followed instructions to keep count similar.
-            // BUT: AI might add/remove cuts. 
-            // safer strategy: If we passed existingScript, we asked AI to keep locked cuts. 
-            // We can try to match by ID if the AI preserved IDs.
+        const models = [
+            { name: 'Gemini 3 Pro (Preview)', url: GEMINI_3_PRO_URL }, // Priority 1: High Intelligence
+            { name: 'Gemini 3 Flash (Preview)', url: GEMINI_3_FLASH_URL }, // Priority 2: Fast Intelligence
+            { name: 'Gemini 2.5 Flash', url: GEMINI_API_URL }, // Priority 3: Balanced
+            { name: 'Gemini 1.5 Flash', url: GEMINI_1_5_FLASH_URL }, // Priority 4: Stable fallback
+            { name: 'Gemini 1.5 Pro', url: GEMINI_PRO_URL } // Priority 5: Last resort high quality
+        ];
 
-            let lockedOriginal = null;
-            if (existingScript) {
-                // 1. Try exact ID match (if AI kept the ID)
-                lockedOriginal = existingScript.find(c => c.id === cut.id && (c.isConfirmed || c.isAudioConfirmed || c.isImageConfirmed));
+        let lastError: any = null;
 
-                // 2. Fallback: If AI renumbered but we are in the "preserve" zone? 
-                // Actually, if ID mismatch, it's risky. But let's trust exact ID match first found in the AI output.
-                // The AI prompt explicitly included [CUT #ID].
-            }
+        for (const model of models) {
+            try {
+                console.log(`[Gemini] Generating Script with model: ${model.name}`);
+                const response = await axios.post(
+                    `${model.url}?key=${apiKey}`,
+                    {
+                        contents: [{ parts: [{ text: finalPrompt }] }]
+                    }
+                );
 
-            if (lockedOriginal) {
-                console.log(`[Gemini] Restoring LOCKED cut #${lockedOriginal.id} content verbatim.`);
-                return {
-                    ...cut, // Keep any new metadata AI might have added (like sfxDescription if it hallucinated?) - actually NO.
-                    // We must restore core content exactly.
-                    id: lockedOriginal.id, // Enforce original ID
-                    speaker: lockedOriginal.speaker,
-                    dialogue: lockedOriginal.dialogue,
-                    visualPrompt: lockedOriginal.visualPrompt,
-                    // Preserve other locked props
-                    videoPrompt: lockedOriginal.videoPrompt,
-                    audioUrl: lockedOriginal.audioUrl,
-                    finalImageUrl: lockedOriginal.finalImageUrl,
-                    isConfirmed: lockedOriginal.isConfirmed,
-                    isAudioConfirmed: lockedOriginal.isAudioConfirmed,
-                    isImageConfirmed: lockedOriginal.isImageConfirmed,
-                    // Use AI's estimated duration if original didn't have one? No, keep original.
-                    estimatedDuration: lockedOriginal.estimatedDuration || cut.estimatedDuration
-                };
-            }
+                let generatedText = response.data.candidates[0].content.parts[0].text;
+                const jsonStr = generatedText.replace(/```json\n?|\n?```/g, '').trim();
+                const rawScript = JSON.parse(jsonStr);
 
-            // --- STANDARD NORMALIZATION FOR NEW/UNLOCKED CUTS ---
+                // Support both direct array and object with 'cuts' property
+                const validScript = Array.isArray(rawScript) ? rawScript : (rawScript.cuts || []);
+                if (!validScript || validScript.length === 0) throw new Error("Parsed script is empty");
 
-            let rawSpeaker = cut.speaker || cut.character || cut.name || 'Narrator';
-            let speaker = 'Narrator'; // Default fallback
+                // Create a list of valid speaker names for normalization
+                const validSpeakerNames = [
+                    'Narrator',
+                    'SILENT',
+                    ...(characters || []).map((c: any) => c.name)
+                ].filter(Boolean);
 
-            // 1. Try exact match
-            const exactMatch = validSpeakerNames.find(s => s === rawSpeaker);
-            if (exactMatch) {
-                speaker = exactMatch;
-            } else {
-                // 2. Try case-insensitive fuzzy match
-                const fuzzyMatch = validSpeakerNames.find(s => s.toLowerCase() === rawSpeaker.toLowerCase());
-                if (fuzzyMatch) {
-                    speaker = fuzzyMatch;
-                } else {
-                    // 3. Check if it's a known special case
-                    if (rawSpeaker.toUpperCase().includes('SILENT') || rawSpeaker.toUpperCase().includes('NONE')) {
-                        speaker = 'SILENT';
-                    } else if (rawSpeaker.toUpperCase().includes('NARRA')) {
-                        speaker = 'Narrator';
+                // Normalize and ensure IDs are numbers
+                return validScript.map((cut: any, index: number) => {
+                    // LOCKED CUT OVERRIDE logic
+                    let lockedOriginal = null;
+                    if (existingScript) {
+                        lockedOriginal = existingScript.find(c => c.id === cut.id && (c.isConfirmed || c.isAudioConfirmed || c.isImageConfirmed));
+                    }
+
+                    if (lockedOriginal) {
+                        console.log(`[Gemini] Restoring LOCKED cut #${lockedOriginal.id} content verbatim.`);
+                        return {
+                            ...cut,
+                            id: lockedOriginal.id,
+                            speaker: lockedOriginal.speaker,
+                            dialogue: lockedOriginal.dialogue,
+                            visualPrompt: lockedOriginal.visualPrompt,
+                            videoPrompt: lockedOriginal.videoPrompt,
+                            audioUrl: lockedOriginal.audioUrl,
+                            finalImageUrl: lockedOriginal.finalImageUrl,
+                            isConfirmed: lockedOriginal.isConfirmed,
+                            isAudioConfirmed: lockedOriginal.isAudioConfirmed,
+                            isImageConfirmed: lockedOriginal.isImageConfirmed,
+                            estimatedDuration: lockedOriginal.estimatedDuration || cut.estimatedDuration
+                        };
+                    }
+
+                    // --- STANDARD NORMALIZATION FOR NEW/UNLOCKED CUTS ---
+                    let rawSpeaker = cut.speaker || cut.character || cut.name || 'Narrator';
+                    let speaker = 'Narrator'; // Default fallback
+
+                    // 1. Try exact match
+                    const exactMatch = validSpeakerNames.find(s => s === rawSpeaker);
+                    if (exactMatch) {
+                        speaker = exactMatch;
                     } else {
-                        // 4. If no match, try to find the character name WITHIN the raw speaker string
-                        // (e.g. "Kael (angry)" -> "Kael")
-                        const partialMatch = validSpeakerNames.find(s => rawSpeaker.toLowerCase().includes(s.toLowerCase()));
-                        if (partialMatch) {
-                            speaker = partialMatch;
+                        // 2. Try case-insensitive fuzzy match
+                        const fuzzyMatch = validSpeakerNames.find(s => s.toLowerCase() === rawSpeaker.toLowerCase());
+                        if (fuzzyMatch) {
+                            speaker = fuzzyMatch;
                         } else {
-                            // Final fallback: if there are characters, use the first one, otherwise Narrator
-                            speaker = validSpeakerNames.length > 2 ? validSpeakerNames[2] : 'Narrator';
-                            console.warn(`[Gemini] Could not resolve speaker "${rawSpeaker}". Falling back to "${speaker}"`);
+                            // 3. Check if it's a known special case
+                            if (rawSpeaker.toUpperCase().includes('SILENT') || rawSpeaker.toUpperCase().includes('NONE')) {
+                                speaker = 'SILENT';
+                            } else if (rawSpeaker.toUpperCase().includes('NARRA')) {
+                                speaker = 'Narrator';
+                            } else {
+                                // 4. If no match, try to find the character name WITHIN the raw speaker string
+                                const partialMatch = validSpeakerNames.find(s => rawSpeaker.toLowerCase().includes(s.toLowerCase()));
+                                if (partialMatch) {
+                                    speaker = partialMatch;
+                                } else {
+                                    // Final fallback: if there are characters, use the first one, otherwise Narrator
+                                    speaker = validSpeakerNames.length > 2 ? validSpeakerNames[2] : 'Narrator';
+                                    console.warn(`[Gemini] Could not resolve speaker "${rawSpeaker}".Falling back to "${speaker}"`);
+                                }
+                            }
                         }
                     }
-                }
+
+                    let dialogue = cut.dialogue || cut.content || cut.text || '...';
+
+                    // SELF-HEALING: Fix common AI hallucinations
+                    // 1. If Speaker is SFX but dialogue seems like speech (not wrapped in brackets), change to Narrator
+                    if (speaker.toUpperCase() === 'SFX' && !dialogue.trim().startsWith('[')) {
+                        console.warn(`[Gemini] Auto - corrected SFX speaker to Narrator for dialogue: "${dialogue.substring(0, 20)}..."`);
+                        speaker = 'Narrator';
+                    }
+
+                    // 2. If Speaker is SILENT but dialogue is long text, change to Narrator
+                    if (speaker.toUpperCase() === 'SILENT' && dialogue.length > 20 && !dialogue.trim().startsWith('[')) {
+                        console.warn(`[Gemini] Auto - corrected SILENT speaker to Narrator for dialogue: "${dialogue.substring(0, 20)}..."`);
+                        speaker = 'Narrator';
+                    }
+
+                    // 3. SFX MIGRATION: Aggressive Detection
+                    const sfxRegex = /^\[.*(SFX|Sound|Music|Audio|Effect|BGM).*\]$/i;
+                    const sfxParenRegex = /^\(.*(SFX|Sound|Music|Audio|Effect|BGM).*\)$/i;
+                    const isSfxDialogue = sfxRegex.test(dialogue.trim()) || sfxParenRegex.test(dialogue.trim()) || dialogue.trim().startsWith('[SFX:');
+
+                    if (speaker.toUpperCase() === 'SFX' || isSfxDialogue) {
+                        let description = cut.sfxDescription || '';
+                        const cleanDesc = dialogue.replace(/^\[(SFX|Sound|Music|Audio|Effect|BGM):?\s*/i, '').replace(/\]$/, '').trim();
+
+                        if (cleanDesc && cleanDesc !== 'SILENT' && cleanDesc !== '무음') {
+                            description = cleanDesc;
+                        }
+
+                        console.log(`[Gemini] Auto - corrected SFX cut -> SILENT.Desc: "${description}"`);
+
+                        speaker = 'SILENT';
+                        dialogue = '...'; // Enforce silent tag as "..."
+                        if (description) {
+                            cut.sfxDescription = description;
+                        }
+                    }
+
+                    // 4. Safety Check: If Speaker is Narrator but dialogue is [SILENT], fix it
+                    if (speaker === 'Narrator' && (dialogue === '[SILENT]' || dialogue === '[무음]')) {
+                        speaker = 'SILENT';
+                    }
+
+                    // 5. FINAL ENFORCEMENT: If Speaker is SILENT, Dialogue MUST be "..."
+                    if (speaker === 'SILENT') {
+                        dialogue = '...';
+                    }
+
+                    return {
+                        ...cut,
+                        id: index + 1, // STRICTLY enforce unique sequential ID
+                        speaker,
+                        dialogue,
+                        estimatedDuration: Number(cut.estimatedDuration)
+                    };
+                });
+            } catch (error: any) {
+                console.warn(`[Gemini] Script generation failed with ${model.name}:`, error.message);
+                lastError = error;
+                await new Promise(resolve => setTimeout(resolve, 1000));
             }
+        }
 
-            let dialogue = cut.dialogue || cut.content || cut.text || '...';
-
-            // SELF-HEALING: Fix common AI hallucinations
-            // 1. If Speaker is SFX but dialogue seems like speech (not wrapped in brackets), change to Narrator
-            if (speaker.toUpperCase() === 'SFX' && !dialogue.trim().startsWith('[')) {
-                console.warn(`[Gemini] Auto-corrected SFX speaker to Narrator for dialogue: "${dialogue.substring(0, 20)}..."`);
-                speaker = 'Narrator';
-            }
-
-            // 2. If Speaker is SILENT but dialogue is long text, change to Narrator
-            if (speaker.toUpperCase() === 'SILENT' && dialogue.length > 20 && !dialogue.trim().startsWith('[')) {
-                console.warn(`[Gemini] Auto-corrected SILENT speaker to Narrator for dialogue: "${dialogue.substring(0, 20)}..."`);
-                speaker = 'Narrator';
-            }
-
-            // 3. SFX MIGRATION: Aggressive Detection
-            // If Speaker is 'SFX' OR Dialogue is purely bracketed/parenthesized SFX
-            const sfxRegex = /^\[.*(SFX|Sound|Music|Audio|Effect|BGM).*\]$/i;
-            const sfxParenRegex = /^\(.*(SFX|Sound|Music|Audio|Effect|BGM).*\)$/i;
-            const isSfxDialogue = sfxRegex.test(dialogue.trim()) || sfxParenRegex.test(dialogue.trim()) || dialogue.trim().startsWith('[SFX:');
-
-            if (speaker.toUpperCase() === 'SFX' || isSfxDialogue) {
-                // Extract description from dialogue if possible
-                let description = cut.sfxDescription || '';
-
-                // Try to clean up the dialogue to get the description
-                // e.g., "[SFX: Alarm]" -> "Alarm"
-                const cleanDesc = dialogue.replace(/^\[(SFX|Sound|Music|Audio|Effect|BGM):?\s*/i, '').replace(/\]$/, '').trim();
-
-                if (cleanDesc && cleanDesc !== 'SILENT' && cleanDesc !== '무음') {
-                    description = cleanDesc;
-                }
-
-                console.log(`[Gemini] Auto-corrected SFX cut -> SILENT. Desc: "${description}"`);
-
-                speaker = 'SILENT';
-                dialogue = '...'; // Enforce silent tag as "..."
-                if (description) {
-                    cut.sfxDescription = description;
-                }
-            }
-
-            // 4. Safety Check: If Speaker is Narrator but dialogue is [SILENT], fix it
-            if (speaker === 'Narrator' && (dialogue === '[SILENT]' || dialogue === '[무음]')) {
-                speaker = 'SILENT';
-            }
-
-            // 5. FINAL ENFORCEMENT: If Speaker is SILENT, Dialogue MUST be "..."
-            if (speaker === 'SILENT') {
-                dialogue = '...';
-            }
-
-            return {
-                ...cut,
-                id: index + 1, // STRICTLY enforce unique sequential ID
-                speaker,
-                dialogue,
-                estimatedDuration: Number(cut.estimatedDuration)
-            };
-        });
+        console.error("All Script Generation Models Failed:", lastError);
+        throw lastError; // Re-throw the last error to be caught by the UI
 
     } catch (error) {
-        console.error('Gemini Script Generation Failed:', error);
+        console.error('Gemini Script Generation Failed (Fatal):', error);
         throw error;
     }
 };
@@ -927,40 +930,58 @@ export const analyzeImage = async (
 ): Promise<string> => {
     if (!apiKey) return "Analyzed image description...";
 
-    try {
-        // Dynamic MIME type extraction
-        const match = imageBase64.match(/^data:(.+);base64,(.+)$/);
-        let mimeType = "image/jpeg";
-        let cleanBase64 = imageBase64;
+    const models = [
+        { name: 'Gemini 3 Pro', url: GEMINI_3_PRO_URL }, // User Priority
+        { name: 'Gemini 3 Flash Preview', url: GEMINI_3_FLASH_URL },
+        { name: 'Gemini 2.5 Flash', url: GEMINI_API_URL },
+        { name: 'Gemini 1.5 Flash', url: GEMINI_1_5_FLASH_URL }, // Stable Fallback
+        { name: 'Gemini 1.5 Pro', url: GEMINI_PRO_URL } // High Quality Fallback
+    ];
 
-        if (match) {
-            mimeType = match[1];
-            cleanBase64 = match[2];
-        } else {
-            cleanBase64 = imageBase64.split(',')[1] || imageBase64;
-        }
+    // Dynamic MIME type extraction
+    const match = imageBase64.match(/^data:(.+);base64,(.+)$/);
+    let mimeType = "image/jpeg";
+    let cleanBase64 = imageBase64;
 
-        const response = await axios.post(
-            `${GEMINI_API_URL}?key=${apiKey}`,
-            {
-                contents: [{
-                    parts: [
-                        { text: "Describe this image in high detail, focusing on visual style, lighting, colors, and composition. This description will be used as a prompt to generate similar images. Return ONLY the description." },
-                        {
-                            inline_data: {
-                                mime_type: mimeType,
-                                data: cleanBase64
-                            }
-                        }
-                    ]
-                }]
-            }
-        );
-        return response.data.candidates[0].content.parts[0].text.trim();
-    } catch (error) {
-        console.error("Image Analysis Failed:", error);
-        return "Failed to analyze image.";
+    if (match) {
+        mimeType = match[1];
+        cleanBase64 = match[2];
+    } else {
+        cleanBase64 = imageBase64.split(',')[1] || imageBase64;
     }
+
+    let lastError: any = null;
+
+    for (const model of models) {
+        try {
+            console.log(`[Gemini] Analyzing image with model: ${model.name}`);
+            const response = await axios.post(
+                `${model.url}?key=${apiKey}`,
+                {
+                    contents: [{
+                        parts: [
+                            { text: "Describe this image in high detail, focusing on visual style, lighting, colors, and composition. This description will be used as a prompt to generate similar images. Return ONLY the description." },
+                            {
+                                inline_data: {
+                                    mime_type: mimeType,
+                                    data: cleanBase64
+                                }
+                            }
+                        ]
+                    }]
+                }
+            );
+            return response.data.candidates[0].content.parts[0].text.trim();
+        } catch (error: any) {
+            console.warn(`[Gemini] Analysis failed with ${model.name}:`, error.message);
+            lastError = error;
+            // Continue to next model
+        }
+    }
+
+    console.error("All Image Analysis Models Failed:", lastError);
+    const msg = lastError?.response?.data?.error?.message || lastError?.message || "Unknown error";
+    return `Failed to analyze image (All models overloaded/failed): ${msg}`;
 };
 
 export const generateVisualPrompt = async (
@@ -1163,3 +1184,204 @@ export const consultSupport = async (
         return `오류가 발생했습니다: ${error.message || 'Unknown Error'}`;
     }
 };
+
+// =============================================
+// YouTube Trend Analysis Functions (Step 0)
+// =============================================
+
+import type { YouTubeTrendVideo, ChannelAnalysis, TrendAnalysisInsights } from '../store/types';
+
+/**
+ * Analyze trending videos and extract insights for storytelling and thumbnails
+ * Enhanced with competitor benchmarking analysis
+ */
+export const analyzeTrendVideos = async (
+    videos: YouTubeTrendVideo[],
+    apiKey: string,
+    targetLanguage: string = 'ko'
+): Promise<{ insights: TrendAnalysisInsights; translations: Record<string, string>; keywordMeanings: Record<string, string> }> => {
+    if (!apiKey) {
+        return {
+            insights: {
+                thumbnail: { recommendations: ['API 키가 필요합니다.'] },
+                title: { recommendations: ['API 키가 필요합니다.'] },
+                storytelling: { recommendations: ['API 키가 필요합니다.'] }
+            },
+            translations: {},
+            keywordMeanings: {}
+        };
+    }
+
+    const prompt = `You are a top-tier YouTube content strategist analyzing high-performing videos.
+
+**VIDEO DATA:**
+${videos.slice(0, 15).map((v, i) => `${i + 1}. "${v.title}" by ${v.channelName}
+   - Views: ${v.viewCount.toLocaleString()}, Engagement: ${((v.likeCount + v.commentCount) / v.viewCount * 100).toFixed(2)}%
+   - Duration: ${v.duration || 'Unknown'}`).join('\n')}
+
+**COMPREHENSIVE BENCHMARKING ANALYSIS:**
+Analyze these top-performing videos and provide detailed insights in the following categories:
+
+1. **THUMBNAIL ANALYSIS**
+   - 색감/색상 패턴 (어떤 컬러가 지배적인가?)
+   - 텍스트 스타일 (폰트, 크기, 배치)
+   - 구도 (센터 vs 삼분법 vs 기타)
+   - 표정/인물 (얼굴 표현, 시선 방향)
+
+2. **TITLE ANALYSIS**
+   - 주요 키워드 패턴
+   - 제목 길이 (평균 글자 수)
+   - 감정 트리거 (숫자, 질문형, 충격적 표현, 이모지)
+
+3. **STORYTELLING/HOOK ANALYSIS (첫 0~10초)**
+   - 후킹 기법 (질문, 충격, 예고, 궁금증 유발)
+   - 스토리 전개 방식
+   - 카메라 워크 패턴
+
+4. **VIDEO LENGTH ANALYSIS**
+   - 평균 영상 길이
+   - 최적 길이 범위
+
+5. **UPLOAD SCHEDULE (if detectable)**
+   - 추천 업로드 요일/시간대
+   - 업로드 주기
+
+**KEYWORD TRANSLATION & MEANING:**
+${targetLanguage !== 'ko' ? `For non-Korean content, translate AND explain the meaning of key hashtags/topics:
+${videos.slice(0, 10).map(v => `- "${v.title}"`).join('\n')}` : 'Extract main keywords and explain their meaning/context for Korean viewers'}
+
+**RESPONSE FORMAT (JSON):**
+{
+    "insights": {
+        "thumbnail": {
+            "colorScheme": "지배적 색상 패턴 분석",
+            "textStyle": "텍스트 스타일 분석",
+            "composition": "구도 분석",
+            "faceExpression": "표정/인물 분석",
+            "recommendations": ["구체적 추천1", "구체적 추천2", "구체적 추천3"]
+        },
+        "title": {
+            "keywords": "주요 키워드 패턴",
+            "length": "제목 길이 분석",
+            "emotionalTriggers": "감정 트리거 분석",
+            "recommendations": ["제목 작성 팁1", "제목 작성 팁2"]
+        },
+        "storytelling": {
+            "hookMethods": "0~10초 후킹 기법 상세 분석",
+            "narrativeStructure": "스토리 전개 방식",
+            "cameraWorkPatterns": "카메라 워크 패턴",
+            "recommendations": ["후킹 추천1", "후킹 추천2"]
+        },
+        "videoLength": {
+            "avgDuration": "평균 X분 Y초",
+            "optimalRange": "최적 범위 (예: 8-12분)",
+            "recommendations": ["길이 관련 조언"]
+        },
+        "uploadSchedule": {
+            "bestDays": "추천 요일",
+            "bestTimes": "추천 시간대",
+            "frequency": "추천 주기",
+            "recommendations": ["스케줄 조언"]
+        }
+    },
+    "translations": {
+        "original title or keyword": "한국어 번역"
+    },
+    "keywordMeanings": {
+        "keyword": "이 키워드가 유튜브에서 의미하는 바와 사용 맥락 설명 (한국어)"
+    }
+}
+
+Respond in Korean. Be specific and actionable. Return ONLY raw JSON.`;
+
+    try {
+        const response = await axios.post(
+            `${GEMINI_2_5_FLASH_URL}?key=${apiKey}`,
+            {
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                    temperature: 0.7,
+                    response_mime_type: "application/json"
+                }
+            }
+        );
+
+        const generatedText = response.data.candidates[0].content.parts[0].text;
+        const parsed = JSON.parse(generatedText);
+
+        return {
+            insights: parsed.insights,
+            translations: parsed.translations || {},
+            keywordMeanings: parsed.keywordMeanings || {}
+        };
+    } catch (error: any) {
+        console.error('[Gemini] Trend analysis failed:', error);
+        return {
+            insights: {
+                thumbnail: { recommendations: [`분석 실패: ${error.message}`] },
+                title: { recommendations: [`분석 실패: ${error.message}`] },
+                storytelling: { recommendations: [`분석 실패: ${error.message}`] }
+            },
+            translations: {},
+            keywordMeanings: {}
+        };
+    }
+};
+
+/**
+ * Analyze user's channel and provide improvement suggestions
+ */
+export const analyzeChannelForInsights = async (
+    apiKey: string,
+    channel: ChannelAnalysis
+): Promise<string> => {
+    if (!apiKey) {
+        return "API 키가 필요합니다.";
+    }
+
+    const prompt = `You are a YouTube growth consultant analyzing a channel's performance.
+
+**CHANNEL DATA:**
+- Name: ${channel.channelName}
+- Subscribers: ${channel.subscriberCount.toLocaleString()}
+- Total Videos: ${channel.videoCount}
+- Average Views: ${channel.avgViews.toLocaleString()}
+- Average Engagement: ${channel.avgEngagement}%
+
+**TOP PERFORMING VIDEOS:**
+${channel.topVideos.slice(0, 5).map((v, i) =>
+        `${i + 1}. "${v.title}" - ${v.viewCount.toLocaleString()} views (${((v.likeCount + v.commentCount) / v.viewCount * 100).toFixed(2)}% engagement)`
+    ).join('\n')}
+
+**RECENT VIDEOS:**
+${channel.recentVideos.slice(0, 5).map((v, i) =>
+        `${i + 1}. "${v.title}" - ${v.viewCount.toLocaleString()} views`
+    ).join('\n')}
+
+**PROVIDE IMPROVEMENT ANALYSIS:**
+1. 📌 **썸네일 개선**: 상위 영상과 최근 영상의 썸네일 패턴 비교, 개선점 제안
+2. 📝 **제목 최적화**: 클릭률을 높일 수 있는 제목 패턴 제안
+3. 🎬 **콘텐츠 구성**: 스토리텔링, 후킹, 편집 스타일 개선점
+4. 📅 **업로드 전략**: 적절한 업로드 주기 및 시간대
+5. 🎯 **성장 포인트**: 채널 성장을 위한 핵심 조언
+
+Write in Korean. Be specific and actionable. Format with headers and bullet points.`;
+
+    try {
+        const response = await axios.post(
+            `${GEMINI_2_5_FLASH_URL}?key=${apiKey}`,
+            {
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                    temperature: 0.8
+                }
+            }
+        );
+
+        return response.data.candidates[0].content.parts[0].text;
+    } catch (error: any) {
+        console.error('[Gemini] Channel analysis failed:', error);
+        return `채널 분석 실패: ${error.message || 'Unknown error'}`;
+    }
+};
+

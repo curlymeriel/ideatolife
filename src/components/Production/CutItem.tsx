@@ -262,7 +262,8 @@ export const CutItem = memo(({
     // Debounced visual prompt update
     const handleVisualPromptChange = useCallback((value: string) => {
         setLocalVisualPrompt(value);
-        onUpdateCut(cut.id, { visualPrompt: value });
+        // Clear the Korean translation when the English prompt is modified
+        onUpdateCut(cut.id, { visualPrompt: value, visualPromptKR: undefined });
     }, [cut.id, onUpdateCut]);
 
     // Debounced acting direction update

@@ -52,8 +52,8 @@ const STEPS = [
                         <div className="text-gray-400 space-y-1 text-[10px]">
                             <p><strong className="text-gray-300">#1.</strong> Google AI Studio 접속 → <span className="text-[var(--color-primary)]">Create API Key</span> 클릭</p>
                             <p><strong className="text-gray-300">#2.</strong> 프로젝트 선택 후 키 생성 → 복사 <span className="text-gray-500">(약 39자)</span></p>
-                            <p><strong className="text-gray-300">#3.</strong> <span className="text-blue-400">(TTS=Text To Speech, 텍스트→오디오 변환 기능 사용시)</span></p>
-                            <p className="pl-4"><a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-[var(--color-primary)] underline hover:text-orange-300">Google Cloud Console</a> → APIs & Services → Credentials → 생성된 키 클릭 → API restrictions를 "Don't restrict key"로 변경</p>
+                            <p><strong className="text-gray-300">#3.</strong> <span className="text-blue-400">(TTS 사용시)</span> <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-[var(--color-primary)] underline hover:text-orange-300">Google Cloud Console</a> → 키 클릭 → API restrictions를 "Don't restrict key"로 변경</p>
+                            <p><strong className="text-gray-300">#4.</strong> <span className="text-purple-400">(📊 시장조사 사용시)</span> Google Cloud Console → APIs & Services → <a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener noreferrer" className="text-purple-400 underline hover:text-purple-300">YouTube Data API v3</a> → Enable</p>
                         </div>
                     </div>
 

@@ -19,6 +19,8 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
     const [zoom, setZoom] = useState(1);
     const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
 
+    console.log('[ImageCropModal] Initialized with Aspect Ratio:', aspectRatio);
+
     // Convert aspect ratio string to number
     const getAspectRatioValue = (ratio: string): number => {
         if (ratio === '16:9') return 16 / 9;

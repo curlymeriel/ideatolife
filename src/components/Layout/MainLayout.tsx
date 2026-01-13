@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useWorkflowStore } from '../../store/workflowStore';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { Film, Palette, FileText, CheckCircle2, Image, Play, Box, Home, RotateCcw, Settings, ChevronDown, Circle, HelpCircle, BookOpen, MessageCircle } from 'lucide-react';
+import { Film, Palette, FileText, CheckCircle2, Image, Play, Box, Home, RotateCcw, Settings, ChevronDown, Circle, HelpCircle, BookOpen, MessageCircle, TrendingUp } from 'lucide-react';
 import { WelcomeGuide } from '../WelcomeGuide';
 import { SupportModal } from '../SupportModal';
 import { RescueModal } from '../RescueModal';
@@ -12,6 +12,9 @@ import { AppSupportChatbot } from '../AppSupportChatbot';
 interface MainLayoutProps {
     children: React.ReactNode;
 }
+
+// Step 0 is separate from main workflow (optional research step)
+const RESEARCH_STEP = { id: 0, name: 'Market Research', path: '/step/0', icon: TrendingUp };
 
 const STEPS = [
     { id: 1, name: 'Setup', path: '/step/1', icon: Film },
@@ -258,8 +261,32 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
                 {/* Navigation */}
                 <nav className="flex-1 overflow-y-auto pb-4 pt-1">
-                    {/* Dashboard Link */}
-
+                    {/* Market Research (Step 0) - Separate from workflow */}
+                    <div className="px-4 py-2 mt-2">
+                        <div className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
+                            Prep
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => navigate(RESEARCH_STEP.path)}
+                        className={`w-full px-4 py-3 flex items-center gap-3 transition-all ${location.pathname === RESEARCH_STEP.path
+                            ? 'bg-purple-500/20 text-purple-400 font-semibold border-r-2 border-purple-400'
+                            : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[rgba(255,255,255,0.05)]'
+                            }`}
+                    >
+                        <RESEARCH_STEP.icon size={18} />
+                        <span className="flex-1 text-left text-sm">{RESEARCH_STEP.name}</span>
+                    </button>
+                    <button
+                        onClick={() => navigate('/research')}
+                        className={`w-full px-4 py-3 flex items-center gap-3 transition-all ${location.pathname === '/research'
+                            ? 'bg-green-500/20 text-green-400 font-semibold border-r-2 border-green-400'
+                            : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[rgba(255,255,255,0.05)]'
+                            }`}
+                    >
+                        <MessageCircle size={18} />
+                        <span className="flex-1 text-left text-sm">AI Research (Beta)</span>
+                    </button>
 
                     <div className="px-4 py-2 mt-4">
                         <div className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">

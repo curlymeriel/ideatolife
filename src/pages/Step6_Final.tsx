@@ -28,8 +28,11 @@ export const Step6_Final = () => {
         episodeName,
         targetDuration,
         thumbnailUrl,
-        storylineTable
+        storylineTable,
+        aspectRatio // Destructure aspectRatio
     } = useWorkflowStore();
+
+
 
 
 
@@ -1271,6 +1274,22 @@ export const Step6_Final = () => {
     const indexA = activeSlot === 'A' ? currentCutIndex : currentCutIndex + 1;
     const indexB = activeSlot === 'B' ? currentCutIndex : currentCutIndex + 1;
 
+    // Helper for responsive subtitle positioning
+    // Since the player container is fixed to 16:9, we must restrict width for vertical ratios
+    // to prevent text from spilling into the black bars (pillarbox).
+    const getSubtitleClasses = () => {
+        switch (aspectRatio) {
+            case '9:16': // Shorts / Reels (Occupies ~31% of 16:9 width)
+                return { container: "bottom-32", inner: "max-w-[28%] px-4" };
+            case '1:1': // Square (Occupies ~56% of 16:9 width)
+                return { container: "bottom-24", inner: "max-w-[50%] px-6" };
+            case '4:5': // Vertical Feed (Occupies ~45% of 16:9 width)
+                return { container: "bottom-28", inner: "max-w-[40%] px-4" };
+            default: // 16:9 (Landscape)
+                return { container: "bottom-16", inner: "max-w-4xl px-12" };
+        }
+    };
+
 
 
     const playerContent = (
@@ -1416,8 +1435,8 @@ export const Step6_Final = () => {
             {/* Subtitles Overlay */}
             {
                 !showThumbnail && script[currentCutIndex] && (
-                    <div className="absolute bottom-16 left-0 w-full flex justify-center z-40 px-12 pointer-events-none transition-opacity duration-300">
-                        <div className="bg-black/50 backdrop-blur-sm px-8 py-4 rounded-xl max-w-4xl text-center">
+                    <div className={`absolute left-0 w-full flex justify-center z-40 pointer-events-none transition-opacity duration-300 ${getSubtitleClasses().container}`}>
+                        <div className={`bg-black/50 backdrop-blur-sm py-3 md:py-4 rounded-xl text-center ${getSubtitleClasses().inner}`}>
                             <p className="text-xl md:text-2xl text-white font-medium drop-shadow-md whitespace-pre-wrap leading-relaxed">
                                 {script[currentCutIndex].dialogue}
                             </p>

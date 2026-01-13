@@ -81,6 +81,7 @@ ALWAYS return valid JSON:
     "suggestedSeriesProps": [{"name": "", "description": "", "visualSummary": ""}],
     "suggestedEpisodeProps": [{"name": "", "description": "", "visualSummary": ""}],
     "suggestedDuration": 60,
+    "suggestedAspectRatio": "16:9", // '16:9' | '9:16' | '1:1' | '2.35:1'
     "suggestedStorylineScenes": [{"sceneNumber": 1, "estimatedTime": "", "content": "", "directionNotes": ""}],
     "suggestedDeletions": {
         "characters": ["character name to delete"],
