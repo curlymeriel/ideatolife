@@ -1,5 +1,5 @@
 import { memo, useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { Lock, Unlock, Mic, Loader2, Play, Square, ImageIcon as Image, Eye, X, Plus, HelpCircle, Waves, Volume2, Settings, Trash2, Edit3, Sparkles, ChevronDown, ChevronRight, ChevronUp } from 'lucide-react';
+import { Mic, Loader2, Play, Square, ImageIcon as Image, X, Plus, HelpCircle, Waves, Volume2, Settings, Trash2, Sparkles, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react';
 import type { ScriptCut } from '../../services/gemini';
 import { getMatchedAssets } from '../../utils/assetUtils';
 import { resolveUrl, isIdbUrl } from '../../utils/imageStorage';
@@ -114,13 +114,12 @@ export const CutItem = memo(({
     isImageConfirmed,
     showAssetSelector,
     assetDefinitions,
-    localScript,
-    audioLoading,
-    imageLoading,
-    playingAudio,
     aspectRatio,
     speakerList,
-    ttsModel,
+    imageLoading,
+    audioLoading,
+    playingAudio,
+    localScript,
     onToggleAudioConfirm,
     onToggleImageConfirm,
     onUpdateCut,
@@ -128,13 +127,10 @@ export const CutItem = memo(({
     onPlayAudio,
     onGenerateImage,
     onRegenerateImage,
-    onUploadUserReference,
     onAddAsset,
     onRemoveAsset,
     onAddReference,
-    onRemoveReference,
     onToggleAssetSelector,
-    onCloseAssetSelector,
     onSave,
     onDelete,
     onMove,
@@ -153,12 +149,10 @@ export const CutItem = memo(({
     // Resolved URLs for IndexedDB
     const [resolvedImageUrl, setResolvedImageUrl] = useState<string | undefined>(undefined);
     const [resolvedAudioUrl, setResolvedAudioUrl] = useState<string | undefined>(undefined);
-    const [resolvedUserRefUrl, setResolvedUserRefUrl] = useState<string | undefined>(undefined);
     const [actualAudioDuration, setActualAudioDuration] = useState<number | undefined>(undefined);
 
-    // Panel expand states
+    // Panel expand states - Default to collapsed
     const [showAudioSettings, setShowAudioSettings] = useState(false);
-    const [showImageSettings, setShowImageSettings] = useState(false);
     const [showTermHelper, setShowTermHelper] = useState(false);
     const [isAudioManualExpand, setIsAudioManualExpand] = useState(false);
     const [isVisualManualExpand, setIsVisualManualExpand] = useState(false);
@@ -168,7 +162,6 @@ export const CutItem = memo(({
     useEffect(() => {
         // When loading finishes (true -> false) and we actually have an image
         if (prevImageLoadingRef.current && !imageLoading && cut.finalImageUrl) {
-            setShowImageSettings(true);
             setIsVisualManualExpand(true);
         }
         prevImageLoadingRef.current = imageLoading;
@@ -187,8 +180,8 @@ export const CutItem = memo(({
         }
     }, [isImageConfirmed]);
 
-    const isAudioVisible = !isAudioConfirmed || isAudioManualExpand;
-    const isVisualVisible = !isImageConfirmed || isVisualManualExpand;
+    const isAudioVisible = isAudioManualExpand;
+    const isVisualVisible = isVisualManualExpand;
 
     // Sync local state with cut changes (but not while editing)
     useEffect(() => {
@@ -241,17 +234,7 @@ export const CutItem = memo(({
         };
     }, [cut.audioUrl]);
 
-    useEffect(() => {
-        if (cut.userReferenceImage) {
-            if (isIdbUrl(cut.userReferenceImage)) {
-                resolveUrl(cut.userReferenceImage).then(url => setResolvedUserRefUrl(url || undefined));
-            } else {
-                setResolvedUserRefUrl(cut.userReferenceImage);
-            }
-        } else {
-            setResolvedUserRefUrl(undefined);
-        }
-    }, [cut.userReferenceImage]);
+    // Resolved URLs for IndexedDB removed unused userRef
 
     // Debounced dialogue update
     const handleDialogueChange = useCallback((value: string) => {
@@ -319,39 +302,129 @@ export const CutItem = memo(({
     const totalDuration = audioDuration + padding;
     const displayTotalDuration = totalDuration.toFixed(1);
 
-    // Truncated dialogue for header
-    const dialoguePreview = (cut.dialogue || '').slice(0, 50) + ((cut.dialogue || '').length > 50 ? '...' : '');
+    // Aspect Ratio Class Mapping
+    const getAspectRatioClass = (ratio: string) => {
+        switch (ratio) {
+            case '9:16': return 'aspect-[9/16]';
+            case '1:1': return 'aspect-square';
+            case '2.35:1': return 'aspect-[2.35/1]';
+            default: return 'aspect-video'; // 16:9
+        }
+    };
+
 
     return (
         <div
-            className={`glass-panel relative group ${isFullyConfirmed ? 'border-green-500/50 bg-green-500/5' : 'hover:border-[var(--color-primary-dim)]'} ${showAssetSelector ? 'z-50' : 'z-0'}`}
+            className={`glass-panel relative group overflow-hidden flex flex-col ${isFullyConfirmed ? 'border-green-500/50 bg-green-500/5' : 'hover:border-[var(--color-primary-dim)]'} ${showAssetSelector ? 'z-50' : 'z-0'}`}
         >
-            {/* ===== HEADER ROW ===== */}
-            <div className="flex items-center gap-3 px-4 py-3 border-b border-white/10">
-                {/* Cut Number */}
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm border shrink-0 ${isFullyConfirmed ? 'bg-green-500 text-black border-green-500' : 'bg-[var(--color-surface)] text-[var(--color-primary)] border-[var(--color-border)]'}`}>
-                    {index + 1}
+            {/* 1. HEADER ROW: Number + Action Buttons */}
+            <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 bg-white/5">
+                <div className="flex items-center gap-2">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[11px] border shrink-0 ${isFullyConfirmed ? 'bg-green-500 text-black border-green-500' : 'bg-[var(--color-surface)] text-[var(--color-primary)] border-[var(--color-border)]'}`}>
+                        {index + 1}
+                    </div>
                 </div>
 
-                {/* Thumbnail (if image exists) */}
-                {hasImage && (
-                    <div
-                        className="rounded border border-white/20 overflow-hidden shrink-0 bg-black flex items-center justify-center"
-                        style={{
-                            width: '48px',
-                            height: '48px',
-                            aspectRatio: aspectRatio === '9:16' ? '9/16' : '16/9'
-                        }}
+                <div className="flex items-center gap-1">
+                    {/* Audio Lock */}
+                    <button
+                        onClick={() => onToggleAudioConfirm(cut.id)}
+                        disabled={!hasAudio && cut.speaker !== 'SILENT'}
+                        className={`p-1.5 rounded transition-all ${isAudioConfirmed ? 'text-green-400 bg-green-500/10 border border-green-500/20' : 'text-gray-500 hover:text-white hover:bg-white/5 border border-transparent'}`}
+                        title={isAudioConfirmed ? 'Unlock Audio' : 'Lock Audio'}
                     >
-                        <img src={resolvedImageUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
+                        <Mic size={14} />
+                    </button>
+                    {/* Image Lock */}
+                    <button
+                        onClick={() => onToggleImageConfirm(cut.id)}
+                        disabled={!hasImage}
+                        className={`p-1.5 rounded transition-all ${isImageConfirmed ? 'text-green-400 bg-green-500/10 border border-green-500/20' : 'text-gray-500 hover:text-white hover:bg-white/5 border border-transparent'}`}
+                        title={isImageConfirmed ? 'Unlock Image' : 'Lock Image'}
+                    >
+                        <Image size={14} />
+                    </button>
+
+                    <div className="w-[1px] h-4 bg-white/10 mx-1" />
+
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onMove(cut.id, 'up'); }}
+                        className="p-1.5 text-gray-500 hover:text-[var(--color-primary)] hover:bg-white/5 rounded transition-colors"
+                        title="Move Up"
+                    >
+                        <ChevronUp size={14} />
+                    </button>
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onMove(cut.id, 'down'); }}
+                        className="p-1.5 text-gray-500 hover:text-[var(--color-primary)] hover:bg-white/5 rounded transition-colors"
+                        title="Move Down"
+                    >
+                        <ChevronDown size={14} />
+                    </button>
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onInsert(cut.id); }}
+                        className="p-1.5 text-gray-500 hover:text-green-400 hover:bg-green-500/10 rounded transition-colors"
+                        title="Insert New Cut After"
+                    >
+                        <Plus size={14} />
+                    </button>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm('Are you sure you want to delete this cut?')) {
+                                onDelete(cut.id);
+                            }
+                        }}
+                        className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                        title="Delete Cut"
+                    >
+                        <Trash2 size={14} />
+                    </button>
+                </div>
+            </div>
+
+            {/* 2. IMAGE PREVIEW: Large Layout */}
+            <div className={`relative w-full ${getAspectRatioClass(aspectRatio)} bg-black/40 overflow-hidden border-b border-white/10 flex items-center justify-center group/img`}>
+
+
+                {hasImage ? (
+                    <img src={resolvedImageUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
+                ) : (
+                    <div className="flex flex-col items-center gap-3 text-gray-600">
+                        <Image size={48} className="opacity-20" />
+                        <button
+                            onClick={() => onGenerateImage(cut.id, cut.visualPrompt)}
+                            disabled={imageLoading || isImageConfirmed}
+                            className="px-4 py-2 bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 rounded-lg text-xs font-bold hover:bg-[var(--color-primary)]/20 transition-all"
+                        >
+                            {imageLoading ? <Loader2 size={14} className="animate-spin" /> : 'Generate Image'}
+                        </button>
                     </div>
                 )}
+                {/* Overlay duration */}
+                <div className="absolute bottom-2 right-2 bg-black/60 backdrop-blur-md px-2 py-1 rounded text-[10px] font-bold text-white border border-white/10 uppercase tracking-tighter">
+                    {displayTotalDuration}s
+                </div>
+                {/* Floating Image Regen Button (visible on hover) */}
+                {hasImage && !isImageConfirmed && (
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        <button
+                            onClick={() => onRegenerateImage(cut.id)}
+                            disabled={imageLoading}
+                            className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-md border border-white/20 transition-all"
+                        >
+                            {imageLoading ? <Loader2 size={18} className="animate-spin" /> : <RotateCcw size={18} />}
+                        </button>
+                    </div>
+                )}
+            </div>
 
-                {/* Speaker & Dialogue Preview */}
-                <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+            {/* 3. SPEAKER & SCRIPT AREA */}
+            <div className="p-4 space-y-4">
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between">
                         <select
-                            className={`bg-transparent border-b border-[var(--color-border)] text-[var(--color-primary)] font-bold focus:border-[var(--color-primary)] outline-none py-0.5 text-sm appearance-none cursor-pointer max-w-[100px] ${isAudioConfirmed ? 'opacity-70 cursor-not-allowed' : ''}`}
+                            className={`bg-transparent border-b border-[var(--color-border)] text-[var(--color-primary)] font-bold focus:border-[var(--color-primary)] outline-none py-0.5 text-xs appearance-none cursor-pointer ${isAudioConfirmed ? 'opacity-70 cursor-not-allowed' : ''}`}
                             value={cut.speaker}
                             disabled={isAudioConfirmed}
                             onChange={(e) => {
@@ -368,328 +441,205 @@ export const CutItem = memo(({
                             {!speakerList.includes('Narrator') && <option value="Narrator">Narrator</option>}
                             {!speakerList.includes('SILENT') && <option value="SILENT">SILENT</option>}
                         </select>
-                        <span className="text-xs text-gray-500 bg-white/5 px-1.5 py-0.5 rounded">{displayTotalDuration}s</span>
                     </div>
-                    {dialoguePreview && (
-                        <p className="text-xs text-gray-500 truncate mt-0.5">{dialoguePreview}</p>
-                    )}
-                </div>
 
-                {/* Status Badges */}
-                <div className="flex items-center gap-1">
-                    {hasAudio && (
-                        <div className={`w-5 h-5 rounded flex items-center justify-center ${isAudioConfirmed ? 'bg-green-500/30 text-green-400' : 'bg-white/5 text-gray-500'}`}>
-                            <Mic size={10} />
+                    <div className="flex gap-3">
+                        <textarea
+                            className={`flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white text-sm min-h-[90px] focus:border-[var(--color-primary)] outline-none resize-none transition-all ${isAudioConfirmed ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/10'}`}
+                            value={localDialogue}
+                            disabled={isAudioConfirmed}
+                            onChange={(e) => handleDialogueChange(e.target.value)}
+                            onFocus={() => { isFocusedRef.current = true; }}
+                            onBlur={() => {
+                                isFocusedRef.current = false;
+                                onSave();
+                            }}
+                            placeholder="Dialogue..."
+                        />
+
+                        <div className="flex flex-col gap-2 shrink-0 justify-start pt-1">
+                            {/* Play Button */}
+                            {hasRealAudio && (
+                                <button
+                                    onClick={() => onPlayAudio(cut.id)}
+                                    className={`flex items-center justify-center w-8 h-8 rounded-full transition-all border ${playingAudio === cut.id ? 'bg-green-500 text-black border-green-400' : 'bg-white/10 text-gray-400 hover:text-white border-white/10'}`}
+                                    title="Play Audio"
+                                >
+                                    {playingAudio === cut.id ? <Square size={12} fill="currentColor" /> : <Play size={12} fill="currentColor" className="ml-0.5" />}
+                                </button>
+                            )}
+
+                            {/* Generate / Regenerate Button */}
+                            <button
+                                onClick={() => onGenerateAudio(cut.id, cut.dialogue)}
+                                disabled={audioLoading || !cut.dialogue || isAudioConfirmed}
+                                className={`flex items-center justify-center w-8 h-8 rounded-full transition-all border ${isAudioConfirmed
+                                        ? 'opacity-30 cursor-not-allowed border-white/5'
+                                        : audioLoading
+                                            ? 'bg-[var(--color-primary)]/20 animate-pulse border-[var(--color-primary)]/40'
+                                            : 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/20 border-[var(--color-primary)]/20'
+                                    }`}
+                                title={isAudioConfirmed ? 'Audio Locked' : hasRealAudio ? 'Regenerate Audio' : 'Generate Audio'}
+                            >
+                                {audioLoading ? (
+                                    <Loader2 size={14} className="animate-spin" />
+                                ) : hasRealAudio ? (
+                                    <RotateCcw size={14} />
+                                ) : (
+                                    <Mic size={14} />
+                                )}
+                            </button>
+                        </div>
+                    </div>
+
+                    {localActingDirection && (
+                        <div className="flex items-center gap-1.5 text-[10px] text-gray-500 font-medium">
+                            <Sparkles size={10} className="text-[var(--color-primary)]" />
+                            <span>{localActingDirection}</span>
                         </div>
                     )}
-                    {hasImage && (
-                        <div className={`w-5 h-5 rounded flex items-center justify-center ${isImageConfirmed ? 'bg-green-500/30 text-green-400' : 'bg-white/5 text-gray-500'}`}>
-                            <Image size={10} />
+                </div>
+
+                {/* 4. COLLAPSIBLE DETAILS (Audio + Visual) */}
+                <div className="space-y-2 pt-2 border-t border-white/5">
+                    {/* Audio Details Toggle */}
+                    <button
+                        onClick={() => setIsAudioManualExpand(!isAudioManualExpand)}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all ${isAudioManualExpand ? 'bg-white/10' : 'hover:bg-white/5'}`}
+                    >
+                        <div className="flex items-center gap-2">
+                            <Mic size={12} className="text-gray-400" />
+                            <span className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">Audio Settings</span>
                         </div>
-                    )}
-                </div>
-
-                <div className="flex items-center gap-1">
-                    {/* Move Up */}
-                    <button
-                        onClick={(e) => { e.stopPropagation(); onMove(cut.id, 'up'); }}
-                        className="p-1.5 text-gray-600 hover:text-[var(--color-primary)] hover:bg-white/5 rounded transition-colors"
-                        title="Move Up"
-                    >
-                        <ChevronUp size={14} />
+                        <ChevronDown size={14} className={`text-gray-500 transition-transform ${isAudioManualExpand ? 'rotate-180' : ''}`} />
                     </button>
-                    {/* Move Down */}
-                    <button
-                        onClick={(e) => { e.stopPropagation(); onMove(cut.id, 'down'); }}
-                        className="p-1.5 text-gray-600 hover:text-[var(--color-primary)] hover:bg-white/5 rounded transition-colors"
-                        title="Move Down"
-                    >
-                        <ChevronDown size={14} />
-                    </button>
-                    {/* Insert After */}
-                    <button
-                        onClick={(e) => { e.stopPropagation(); onInsert(cut.id); }}
-                        className="p-1.5 text-gray-600 hover:text-green-400 hover:bg-green-500/10 rounded transition-colors"
-                        title="Insert New Cut After"
-                    >
-                        <Plus size={14} />
-                    </button>
-                    {/* Delete Button */}
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            if (confirm('Are you sure you want to delete this cut?')) {
-                                onDelete(cut.id);
-                            }
-                        }}
-                        className="p-1.5 text-gray-600 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
-                        title="Delete Cut"
-                    >
-                        <Trash2 size={14} />
-                    </button>
-                </div>
-            </div>
 
-            {/* ===== AUDIO SECTION (Dialogue + SFX) ===== */}
-            <div className={`${isAudioConfirmed ? 'bg-green-500/5' : ''}`}>
-                {/* Audio Section Header (Clean Line Style) */}
-                <div
-                    className="flex items-center justify-between px-4 py-2 border-b border-white/5 cursor-pointer hover:bg-white/5 transition-colors group/header"
-                    onClick={() => setIsAudioManualExpand(!isAudioManualExpand)}
-                >
-                    <div className="flex items-center gap-2">
-                        {isAudioVisible ? <ChevronDown size={14} className="text-gray-500" /> : <ChevronRight size={14} className="text-gray-500" />}
-                        <Mic size={12} className="text-gray-400" />
-                        <span className="text-xs font-bold text-gray-300 uppercase tracking-widest">Audio</span>
-                        <span className="text-[10px] text-gray-500">(Dialogue + SFX)</span>
-                    </div>
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onToggleAudioConfirm(cut.id);
-                        }}
-                        disabled={!hasAudio && cut.speaker !== 'SILENT'}
-                        className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-bold transition-colors ${isAudioConfirmed ? 'bg-green-500 text-black' : 'bg-white/10 text-gray-400 hover:text-white disabled:opacity-30'}`}
-                    >
-                        {isAudioConfirmed ? <Lock size={10} /> : <Unlock size={10} />}
-                        {isAudioConfirmed ? 'Locked' : 'Lock Audio'}
-                    </button>
-                </div>
-
-                {isAudioVisible && (
-                    <>
-                        {/* Dialogue Row */}
-                        <div className="px-4 py-3">
-                            <div className="flex gap-2">
-                                <div className="flex-1">
-                                    <label className="text-xs text-gray-500 uppercase font-bold block mb-1 tracking-wider">💬 Dialogue</label>
-                                    <textarea
-                                        className={`w-full bg-[rgba(0,0,0,0.3)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-white text-sm min-h-[60px] focus:border-[var(--color-primary)] outline-none resize-none ${isAudioConfirmed ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                        value={localDialogue}
-                                        disabled={isAudioConfirmed}
-                                        onChange={(e) => handleDialogueChange(e.target.value)}
-                                        onFocus={() => { isFocusedRef.current = true; }}
-                                        onBlur={() => {
-                                            isFocusedRef.current = false;
-                                            onSave();
-                                        }}
-                                        placeholder="Dialogue..."
-                                    />
-                                </div>
-
-                                <div className="flex-1">
-                                    <label className="text-[10px] text-gray-500 uppercase font-bold block mb-1 tracking-wider flex items-center gap-1">
-                                        <Sparkles size={10} className="text-[var(--color-primary)]" /> 연기 지시 (Acting Direction)
-                                    </label>
-                                    <textarea
-                                        className={`w-full bg-[rgba(0,0,0,0.3)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-white text-[11px] min-h-[60px] focus:border-[var(--color-primary)] outline-none resize-none ${isAudioConfirmed ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                        value={localActingDirection}
-                                        disabled={isAudioConfirmed}
-                                        onChange={(e) => handleActingDirectionChange(e.target.value)}
-                                        onFocus={() => { isActingDirectionFocusedRef.current = true; }}
-                                        onBlur={() => {
-                                            isActingDirectionFocusedRef.current = false;
-                                            onSave();
-                                        }}
-                                        placeholder="톤, 감정, 속도 등 연기 지침 (예: 슬픈 목소리로 천천히)"
-                                    />
-                                </div>
-
-                                {/* Audio Buttons (Play/Gen + Settings) */}
-                                <div className="flex flex-col gap-1 pt-5 shrink-0">
-                                    {/* Play Button - Redesigned to be Circular + Text with Sand Orange Accent */}
-                                    {hasRealAudio && resolvedAudioUrl && (
-                                        <div className="flex items-center gap-2 py-1">
-                                            <button
-                                                onClick={() => onPlayAudio(cut.id)}
-                                                className={`flex items-center justify-center w-7 h-7 rounded-full transition-all shadow-sm border ${playingAudio === cut.id ? 'bg-green-500 text-black border-green-400 shadow-green-500/20' : 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/25 border-[var(--color-primary)]/30 shadow-[var(--color-primary)]/10'}`}
-                                            >
-                                                {playingAudio === cut.id ? <Square size={10} fill="currentColor" /> : <Play size={10} fill="currentColor" className="ml-0.5" />}
-                                            </button>
-                                            <span className={`text-[10px] font-bold uppercase tracking-widest min-w-[30px] ${playingAudio === cut.id ? 'text-green-400' : 'text-[var(--color-primary)]/80'}`}>
-                                                {playingAudio === cut.id ? 'STOP' : 'PLAY'}
-                                            </span>
-                                        </div>
-                                    )}
-
-                                    {/* Buttons Area */}
-                                    <div className="flex flex-col gap-1">
-                                        {cut.speaker !== 'SILENT' ? (
-                                            <button
-                                                onClick={() => onGenerateAudio(cut.id, cut.dialogue)}
-                                                disabled={audioLoading || !cut.dialogue || isAudioConfirmed}
-                                                className="flex items-center justify-center gap-1.5 w-[84px] px-2 py-1.5 rounded text-[11px] font-bold bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30 disabled:opacity-50 transition-colors"
-                                            >
-                                                {audioLoading ? <Loader2 size={10} className="animate-spin" /> : <Mic size={10} />}
-                                                {hasRealAudio ? '재생성' : '생성'}
-                                            </button>
-                                        ) : (
-                                            <div className="flex items-center justify-center gap-1.5 w-[84px] px-2 py-1.5 rounded text-[9px] font-bold bg-white/5 text-gray-500 border border-white/5 opacity-60">
-                                                <Mic size={10} className="opacity-40" />
-                                                <span>SILENT</span>
-                                            </div>
-                                        )}
-
-                                        {/* Settings Button - Always visible */}
-                                        <button
-                                            onClick={() => setShowAudioSettings(!showAudioSettings)}
-                                            className={`flex items-center justify-center w-[84px] px-1 py-1 gap-1 rounded text-[10px] transition-all ${showAudioSettings ? 'bg-[var(--color-primary)]/40 text-white border border-[var(--color-primary)]/50' : 'bg-white/10 text-gray-400 hover:text-white border border-white/5'}`}
-                                        >
-                                            <Settings size={10} />
-                                            <span className="font-bold">세팅</span>
-                                        </button>
-                                    </div>
-                                </div>
+                    {isAudioVisible && (
+                        <div className="px-2 pb-4 space-y-4 animate-in slide-in-from-top-1 duration-200">
+                            <div className="space-y-1">
+                                <label className="text-[10px] text-gray-500 uppercase font-bold block ml-1 tracking-wider flex items-center gap-1">
+                                    <Sparkles size={10} className="text-[var(--color-primary)]" /> 연기 지시 (Acting Direction)
+                                </label>
+                                <textarea
+                                    className={`w-full bg-[rgba(0,0,0,0.3)] border border-white/10 rounded-lg px-3 py-2 text-white text-[11px] min-h-[50px] focus:border-[var(--color-primary)] outline-none resize-none ${isAudioConfirmed ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                    value={localActingDirection}
+                                    disabled={isAudioConfirmed}
+                                    onChange={(e) => handleActingDirectionChange(e.target.value)}
+                                    onFocus={() => { isActingDirectionFocusedRef.current = true; }}
+                                    onBlur={() => {
+                                        isActingDirectionFocusedRef.current = false;
+                                        onSave();
+                                    }}
+                                    placeholder="톤, 감정, 속도 등 연기 지침 (예: 슬픈 목소리로 천천히)"
+                                />
                             </div>
 
-                            {/* Audio Settings Panel */}
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    onClick={() => setShowAudioSettings(!showAudioSettings)}
+                                    className={`p-2 rounded-lg border text-[10px] font-bold flex items-center gap-2 transition-all ${showAudioSettings ? 'bg-[var(--color-primary)] text-black border-[var(--color-primary)]' : 'bg-white/5 text-gray-400 border-white/10 hover:text-white'}`}
+                                >
+                                    <Settings size={12} /> Detailed Voice Settings
+                                </button>
+                            </div>
+
+                            {/* Audio Settings Panel (Expanded inside) */}
                             {showAudioSettings && (
-                                <div className="mt-3 p-3 bg-black/20 rounded-lg border border-[var(--color-primary)]/20 space-y-2">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <span className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">Voice Settings</span>
-                                        <button onClick={() => setShowAudioSettings(false)} className="text-gray-500 hover:text-white p-1 hover:bg-white/5 rounded transition-colors"><X size={12} /></button>
+                                <div className="p-3 bg-black/40 rounded-xl border border-white/10 space-y-4">
+                                    {/* Row 1: Duration & Padding */}
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] text-gray-500 block">Duration (s)</label>
+                                            <input type="number" step="0.1" className="w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white outline-none" value={cut.estimatedDuration || 0} onChange={(e) => onUpdateCut(cut.id, { estimatedDuration: parseFloat(e.target.value) })} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] text-gray-500 block">+ Padding (s)</label>
+                                            <input type="number" step="0.1" className="w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white outline-none" value={cut.audioPadding ?? 0.5} onChange={(e) => onUpdateCut(cut.id, { audioPadding: parseFloat(e.target.value) })} />
+                                        </div>
                                     </div>
-                                    <div className="flex flex-wrap gap-2">
-                                        <div className="min-w-[70px]">
-                                            <label className="text-xs text-gray-500 block mb-1">Language</label>
-                                            <select className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.language || 'ko-KR'} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { language: e.target.value as any }); onSave(); }}>
-                                                <option value="ko-KR">한국어</option>
-                                                <option value="en-US">English</option>
+
+                                    {/* Row 2: Language, Gender, Age */}
+                                    <div className="grid grid-cols-3 gap-2">
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] text-gray-500 block">Language</label>
+                                            <select className={`w-full bg-black/50 border border-white/10 rounded px-1 py-1 text-[10px] text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.language || 'ko-KR'} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { language: e.target.value as any }); onSave(); }}>
+                                                <option value="ko-KR">KO</option>
+                                                <option value="en-US">EN</option>
                                             </select>
                                         </div>
-                                        <div className="min-w-[60px]">
-                                            <label className="text-xs text-gray-500 block mb-1">Gender</label>
-                                            <select className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.voiceGender || 'neutral'} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { voiceGender: e.target.value as any }); onSave(); }}>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] text-gray-500 block">Gender</label>
+                                            <select className={`w-full bg-black/50 border border-white/10 rounded px-1 py-1 text-[10px] text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.voiceGender || 'neutral'} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { voiceGender: e.target.value as any }); onSave(); }}>
                                                 <option value="neutral">Auto</option>
                                                 <option value="male">Male</option>
                                                 <option value="female">Female</option>
                                             </select>
                                         </div>
-                                        <div className="min-w-[60px]">
-                                            <label className="text-xs text-gray-500 block mb-1">Age</label>
-                                            <select className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.voiceAge || 'adult'} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { voiceAge: e.target.value as any }); onSave(); }}>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] text-gray-500 block">Age</label>
+                                            <select className={`w-full bg-black/50 border border-white/10 rounded px-1 py-1 text-[10px] text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.voiceAge || 'adult'} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { voiceAge: e.target.value as any }); onSave(); }}>
                                                 <option value="child">Child</option>
                                                 <option value="young">Young</option>
                                                 <option value="adult">Adult</option>
-                                                <option value="senior">Senior</option>
-                                            </select>
-                                        </div>
-                                        <div className="min-w-[70px]">
-                                            <label className="text-xs text-gray-500 block mb-1">Emotion</label>
-                                            <select className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.emotion || 'neutral'} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { emotion: e.target.value }); onSave(); }}>
-                                                <option value="neutral">Neutral</option>
-                                                <option value="happy">Happy</option>
-                                                <option value="sad">Sad</option>
-                                                <option value="angry">Angry</option>
-                                                <option value="excited">Excited</option>
-                                                <option value="calm">Calm</option>
-                                            </select>
-                                        </div>
-                                        <div className="min-w-[60px]">
-                                            <label className="text-xs text-gray-500 block mb-1">Intensity</label>
-                                            <select className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.emotionIntensity || 'medium'} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { emotionIntensity: e.target.value as any }); onSave(); }}>
-                                                <option value="low">Low</option>
-                                                <option value="medium">Medium</option>
-                                                <option value="high">High</option>
-                                            </select>
-                                        </div>
-                                        <div className="min-w-[50px]">
-                                            <label className="text-xs text-gray-500 block mb-1">Volume</label>
-                                            <select className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.voiceVolume ?? 1} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { voiceVolume: e.target.value }); onSave(); }}>
-                                                <option value={0.5}>50%</option>
-                                                <option value={0.75}>75%</option>
-                                                <option value={1}>100%</option>
-                                                <option value={1.25}>125%</option>
-                                            </select>
-                                        </div>
-                                        <div className="min-w-[50px]">
-                                            <label className="text-xs text-gray-500 block mb-1">Rate</label>
-                                            <select
-                                                className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`}
-                                                value={cut.voiceSpeed ?? 1.0}
-                                                disabled={isAudioConfirmed}
-                                                onChange={(e) => {
-                                                    const val = parseFloat(e.target.value);
-                                                    onUpdateCut(cut.id, { voiceSpeed: val });
-                                                    onSave();
-                                                }}
-                                            >
-                                                <option value={0.75}>0.75x</option>
-                                                <option value={0.85}>0.85x</option>
-                                                <option value={1.0}>1.0x</option>
-                                                <option value={1.15}>1.15x</option>
-                                                <option value={1.25}>1.25x</option>
-                                                <option value={1.5}>1.5x</option>
-                                            </select>
-                                        </div>
-                                        <div className="min-w-[60px]">
-                                            <label className="text-xs text-gray-500 block mb-1">Duration</label>
-                                            <div className="flex items-center bg-black/50 rounded border border-white/10 px-2 py-1">
-                                                <input type="number" min="0" max="60" step="0.1" className={`bg-transparent text-[var(--color-primary)] font-bold text-xs w-8 outline-none ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.estimatedDuration || 0} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { estimatedDuration: parseFloat(e.target.value) }); onSave(); }} />
-                                                <span className="text-xs text-gray-500">s</span>
-                                            </div>
-                                        </div>
-                                        <div className="min-w-[50px]">
-                                            <label className="text-xs text-gray-500 block mb-1">Padding</label>
-                                            <select className={`w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-xs text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.audioPadding ?? 0.5} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { audioPadding: parseFloat(e.target.value) }); onSave(); }}>
-                                                <option value={0}>0s</option>
-                                                <option value={0.2}>0.2s</option>
-                                                <option value={0.5}>0.5s</option>
-                                                <option value={1.0}>1.0s</option>
+                                                <option value="senior">Old</option>
                                             </select>
                                         </div>
                                     </div>
 
-                                    {/* Acting Direction (Gemini TTS only) */}
-                                    {ttsModel === 'gemini-tts' && cut.speaker !== 'SILENT' && (
-                                        <div className="mt-3 pt-3 border-t border-white/10">
-                                            <label className="text-[10px] text-gray-500 block mb-1 flex items-center gap-1 uppercase font-bold tracking-wider">
-                                                <Sparkles size={10} className="text-[var(--color-primary)]" />
-                                                🎭 Acting Direction (Gemini TTS)
-                                            </label>
-                                            <input
-                                                type="text"
-                                                className={`w-full bg-black/50 border border-[var(--color-primary)]/30 rounded px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-[var(--color-primary)] outline-none ${isAudioConfirmed ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                                value={cut.actingDirection || ''}
-                                                disabled={isAudioConfirmed}
-                                                placeholder="예: 슬픔을 참으며 떨리는 목소리로, 마지막에 한숨..."
-                                                onChange={(e) => {
-                                                    onUpdateCut(cut.id, { actingDirection: e.target.value });
-                                                }}
-                                                onBlur={onSave}
-                                            />
-                                            <p className="text-[10px] text-gray-500 mt-1">💡 스크립트 생성 시 AI가 자동 작성. 원하면 수정 가능</p>
+                                    {/* Row 3: Rate, Emotion, Intensity */}
+                                    <div className="grid grid-cols-3 gap-2">
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] text-gray-500 block">Rate</label>
+                                            <select className="w-full bg-black/50 border border-white/10 rounded px-1 py-1 text-[10px] text-white" value={cut.voiceSpeed ?? 1.0} onChange={(e) => onUpdateCut(cut.id, { voiceSpeed: parseFloat(e.target.value) })}>
+                                                <option value={0.85}>0.85x</option>
+                                                <option value={1.0}>1.0x</option>
+                                                <option value={1.15}>1.15x</option>
+                                                <option value={1.3}>1.3x</option>
+                                            </select>
                                         </div>
-                                    )}
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] text-gray-500 block">Emotion</label>
+                                            <select className={`w-full bg-black/50 border border-white/10 rounded px-1 py-1 text-[10px] text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.emotion || 'neutral'} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { emotion: e.target.value as any }); onSave(); }}>
+                                                <option value="neutral">Neut</option>
+                                                <option value="happy">Happy</option>
+                                                <option value="sad">Sad</option>
+                                                <option value="angry">Angry</option>
+                                                <option value="excited">Excit</option>
+                                                <option value="calm">Calm</option>
+                                                <option value="tense">Tense</option>
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] text-gray-500 block">Power</label>
+                                            <select className={`w-full bg-black/50 border border-white/10 rounded px-1 py-1 text-[10px] text-white ${isAudioConfirmed ? 'opacity-50' : ''}`} value={cut.emotionIntensity || 'moderate'} disabled={isAudioConfirmed} onChange={(e) => { onUpdateCut(cut.id, { emotionIntensity: e.target.value as any }); onSave(); }}>
+                                                <option value="low">Low</option>
+                                                <option value="moderate">Med</option>
+                                                <option value="high">High</option>
+                                            </select>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
 
 
                             {/* SFX Section */}
                             {(cut.sfxDescription || cut.sfxUrl) && (
-                                <div className="mt-3">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] text-gray-500 uppercase font-bold block ml-1 tracking-wider">Sound Effects</label>
                                     {cut.sfxDescription && !cut.sfxUrl && (
-                                        <div className="flex items-center gap-2 px-3 py-2 bg-white/5 rounded border border-white/5">
+                                        <div className="flex items-center gap-2 px-3 py-2 bg-white/5 rounded border border-white/5 cursor-pointer hover:bg-white/10 transition-colors" onClick={() => onOpenSfxModal?.(cut.id)}>
                                             <Waves size={12} className="text-gray-500 shrink-0" />
-                                            <span className="text-xs text-gray-500 font-bold uppercase tracking-wider">SFX IDEA:</span>
-                                            <span className="text-xs text-gray-400 flex-1 truncate">{cut.sfxDescription}</span>
-                                            {onOpenSfxModal && (
-                                                <button onClick={() => onOpenSfxModal(cut.id)} className="text-[10px] text-gray-400 font-bold px-2 py-0.5 rounded border border-white/10 hover:bg-white/10 transition-colors">Find</button>
-                                            )}
+                                            <span className="text-[11px] text-gray-400 flex-1 truncate">{cut.sfxDescription}</span>
+                                            <Plus size={12} className="text-gray-500" />
                                         </div>
                                     )}
                                     {cut.sfxUrl && (
                                         <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 rounded border border-green-500/20">
                                             <Volume2 size={12} className="text-green-400 shrink-0" />
-                                            <span className="text-xs text-green-400 font-bold">SFX:</span>
-                                            <span className="text-xs text-gray-300 flex-1 truncate">{cut.sfxName || 'Sound Effect'}</span>
+                                            <span className="text-[11px] text-gray-300 flex-1 truncate font-medium">{cut.sfxName || 'Sound Effect'}</span>
                                             {onRemoveSfx && (
-                                                <button
-                                                    onClick={() => onRemoveSfx(cut.id)}
-                                                    className="p-1 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
-                                                    title="Remove Sound Effect"
-                                                >
-                                                    <Trash2 size={10} />
+                                                <button onClick={(e) => { e.stopPropagation(); onRemoveSfx(cut.id); }} className="p-1 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors">
+                                                    <Trash2 size={12} />
                                                 </button>
                                             )}
                                         </div>
@@ -697,108 +647,37 @@ export const CutItem = memo(({
                                 </div>
                             )}
                         </div>
-                    </>
-                )}
-            </div>
+                    )}
 
-            {/* ===== VISUAL SECTION (Image + Video) ===== */}
-            <div className={`border-t border-white/10 ${isImageConfirmed ? 'bg-green-500/5' : ''}`}>
-                {/* Visual Section Header (Clean Line Style) */}
-                <div
-                    className="flex items-center justify-between px-4 py-2 border-b border-white/5 cursor-pointer hover:bg-white/5 transition-colors group/header"
-                    onClick={() => {
-                        const nextState = !isVisualManualExpand;
-                        setIsVisualManualExpand(nextState);
-                        // If we are opening a locked cut, default to showing settings/preview
-                        if (nextState && isImageConfirmed) {
-                            setShowImageSettings(true);
-                        }
-                    }}
-                >
-                    <div className="flex items-center gap-2">
-                        {isVisualVisible ? <ChevronDown size={14} className="text-gray-500" /> : <ChevronRight size={14} className="text-gray-500" />}
-                        <Image size={12} className="text-gray-400" />
-                        <span className="text-xs font-bold text-gray-300 uppercase tracking-widest">Visual</span>
-                        <span className="text-[10px] text-gray-500">(Image + Video)</span>
-                    </div>
+                    {/* Visual Details Toggle */}
                     <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onToggleImageConfirm(cut.id);
-                        }}
-                        disabled={!hasImage}
-                        className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-bold transition-colors ${isImageConfirmed ? 'bg-green-500 text-black' : 'bg-white/10 text-gray-400 hover:text-white disabled:opacity-30'}`}
+                        onClick={() => setIsVisualManualExpand(!isVisualManualExpand)}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all ${isVisualManualExpand ? 'bg-white/10' : 'hover:bg-white/5'}`}
                     >
-                        {isImageConfirmed ? <Lock size={10} /> : <Unlock size={10} />}
-                        {isImageConfirmed ? 'Locked' : 'Lock Image'}
+                        <div className="flex items-center gap-2">
+                            <Image size={12} className="text-gray-400" />
+                            <span className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">Visual Settings</span>
+                        </div>
+                        <ChevronDown size={14} className={`text-gray-500 transition-transform ${isVisualManualExpand ? 'rotate-180' : ''}`} />
                     </button>
-                </div>
 
-                {isVisualVisible && (
-                    <>
-                        {/* Visual Prompt Row */}
-                        <div className="px-4 py-3">
-                            <div className="flex gap-2">
-                                <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <label className="text-xs text-gray-500 uppercase font-bold tracking-wider">📷 Still Image Prompt</label>
-                                        {/* Term Helper Container */}
-                                        <div className="relative inline-block">
-                                            <button
-                                                onClick={() => setShowTermHelper(!showTermHelper)}
-                                                className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all border ${showTermHelper ? 'bg-[var(--color-primary)] text-black border-[var(--color-primary)]' : 'bg-white/5 text-gray-400 border-white/5 hover:text-white hover:bg-white/10 shadow-sm'}`}
-                                            >
-                                                <HelpCircle size={10} />
-                                                Term Helper
-                                            </button>
+                    {isVisualVisible && (
+                        <div className="px-2 pb-4 space-y-5 animate-in slide-in-from-top-1 duration-200">
+                            {/* Visual Prompt Section */}
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[10px] text-gray-500 uppercase font-bold block ml-1 tracking-wider">📷 Visual Prompt</label>
+                                    <button
+                                        onClick={() => setShowTermHelper(!showTermHelper)}
+                                        className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold transition-all border ${showTermHelper ? 'bg-[var(--color-primary)] text-black border-[var(--color-primary)]' : 'bg-white/5 text-gray-500 border-white/5 hover:text-white'}`}
+                                    >
+                                        <HelpCircle size={10} /> Helper
+                                    </button>
+                                </div>
 
-                                            {/* Term Helper Dropdown (positioned at side, expands upwards) */}
-                                            {showTermHelper && (
-                                                <>
-                                                    <div className="fixed inset-0 z-[90]" onClick={() => setShowTermHelper(false)} />
-                                                    <div className="absolute bottom-0 left-full ml-2 w-[320px] max-h-[280px] flex flex-col bg-[#1a1a1a] border border-[var(--color-primary)]/30 rounded-lg shadow-2xl z-[100] overflow-hidden">
-                                                        {/* Fixed Header */}
-                                                        <div className="p-3 bg-[#1a1a1a] border-b border-white/10 shrink-0">
-                                                            <div className="flex items-center justify-between mb-1">
-                                                                <span className="text-[10px] text-[var(--color-primary)] font-bold tracking-tight">📚 영상 전문 용어 도우미</span>
-                                                                <button onClick={() => setShowTermHelper(false)} className="text-gray-500 hover:text-white p-1 hover:bg-white/5 rounded"><X size={12} /></button>
-                                                            </div>
-                                                            <p className="text-[9px] text-gray-400">용어를 클릭하면 프롬프트에 추가됩니다.</p>
-                                                        </div>
-
-                                                        {/* Scrollable List */}
-                                                        <div className="flex-1 overflow-y-auto p-3 pt-0">
-                                                            {Object.entries(VISUAL_TERMS).map(([category, terms]) => (
-                                                                <div key={category} className="mb-3 first:mt-3">
-                                                                    <h5 className="text-xs font-bold text-[var(--color-primary)] uppercase mb-1.5 sticky top-0 bg-[#1a1a1a] py-1 z-10">{category}</h5>
-                                                                    <div className="space-y-1">
-                                                                        {terms.map((item) => (
-                                                                            <button
-                                                                                key={item.term}
-                                                                                onClick={() => {
-                                                                                    const newPrompt = cut.visualPrompt ? `${cut.visualPrompt.trim()}, ${item.term}` : item.term;
-                                                                                    onUpdateCut(cut.id, { visualPrompt: newPrompt });
-                                                                                    setLocalVisualPrompt(newPrompt);
-                                                                                }}
-                                                                                disabled={isImageConfirmed}
-                                                                                className="w-full text-left px-2 py-1.5 rounded hover:bg-[var(--color-primary)]/10 disabled:opacity-50 group transition-colors"
-                                                                            >
-                                                                                <div className="text-xs text-[var(--color-primary)] font-medium group-hover:text-white">{item.term}</div>
-                                                                                <div className="text-xs text-gray-500">{item.desc}</div>
-                                                                            </button>
-                                                                        ))}
-                                                                    </div>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
-
+                                <div className="relative">
                                     <textarea
-                                        className={`w-full bg-[rgba(0,0,0,0.3)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-gray-300 text-sm min-h-[60px] focus:border-[var(--color-primary)] outline-none resize-none ${isImageConfirmed ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                        className={`w-full bg-[rgba(0,0,0,0.3)] border border-white/10 rounded-lg px-3 py-2 text-gray-300 text-[11px] min-h-[60px] focus:border-[var(--color-primary)] outline-none resize-none transition-all ${isImageConfirmed ? 'opacity-70 cursor-not-allowed' : ''}`}
                                         value={localVisualPrompt}
                                         disabled={isImageConfirmed}
                                         onChange={(e) => handleVisualPromptChange(e.target.value)}
@@ -809,170 +688,109 @@ export const CutItem = memo(({
                                         }}
                                         placeholder="Visual description (English)..."
                                     />
-                                    {/* Korean Translation Display */}
-                                    {cut.visualPromptKR && (
-                                        <div className="mt-1 px-2 py-1.5 bg-white/5 rounded text-xs text-gray-500 border-l-2 border-[var(--color-primary)]/30">
-                                            <span className="text-xs text-gray-600 mr-1">🇰🇷</span>
-                                            {cut.visualPromptKR}
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Image Buttons (Gen/Regen + Unified View) */}
-                                <div className="flex flex-col gap-2 pt-5 shrink-0">
-                                    {/* Gen/Regen Button */}
-                                    <button
-                                        onClick={() => hasImage ? onRegenerateImage(cut.id) : onGenerateImage(cut.id, cut.visualPrompt)}
-                                        disabled={imageLoading || isImageConfirmed}
-                                        className="flex items-center justify-center gap-1.5 w-[84px] px-2 py-2 rounded text-[11px] font-bold bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30 border border-[var(--color-primary)]/10 disabled:opacity-50"
-                                    >
-                                        {imageLoading ? <Loader2 size={10} className="animate-spin" /> : <Image size={10} />}
-                                        {hasImage ? '재생성' : '생성'}
-                                    </button>
-
-                                    {/* Unified View/Settings Button - Redesigned to be Circular + Text with Sand Orange Accent */}
-                                    <div className="flex items-center gap-2 py-1">
-                                        <button
-                                            onClick={() => setShowImageSettings(!showImageSettings)}
-                                            className={`flex items-center justify-center w-7 h-7 rounded-full transition-all shadow-sm border ${showImageSettings ? 'bg-[var(--color-primary)]/40 text-white border border-[var(--color-primary)]/50 shadow-[var(--color-primary)]/20' : 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/25 border-[var(--color-primary)]/30 shadow-[var(--color-primary)]/10'}`}
-                                            title="Settings & Preview"
-                                        >
-                                            <Eye size={12} />
-                                        </button>
-                                        <span className={`text-[10px] font-bold uppercase tracking-widest min-w-[30px] ${showImageSettings ? 'text-[var(--color-primary)]' : 'text-[var(--color-primary)]/80'}`}>
-                                            VIEW
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Image Settings Panel */}
-                            {showImageSettings && (
-                                <div className="mt-3 p-3 bg-black/20 rounded-lg border border-white/5 space-y-3">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <span className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">Image Settings</span>
-                                        <button onClick={() => setShowImageSettings(false)} className="text-gray-500 hover:text-white p-1 hover:bg-white/5 rounded transition-colors"><X size={12} /></button>
-                                    </div>
-
-                                    {/* Image Preview (full aspect ratio) */}
-                                    {hasImage && (
-                                        <div className="rounded-lg overflow-hidden border border-white/10 bg-black shadow-lg">
-                                            <img src={resolvedImageUrl || undefined} alt="Preview" className="w-full max-h-[600px] object-contain mx-auto transition-all duration-300" />
-                                        </div>
-                                    )}
-
-                                    {/* Referenced Assets */}
-                                    <div>
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <span className="text-xs text-gray-400 uppercase font-bold">Referenced Assets</span>
-                                        </div>
-                                        <div className="flex flex-wrap gap-1 items-center">
-                                            {autoMatchedAssets.map((asset: any) => (
-                                                <div key={asset.id} className="px-2 py-0.5 rounded bg-white/5 text-gray-400 text-xs border border-white/10">{asset.name} <span className="opacity-50">(Auto)</span></div>
-                                            ))}
-                                            {manualAssetObjs.map((asset: any) => (
-                                                <div key={asset.id} className="flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-xs border border-[var(--color-primary)]/30">
-                                                    {asset.name}
-                                                    {!isImageConfirmed && <button onClick={() => onRemoveAsset(cut.id, asset.id)} className="hover:text-white"><X size={10} /></button>}
-                                                </div>
-                                            ))}
-                                            {(cut.referenceCutIds || []).map(refId => (
-                                                <div key={refId} className="flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-xs border border-[var(--color-primary)]/30">
-                                                    <Image size={8} /> Cut #{refId}
-                                                    {!isImageConfirmed && <button onClick={() => onRemoveReference(cut.id, refId)} className="hover:text-white"><X size={10} /></button>}
-                                                </div>
-                                            ))}
-
-                                            {/* Add Button - Moved to end of list */}
-                                            {!isImageConfirmed && (
-                                                <div className={`relative ${showAssetSelector ? 'z-[100]' : ''}`}>
-                                                    <button onClick={() => onToggleAssetSelector(cut.id)} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30">
-                                                        <Plus size={10} /> Add
+                                    {showTermHelper && (
+                                        <div className="absolute bottom-full right-0 mb-2 w-[280px] max-h-[220px] bg-[#1a1a1a] border border-[var(--color-primary)]/30 rounded-lg shadow-2xl z-[100] overflow-y-auto p-2">
+                                            <div className="flex items-center justify-between mb-2 pb-1 border-b border-white/10">
+                                                <span className="text-[9px] text-[var(--color-primary)] font-bold uppercase">Term Helper</span>
+                                                <button onClick={() => setShowTermHelper(false)}><X size={10} /></button>
+                                            </div>
+                                            {/* Simplified term list */}
+                                            <div className="flex flex-wrap gap-1">
+                                                {Object.values(VISUAL_TERMS).flat(1).slice(0, 15).map(item => (
+                                                    <button
+                                                        key={item.term}
+                                                        onClick={() => {
+                                                            const newPrompt = cut.visualPrompt ? `${cut.visualPrompt.trim()}, ${item.term}` : item.term;
+                                                            onUpdateCut(cut.id, { visualPrompt: newPrompt });
+                                                            setLocalVisualPrompt(newPrompt);
+                                                        }}
+                                                        className="text-[9px] px-1.5 py-0.5 bg-white/5 hover:bg-[var(--color-primary)]/20 rounded text-gray-400 hover:text-white border border-white/5"
+                                                    >
+                                                        {item.term}
                                                     </button>
-                                                    {showAssetSelector && (
-                                                        <>
-                                                            <div className="fixed inset-0 z-[100]" onClick={onCloseAssetSelector} />
-                                                            <div className="absolute top-full left-0 mt-1 w-56 bg-[#1a1a1a] border border-[var(--color-border)] rounded-lg shadow-2xl z-[101] max-h-64 overflow-y-auto">
-                                                                <div className="p-2 text-xs text-gray-500 font-bold uppercase">Assets</div>
-                                                                {uniqueAssets.map((asset: any) => (
-                                                                    <button key={asset.id} onClick={() => onAddAsset(cut.id, asset.id)} className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-white/10 hover:text-white flex items-center gap-2">
-                                                                        <div className="w-2 h-2 rounded-full bg-[var(--color-primary)]" />{asset.name}
-                                                                    </button>
-                                                                ))}
-                                                                {index > 0 && (
-                                                                    <>
-                                                                        <div className="p-2 text-xs text-gray-500 font-bold uppercase mt-1 border-t border-white/10">Previous Cuts</div>
-                                                                        {localScript.slice(0, index).filter(c => c.finalImageUrl).map(prevCut => (
-                                                                            <CutReferenceItem key={prevCut.id} cut={prevCut} onSelect={(id) => onAddReference(cut.id, id)} />
-                                                                        ))}
-                                                                    </>
-                                                                )}
-                                                            </div>
-                                                        </>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* User Reference Sketch Upload */}
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs text-gray-400 uppercase font-bold">🎨 Sketch/Reference (구도 우선 참조)</span>
-                                        <div className="flex items-center gap-2">
-                                            {cut.userReferenceImage && (
-                                                <div className="relative w-8 h-8 rounded overflow-hidden border border-white/20">
-                                                    <img
-                                                        src={resolvedUserRefUrl || undefined}
-                                                        className="w-full h-full object-cover"
-                                                        alt="Reference"
-                                                    />
-                                                    <button onClick={() => onUpdateCut(cut.id, { userReferenceImage: undefined })} className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 hover:opacity-100"><X size={10} className="text-white" /></button>
-                                                </div>
-                                            )}
-                                            <label className="cursor-pointer text-xs bg-white/10 hover:bg-white/20 text-gray-300 px-2 py-1 rounded flex items-center gap-1">
-                                                <Plus size={10} /> Upload
-                                                <input type="file" accept="image/*" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file && onUploadUserReference) onUploadUserReference(cut.id, file); }} />
-                                            </label>
-                                        </div>
-                                    </div>
-
-                                    {/* Video Motion Prompt (at bottom of image settings) */}
-                                    <div className="pt-3 border-t border-white/10">
-                                        <div className="flex items-center justify-between mb-1">
-                                            <label className="text-[10px] text-purple-400/70 uppercase font-bold tracking-wider">🎬 Video Motion Prompt (Step 4.5)</label>
-                                            <div className="flex items-center gap-1">
-                                                {!cut.videoPrompt && !isImageConfirmed && (
-                                                    <button onClick={handleAutoGenerateVideoPrompt} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-purple-500/20 text-purple-300 hover:bg-purple-500/30">
-                                                        <Sparkles size={10} /> Auto
-                                                    </button>
-                                                )}
-                                                {cut.videoPrompt && !isImageConfirmed && (
-                                                    <button onClick={handleAutoGenerateVideoPrompt} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-white/10 text-gray-400 hover:text-white">
-                                                        <Edit3 size={10} /> Reset
-                                                    </button>
-                                                )}
+                                                ))}
                                             </div>
                                         </div>
-                                        <textarea
-                                            className={`w-full bg-black/50 border border-purple-500/20 rounded px-2 py-1.5 text-gray-300 text-xs min-h-[50px] focus:border-purple-500 outline-none resize-none ${isImageConfirmed ? 'opacity-50' : ''}`}
-                                            value={cut.videoPrompt || ''}
-                                            disabled={isImageConfirmed}
-                                            onChange={(e) => onUpdateCut(cut.id, { videoPrompt: e.target.value })}
-                                            onBlur={onSave}
-                                            placeholder="Camera movement, character actions... (이미지 Lock 후 자동 생성 권장)"
-                                        />
-                                        <p className="text-xs text-gray-500 mt-1 italic">💡 이미지 Lock 후 AI가 자동 생성. Step 4.5에서 더 정교한 enhancement 적용됨.</p>
-                                    </div>
+                                    )}
                                 </div>
-                            )}
+                                {cut.visualPromptKR && (
+                                    <div className="text-[10px] text-gray-500 italic px-1">
+                                        {cut.visualPromptKR}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Reference Assets Row */}
+                            <div className="space-y-2">
+                                <label className="text-[10px] text-gray-500 uppercase font-bold block ml-1 tracking-wider">Referenced Assets</label>
+                                <div className="flex flex-wrap gap-1 items-center">
+                                    {autoMatchedAssets.map((asset: any) => (
+                                        <div key={asset.id} className="px-2 py-0.5 rounded bg-white/5 text-[9px] text-gray-500 border border-white/10">{asset.name}</div>
+                                    ))}
+                                    {manualAssetObjs.map((asset: any) => (
+                                        <div key={asset.id} className="flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--color-primary)]/20 text-[9px] text-[var(--color-primary)] border border-[var(--color-primary)]/30">
+                                            {asset.name}
+                                            <X size={8} className="cursor-pointer hover:text-red-400" onClick={() => onRemoveAsset(cut.id, asset.id)} />
+                                        </div>
+                                    ))}
+                                    <button
+                                        onClick={() => onToggleAssetSelector(cut.id)}
+                                        className="p-1 px-2 rounded bg-white/5 text-[9px] text-gray-500 border border-dashed border-white/10 hover:border-[var(--color-primary)]/50 transition-colors"
+                                    >
+                                        + Add Asset
+                                    </button>
+                                </div>
+
+                                {showAssetSelector && (
+                                    <div className="bg-black/40 rounded-lg p-2 border border-white/10 max-h-[120px] overflow-y-auto grid grid-cols-2 gap-1 animate-in fade-in duration-200">
+                                        {uniqueAssets.map((asset: any) => (
+                                            <button key={asset.id} onClick={() => onAddAsset(cut.id, asset.id)} className="w-full text-left px-2 py-1 text-[10px] text-gray-400 hover:bg-white/10 rounded truncate flex items-center gap-2">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] shrink-0" />
+                                                <span>{asset.name}</span>
+                                            </button>
+                                        ))}
+                                        {index > 0 && (
+                                            <div className="col-span-2 mt-1 pt-1 border-t border-white/5">
+                                                <div className="px-2 py-1 text-[8px] text-gray-500 font-bold uppercase">Previous Cuts</div>
+                                                <div className="space-y-1">
+                                                    {localScript.slice(0, index).filter(c => c.finalImageUrl).map(prevCut => (
+                                                        <CutReferenceItem
+                                                            key={prevCut.id}
+                                                            cut={prevCut}
+                                                            onSelect={(id) => {
+                                                                if (onAddReference) onAddReference(cut.id, id);
+                                                            }}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Video Motion Prompt */}
+                            <div className="space-y-2 pt-2 border-t border-white/5">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[10px] text-purple-400/70 uppercase font-bold block ml-1 tracking-wider">🎬 Motion Prompt</label>
+                                    <button onClick={handleAutoGenerateVideoPrompt} className="text-[9px] font-bold text-purple-400/80 hover:text-purple-400">✨ Auto-Generate</button>
+                                </div>
+                                <textarea
+                                    className={`w-full bg-[rgba(0,0,0,0.3)] border border-purple-500/10 rounded-lg px-3 py-2 text-gray-400 text-[10px] min-h-[40px] focus:border-purple-500 outline-none resize-none ${isImageConfirmed ? 'opacity-70' : ''}`}
+                                    value={cut.videoPrompt || ''}
+                                    disabled={isImageConfirmed}
+                                    onChange={(e) => onUpdateCut(cut.id, { videoPrompt: e.target.value })}
+                                    onBlur={onSave}
+                                    placeholder="Camera movement, actions..."
+                                />
+                            </div>
                         </div>
+                    )}
+                </div>
+            </div>
 
-                        {/* Hidden audio element for playback */}
-                    </>
-                )}
-
-                {/* Hidden audio element for playback - MOVED OUTSIDE ANY CONDITIONAL BLOCKS */}
-                {hasRealAudio && resolvedAudioUrl && (
+            {
+                hasRealAudio && resolvedAudioUrl && (
                     <audio
                         key={resolvedAudioUrl}
                         id={`audio-${cut.id}`}
@@ -985,12 +803,11 @@ export const CutItem = memo(({
                         onCanPlayThrough={() => console.log(`[CutItem ${cut.id}] ✅ Audio can play through`)}
                         onError={(e) => console.error(`[CutItem ${cut.id}] ❌ Audio element error:`, e.currentTarget.error)}
                     />
-                )}
-            </div>
-        </div>
+                )
+            }
+        </div >
     );
 });
-
 // Mini component for previous cut reference
 const CutReferenceItem = ({ cut, onSelect }: { cut: ScriptCut, onSelect: (id: number) => void }) => {
     const [imgUrl, setImgUrl] = useState('');

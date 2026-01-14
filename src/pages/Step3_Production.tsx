@@ -1733,7 +1733,7 @@ export const Step3_Production: React.FC = () => {
                         </button>
                     </div>
                 ) : (
-                    <div className="grid gap-4">
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 pb-20">
                         {localScript.map((cut, index) => (
                             <CutItem
                                 key={cut.id}
