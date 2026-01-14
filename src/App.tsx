@@ -7,7 +7,7 @@ import { lazyImport } from './utils/lazyImport';
 
 // Lazy load pages with auto-reload recovery
 const Dashboard = lazyImport(() => import('./pages/Dashboard').then(module => ({ default: module.Dashboard })));
-const Step0_TrendAnalyzer = lazyImport(() => import('./pages/Step0_TrendAnalyzer').then(module => ({ default: module.Step0_TrendAnalyzer })));
+
 const MarketResearch = lazyImport(() => import('./pages/MarketResearch').then(module => ({ default: module.MarketResearch })));
 const Step1_Setup = lazyImport(() => import('./pages/Step1_Setup').then(module => ({ default: module.Step1_Setup })));
 const Step2_Style = lazyImport(() => import('./pages/Step2_Style').then(module => ({ default: module.Step2_Style })));
@@ -36,7 +36,7 @@ export const App: React.FC = () => {
               <Suspense fallback={<PageLoader />}>
                 <Routes>
                   <Route path="/" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
-                  <Route path="/step/0" element={<ErrorBoundary><Step0_TrendAnalyzer /></ErrorBoundary>} />
+
                   <Route path="/research" element={<ErrorBoundary><MarketResearch /></ErrorBoundary>} />
                   <Route path="/step/1" element={<ErrorBoundary><Step1_Setup /></ErrorBoundary>} />
                   <Route path="/step/2" element={<ErrorBoundary><Step2_Style /></ErrorBoundary>} />

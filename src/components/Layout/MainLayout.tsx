@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useWorkflowStore } from '../../store/workflowStore';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { Film, Palette, FileText, CheckCircle2, Image, Play, Box, Home, RotateCcw, Settings, ChevronDown, Circle, HelpCircle, BookOpen, MessageCircle, TrendingUp, ChevronLeft, ChevronRight, Menu } from 'lucide-react';
+import { Film, Palette, FileText, CheckCircle2, Image, Play, Box, Home, RotateCcw, Settings, ChevronDown, Circle, HelpCircle, BookOpen, MessageCircle, ChevronLeft, ChevronRight, Menu } from 'lucide-react';
 import { WelcomeGuide } from '../WelcomeGuide';
 import { SupportModal } from '../SupportModal';
 import { RescueModal } from '../RescueModal';
@@ -14,7 +14,7 @@ interface MainLayoutProps {
 }
 
 // Step 0 is separate from main workflow (optional research step)
-const RESEARCH_STEP = { id: 0, name: 'Market Research', path: '/step/0', icon: TrendingUp };
+
 
 const STEPS = [
     { id: 1, name: 'Setup', path: '/step/1', icon: Film },
@@ -292,18 +292,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                             </div>
                         )}
 
-                        {/* Research Steps */}
-                        <button
-                            onClick={() => navigate(RESEARCH_STEP.path)}
-                            className={`w-full px-4 py-3 flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} transition-all ${location.pathname === RESEARCH_STEP.path
-                                ? 'bg-purple-500/20 text-purple-400 font-semibold border-r-2 border-purple-400'
-                                : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[rgba(255,255,255,0.05)]'
-                                }`}
-                            title={isCollapsed ? RESEARCH_STEP.name : undefined}
-                        >
-                            <RESEARCH_STEP.icon size={18} />
-                            {!isCollapsed && <span className="flex-1 text-left text-sm">{RESEARCH_STEP.name}</span>}
-                        </button>
+
                         <button
                             onClick={() => navigate('/research')}
                             className={`w-full px-4 py-3 flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} transition-all ${location.pathname === '/research'
@@ -485,13 +474,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                     {mobileMenuOpen && (
                         <div className="absolute bottom-full left-0 right-0 bg-[var(--color-surface)] border-t border-[var(--color-border)] p-4 shadow-2xl">
                             <div className="grid grid-cols-3 gap-3">
-                                <button
-                                    onClick={() => { navigate(RESEARCH_STEP.path); setMobileMenuOpen(false); }}
-                                    className="flex flex-col items-center gap-1 p-3 rounded-lg bg-purple-500/10 text-purple-400"
-                                >
-                                    <TrendingUp size={24} />
-                                    <span className="text-xs">Research</span>
-                                </button>
+
                                 <button
                                     onClick={() => { setShowGuide(true); setMobileMenuOpen(false); }}
                                     className="flex flex-col items-center gap-1 p-3 rounded-lg bg-white/5 text-white"
