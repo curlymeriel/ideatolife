@@ -1275,51 +1275,63 @@ export const Step3_Production: React.FC = () => {
                         // Combined Voice Options - Conditional based on TTS Model
                         const GEMINI_VOICE_OPTIONS = [
                             {
-                                optgroup: '✨ Gemini TTS (Multilingual)', options: GEMINI_TTS_VOICES.map(v => ({
-                                    value: v.id,
-                                    label: `${v.label} (${v.style})`,
-                                    gender: v.gender,
-                                    lang: 'multilingual'
-                                }))
+                                optgroup: '✨ Gemini TTS - 여성 (Female)', options: GEMINI_TTS_VOICES
+                                    .filter(v => v.gender === 'female')
+                                    .map(v => ({
+                                        value: v.id,
+                                        label: `♀ ${v.label} - ${v.style}`,
+                                        gender: v.gender,
+                                        lang: 'multilingual'
+                                    }))
+                            },
+                            {
+                                optgroup: '✨ Gemini TTS - 남성 (Male)', options: GEMINI_TTS_VOICES
+                                    .filter(v => v.gender === 'male')
+                                    .map(v => ({
+                                        value: v.id,
+                                        label: `♂ ${v.label} - ${v.style}`,
+                                        gender: v.gender,
+                                        lang: 'multilingual'
+                                    }))
                             }
                         ];
 
                         const CLOUD_VOICE_OPTIONS = [
                             {
                                 optgroup: '🇰🇷 Korean (Standard)', options: [
-                                    { value: 'ko-KR-Standard-A', label: 'Standard-A (여성)', gender: 'female', lang: 'ko-KR' },
-                                    { value: 'ko-KR-Standard-C', label: 'Standard-C (남성)', gender: 'male', lang: 'ko-KR' },
+                                    { value: 'ko-KR-Standard-A', label: '♀ Standard-A (여성)', gender: 'female', lang: 'ko-KR' },
+                                    { value: 'ko-KR-Standard-C', label: '♂ Standard-C (남성)', gender: 'male', lang: 'ko-KR' },
                                 ]
                             },
                             {
                                 optgroup: '🇰🇷 Korean (WaveNet)', options: [
-                                    { value: 'ko-KR-Wavenet-A', label: 'WaveNet-A (여성)', gender: 'female', lang: 'ko-KR' },
-                                    { value: 'ko-KR-Wavenet-B', label: 'WaveNet-B (여성, 차분함)', gender: 'female', lang: 'ko-KR' },
-                                    { value: 'ko-KR-Wavenet-C', label: 'WaveNet-C (남성)', gender: 'male', lang: 'ko-KR' },
-                                    { value: 'ko-KR-Wavenet-D', label: 'WaveNet-D (남성, 중후함)', gender: 'male', lang: 'ko-KR' },
+                                    { value: 'ko-KR-Wavenet-A', label: '♀ WaveNet-A (여성)', gender: 'female', lang: 'ko-KR' },
+                                    { value: 'ko-KR-Wavenet-B', label: '♀ WaveNet-B (여성, 차분함)', gender: 'female', lang: 'ko-KR' },
+                                    { value: 'ko-KR-Wavenet-C', label: '♂ WaveNet-C (남성)', gender: 'male', lang: 'ko-KR' },
+                                    { value: 'ko-KR-Wavenet-D', label: '♂ WaveNet-D (남성, 중후함)', gender: 'male', lang: 'ko-KR' },
                                 ]
                             },
                             {
                                 optgroup: '🇰🇷 Korean (Neural2)', options: [
-                                    { value: 'ko-KR-Neural2-A', label: 'Neural2-A (여성)', gender: 'female', lang: 'ko-KR' },
-                                    { value: 'ko-KR-Neural2-B', label: 'Neural2-B (여성, 차분함)', gender: 'female', lang: 'ko-KR' },
-                                    { value: 'ko-KR-Neural2-C', label: 'Neural2-C (남성)', gender: 'male', lang: 'ko-KR' },
+                                    { value: 'ko-KR-Neural2-A', label: '♀ Neural2-A (여성)', gender: 'female', lang: 'ko-KR' },
+                                    { value: 'ko-KR-Neural2-B', label: '♀ Neural2-B (여성, 차분함)', gender: 'female', lang: 'ko-KR' },
+                                    { value: 'ko-KR-Neural2-C', label: '♂ Neural2-C (남성)', gender: 'male', lang: 'ko-KR' },
                                 ]
                             },
                             {
                                 optgroup: '🇰🇷 Korean (Chirp HD)', options: [
-                                    { value: 'ko-KR-Chirp3-HD-Aoede', label: 'Aoede (여성, 성인)', gender: 'female', lang: 'ko-KR' },
-                                    { value: 'ko-KR-Chirp3-HD-Leda', label: 'Leda (여성, 젊음)', gender: 'female', lang: 'ko-KR' },
-                                    { value: 'ko-KR-Chirp3-HD-Fenrir', label: 'Fenrir (남성, 성인)', gender: 'male', lang: 'ko-KR' },
-                                    { value: 'ko-KR-Chirp3-HD-Puck', label: 'Puck (남성, 젊음)', gender: 'male', lang: 'ko-KR' },
+                                    { value: 'ko-KR-Chirp3-HD-Aoede', label: '♀ Aoede (여성, 성인)', gender: 'female', lang: 'ko-KR' },
+                                    { value: 'ko-KR-Chirp3-HD-Leda', label: '♀ Leda (여성, 젊음)', gender: 'female', lang: 'ko-KR' },
+                                    { value: 'ko-KR-Chirp3-HD-Fenrir', label: '♂ Fenrir (남성, 성인)', gender: 'male', lang: 'ko-KR' },
+                                    { value: 'ko-KR-Chirp3-HD-Puck', label: '♂ Puck (남성, 젊음)', gender: 'male', lang: 'ko-KR' },
                                 ]
                             },
                             {
                                 optgroup: '🇺🇸 English (Neural2)', options: [
-                                    { value: 'en-US-Neural2-C', label: 'Neural2-C (Female)', gender: 'female', lang: 'en-US' },
-                                    { value: 'en-US-Neural2-G', label: 'Neural2-G (Female, Young)', gender: 'female', lang: 'en-US' },
-                                    { value: 'en-US-Neural2-J', label: 'Neural2-J (Male)', gender: 'male', lang: 'en-US' },
-                                    { value: 'en-US-Neural2-I', label: 'Neural2-I (Male, Young)', gender: 'male', lang: 'en-US' },
+                                    { value: 'en-US-Neural2-C', label: '♀ Neural2-C (Female)', gender: 'female', lang: 'en-US' },
+                                    { value: 'en-US-Neural2-G', label: '♀ Neural2-G (Female, Young)', gender: 'female', lang: 'en-US' },
+                                    { value: 'en-US-Neural2-J', label: '♂ Neural2-J (Male)', gender: 'male', lang: 'en-US' },
+                                    { value: 'en-US-Neural2-I', label: '♂ Neural2-I (Male, Young)', gender: 'male', lang: 'en-US' },
                                 ]
                             }
                         ];
@@ -1433,6 +1445,7 @@ export const Step3_Production: React.FC = () => {
                             });
                         };
 
+                        // Static samples for Google Cloud TTS voices
                         const VOICE_SAMPLES: Record<string, string> = {
                             'ko-KR-Chirp3-HD-Aoede': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Aoede.wav',
                             'ko-KR-Chirp3-HD-Fenrir': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Fenrir.wav',
@@ -1450,24 +1463,73 @@ export const Step3_Production: React.FC = () => {
                             'en-US-Neural2-G': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-G.wav',
                             'en-US-Neural2-J': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-J.wav',
                             'en-US-Neural2-I': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-I.wav',
-                            // Gemini Voices (Mapped to official high-fidelity Chirp3-HD samples)
-                            'Aoede': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Aoede.wav',
-                            'Leda': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Leda.wav',
-                            'Kore': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-B.wav',
-                            'Puck': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Puck.wav',
-                            'Fenrir': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Fenrir.wav',
-                            'Charon': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Charon.wav',
-                            'Orus': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Orus.wav',
-                            'Zephyr': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-A.wav',
                         };
-                        const playVoiceSample = (voiceId: string) => {
+
+                        // State for sample generation loading
+                        const [sampleLoading, setSampleLoading] = React.useState<string | null>(null);
+
+                        // Play voice sample - supports both static URLs and real-time Gemini generation
+                        const playVoiceSample = async (voiceId: string) => {
+                            // Check if it's a static sample first
                             const sampleUrl = VOICE_SAMPLES[voiceId];
                             if (sampleUrl) {
                                 const audio = new Audio(sampleUrl);
                                 audio.play().catch(e => console.warn('Sample playback failed:', e));
-                            } else {
-                                alert('Sample not available for this voice');
+                                return;
                             }
+
+                            // Check if it's a Gemini voice - generate sample in real-time
+                            if (isGeminiTtsVoice(voiceId)) {
+                                if (!apiKeys?.gemini) {
+                                    alert('Gemini API 키가 필요합니다. 설정에서 API 키를 입력해주세요.');
+                                    return;
+                                }
+
+                                setSampleLoading(voiceId);
+                                try {
+                                    // Find voice info for style
+                                    const voiceInfo = GEMINI_TTS_VOICES.find(v => v.id === voiceId);
+                                    const sampleText = currentLanguage === 'ko-KR'
+                                        ? '안녕하세요, 저는 이 목소리의 샘플입니다. 이런 느낌으로 말할 수 있어요.'
+                                        : 'Hello, this is a sample of my voice. This is how I sound when speaking.';
+
+                                    const result = await generateGeminiSpeech(
+                                        sampleText,
+                                        apiKeys.gemini,
+                                        {
+                                            voiceName: voiceId,
+                                            languageCode: currentLanguage || 'ko-KR',
+                                            actingDirection: voiceInfo?.style || '',
+                                            rate: 1.0,
+                                            volume: 1.0
+                                        }
+                                    );
+
+                                    // Play the generated audio
+                                    let audioUrl: string;
+                                    if (result instanceof Blob) {
+                                        audioUrl = URL.createObjectURL(result);
+                                    } else {
+                                        audioUrl = result;
+                                    }
+
+                                    const audio = new Audio(audioUrl);
+                                    audio.onended = () => {
+                                        if (result instanceof Blob) {
+                                            URL.revokeObjectURL(audioUrl);
+                                        }
+                                    };
+                                    await audio.play();
+                                } catch (error: any) {
+                                    console.error('Gemini TTS sample generation failed:', error);
+                                    alert(`샘플 생성 실패: ${error.message || '알 수 없는 오류'}`);
+                                } finally {
+                                    setSampleLoading(null);
+                                }
+                                return;
+                            }
+
+                            alert('이 음성의 샘플을 사용할 수 없습니다.');
                         };
 
 
@@ -1554,10 +1616,14 @@ export const Step3_Production: React.FC = () => {
                                                         </div>
                                                         <button
                                                             onClick={() => playVoiceSample(currentVoice || '')}
-                                                            className="px-2 py-2 bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30 rounded text-[12px] font-bold self-start"
-                                                            title="Play voice sample"
+                                                            disabled={sampleLoading === currentVoice}
+                                                            className={`px-2 py-2 rounded text-[12px] font-bold self-start transition-all ${sampleLoading === currentVoice
+                                                                ? 'bg-gray-500/20 text-gray-400 cursor-wait animate-pulse'
+                                                                : 'bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30'
+                                                                }`}
+                                                            title={sampleLoading === currentVoice ? 'Generating sample...' : 'Play voice sample'}
                                                         >
-                                                            🔊
+                                                            {sampleLoading === currentVoice ? '⏳' : '🔊'}
                                                         </button>
                                                     </div>
                                                     {/* Bulk Operations Row */}

@@ -4,16 +4,40 @@ import axios from 'axios';
 const GEMINI_TTS_MODEL = 'gemini-2.5-flash-preview-tts';
 const GEMINI_TTS_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_TTS_MODEL}:generateContent`;
 
-// 사용 가능한 Gemini TTS 음성 목록
+// 사용 가능한 Gemini TTS 음성 목록 (30 voices - Full Google AI Studio List)
 export const GEMINI_TTS_VOICES = [
-    { id: 'Aoede', label: 'Aoede', gender: 'female', style: 'Bright, expressive', lang: 'multilingual' },
-    { id: 'Leda', label: 'Leda', gender: 'female', style: 'Youthful, energetic', lang: 'multilingual' },
-    { id: 'Kore', label: 'Kore', gender: 'female', style: 'Calm, warm', lang: 'multilingual' },
-    { id: 'Puck', label: 'Puck', gender: 'male', style: 'Upbeat, lively', lang: 'multilingual' },
-    { id: 'Fenrir', label: 'Fenrir', gender: 'male', style: 'Deep, resonant, commanding tone, authoritative', lang: 'multilingual' },
-    { id: 'Charon', label: 'Charon', gender: 'male', style: 'Deep, mature', lang: 'multilingual' },
-    { id: 'Orus', label: 'Orus', gender: 'male', style: 'Neutral, professional', lang: 'multilingual' },
-    { id: 'Zephyr', label: 'Zephyr', gender: 'neutral', style: 'Gentle, soothing', lang: 'multilingual' },
+    // Female voices
+    { id: 'Aoede', label: 'Aoede', gender: 'female', style: 'Warm, clear, conversational, engaging', lang: 'multilingual' },
+    { id: 'Kore', label: 'Kore', gender: 'female', style: 'Energetic, youthful, confident, bright', lang: 'multilingual' },
+    { id: 'Leda', label: 'Leda', gender: 'female', style: 'Vibrant, high-energy, positive, friendly', lang: 'multilingual' },
+    { id: 'Zephyr', label: 'Zephyr', gender: 'female', style: 'Energetic, bright, warm, modern', lang: 'multilingual' },
+    { id: 'Callirrhoe', label: 'Callirrhoe', gender: 'female', style: 'Crisp, confident, professional, upbeat', lang: 'multilingual' },
+    { id: 'Autonoe', label: 'Autonoe', gender: 'female', style: 'High-energy, friendly, vibrant, approachable', lang: 'multilingual' },
+    { id: 'Despina', label: 'Despina', gender: 'female', style: 'High-energy, youthful, warm, inviting', lang: 'multilingual' },
+    { id: 'Erinome', label: 'Erinome', gender: 'female', style: 'Bright, polished, helpful, professional', lang: 'multilingual' },
+    { id: 'Laomedeia', label: 'Laomedeia', gender: 'female', style: 'High-energy, friendly, clear, upbeat', lang: 'multilingual' },
+    { id: 'Achernar', label: 'Achernar', gender: 'female', style: 'Soft, bubbly, modern, youthful', lang: 'multilingual' },
+    { id: 'Gacrux', label: 'Gacrux', gender: 'female', style: 'Mature, warm, engaging, conversational', lang: 'multilingual' },
+    { id: 'Pulcherrima', label: 'Pulcherrima', gender: 'female', style: 'Bright, energetic, youthful, polished', lang: 'multilingual' },
+    { id: 'Vindemiatrix', label: 'Vindemiatrix', gender: 'female', style: 'Lively, dynamic, engaging, upbeat', lang: 'multilingual' },
+    { id: 'Sulafat', label: 'Sulafat', gender: 'female', style: 'Warm, confident, articulate, clear', lang: 'multilingual' },
+    // Male voices
+    { id: 'Puck', label: 'Puck', gender: 'male', style: 'Energetic, expressive, upbeat, enthusiastic', lang: 'multilingual' },
+    { id: 'Charon', label: 'Charon', gender: 'male', style: 'Rich, deep, mature, reassuring, informative', lang: 'multilingual' },
+    { id: 'Fenrir', label: 'Fenrir', gender: 'male', style: 'Bright, youthful, eager, conversational', lang: 'multilingual' },
+    { id: 'Orus', label: 'Orus', gender: 'male', style: 'Lively, energetic, professional, clear', lang: 'multilingual' },
+    { id: 'Enceladus', label: 'Enceladus', gender: 'male', style: 'Clear, confident, mature, professional', lang: 'multilingual' },
+    { id: 'Iapetus', label: 'Iapetus', gender: 'male', style: 'Polished, approachable, warm, friendly', lang: 'multilingual' },
+    { id: 'Umbriel', label: 'Umbriel', gender: 'male', style: 'Smooth, authoritative, friendly, engaging', lang: 'multilingual' },
+    { id: 'Algieba', label: 'Algieba', gender: 'male', style: 'Warm, conversational, crisp, confident', lang: 'multilingual' },
+    { id: 'Algenib', label: 'Algenib', gender: 'male', style: 'Warm, velvety, helpful, professional', lang: 'multilingual' },
+    { id: 'Rasalgethi', label: 'Rasalgethi', gender: 'male', style: 'Energetic, youthful, enthusiastic, bouncy', lang: 'multilingual' },
+    { id: 'Alnilam', label: 'Alnilam', gender: 'male', style: 'Energetic, firm, fast-paced, modern', lang: 'multilingual' },
+    { id: 'Schedar', label: 'Schedar', gender: 'male', style: 'Even, mature, crisp, confident, versatile', lang: 'multilingual' },
+    { id: 'Achird', label: 'Achird', gender: 'male', style: 'Friendly, high-energy, approachable', lang: 'multilingual' },
+    { id: 'Zubenelgenubi', label: 'Zubenelgenubi', gender: 'male', style: 'Crisp, energetic, confident, engaging', lang: 'multilingual' },
+    { id: 'Sadachbia', label: 'Sadachbia', gender: 'male', style: 'High-energy, friendly, confident, warm', lang: 'multilingual' },
+    { id: 'Sadaltager', label: 'Sadaltager', gender: 'male', style: 'Warm, relaxed, natural, conversational', lang: 'multilingual' },
 ];
 
 export const GEMINI_TTS_SAMPLES: Record<string, string> = {};
