@@ -156,3 +156,134 @@ export const generateImage = async (
 
     throw new Error(`All image generation models failed. Last error: ${errorMessage}`);
 };
+
+/**
+ * Edit an image using AI chat instructions
+ * Sends the image + user instruction to Gemini and returns modified image
+ */
+export const editImageWithChat = async (
+    imageUrl: string,
+    instruction: string,
+    apiKey: string
+): Promise<{ image?: string; explanation: string }> => {
+    if (!apiKey) {
+        return { explanation: 'API key is required for image editing.' };
+    }
+
+    try {
+        // Extract base64 data from data URL
+        let imageData: string;
+        let mimeType: string = 'image/jpeg';
+
+        if (imageUrl.startsWith('data:')) {
+            const matches = imageUrl.match(/^data:(.+);base64,(.+)$/);
+            if (matches && matches.length === 3) {
+                mimeType = matches[1];
+                imageData = matches[2];
+            } else {
+                throw new Error('Invalid image data URL format');
+            }
+        } else {
+            // If it's a regular URL, we need to fetch and convert it
+            const response = await fetch(imageUrl);
+            const blob = await response.blob();
+            const buffer = await blob.arrayBuffer();
+            imageData = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+            mimeType = blob.type || 'image/jpeg';
+        }
+
+        // Use Gemini for image editing
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${apiKey}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [
+                            { text: `Edit this image according to the following instruction: ${instruction}. Make the requested changes while keeping other aspects of the image unchanged.` },
+                            {
+                                inlineData: {
+                                    mimeType: mimeType,
+                                    data: imageData
+                                }
+                            }
+                        ]
+                    }],
+                    generationConfig: {
+                        responseModalities: ["IMAGE", "TEXT"]
+                    }
+                })
+            }
+        );
+
+        const data = await response.json();
+
+        if (data.error) {
+            console.error('[ImageEdit] API Error:', data.error);
+            return { explanation: `편집 실패: ${data.error.message || 'Unknown error'}` };
+        }
+
+        // Extract the edited image and explanation
+        const parts = data.candidates?.[0]?.content?.parts || [];
+        let editedImage: string | undefined;
+        let explanation = '이미지를 수정했습니다.';
+
+        for (const part of parts) {
+            if (part.inlineData && part.inlineData.mimeType?.startsWith('image/')) {
+                editedImage = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+            }
+            if (part.text) {
+                explanation = part.text;
+            }
+        }
+
+        if (!editedImage) {
+            // Fallback: Try with a different model
+            console.warn('[ImageEdit] No image in response, trying fallback model...');
+            const fallbackResponse = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${apiKey}`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [
+                                { text: `Based on this reference image, create a new version with the following modification: ${instruction}` },
+                                {
+                                    inlineData: {
+                                        mimeType: mimeType,
+                                        data: imageData
+                                    }
+                                }
+                            ]
+                        }],
+                        generationConfig: {
+                            responseModalities: ["IMAGE", "TEXT"]
+                        }
+                    })
+                }
+            );
+
+            const fallbackData = await fallbackResponse.json();
+            const fallbackParts = fallbackData.candidates?.[0]?.content?.parts || [];
+
+            for (const part of fallbackParts) {
+                if (part.inlineData && part.inlineData.mimeType?.startsWith('image/')) {
+                    editedImage = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                }
+                if (part.text) {
+                    explanation = part.text;
+                }
+            }
+        }
+
+        return { image: editedImage, explanation };
+
+    } catch (error: any) {
+        console.error('[ImageEdit] Error:', error);
+        return {
+            explanation: `편집 중 오류 발생: ${error.message || 'Unknown error'}`
+        };
+    }
+};

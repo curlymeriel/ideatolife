@@ -1,9 +1,49 @@
 import React, { useState, useEffect } from 'react';
-import { Wand2, Save, Type, ImageIcon, Upload, Loader2, CheckCircle, ChevronDown, AlertCircle, RotateCcw, User, MapPin, Bug, Package, ArrowRight, Trash2 } from 'lucide-react';
+import { Wand2, Save, Type, ImageIcon, Upload, Loader2, CheckCircle, ChevronDown, AlertCircle, RotateCcw, User, MapPin, Bug, Package, ArrowRight, Trash2, Crop } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useWorkflowStore, type AssetDefinition } from '../store/workflowStore';
 import { enhancePrompt, analyzeImage } from '../services/gemini';
 import { ImageCropModal } from '../components/ImageCropModal';
+import { AssetGenerationModal, type GenerationResult } from '../components/AssetGenerationModal';
+import { resolveUrl } from '../utils/imageStorage';
+
+// Helper component for async loading of asset images
+const AssetThumbnailButton = ({ def, onSelect }: { def: AssetDefinition, onSelect: (url: string) => void }) => {
+    const [resolvedUrl, setResolvedUrl] = useState<string | null>(null);
+
+    useEffect(() => {
+        let active = true;
+        const load = async () => {
+            if (!def.draftImage) return;
+            try {
+                const url = await resolveUrl(def.draftImage);
+                if (active && url) setResolvedUrl(url);
+            } catch (e) {
+                console.error("Failed to load thumbnail", e);
+            }
+        };
+        load();
+        return () => { active = false; };
+    }, [def.draftImage]);
+
+    if (!resolvedUrl) return <div className="aspect-square bg-[var(--color-bg)] animate-pulse rounded-md border border-[var(--color-border)]" />;
+
+    return (
+        <button
+            onClick={() => onSelect(resolvedUrl)}
+            className="aspect-square relative group rounded-md overflow-hidden border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-all"
+            title={`${def.name} 이미지 사용`}
+        >
+            <img src={resolvedUrl} className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                <Crop size={16} className="text-white" />
+            </div>
+            <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-[10px] text-white p-1 truncate text-center">
+                {def.name}
+            </div>
+        </button>
+    );
+};
 
 export const Step2_Style: React.FC = () => {
     const store = useWorkflowStore();
@@ -60,6 +100,7 @@ export const Step2_Style: React.FC = () => {
     const [imageToCrop, setImageToCrop] = useState<string | null>(null);
     const [croppingTarget, setCroppingTarget] = useState<'reference' | 'draft'>('reference');
     const [definitionMode, setDefinitionMode] = useState<'upload' | 'generate'>('generate');
+    const [showGenerationModal, setShowGenerationModal] = useState(false);
 
     const safeMasterStyle = masterStyle || { description: '', referenceImage: null };
     const safeCharacters = Array.isArray(characters) ? characters : [];
@@ -209,14 +250,16 @@ export const Step2_Style: React.FC = () => {
             if (referenceImage && referenceImage.startsWith('data:')) {
                 const key = generateAssetImageKey(projectId, selectedAssetId, 'ref');
                 console.log('[Step2] Saving Reference Image to IDB:', key);
-                finalRefUrl = await saveToIdb('assets', key, referenceImage);
+                // Append timestamp to force state update and bypass cache
+                finalRefUrl = (await saveToIdb('assets', key, referenceImage)) + `?t=${Date.now()}`;
             }
 
             let finalDraftUrl = draftImage;
             if (draftImage && draftImage.startsWith('data:')) {
                 const key = generateAssetImageKey(projectId, selectedAssetId, 'draft');
                 console.log('[Step2] Saving Draft Image to IDB:', key);
-                finalDraftUrl = await saveToIdb('assets', key, draftImage);
+                // Append timestamp to force state update and bypass cache
+                finalDraftUrl = (await saveToIdb('assets', key, draftImage)) + `?t=${Date.now()}`;
             }
 
             if (selectedAssetId === 'master_style') {
@@ -262,6 +305,19 @@ export const Step2_Style: React.FC = () => {
             if (selectedAssetId !== 'master_style' && safeMasterStyle.description) {
                 context += `\nMaster Visual Style: ${safeMasterStyle.description}`;
             }
+
+            // [NEW] Inject all other defined assets for full context consistency
+            const definedAssets = Object.values(safeAssetDefinitions).filter((def: any) => isDefined(def.id) && def.id !== selectedAssetId);
+            if (definedAssets.length > 0) {
+                const chars = definedAssets.filter((d: any) => d.type === 'character').map((d: any) => `- ${d.name}: ${d.description.slice(0, 200)}...`).join('\n');
+                const locs = definedAssets.filter((d: any) => d.type === 'location').map((d: any) => `- ${d.name}: ${d.description.slice(0, 200)}...`).join('\n');
+                const props = definedAssets.filter((d: any) => d.type === 'prop').map((d: any) => `- ${d.name}: ${d.description.slice(0, 200)}...`).join('\n');
+
+                if (chars) context += `\n\n[Existing Characters Reference]\n${chars}`;
+                if (locs) context += `\n\n[Existing Locations Reference]\n${locs}`;
+                if (props) context += `\n\n[Existing Props Reference]\n${props}`;
+            }
+
             const assetTypeForAi = selectedAssetType === 'master' ? 'style' : (selectedAssetType === 'prop' ? 'character' : selectedAssetType);
             const enhanced = await enhancePrompt(description, assetTypeForAi as any, context, apiKeys?.gemini || '');
             setDescription(enhanced);
@@ -334,6 +390,19 @@ export const Step2_Style: React.FC = () => {
             if (selectedAssetId !== 'master_style' && safeMasterStyle.description) {
                 context += `\nMaster Visual Style: ${safeMasterStyle.description}`;
             }
+
+            // [NEW] Inject all other defined assets for full context consistency
+            const definedAssets = Object.values(safeAssetDefinitions).filter((def: any) => isDefined(def.id) && def.id !== selectedAssetId);
+            if (definedAssets.length > 0) {
+                const chars = definedAssets.filter((d: any) => d.type === 'character').map((d: any) => `- ${d.name}: ${d.description.slice(0, 200)}...`).join('\n');
+                const locs = definedAssets.filter((d: any) => d.type === 'location').map((d: any) => `- ${d.name}: ${d.description.slice(0, 200)}...`).join('\n');
+                const props = definedAssets.filter((d: any) => d.type === 'prop').map((d: any) => `- ${d.name}: ${d.description.slice(0, 200)}...`).join('\n');
+
+                if (chars) context += `\n\n[Existing Characters Reference]\n${chars}`;
+                if (locs) context += `\n\n[Existing Locations Reference]\n${locs}`;
+                if (props) context += `\n\n[Existing Props Reference]\n${props}`;
+            }
+
             const structured = await enhancePrompt(analysis, 'style', context, apiKeys?.gemini || '');
 
             setDescription(structured);
@@ -352,13 +421,17 @@ export const Step2_Style: React.FC = () => {
         try {
             const { generateImage } = await import('../services/imageGen');
             const { resolveUrl } = await import('../utils/imageStorage');
+            const { cleanPromptForGeneration } = await import('../utils/promptUtils');
             const currentAspectRatio = aspectRatio || '16:9';
-            let finalPrompt = description;
+            let rawPrompt = description;
             if (selectedAssetId !== 'master_style' && safeMasterStyle.description) {
-                finalPrompt = `[Master Visual Style: ${safeMasterStyle.description}] \n\n ${description}`;
+                rawPrompt = `[Master Visual Style: ${safeMasterStyle.description}] \n\n ${description}`;
             }
+            // Clean markdown formatting to prevent **text** from appearing in images
+            const finalPrompt = cleanPromptForGeneration(rawPrompt);
             const result = await generateImage(
                 finalPrompt,
+
                 apiKeys?.gemini || '',
                 referenceImage ? [referenceImage] : undefined,
                 currentAspectRatio,
@@ -439,7 +512,7 @@ export const Step2_Style: React.FC = () => {
                                                     }
                                                 }}
                                                 className="absolute right-12 top-1/2 -translate-y-1/2 p-1.5 text-gray-600 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-all"
-                                                title="Delete from registry"
+                                                title="레지스트리에서 삭제"
                                             >
                                                 <Trash2 size={14} />
                                             </button>
@@ -457,14 +530,14 @@ export const Step2_Style: React.FC = () => {
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    if (confirm(`Remove "${loc.name}" from series locations?`)) {
+                                                    if (confirm(`"${loc.name}" 장소를 시리즈 장소 목록에서 삭제하시겠습니까?`)) {
                                                         const newLocs = safeSeriesLocations.filter((l: any) => l.id !== loc.id);
                                                         setProjectInfo({ seriesLocations: newLocs });
                                                         if (selectedAssetId === loc.id) setSelectedAssetId('master_style');
                                                     }
                                                 }}
                                                 className="absolute right-12 top-1/2 -translate-y-1/2 p-1.5 text-gray-600 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-all"
-                                                title="Delete from registry"
+                                                title="레지스트리에서 삭제"
                                             >
                                                 <Trash2 size={14} />
                                             </button>
@@ -482,14 +555,14 @@ export const Step2_Style: React.FC = () => {
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    if (confirm(`Remove "${prop.name}" from series props?`)) {
+                                                    if (confirm(`"${prop.name}" 소품을 시리즈 소품 목록에서 삭제하시겠습니까?`)) {
                                                         const newProps = safeSeriesProps.filter((p: any) => p.id !== prop.id);
                                                         setProjectInfo({ seriesProps: newProps });
                                                         if (selectedAssetId === prop.id) setSelectedAssetId('master_style');
                                                     }
                                                 }}
                                                 className="absolute right-12 top-1/2 -translate-y-1/2 p-1.5 text-gray-600 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-all"
-                                                title="Delete from registry"
+                                                title="레지스트리에서 삭제"
                                             >
                                                 <Trash2 size={14} />
                                             </button>
@@ -517,14 +590,14 @@ export const Step2_Style: React.FC = () => {
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    if (confirm(`Remove "${char.name}" from episode characters?`)) {
+                                                    if (confirm(`"${char.name}" 캐릭터를 에피소드 캐릭터 목록에서 삭제하시겠습니까?`)) {
                                                         const newChars = safeEpisodeCharacters.filter((c: any) => c.id !== char.id);
                                                         setProjectInfo({ episodeCharacters: newChars });
                                                         if (selectedAssetId === char.id) setSelectedAssetId('master_style');
                                                     }
                                                 }}
                                                 className="absolute right-12 top-1/2 -translate-y-1/2 p-1.5 text-gray-600 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-all"
-                                                title="Delete from registry"
+                                                title="레지스트리에서 삭제"
                                             >
                                                 <Trash2 size={14} />
                                             </button>
@@ -542,14 +615,14 @@ export const Step2_Style: React.FC = () => {
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    if (confirm(`Remove "${loc.name}" from episode locations?`)) {
+                                                    if (confirm(`"${loc.name}" 장소를 에피소드 장소 목록에서 삭제하시겠습니까?`)) {
                                                         const newLocs = safeEpisodeLocations.filter((l: any) => l.id !== loc.id);
                                                         setProjectInfo({ episodeLocations: newLocs });
                                                         if (selectedAssetId === loc.id) setSelectedAssetId('master_style');
                                                     }
                                                 }}
                                                 className="absolute right-12 top-1/2 -translate-y-1/2 p-1.5 text-gray-600 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-all"
-                                                title="Delete from registry"
+                                                title="레지스트리에서 삭제"
                                             >
                                                 <Trash2 size={14} />
                                             </button>
@@ -567,14 +640,14 @@ export const Step2_Style: React.FC = () => {
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    if (confirm(`Remove "${prop.name}" from episode props?`)) {
+                                                    if (confirm(`"${prop.name}" 소품을 에피소드 소품 목록에서 삭제하시겠습니까?`)) {
                                                         const newProps = safeEpisodeProps.filter((p: any) => p.id !== prop.id);
                                                         setProjectInfo({ episodeProps: newProps });
                                                         if (selectedAssetId === prop.id) setSelectedAssetId('master_style');
                                                     }
                                                 }}
                                                 className="absolute right-12 top-1/2 -translate-y-1/2 p-1.5 text-gray-600 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-all"
-                                                title="Delete from registry"
+                                                title="레지스트리에서 삭제"
                                             >
                                                 <Trash2 size={14} />
                                             </button>
@@ -607,7 +680,7 @@ export const Step2_Style: React.FC = () => {
                                 <div className="flex-1 glass-panel p-6 border border-[var(--color-border)] flex flex-col">
                                     <div className="flex items-center gap-2 mb-4 text-[var(--color-text-muted)]"><CheckCircle size={18} className="text-green-500" /><span className="text-sm font-bold uppercase">Confirmed Description</span></div>
                                     <div className="flex-1 overflow-y-auto space-y-4">
-                                        <p className="text-gray-300 text-lg whitespace-pre-wrap">{description || "No description defined."}</p>
+                                        <p className="text-gray-300 text-lg whitespace-pre-wrap">{description || "정의된 설명이 없습니다."}</p>
                                         {characterModifier && <div className="border-t border-[var(--color-border)] pt-4"><div className="flex items-center gap-2 mb-2"><User size={14} className="text-[var(--color-primary)]" /><span className="text-xs font-bold uppercase">Character Modifier</span></div><p className="text-gray-400 text-sm pl-5">{characterModifier}</p></div>}
                                         {backgroundModifier && <div className="border-t border-[var(--color-border)] pt-4"><div className="flex items-center gap-2 mb-2"><MapPin size={14} className="text-[var(--color-primary)]" /><span className="text-xs font-bold uppercase">Background Modifier</span></div><p className="text-gray-400 text-sm pl-5">{backgroundModifier}</p></div>}
                                     </div>
@@ -615,7 +688,7 @@ export const Step2_Style: React.FC = () => {
                                 <div className="w-1/3 glass-panel p-6 border border-[var(--color-border)] flex flex-col">
                                     <div className="flex items-center gap-2 mb-4"><ImageIcon size={18} className="text-[var(--color-primary)]" /><span className="text-sm font-bold uppercase">Visual Reference</span></div>
                                     <div className="flex-1 w-full bg-[var(--color-bg)] border border-[var(--color-border)] relative overflow-hidden group">
-                                        {draftImage ? <img src={draftImage} className="absolute inset-0 w-full h-full object-contain" /> : referenceImage ? <img src={referenceImage} className="absolute inset-0 w-full h-full object-contain opacity-80" /> : <div className="absolute inset-0 flex flex-col items-center justify-center text-[var(--color-text-muted)] cursor-pointer hover:bg-white/5 transition-colors"><Upload size={24} className="mb-2" /><p className="text-xs">No reference image.</p></div>}
+                                        {draftImage ? <img src={draftImage} className="absolute inset-0 w-full h-full object-contain" /> : referenceImage ? <img src={referenceImage} className="absolute inset-0 w-full h-full object-contain opacity-80" /> : <div className="absolute inset-0 flex flex-col items-center justify-center text-[var(--color-text-muted)] cursor-pointer hover:bg-white/5 transition-colors"><Upload size={24} className="mb-2" /><p className="text-xs">참조 이미지 없음.</p></div>}
                                         <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
                                     </div>
                                 </div>
@@ -663,12 +736,37 @@ export const Step2_Style: React.FC = () => {
                                                 </div>
                                                 <div className="text-center">
                                                     <h3 className="text-white font-bold text-lg mb-2">Upload Your Final Asset</h3>
-                                                    <p className="text-[var(--color-text-muted)] max-w-sm">Drop your finished character or location design here. We will automatically analyze it to maintain consistency in Production.</p>
+                                                    <p className="text-[var(--color-text-muted)] max-w-sm">완성된 캐릭터나 배경 이미지를 이곳에 드래그 앤 드롭하세요. 프로덕션 단계에서의 일관성 유지를 위해 AI가 자동으로 이미지를 분석합니다.</p>
                                                 </div>
                                             </>
                                         )}
                                         <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, 'draft')} className="absolute inset-0 opacity-0 cursor-pointer" />
                                     </div>
+
+                                    {/* Select from Existing Assets */}
+                                    {!draftImage && Object.values(safeAssetDefinitions).some(def => def.draftImage && def.id !== selectedAssetId) && (
+                                        <div className="glass-panel p-4 border border-[var(--color-border)]">
+                                            <h4 className="text-sm font-bold text-[var(--color-text-muted)] mb-3 flex items-center gap-2">
+                                                <ImageIcon size={14} /> 또는 기존 프로젝트 자산 중에서 선택하세요:
+                                            </h4>
+                                            <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 max-h-[200px] overflow-y-auto pr-2">
+                                                {Object.values(safeAssetDefinitions)
+                                                    .filter(def => def.draftImage && def.id !== selectedAssetId)
+                                                    .map(def => (
+                                                        <AssetThumbnailButton
+                                                            key={def.id}
+                                                            def={def}
+                                                            onSelect={(url) => {
+                                                                setCroppingTarget('draft');
+                                                                setImageToCrop(url);
+                                                                setShowCropModal(true);
+                                                            }}
+                                                        />
+                                                    ))
+                                                }
+                                            </div>
+                                        </div>
+                                    )}
 
                                     <div className="glass-panel border border-[var(--color-border)]">
                                         <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
@@ -687,7 +785,7 @@ export const Step2_Style: React.FC = () => {
                                                 className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] p-4 text-gray-300 focus:border-[var(--color-primary)] outline-none resize-none text-lg min-h-[200px]"
                                                 value={description}
                                                 onChange={(e) => setDescription(e.target.value)}
-                                                placeholder={isProcessing ? "Wait while AI analyzes your image..." : "Visual features will appear here after upload..."}
+                                                placeholder={isProcessing ? "AI가 이미지를 분석 중입니다. 잠시만 기다려주세요..." : "업로드 완료 후 시각적 특징이 여기에 표시됩니다..."}
                                             />
                                         </div>
                                     </div>
@@ -698,64 +796,78 @@ export const Step2_Style: React.FC = () => {
                                     {selectedAssetId !== 'master_style' && (
                                         <div className="glass-panel p-4 border border-[var(--color-border)]">
                                             <div className="flex items-center justify-between mb-4">
-                                                <div className="flex items-center gap-2"><ImageIcon size={18} className="text-[var(--color-primary)]" /><span className="text-sm font-bold uppercase">Draft Candidates</span></div>
-                                                <div className="flex items-center gap-4">
-                                                    <div className="flex items-center gap-2 bg-[var(--color-bg)] border border-[var(--color-border)] p-1">{[1, 2, 3, 4].map(num => (<button key={num} onClick={() => setDraftCount(num)} className={`w-6 h-6 text-xs ${draftCount === num ? 'bg-[var(--color-primary)] text-black' : 'hover:bg-white/10'}`}>{num}</button>))}</div>
-                                                    <button onClick={handleGenerateDraft} disabled={isGeneratingDraft || !description} className="px-4 py-1 bg-[var(--color-primary)] text-black text-xs font-bold hover:opacity-90 disabled:opacity-50">{isGeneratingDraft ? <Loader2 className="animate-spin mr-1 inline" size={14} /> : <Wand2 size={14} className="mr-1 inline" />}{isGeneratingDraft ? 'Generating...' : 'Generate Candidates'}</button>
-                                                </div>
-                                            </div>
-                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                                                {isGeneratingDraft ? (
-                                                    Array.from({ length: draftCount }).map((_, i) => (
-                                                        <div key={i} className="aspect-video bg-[var(--color-bg)] border border-[var(--color-border)] flex items-center justify-center animate-pulse">
-                                                            <Loader2 size={24} className="animate-spin text-[var(--color-primary)]" />
-                                                        </div>
-                                                    ))
-                                                ) : draftCandidates.length > 0 ? (
-                                                    draftCandidates.map((url, i) => (
-                                                        <button key={i} onClick={() => handleSelectDraft(url)} className={`relative aspect-video border overflow-hidden transition-all ${draftImage === url ? 'border-[var(--color-primary)] border-4 scale-[1.02] shadow-xl' : 'border-[var(--color-border)] opacity-60 hover:opacity-100'}`}>
-                                                            <img src={url} className="w-full h-full object-cover" />
-                                                        </button>
-                                                    ))
-                                                ) : (
-                                                    <div className="col-span-full py-12 border-2 border-dashed border-[var(--color-border)] bg-[var(--color-bg)]/10 text-center text-[var(--color-text-muted)] text-sm">
-                                                        No candidates yet. Define the description below and click "Generate".
+                                                <div className="flex items-center gap-2"><ImageIcon size={18} className="text-[var(--color-primary)]" /><span className="text-sm font-bold uppercase">Asset Image</span></div>
+                                                <button
+                                                    onClick={() => setShowGenerationModal(true)}
+                                                    className="px-6 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-sm font-bold hover:opacity-90 rounded-lg flex items-center gap-2 shadow-lg"
+                                                >
+                                                    <Wand2 size={16} /> Open Generation Studio
+                                                </button>
+                                                {/* Instructional Text in Korean (No Panel) */}
+                                                {selectedAssetId !== 'master_style' && (
+                                                    <div className="mt-2 text-center">
+                                                        <p className="text-xs text-gray-500">
+                                                            Generation Studio를 사용하여 에셋 이미지를 생성하고 편집하세요.
+                                                        </p>
+                                                        <p className="text-[10px] text-gray-600">
+                                                            현재 프롬프트, 참조 이미지 및 AI 지원 기능은 스튜디오에서 사용할 수 있습니다.
+                                                        </p>
                                                     </div>
                                                 )}
                                             </div>
-                                            {draftImage && (<div className="mt-4 pt-4 border-t border-[var(--color-border)]"><div className="text-[10px] uppercase font-bold text-[var(--color-text-muted)] mb-2">Selected Draft</div><div className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] relative" style={{ paddingBottom: getAspectRatioPadding(aspectRatio || '16:9') }}><img src={draftImage} className="absolute inset-0 w-full h-full object-contain" /></div></div>)}
+                                            {/* Show selected draft or placeholder */}
+                                            {draftImage ? (
+                                                <div className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] relative" style={{ paddingBottom: getAspectRatioPadding(aspectRatio || '16:9') }}>
+                                                    <img src={draftImage} className="absolute inset-0 w-full h-full object-contain" />
+                                                </div>
+                                            ) : draftCandidates.length > 0 ? (
+                                                <>
+                                                    <p className="text-xs text-gray-500 mb-2">생성된 후보 중에서 선택하세요:</p>
+                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                                        {draftCandidates.map((url, i) => (
+                                                            <button key={i} onClick={() => handleSelectDraft(url)} className={`relative aspect-video border overflow-hidden transition-all ${draftImage === url ? 'border-[var(--color-primary)] border-4' : 'border-[var(--color-border)] hover:border-white/30'}`}>
+                                                                <img src={url} className="w-full h-full object-cover" />
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <div className="py-16 border-2 border-dashed border-[var(--color-border)] bg-[var(--color-bg)]/10 text-center">
+                                                    <ImageIcon size={48} className="mx-auto mb-4 text-gray-600" />
+                                                    <p className="text-gray-500">'Open Generation Studio'를 클릭하여 이미지를 생성하세요.</p>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
 
-                                    <div className="flex gap-6">
-                                        <div className="flex-1 flex flex-col gap-4">
-                                            <div className="glass-panel border border-[var(--color-border)]">
-                                                <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]"><div className="flex items-center gap-2"><Type size={18} /><span className="text-sm font-bold uppercase">{selectedAssetId === 'master_style' ? 'Master Style' : 'Visual Prompt'}</span></div><button onClick={handleMagicExpand} disabled={isProcessing || !description} className="px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs font-bold hover:opacity-90">AI Expander</button></div>
-                                                <div className="p-4"><textarea className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] p-4 text-gray-300 focus:border-[var(--color-primary)] outline-none resize-none text-lg min-h-[200px]" value={description} onChange={(e) => setDescription(e.target.value)} /></div>
+
+                                    {/* Master Style keeps the full editor */}
+                                    {selectedAssetId === 'master_style' && (
+                                        <div className="flex gap-6">
+                                            <div className="flex-1 flex flex-col gap-4">
+                                                <div className="glass-panel border border-[var(--color-border)]">
+                                                    <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]"><div className="flex items-center gap-2"><Type size={18} /><span className="text-sm font-bold uppercase">Master Style</span></div><button onClick={handleMagicExpand} disabled={isProcessing || !description} className="px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs font-bold hover:opacity-90">AI Expander</button></div>
+                                                    <div className="p-4"><textarea className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] p-4 text-gray-300 focus:border-[var(--color-primary)] outline-none resize-none text-lg min-h-[200px]" value={description} onChange={(e) => setDescription(e.target.value)} /></div>
+                                                </div>
+                                                <div className="glass-panel p-4 border border-[var(--color-border)]"><label className="text-sm font-bold text-[var(--color-text-muted)] mb-2 block">Character Modifier (Optional)</label><textarea value={characterModifier} onChange={(e) => setCharacterModifier(e.target.value)} className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] p-3 text-gray-300 min-h-[80px]" /></div>
+                                                <div className="glass-panel p-4 border border-[var(--color-border)]"><label className="text-sm font-bold text-[var(--color-text-muted)] mb-2 block">Background Modifier (Optional)</label><textarea value={backgroundModifier} onChange={(e) => setBackgroundModifier(e.target.value)} className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] p-3 text-gray-300 min-h-[80px]" /></div>
                                             </div>
-                                            {selectedAssetId === 'master_style' && (
-                                                <>
-                                                    <div className="glass-panel p-4 border border-[var(--color-border)]"><label className="text-sm font-bold text-[var(--color-text-muted)] mb-2 block">Character Modifier (Optional)</label><textarea value={characterModifier} onChange={(e) => setCharacterModifier(e.target.value)} className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] p-3 text-gray-300 min-h-[80px]" /></div>
-                                                    <div className="glass-panel p-4 border border-[var(--color-border)]"><label className="text-sm font-bold text-[var(--color-text-muted)] mb-2 block">Background Modifier (Optional)</label><textarea value={backgroundModifier} onChange={(e) => setBackgroundModifier(e.target.value)} className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] p-3 text-gray-300 min-h-[80px]" /></div>
-                                                </>
-                                            )}
-                                        </div>
-                                        <div className="w-1/3 glass-panel border border-[var(--color-border)] flex flex-col">
-                                            <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]"><span className="text-sm font-bold uppercase">Reference (Optional)</span>{referenceImage && <button onClick={() => { setReferenceImage(null); setDraftImage(null); }} className="text-[10px] text-red-300"><RotateCcw size={10} className="inline mr-1" />Clear</button>}</div>
-                                            <div className="flex-1 relative border-dashed border-[var(--color-border)] bg-[var(--color-bg)] group">
-                                                {referenceImage ? (
-                                                    <div className="h-full w-full relative">
-                                                        <img src={referenceImage} className="w-full h-full object-cover opacity-70 group-hover:opacity-100" />
-                                                        <div className="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 bg-black/40 gap-2 p-2">
-                                                            <button onClick={handleExpandFromImage} className="w-full py-2 bg-purple-500 text-white text-xs font-bold">Expand Prompt</button>
-                                                            {selectedAssetId !== 'master_style' && <button onClick={() => setDraftImage(referenceImage)} className="w-full py-2 bg-[var(--color-primary)] text-black text-xs font-bold">Use as Final</button>}
+                                            <div className="w-1/3 glass-panel border border-[var(--color-border)] flex flex-col">
+                                                <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]"><span className="text-sm font-bold uppercase">Reference (Optional)</span>{referenceImage && <button onClick={() => { setReferenceImage(null); setDraftImage(null); }} className="text-[10px] text-red-300"><RotateCcw size={10} className="inline mr-1" />Clear</button>}</div>
+                                                <div className="flex-1 relative border-dashed border-[var(--color-border)] bg-[var(--color-bg)] group">
+                                                    {referenceImage ? (
+                                                        <div className="h-full w-full relative">
+                                                            <img src={referenceImage} className="w-full h-full object-cover opacity-70 group-hover:opacity-100" />
+                                                            <div className="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 bg-black/40 gap-2 p-2">
+                                                                <button onClick={handleExpandFromImage} className="w-full py-2 bg-purple-500 text-white text-xs font-bold">Expand Prompt</button>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                ) : <div className="h-full flex flex-col items-center justify-center text-[var(--color-text-muted)]"><Upload size={24} className="mb-2" /><span className="text-xs text-center px-4">Upload Reference to guide AI generation</span></div>}
-                                                <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
+                                                    ) : <div className="h-full flex flex-col items-center justify-center text-[var(--color-text-muted)]"><Upload size={24} className="mb-2" /><span className="text-xs text-center px-4">AI 생성을 돕기 위한 참조 이미지를 업로드하세요.</span></div>}
+                                                    <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
+                                    )}
                                 </>
                             )}
                         </div>
@@ -771,6 +883,49 @@ export const Step2_Style: React.FC = () => {
             </div>
             {showDebug && (<div className="mt-8 glass-panel p-6 border border-red-500/30"><h3 className="text-red-400 font-bold mb-4 flex items-center gap-2"><Bug size={18} /> Asset Debug Console</h3><pre className="text-[10px] bg-black/50 p-4 overflow-x-auto text-green-400">{JSON.stringify({ masterStyle, assetDefinitions }, null, 2)}</pre></div>)}
             {showCropModal && imageToCrop && (<ImageCropModal imageSrc={imageToCrop} onConfirm={handleCropConfirm} onCancel={handleCropCancel} aspectRatio={aspectRatio || '16:9'} />)}
+
+            {/* Asset Generation Studio Modal */}
+            {showGenerationModal && selectedAssetId !== 'master_style' && (
+                <AssetGenerationModal
+                    isOpen={showGenerationModal}
+                    onClose={() => setShowGenerationModal(false)}
+                    assetId={selectedAssetId}
+                    assetType={selectedAssetType as 'character' | 'location' | 'prop'}
+                    assetName={selectedAssetName}
+                    initialDescription={description}
+                    initialReferenceImage={referenceImage}
+                    initialDraftImage={draftImage}
+                    masterStyle={safeMasterStyle.description}
+                    aspectRatio={aspectRatio || '16:9'}
+                    apiKey={apiKeys?.gemini || ''}
+                    // [NEW] Pass full context including other assets
+                    projectContext={(() => {
+                        let ctx = `Series: ${seriesName}, Episode: ${episodeName}`;
+                        if (safeMasterStyle.description) ctx += `\nMaster Visual Style: ${safeMasterStyle.description}`;
+
+                        const definedAssets = Object.values(safeAssetDefinitions).filter((def: any) => isDefined(def.id) && def.id !== selectedAssetId);
+                        if (definedAssets.length > 0) {
+                            const chars = definedAssets.filter((d: any) => d.type === 'character').map((d: any) => `- ${d.name}: ${d.description.slice(0, 100)}...`).join('\n');
+                            const locs = definedAssets.filter((d: any) => d.type === 'location').map((d: any) => `- ${d.name}: ${d.description.slice(0, 100)}...`).join('\n');
+                            if (chars) ctx += `\n\n[Existing Characters]\n${chars}`;
+                            if (locs) ctx += `\n\n[Existing Locations]\n${locs}`;
+                        }
+                        return ctx;
+                    })()}
+                    onSave={(result: GenerationResult) => {
+                        // Apply results from modal
+                        setDescription(result.description);
+                        if (result.selectedDraft) {
+                            setDraftImage(result.selectedDraft);
+                        }
+                        // Store updated draft candidates
+                        if (result.draftHistory.length > 0) {
+                            setDraftCandidates(result.draftHistory);
+                        }
+                        setShowGenerationModal(false);
+                    }}
+                />
+            )}
         </div>
     );
 };
