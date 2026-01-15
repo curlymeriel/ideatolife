@@ -9,7 +9,7 @@ import { useWorkflowStore } from '../store/workflowStore';
 import { useNavigate } from 'react-router-dom';
 import {
     TrendingUp, Search, Loader2, Globe, AlertCircle, Download, ArrowRight,
-    BarChart3, Users, Sparkles, CheckCircle2, ChevronRight, RefreshCw, Calendar
+    BarChart3, Users, Sparkles, CheckCircle2, ChevronRight, RefreshCw
 } from 'lucide-react';
 
 import type { RegionCode, YouTubeTrendTopic, YouTubeTrendVideo, TrendAnalysisInsights, YouTubeCategoryId } from '../store/types';

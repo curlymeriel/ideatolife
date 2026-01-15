@@ -10,13 +10,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useWorkflowStore } from '../store/workflowStore';
 import {
-    MessageSquare, Send, Loader2, Globe, AlertCircle, ChevronRight,
-    BarChart3, Play, Download, ArrowRight, Info, Code, ChevronDown, ChevronUp
+    MessageSquare, Send, Loader2,
+    BarChart3, Download, ArrowRight, Code, ChevronDown, ChevronUp
 } from 'lucide-react';
 
-import type { RegionCode, YouTubeTrendVideo, YouTubeCategoryId } from '../store/types';
-import { YOUTUBE_CATEGORIES } from '../store/types';
-import { fetchTrendingVideos, fetchVideosByCategory, searchVideos, extractTopTopics, formatViewCount, REGION_NAMES } from '../services/youtube';
+import type { YouTubeTrendVideo } from '../store/types';
+import { fetchTrendingVideos, fetchVideosByCategory, searchVideos, extractTopTopics } from '../services/youtube';
 import { TrendChart } from '../components/Trend/TrendChart';
 import { TrendVideoCard } from '../components/Trend/TrendVideoCard';
 

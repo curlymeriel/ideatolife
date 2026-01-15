@@ -357,21 +357,6 @@ export function extractTopTopics(videos: YouTubeTrendVideo[], topicType: 'hashta
     return topics.sort((a, b) => b.avgViews - a.avgViews).slice(0, 15);
 }
 
-/**
- * Helper to extract main topic from title
- * Expanded to allow 2-char words for CJK languages
- */
-function extractMainTopic(title: string): string {
-    // Remove common prefixes/suffixes and get first significant word
-    const cleaned = title
-        .replace(/[\[\]【】「」『』()（）]/g, ' ')
-        .replace(/[|｜-]/g, ' ')
-        .trim();
-
-    // length >= 2 to support Korean/CJK words (e.g., 먹방, 뉴스, 리뷰)
-    const words = cleaned.split(/\s+/).filter(w => w.length >= 2);
-    return words[0] || 'Unknown';
-}
 
 /**
  * Calculate engagement rate for a video
