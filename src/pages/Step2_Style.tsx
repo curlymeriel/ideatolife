@@ -88,8 +88,6 @@ export const Step2_Style: React.FC = () => {
     const [draftImage, setDraftImage] = useState<string | null>(null);
 
     const [isProcessing, setIsProcessing] = useState(false);
-    const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
-    const [draftCount, setDraftCount] = useState<number>(2);
     const [draftCandidates, setDraftCandidates] = useState<string[]>([]);
 
     const [isSeriesOpen, setIsSeriesOpen] = useState(true);
@@ -414,40 +412,7 @@ export const Step2_Style: React.FC = () => {
     };
 
 
-    const handleGenerateDraft = async () => {
-        if (!description) return;
-        setIsGeneratingDraft(true);
-        setDraftCandidates([]);
-        try {
-            const { generateImage } = await import('../services/imageGen');
-            const { resolveUrl } = await import('../utils/imageStorage');
-            const { cleanPromptForGeneration } = await import('../utils/promptUtils');
-            const currentAspectRatio = aspectRatio || '16:9';
-            let rawPrompt = description;
-            if (selectedAssetId !== 'master_style' && safeMasterStyle.description) {
-                rawPrompt = `[Master Visual Style: ${safeMasterStyle.description}] \n\n ${description}`;
-            }
-            // Clean markdown formatting to prevent **text** from appearing in images
-            const finalPrompt = cleanPromptForGeneration(rawPrompt);
-            const result = await generateImage(
-                finalPrompt,
 
-                apiKeys?.gemini || '',
-                referenceImage ? [referenceImage] : undefined,
-                currentAspectRatio,
-                'gemini-3-pro-image-preview',
-                draftCount
-            );
-            const resolvedUrls = await Promise.all(result.urls.map(url => resolveUrl(url)));
-            setDraftCandidates(resolvedUrls.map((url, i) => url || result.urls[i]));
-            if (result.urls.length === 1) setDraftImage(resolvedUrls[0] || result.urls[0]);
-        } catch (error: any) {
-            console.error("Draft generation failed", error);
-            alert(`Failed to generate draft.\n\nDetails: ${error.message || "Unknown error"}`);
-        } finally {
-            setIsGeneratingDraft(false);
-        }
-    };
 
     const handleSelectDraft = (url: string) => setDraftImage(url);
 

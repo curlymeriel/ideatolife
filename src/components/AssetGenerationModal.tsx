@@ -56,7 +56,7 @@ const REFERENCE_CATEGORIES = [
 export const AssetGenerationModal: React.FC<AssetGenerationModalProps> = ({
     isOpen,
     onClose,
-    assetId,
+
     assetType,
     assetName,
     initialDescription,
