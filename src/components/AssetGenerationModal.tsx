@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {
-    X, Wand2, Loader2, ImageIcon, Plus, Trash2,
-    MessageSquare, Send, Crop, RotateCcw, Check, Tag, Image, Sparkles
-} from 'lucide-react';
+import { X, Wand2, Loader2, ImageIcon, Plus, Trash2, Send, MessageSquare, Crop, Check, Tag, Image, Sparkles, RotateCcw } from 'lucide-react';
 import { ImageCropModal } from './ImageCropModal';
+import { InteractiveImageViewer } from './InteractiveImageViewer';
 
 // Types
 export interface TaggedReference {
@@ -33,6 +31,7 @@ interface AssetGenerationModalProps {
     aspectRatio: string;
     apiKey: string;
     projectContext?: string; // [NEW] Full project context from parent
+    existingAssets?: { id: string, name: string, url: string, type: string }[]; // [NEW]
     onSave: (result: GenerationResult) => void;
 }
 
@@ -66,6 +65,7 @@ export const AssetGenerationModal: React.FC<AssetGenerationModalProps> = ({
     aspectRatio,
     apiKey,
     projectContext,
+    existingAssets,
     onSave,
 }) => {
     // Core state
@@ -94,13 +94,32 @@ export const AssetGenerationModal: React.FC<AssetGenerationModalProps> = ({
 
     // Reference picker state
     const [showRefPicker, setShowRefPicker] = useState(false);
+    const [pickerTab, setPickerTab] = useState<'drafts' | 'assets'>('drafts'); // [NEW]
 
+    // AI Expander state
     // AI Expander state
     const [isExpanding, setIsExpanding] = useState(false);
 
+    // [New] Resolved assets state for IDB url support
+    const [resolvedAssets, setResolvedAssets] = useState<{ id: string, name: string, url: string, type: string }[]>([]);
+
+    // AI [NEW] Chat Intent state
+    const [chatIntent, setChatIntent] = useState<'image' | 'prompt'>('image');
+
+    // [New] Masking State
+    const [currentMask, setCurrentMask] = useState<string | null>(null);
+
+    // Clear mask when selected draft changes
+    useEffect(() => {
+        setCurrentMask(null);
+    }, [selectedDraft]);
+
+    // Track if modal was previously open to allow single-shot initialization
+    const wasOpenRef = useRef(false);
+
     // Initialize from initial values
     useEffect(() => {
-        if (isOpen) {
+        if (isOpen && !wasOpenRef.current) {
             setDescription(initialDescription);
             if (initialReferenceImage) {
                 setTaggedReferences([{
@@ -113,44 +132,86 @@ export const AssetGenerationModal: React.FC<AssetGenerationModalProps> = ({
                 setDraftHistory([initialDraftImage]);
                 setSelectedDraft(initialDraftImage);
             }
+            wasOpenRef.current = true;
+        } else if (!isOpen) {
+            wasOpenRef.current = false;
         }
     }, [isOpen, initialDescription, initialReferenceImage, initialDraftImage]);
 
+    // [New] Resolve existing assets URLs
+    useEffect(() => {
+        const resolveIds = async () => {
+            if (!existingAssets || existingAssets.length === 0) {
+                setResolvedAssets([]);
+                return;
+            }
+
+            try {
+                const { resolveUrl } = await import('../utils/imageStorage');
+                // We only need to resolve idb:// urls. Data/Blob urls are fine.
+                const resolved = await Promise.all(existingAssets.map(async (asset) => {
+                    if (asset.url.startsWith('idb://')) {
+                        const blobUrl = await resolveUrl(asset.url);
+                        return { ...asset, url: blobUrl || asset.url };
+                    }
+                    return asset;
+                }));
+                setResolvedAssets(resolved);
+            } catch (err) {
+                console.error("Failed to resolve asset URLs:", err);
+                setResolvedAssets(existingAssets); // Fallback
+            }
+        };
+
+        if (isOpen) {
+            resolveIds();
+        }
+    }, [isOpen, existingAssets]);
+
     // Auto-translate description to Korean (debounced)
     useEffect(() => {
-        if (!description || description.length < 10) {
+        if (!description || description.trim().length < 5) { // Lowered threshold (10 -> 5)
             setKoreanTranslation('');
             return;
         }
 
         const timer = setTimeout(async () => {
-            setIsTranslating(true);
-            try {
-                // Simple translation via Gemini
-                const response = await fetch(
-                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{
-                                parts: [{ text: `Translate this English text to Korean. Only output the Korean translation, nothing else:\n\n${description}` }]
-                            }]
-                        })
-                    }
-                );
-                const data = await response.json();
-                const translation = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-                setKoreanTranslation(translation.trim());
-            } catch (error) {
-                console.error('Translation failed:', error);
-            } finally {
-                setIsTranslating(false);
-            }
-        }, 1500);
+            await performTranslation();
+        }, 800); // Shorter debounce (1500 -> 800)
 
         return () => clearTimeout(timer);
     }, [description, apiKey]);
+
+    // Shared translation logic
+    const performTranslation = async () => {
+        if (!description || description.trim().length < 2) return;
+
+        setIsTranslating(true);
+        try {
+            const response = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [{ text: `Translate this English text to Korean. Only output the Korean translation, nothing else:\n\n${description}` }]
+                        }]
+                    })
+                }
+            );
+            const data = await response.json();
+            const translation = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            if (translation) {
+                setKoreanTranslation(translation.trim());
+            }
+        } catch (error) {
+            console.error('Translation failed:', error);
+            // Don't clear the old one if it failed, just log it
+        } finally {
+            setIsTranslating(false);
+        }
+    };
 
     // Handle reference image upload
     const handleAddReference = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -400,13 +461,32 @@ export const AssetGenerationModal: React.FC<AssetGenerationModalProps> = ({
         setIsChatLoading(true);
 
         try {
-            // Determine mode based on selected draft
-            const isEditMode = !!selectedDraft;
+            // Determine mode. Use explicit chatIntent instead of keyword detection.
+            const isEditMode = chatIntent === 'image';
+
+            const resetKeywords = ['reset', 'restore', 'original', 'initial', 'revert', '초기화', '원래대로', '복원', '처음', '되돌리'];
+            const isResetRequest = resetKeywords.some(kw => chatInput.toLowerCase().includes(kw));
+
+            if (isResetRequest) {
+                handleResetToOriginal();
+                const assistantMessage: ChatMessage = {
+                    id: `msg-${Date.now()}`,
+                    role: 'assistant',
+                    content: '프롬프트를 최초 상태로 복원했습니다.',
+                    timestamp: Date.now()
+                };
+                setChatMessages(prev => [...prev, assistantMessage]);
+                setChatInput('');
+                setIsChatLoading(false);
+                return;
+            }
+
 
             if (isEditMode && selectedDraft) {
-                // IMAGE EDIT MODE - Send image + instruction
+                // IMAGE EDIT MODE - Send image + instruction + references
                 const { editImageWithChat } = await import('../services/imageGen');
-                const result = await editImageWithChat(selectedDraft, chatInput, apiKey);
+                const refImages = taggedReferences.map(r => r.url);
+                const result = await editImageWithChat(selectedDraft, chatInput, apiKey, currentMask, refImages);
 
                 if (result.image) {
                     setDraftHistory(prev => [...prev, result.image!]);
@@ -431,18 +511,36 @@ export const AssetGenerationModal: React.FC<AssetGenerationModalProps> = ({
                         body: JSON.stringify({
                             systemInstruction: {
                                 parts: [{
-                                    text: `You are a visual prompt engineer for AI image generation.
-Help the user refine their English prompt. They may write in Korean.
+                                    text: `You are a visual prompt engineer for AI image generation. 
+Help the user refine, clean up, and deduplicate their English prompt. 
+They may write in Korean.
+
 Current prompt: ${description}
 Asset type: ${assetType}
 Master style: ${masterStyle || 'Not defined'}
+References available: ${taggedReferences.map(r => r.category).join(', ') || 'None'}
 
-When suggesting improvements, format as:
+Your goal:
+1. Remove redundant or overlapping keywords (e.g., if "realistic" and "photorealistic" are both present, keep one).
+2. Organize the prompt logically (Subject -> Details -> Style -> Lighting).
+3. If the user refers to references (e.g., "like the character"), incorporate their names into the prompt naturally.
+
+Output Format:
 SUGGESTED_PROMPT: [your improved English prompt]
-설명: [Korean explanation]`
+설명: [Concise Korean summary of what you cleaned up/changed]`
                                 }]
                             },
-                            contents: [{ parts: [{ text: chatInput }] }]
+                            contents: [{
+                                parts: [
+                                    { text: chatInput },
+                                    ...taggedReferences.map(ref => ({
+                                        inline_data: {
+                                            mime_type: "image/jpeg",
+                                            data: ref.url.split(',')[1] || ""
+                                        }
+                                    }))
+                                ]
+                            }]
                         })
                     }
                 );
@@ -480,7 +578,20 @@ SUGGESTED_PROMPT: [your improved English prompt]
 
     // Apply suggested prompt from chat
     const handleApplyPrompt = (suggestedPrompt: string) => {
-        setDescription(suggestedPrompt);
+        // Clean up markdown code blocks and backticks
+        const cleaned = suggestedPrompt
+            .replace(/```[a-z]*\n?/gi, '')
+            .replace(/```/g, '')
+            .trim();
+        setDescription(cleaned);
+    };
+
+    // Reset prompt to initial default state
+    const handleResetToOriginal = () => {
+        if (confirm('최초의 기본 프롬프트로 복원하시겠습니까?')) {
+            setDescription(initialDescription);
+            setKoreanTranslation(''); // Reset translation too
+        }
     };
 
     // Handle crop
@@ -589,13 +700,13 @@ SUGGESTED_PROMPT: [your improved English prompt]
                                 <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">References</h3>
                                 <div className="flex items-center gap-1">
                                     {/* Pick from existing sources */}
-                                    {(draftHistory.length > 0 || initialReferenceImage) && (
+                                    {(draftHistory.length > 0 || initialReferenceImage || (existingAssets && existingAssets.length > 0)) && (
                                         <button
                                             onClick={() => setShowRefPicker(!showRefPicker)}
-                                            className="p-1 hover:bg-white/10 rounded"
+                                            className={`p-1 rounded ${showRefPicker ? 'bg-white/20 text-white' : 'hover:bg-white/10 text-gray-400'}`}
                                             title="Add from existing images"
                                         >
-                                            <Image size={14} className="text-blue-400" />
+                                            <Image size={14} className={showRefPicker ? "text-white" : "text-blue-400"} />
                                         </button>
                                     )}
                                     {/* Upload new */}
@@ -606,47 +717,90 @@ SUGGESTED_PROMPT: [your improved English prompt]
                                 </div>
                             </div>
 
-                            {/* Reference Picker from Drafts and Initial Reference */}
-                            {showRefPicker && (draftHistory.length > 0 || initialReferenceImage) && (
-                                <div className="mb-3 p-2 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-                                    <p className="text-[10px] text-blue-400 mb-2">Select from available images:</p>
-                                    <div className="grid grid-cols-3 gap-1">
-                                        {/* Show initial reference from Step 2 first */}
-                                        {initialReferenceImage && (
-                                            <button
-                                                onClick={() => {
-                                                    const newRef: TaggedReference = {
-                                                        id: `ref-${Date.now()}`,
-                                                        url: initialReferenceImage,
-                                                        category: 'style'
-                                                    };
-                                                    setTaggedReferences(prev => [...prev, newRef]);
-                                                    setShowRefPicker(false);
-                                                }}
-                                                className="aspect-square rounded overflow-hidden border-2 border-green-400/50 hover:border-green-400 relative"
-                                            >
-                                                <img src={initialReferenceImage} alt="" className="w-full h-full object-cover" />
-                                                <span className="absolute bottom-0 left-0 right-0 bg-green-500/80 text-[8px] text-white text-center py-0.5">Original</span>
-                                            </button>
+                            {/* Reference Picker */}
+                            {showRefPicker && (
+                                <div className="mb-3 p-2 bg-black/40 border border-white/10 rounded-lg">
+                                    {/* Tabs */}
+                                    <div className="flex gap-2 mb-2 border-b border-white/10 pb-1">
+                                        <button
+                                            onClick={() => setPickerTab('drafts')}
+                                            className={`text-[10px] px-2 py-0.5 rounded ${pickerTab === 'drafts' ? 'bg-[var(--color-primary)] text-black font-bold' : 'text-gray-400 hover:text-white'}`}
+                                        >
+                                            Drafts
+                                        </button>
+                                        <button
+                                            onClick={() => setPickerTab('assets')}
+                                            className={`text-[10px] px-2 py-0.5 rounded ${pickerTab === 'assets' ? 'bg-[var(--color-primary)] text-black font-bold' : 'text-gray-400 hover:text-white'}`}
+                                        >
+                                            Assets ({existingAssets?.length || 0})
+                                        </button>
+                                    </div>
+
+                                    <div className="grid grid-cols-3 gap-1 max-h-32 overflow-y-auto">
+                                        {/* DRAFTS TAB */}
+                                        {pickerTab === 'drafts' && (
+                                            <>
+                                                {initialReferenceImage && (
+                                                    <button
+                                                        onClick={() => {
+                                                            const newRef: TaggedReference = { id: `ref-${Date.now()}`, url: initialReferenceImage, category: 'style' };
+                                                            setTaggedReferences(prev => [...prev, newRef]);
+                                                            setShowRefPicker(false);
+                                                        }}
+                                                        className="aspect-square rounded overflow-hidden border-2 border-green-400/50 hover:border-green-400 relative"
+                                                    >
+                                                        <img src={initialReferenceImage} alt="" className="w-full h-full object-cover" />
+                                                        <span className="absolute bottom-0 left-0 right-0 bg-green-500/80 text-[8px] text-white text-center py-0.5">Original</span>
+                                                    </button>
+                                                )}
+                                                {draftHistory.map((url, i) => (
+                                                    <button
+                                                        key={i}
+                                                        onClick={() => {
+                                                            const newRef: TaggedReference = { id: `ref-${Date.now()}`, url: url, category: 'style' };
+                                                            setTaggedReferences(prev => [...prev, newRef]);
+                                                            setShowRefPicker(false);
+                                                        }}
+                                                        className="aspect-square rounded overflow-hidden border border-white/10 hover:border-blue-400"
+                                                    >
+                                                        <img src={url} alt="" className="w-full h-full object-cover" />
+                                                    </button>
+                                                ))}
+                                                {draftHistory.length === 0 && !initialReferenceImage && (
+                                                    <div className="col-span-3 text-[10px] text-gray-500 text-center py-2">No drafts available</div>
+                                                )}
+                                            </>
                                         )}
-                                        {/* Show drafts */}
-                                        {draftHistory.map((url, i) => (
-                                            <button
-                                                key={i}
-                                                onClick={() => {
-                                                    const newRef: TaggedReference = {
-                                                        id: `ref-${Date.now()}`,
-                                                        url: url,
-                                                        category: 'style'
-                                                    };
-                                                    setTaggedReferences(prev => [...prev, newRef]);
-                                                    setShowRefPicker(false);
-                                                }}
-                                                className="aspect-square rounded overflow-hidden border border-white/10 hover:border-blue-400"
-                                            >
-                                                <img src={url} alt="" className="w-full h-full object-cover" />
-                                            </button>
-                                        ))}
+
+                                        {/* ASSETS TAB */}
+                                        {pickerTab === 'assets' && (
+                                            <>
+                                                {resolvedAssets.map((asset) => (
+                                                    <button
+                                                        key={asset.id}
+                                                        onClick={() => {
+                                                            const newRef: TaggedReference = {
+                                                                id: `ref-${Date.now()}`,
+                                                                url: asset.url,
+                                                                category: (asset.type === 'character' ? 'face' : asset.type === 'location' ? 'style' : 'props') as any
+                                                            };
+                                                            setTaggedReferences(prev => [...prev, newRef]);
+                                                            setShowRefPicker(false);
+                                                        }}
+                                                        className="aspect-square rounded overflow-hidden border border-white/10 hover:border-blue-400 relative group"
+                                                        title={asset.name}
+                                                    >
+                                                        <img src={asset.url} alt={asset.name} className="w-full h-full object-cover" />
+                                                        <div className="absolute inset-x-0 bottom-0 bg-black/70 p-0.5 text-[8px] text-white truncate text-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            {asset.name}
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                                {(!resolvedAssets || resolvedAssets.length === 0) && (
+                                                    <div className="col-span-3 text-[10px] text-gray-500 text-center py-2">No other assets found</div>
+                                                )}
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             )}
@@ -679,16 +833,30 @@ SUGGESTED_PROMPT: [your improved English prompt]
                                 )}
                             </div>
 
-                            {/* AI Expander Button */}
+                            {/* AI Expander & Reset Buttons */}
                             {taggedReferences.length > 0 && (
-                                <button
-                                    onClick={handleAIExpand}
-                                    disabled={isExpanding}
-                                    className="w-full mt-2 py-1.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs font-bold rounded flex items-center justify-center gap-1 disabled:opacity-50"
-                                >
-                                    {isExpanding ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                                    {isExpanding ? 'Analyzing...' : 'AI Expand from Reference'}
-                                </button>
+                                <div className="flex gap-2 mt-2">
+                                    <button
+                                        onClick={handleAIExpand}
+                                        disabled={isExpanding}
+                                        className="flex-1 py-1.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold rounded flex items-center justify-center gap-1 disabled:opacity-50"
+                                    >
+                                        {isExpanding ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                                        <span className="text-center leading-tight">
+                                            참조활용<br />AI 프롬프트 강화
+                                        </span>
+                                    </button>
+                                    <button
+                                        onClick={handleResetToOriginal}
+                                        className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-gray-300 text-[10px] font-bold rounded flex items-center justify-center gap-1 transition-colors h-auto min-h-[40px]"
+                                        title="원본 프롬프트로 복원"
+                                    >
+                                        <RotateCcw size={12} />
+                                        <span className="text-center leading-tight">
+                                            원본 프롬프트로<br />되돌리기
+                                        </span>
+                                    </button>
+                                </div>
                             )}
                         </div>
 
@@ -723,17 +891,14 @@ SUGGESTED_PROMPT: [your improved English prompt]
                     <div className="flex-1 flex flex-col">
                         <div className="flex-1 p-6 flex items-center justify-center bg-black/30">
                             {selectedDraft ? (
-                                <div className="relative max-w-full max-h-full">
-                                    <img src={selectedDraft} alt="" className="max-w-full max-h-[50vh] object-contain rounded-lg shadow-xl" />
-                                    {/* Toolbar */}
-                                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 bg-black/60 backdrop-blur-md rounded-full px-4 py-2">
-                                        <button onClick={handleCropSelected} className="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-full" title="Crop">
-                                            <Crop size={18} />
-                                        </button>
-                                        <button onClick={() => setSelectedDraft(null)} className="p-2 text-gray-300 hover:text-white hover:bg-white/10 rounded-full" title="Deselect">
-                                            <RotateCcw size={18} />
-                                        </button>
-                                    </div>
+                                <div className="w-full h-full relative overflow-hidden bg-black/50 rounded-lg">
+                                    <InteractiveImageViewer
+                                        src={selectedDraft}
+                                        onMaskChange={setCurrentMask}
+                                        onCrop={handleCropSelected}
+                                        onClose={() => setSelectedDraft(null)}
+                                        className="absolute inset-0 w-full h-full"
+                                    />
                                 </div>
                             ) : (
                                 <div className="text-center text-gray-600">
@@ -758,6 +923,16 @@ SUGGESTED_PROMPT: [your improved English prompt]
                                         <Tag size={10} />
                                         한글 번역
                                         {isTranslating && <Loader2 size={10} className="animate-spin" />}
+                                        {!isTranslating && (
+                                            <button
+                                                onClick={() => performTranslation()}
+                                                className="ml-auto hover:text-[var(--color-primary)] transition-colors flex items-center gap-1"
+                                                title="번역 새로고침"
+                                            >
+                                                <RotateCcw size={8} />
+                                                Retry
+                                            </button>
+                                        )}
                                     </div>
                                     <p className="text-xs text-gray-400">{koreanTranslation || '번역 중...'}</p>
                                 </div>
@@ -765,95 +940,112 @@ SUGGESTED_PROMPT: [your improved English prompt]
                         </div>
                     </div>
 
-                    {/* Right Panel: AI Chat */}
+                    {/* Right Panel: AI Chat (AI 편집팀장) */}
                     <div className="w-80 border-l border-[var(--color-border)] flex flex-col bg-black/20">
-                        <div className="p-4 border-b border-[var(--color-border)]">
-                            <div className="flex items-center gap-2">
-                                <MessageSquare size={16} className="text-[var(--color-primary)]" />
-                                <h3 className="text-sm font-bold text-white">AI Assistant</h3>
+                        {/* 1. Header & Mode Selection */}
+                        <div className="p-4 border-b border-[var(--color-border)] bg-black/10">
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                    <Sparkles size={16} className="text-[var(--color-primary)]" />
+                                    <h3 className="text-sm font-bold text-white">AI 편집팀장</h3>
+                                </div>
+                                <div className="text-[10px] px-2 py-0.5 bg-white/5 rounded text-gray-400">
+                                    {chatIntent === 'image' ? 'IMAGE EDIT' : 'PROMPT REFINE'}
+                                </div>
                             </div>
-                            <p className="text-[10px] text-gray-500 mt-1">
-                                {selectedDraft ? '이미지 수정 모드 (Edit Mode)' : '프롬프트 도움 모드 (Prompt Mode)'}
-                            </p>
+
+                            {/* Intent Selector (Segmented Toggle) */}
+                            <div className="flex gap-1 p-1 bg-black/40 rounded-lg">
+                                <button
+                                    onClick={() => setChatIntent('image')}
+                                    className={`flex-1 py-1.5 text-[10px] rounded-md transition-all flex items-center justify-center gap-1.5 ${chatIntent === 'image' ? 'bg-[var(--color-primary)] text-black font-bold shadow-lg' : 'text-gray-500 hover:text-white'}`}
+                                >
+                                    <Image size={12} />
+                                    이미지 수정
+                                </button>
+                                <button
+                                    onClick={() => setChatIntent('prompt')}
+                                    className={`flex-1 py-1.5 text-[10px] rounded-md transition-all flex items-center justify-center gap-1.5 ${chatIntent === 'prompt' ? 'bg-[var(--color-primary)] text-black font-bold shadow-lg' : 'text-gray-500 hover:text-white'}`}
+                                >
+                                    <Plus size={12} />
+                                    프롬프트 정제
+                                </button>
+                            </div>
                         </div>
 
-                        {/* Chat Messages */}
-                        <div ref={chatContainerRef} className="flex-1 p-4 overflow-y-auto space-y-3">
+                        {/* 2. Command Input Area (At the Top) */}
+                        <div className="p-4 border-b border-[var(--color-border)] space-y-3 bg-white/5">
+                            <div className="space-y-1">
+                                <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">수정 지시사항</label>
+                                <textarea
+                                    value={chatInput}
+                                    onChange={(e) => setChatInput(e.target.value)}
+                                    placeholder={chatIntent === 'image' ? "예: 더 사실적으로 묘사하도록 수정해줘." : "예: 프롬프트를 간결하게 정리하고 스타일 보강해줘."}
+                                    className="w-full bg-black/30 border border-white/10 rounded-lg p-3 text-sm text-white focus:border-[var(--color-primary)] outline-none resize-none h-24 transition-all"
+                                />
+                            </div>
+                            <button
+                                onClick={handleChatSend}
+                                disabled={isChatLoading || !chatInput.trim()}
+                                className="w-full py-2.5 bg-[var(--color-primary)] text-black font-bold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg hover:brightness-110 active:scale-[0.98] transition-all"
+                            >
+                                {isChatLoading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                                {isChatLoading ? '분석 중...' : '명령 실행'}
+                            </button>
+                        </div>
+
+                        {/* 3. AI Responses (Scrollable History at the Bottom) */}
+                        <div ref={chatContainerRef} className="flex-1 p-4 overflow-y-auto space-y-4 bg-black/5 custom-scrollbar">
+                            <div className="text-[10px] text-gray-600 font-bold uppercase tracking-widest text-center mb-2">실행 결과 히스토리</div>
+
                             {chatMessages.length === 0 && (
-                                <div className="text-center text-gray-600 py-8">
-                                    <MessageSquare size={32} className="mx-auto mb-2 opacity-30" />
-                                    <p className="text-xs mb-3">
-                                        {selectedDraft
-                                            ? '"머리카락 색상 바꿔줘" 같이 수정 요청'
-                                            : '프롬프트 수정 도움 요청'}
-                                    </p>
-                                    {!selectedDraft && (
-                                        <div className="text-[10px] text-gray-500 space-y-1">
-                                            <p>💡 "더 신비롭게 만들어줘"</p>
-                                            <p>💡 "사이버펑크 스타일 추가"</p>
-                                            <p>💡 "한글로 설명하면 영어로 바꿔줘"</p>
-                                        </div>
-                                    )}
-                                    {selectedDraft && (
-                                        <p className="text-[10px] text-gray-500 mt-2">
-                                            ⚡ 이미지 선택 해제 → 프롬프트 수정 모드
-                                        </p>
-                                    )}
+                                <div className="text-center py-10 opacity-30">
+                                    <MessageSquare size={32} className="mx-auto mb-2" />
+                                    <p className="text-[10px]">위에서 명령을 입력하면<br />결과가 여기에 표시됩니다.</p>
                                 </div>
                             )}
+
                             {chatMessages.map(msg => (
-                                <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                    <div className={`max-w-[90%] p-3 rounded-xl text-sm ${msg.role === 'user'
-                                        ? 'bg-[var(--color-primary)] text-black'
-                                        : 'bg-white/10 text-gray-300'
-                                        }`}>
-                                        <p className="whitespace-pre-wrap">{msg.content}</p>
-                                        {msg.image && (
-                                            <img src={msg.image} alt="" className="mt-2 rounded-lg max-w-full" />
-                                        )}
-                                        {/* Apply button for suggested prompts */}
-                                        {msg.role === 'assistant' && msg.content.includes('SUGGESTED_PROMPT:') && (
-                                            <button
-                                                onClick={() => {
-                                                    const match = msg.content.match(/SUGGESTED_PROMPT:\s*(.+?)(?:\n|설명:|$)/s);
-                                                    if (match) handleApplyPrompt(match[1].trim());
-                                                }}
-                                                className="mt-2 px-3 py-1 bg-[var(--color-primary)] text-black text-xs font-bold rounded-lg flex items-center gap-1"
-                                            >
-                                                <Check size={12} /> 적용하기
-                                            </button>
-                                        )}
-                                    </div>
+                                <div key={msg.id} className="space-y-1.5">
+                                    {msg.role === 'user' ? (
+                                        <div className="flex items-center gap-1.5 px-2 py-1 text-[10px] text-gray-500 font-bold bg-white/5 rounded w-fit">
+                                            <Send size={8} />
+                                            명령: {msg.content.length > 50 ? msg.content.substring(0, 50) + '...' : msg.content}
+                                        </div>
+                                    ) : (
+                                        <div className="max-w-[100%] w-full bg-white/5 border border-white/5 p-3 rounded-xl text-[13px] text-gray-300 leading-relaxed shadow-sm mb-4">
+                                            <div className="flex items-center gap-1.5 mb-2 text-[10px] font-bold text-[var(--color-primary)] uppercase">
+                                                <Sparkles size={10} />
+                                                AI Team Leader Result
+                                            </div>
+                                            <p className="whitespace-pre-wrap">{msg.content}</p>
+                                            {msg.image && (
+                                                <img src={msg.image} alt="" className="mt-2 rounded-lg max-w-full border border-white/10" />
+                                            )}
+                                            {/* Apply button for suggested prompts */}
+                                            {msg.role === 'assistant' && msg.content.includes('SUGGESTED_PROMPT:') && (
+                                                <button
+                                                    onClick={() => {
+                                                        const match = msg.content.match(/SUGGESTED_PROMPT:\s*([\s\S]+?)(?=\s*설명:|$)/i);
+                                                        if (match) handleApplyPrompt(match[1].trim());
+                                                    }}
+                                                    className="mt-3 w-full py-2 bg-[var(--color-primary)] text-black text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 hover:brightness-110 transition-all"
+                                                >
+                                                    <Check size={14} /> 최종 프롬프트로 적용하기
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                             {isChatLoading && (
-                                <div className="flex justify-start">
-                                    <div className="bg-white/10 p-3 rounded-xl">
-                                        <Loader2 size={16} className="animate-spin text-[var(--color-primary)]" />
+                                <div className="flex justify-start animate-pulse">
+                                    <div className="bg-white/5 p-4 rounded-xl w-full border border-white/5">
+                                        <div className="h-2 w-20 bg-white/10 rounded mb-2"></div>
+                                        <div className="h-10 w-full bg-white/5 rounded"></div>
                                     </div>
                                 </div>
                             )}
-                        </div>
-
-                        {/* Chat Input */}
-                        <div className="p-4 border-t border-[var(--color-border)]">
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    value={chatInput}
-                                    onChange={(e) => setChatInput(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleChatSend()}
-                                    placeholder={selectedDraft ? "수정 요청..." : "프롬프트 도움 요청..."}
-                                    className="flex-1 bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-[var(--color-primary)] outline-none"
-                                />
-                                <button
-                                    onClick={handleChatSend}
-                                    disabled={isChatLoading || !chatInput.trim()}
-                                    className="p-2 bg-[var(--color-primary)] text-black rounded-lg disabled:opacity-50"
-                                >
-                                    <Send size={18} />
-                                </button>
-                            </div>
                         </div>
                     </div>
                 </div>

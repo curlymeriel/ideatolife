@@ -47,8 +47,8 @@ const AssetThumbnailButton = ({ def, onSelect }: { def: AssetDefinition, onSelec
 
 export const Step2_Style: React.FC = () => {
     const store = useWorkflowStore();
-
     const navigate = useNavigate();
+
     const {
         id: projectId,
         setProjectInfo,
@@ -67,10 +67,9 @@ export const Step2_Style: React.FC = () => {
         episodeName: episodeTitle,
         setMasterStyle,
         aspectRatio,
-        cleanupOrphanedAssets
+        cleanupOrphanedAssets,
+        isHydrated
     } = store;
-
-    console.log('[Step2] Current Aspect Ratio from Store:', aspectRatio);
 
     useEffect(() => {
         cleanupOrphanedAssets();
@@ -124,7 +123,6 @@ export const Step2_Style: React.FC = () => {
 
     const isDefined = (id: string) => {
         const def = safeAssetDefinitions[id];
-        // Requirement: Must have description AND (reference image OR draft image)
         return !!def && !!def.description && (!!def.referenceImage || !!def.draftImage);
     };
 
@@ -225,15 +223,14 @@ export const Step2_Style: React.FC = () => {
             }
         };
         loadAssetData();
-    }, [selectedAssetId, safeAssetDefinitions, safeMasterStyle, safeCharacters, safeEpisodeCharacters, safeSeriesLocations, safeEpisodeLocations, safeSeriesProps, safeEpisodeProps, selectedAssetType]);
+    }, [selectedAssetId, selectedAssetType]);
 
-    const { isHydrated } = useWorkflowStore();
     useEffect(() => {
         if (isHydrated) {
             if (isSeriesComplete) setIsSeriesOpen(false);
             if (isEpisodeComplete) setIsEpisodeOpen(false);
         }
-    }, [isHydrated]);
+    }, [isHydrated, isSeriesComplete, isEpisodeComplete]);
 
     const handleSaveAsset = async () => {
         try {
@@ -771,10 +768,10 @@ export const Step2_Style: React.FC = () => {
                                                 {/* Instructional Text in Korean (No Panel) */}
                                                 {selectedAssetId !== 'master_style' && (
                                                     <div className="mt-2 text-center">
-                                                        <p className="text-xs text-gray-500">
+                                                        <p className="text-sm text-gray-300 font-medium">
                                                             Generation Studio를 사용하여 에셋 이미지를 생성하고 편집하세요.
                                                         </p>
-                                                        <p className="text-[10px] text-gray-600">
+                                                        <p className="text-xs text-gray-400 mt-1">
                                                             현재 프롬프트, 참조 이미지 및 AI 지원 기능은 스튜디오에서 사용할 수 있습니다.
                                                         </p>
                                                     </div>
@@ -876,6 +873,21 @@ export const Step2_Style: React.FC = () => {
                             if (locs) ctx += `\n\n[Existing Locations]\n${locs}`;
                         }
                         return ctx;
+                    })()}
+                    existingAssets={(() => {
+                        const assets: { id: string, name: string, url: string, type: string }[] = [];
+                        if (safeMasterStyle.referenceImage) {
+                            assets.push({ id: 'master_style', name: 'Master Style', url: safeMasterStyle.referenceImage, type: 'style' });
+                        }
+                        Object.values(safeAssetDefinitions).forEach((def: any) => {
+                            if (def.id !== selectedAssetId && isDefined(def.id)) {
+                                const img = def.draftImage || def.referenceImage;
+                                if (img) {
+                                    assets.push({ id: def.id, name: def.name || 'Asset', url: img, type: def.type });
+                                }
+                            }
+                        });
+                        return assets;
                     })()}
                     onSave={(result: GenerationResult) => {
                         // Apply results from modal

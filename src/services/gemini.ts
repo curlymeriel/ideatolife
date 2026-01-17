@@ -871,6 +871,11 @@ Type: ${type}
 Context: ${context}
 Base Description: "${basePrompt}"
 
+**CRITICAL INSTRUCTION:**
+- If the "Base Description" contains specific headers or categories (e.g., [Face], [Costume], [Master Style]), **YOU MUST PRESERVE THESE HEADERS** in your output.
+- Expand the content *under* each header with high-quality visual details.
+- Do NOT merge separate categories into a single paragraph. Keep them distinct.
+
 ${type === 'style' ? `
    - Lighting (e.g., Chiaroscuro, Neon, Soft diffused)
    - Color Palette (e.g., Pastel, Desaturated, High contrast neon)
@@ -904,11 +909,23 @@ Dense futuristic metropolis. Wet pavement reflecting neon lights. Towering Bruta
 Gritty and used. Guns and gadgets show signs of wear, oil stains, and scratched metal.
 
 - Return ONLY the categorized text.` : `
-Requirements:
-- Add sensory details (lighting, texture, atmosphere).
-- Specify artistic style if relevant to the context.
-- Keep it focused and evocative.
-- Return ONLY the enhanced prompt text.
+    REQUIRED STRUCTURE:
+    
+    [Visual Summary]
+    (A concise, 1-2 sentence overview of the subject)
+
+    [Detailed Features]
+    (Deep dive into visual appearance. If the input has categories like [Face], [Body], list them here individually)
+
+    [Atmosphere & Vibe]
+    (Lighting, mood, texture, and artistic rendering style)
+
+    - **IMPORTANT:** If the Base Description provided specific reference categories (e.g. "[Face]: ...", "[Costume]: ..."), you MUST list them as sub-headers under [Detailed Features] or distinct sections. 
+    - Example:
+      [Face]: Detailed description of facial features...
+      [Costume]: Detailed description of clothing...
+    
+    - Return ONLY the enhanced prompt text.
 `}
 `;
 

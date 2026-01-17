@@ -164,32 +164,134 @@ export const generateImage = async (
 export const editImageWithChat = async (
     imageUrl: string,
     instruction: string,
-    apiKey: string
+    apiKey: string,
+    maskImage?: string | null, // [NEW] Optional mask for region-based editing
+    referenceImages?: string[] // [NEW] Optional tagged references
 ): Promise<{ image?: string; explanation: string }> => {
     if (!apiKey) {
         return { explanation: 'API key is required for image editing.' };
     }
 
     try {
-        // Extract base64 data from data URL
+        // Prepare primary image data
         let imageData: string;
         let mimeType: string = 'image/jpeg';
+        let maskData: string | null = null;
+        let maskMimeType: string = 'image/png';
 
+        // Helper for normalization
+        const getNormalizedMime = (mime: string) => {
+            if (mime === 'application/octet-stream' || !mime.startsWith('image/')) {
+                return 'image/jpeg';
+            }
+            return mime;
+        };
+
+        // 1. Process Main Image
         if (imageUrl.startsWith('data:')) {
             const matches = imageUrl.match(/^data:(.+);base64,(.+)$/);
             if (matches && matches.length === 3) {
-                mimeType = matches[1];
+                mimeType = getNormalizedMime(matches[1]);
                 imageData = matches[2];
             } else {
                 throw new Error('Invalid image data URL format');
             }
         } else {
-            // If it's a regular URL, we need to fetch and convert it
             const response = await fetch(imageUrl);
             const blob = await response.blob();
-            const buffer = await blob.arrayBuffer();
-            imageData = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-            mimeType = blob.type || 'image/jpeg';
+            // Safer binary to base64 conversion using FileReader
+            imageData = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const base64 = (reader.result as string).split(',')[1];
+                    resolve(base64);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+            mimeType = getNormalizedMime(blob.type);
+        }
+
+        // 2. Process Mask Image (if provided)
+        if (maskImage && maskImage.startsWith('data:')) {
+            const maskMatches = maskImage.match(/^data:(.+);base64,(.+)$/);
+            if (maskMatches && maskMatches.length === 3) {
+                maskMimeType = maskMatches[1];
+                maskData = maskMatches[2];
+            }
+        }
+
+        // 3. Construct Payload
+        const requestParts: any[] = [];
+
+        // Dynamic Prompt Building
+        let promptText = `# LOCALIZED IMAGE INPAINTING TASK\n`;
+        promptText += `You are an expert image editor. You must modify a specific region of an image while preserving everything else.\n\n`;
+        promptText += `## IMAGE INDEXING\n`;
+        promptText += `- IMAGE_0: THE BASE IMAGE (Original content to be modified)\n`;
+
+        let currentIdx = 1;
+        if (maskData) {
+            promptText += `- IMAGE_${currentIdx}: THE INPAINTING MASK (White = AREA TO MODIFY. Black = AREA TO PRESERVE PIXEL-PERFECTLY)\n`;
+            currentIdx++;
+        }
+
+        const hasRefs = referenceImages && referenceImages.length > 0;
+        if (hasRefs) {
+            promptText += `- IMAGE_${currentIdx} to IMAGE_${currentIdx + (referenceImages?.length || 0) - 1}: REFERENCE IMAGES (Style and content guides for the edit)\n`;
+        }
+
+        promptText += `\n## USER INSTRUCTION\n${instruction}\n`;
+        promptText += `\n## CRITICAL EXECUTION RULES\n`;
+
+        if (maskData) {
+            promptText += `1. **STRICT CONFINEMENT**: You MUST ONLY modify the pixels where IMAGE_1 is WHITE. The modification should occur ONLY within the target box region.\n`;
+            promptText += `2. **PIXEL PRESERVATION**: Every pixel where IMAGE_1 is BLACK MUST be 100% identical to IMAGE_0. DO NOT restyle the character, the face, or the background outside the mask.\n`;
+            promptText += `3. **NATURAL BORDER BLENDING**: You are allowed to blend naturally *only* at the immediate 5-10 pixel boundary between white and black areas (e.g., for fire/smoke effects) to ensure a seamless look.\n`;
+            promptText += `4. **LOCALIZED STYLE**: If the user asks for a 'Manga style', apply it ONLY within the mask. DO NOT convert the whole image to manga.\n`;
+        } else {
+            promptText += `- Apply the user instruction to the entire image IMAGE_0 as appropriate.\n`;
+        }
+
+        if (hasRefs) {
+            promptText += `- Use the REFERENCE IMAGES for visual inspiration ONLY WITHIN the target area.\n`;
+        }
+
+        promptText += `\nOutput the final integrated image.`;
+
+        requestParts.push({ text: promptText });
+
+        // Add Main Image (IMAGE_0)
+        requestParts.push({
+            inlineData: {
+                mimeType: mimeType,
+                data: imageData
+            }
+        });
+
+        // Add Mask Image (IMAGE_1 if it exists)
+        if (maskData) {
+            requestParts.push({
+                inlineData: {
+                    mimeType: maskMimeType,
+                    data: maskData
+                }
+            });
+        }
+
+        // Add Reference Images (IMAGE_2+)
+        if (referenceImages && referenceImages.length > 0) {
+            referenceImages.forEach((ref) => {
+                const matches = ref.match(/^data:(.+);base64,(.+)$/);
+                if (matches && matches.length === 3) {
+                    requestParts.push({
+                        inlineData: {
+                            mimeType: getNormalizedMime(matches[1]),
+                            data: matches[2]
+                        }
+                    });
+                }
+            });
         }
 
         // Use Gemini for image editing
@@ -199,17 +301,7 @@ export const editImageWithChat = async (
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    contents: [{
-                        parts: [
-                            { text: `Edit this image according to the following instruction: ${instruction}. Make the requested changes while keeping other aspects of the image unchanged.` },
-                            {
-                                inlineData: {
-                                    mimeType: mimeType,
-                                    data: imageData
-                                }
-                            }
-                        ]
-                    }],
+                    contents: [{ parts: requestParts }],
                     generationConfig: {
                         responseModalities: ["IMAGE", "TEXT"]
                     }
@@ -239,23 +331,29 @@ export const editImageWithChat = async (
         }
 
         if (!editedImage) {
-            // Fallback: Try with a different model
-            console.warn('[ImageEdit] No image in response, trying fallback model...');
+            // Fallback: Try with the same model but simpler prompt
+            console.warn('[ImageEdit] No image in response, trying simplified fallback...');
             const fallbackResponse = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${apiKey}`,
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         contents: [{
                             parts: [
-                                { text: `Based on this reference image, create a new version with the following modification: ${instruction}` },
+                                { text: `Inpaint the masked area (IMAGE_1) of the image (IMAGE_0) based on this instruction: ${instruction}. Keep the rest identical.` },
                                 {
                                     inlineData: {
                                         mimeType: mimeType,
                                         data: imageData
                                     }
-                                }
+                                },
+                                ...(maskData ? [{
+                                    inlineData: {
+                                        mimeType: maskMimeType,
+                                        data: maskData
+                                    }
+                                }] : [])
                             ]
                         }],
                         generationConfig: {
