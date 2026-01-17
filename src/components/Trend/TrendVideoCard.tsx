@@ -62,8 +62,13 @@ export const TrendVideoCard: React.FC<TrendVideoCardProps> = ({
                     </p>
                 )}
 
-                {/* Channel */}
-                <p className="text-xs text-gray-400 truncate mb-2">{video.channelName}</p>
+                {/* Channel & Date */}
+                <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs text-gray-400 truncate flex-1">{video.channelName}</p>
+                    <p className="text-[10px] text-gray-500 flex-shrink-0">
+                        {new Date(video.publishedAt).toLocaleDateString()}
+                    </p>
+                </div>
 
                 {/* Stats */}
                 <div className="flex items-center gap-3 text-xs text-gray-500">
@@ -153,7 +158,12 @@ export const TrendVideoCardCompact: React.FC<TrendVideoCardProps> = ({
             {/* Info */}
             <div className="flex-1 min-w-0">
                 <h4 className="text-sm text-white truncate">{video.title}</h4>
-                <p className="text-xs text-gray-500 truncate">{video.channelName}</p>
+                <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-gray-500 truncate flex-1">{video.channelName}</p>
+                    <span className="text-[10px] text-gray-600 flex-shrink-0">
+                        {new Date(video.publishedAt).toLocaleDateString()}
+                    </span>
+                </div>
                 <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
                     <span>{formatViewCount(video.viewCount)} views</span>
                     <span className="text-green-400">{calculateEngagementRate(video)}% 참여</span>

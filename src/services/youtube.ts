@@ -78,22 +78,33 @@ export async function searchVideos(
     apiKey: string,
     query: string,
     regionCode: RegionCode,
-    maxResults: number = 25
+    maxResults: number = 25,
+    publishedAfter?: string, // Optional RFC 3339 date
+    order: 'relevance' | 'viewCount' | 'date' | 'rating' = 'relevance',
+    videoDuration: 'any' | 'short' | 'medium' | 'long' = 'any'
 ): Promise<YouTubeTrendVideo[]> {
     const region = REGION_MAP[regionCode];
 
     try {
         // Search for videos
-        const searchResponse = await fetch(
-            `${YOUTUBE_API_BASE}/search?` +
+        let searchUrl = `${YOUTUBE_API_BASE}/search?` +
             `part=snippet&` +
             `type=video&` +
             `q=${encodeURIComponent(query)}&` +
             `regionCode=${region}&` +
-            `order=viewCount&` +
+            `order=${order}&` +
             `maxResults=${maxResults}&` +
-            `key=${apiKey}`
-        );
+            `key=${apiKey}`;
+
+        if (videoDuration !== 'any') {
+            searchUrl += `&videoDuration=${videoDuration}`;
+        }
+
+        if (publishedAfter) {
+            searchUrl += `&publishedAfter=${publishedAfter}`;
+        }
+
+        const searchResponse = await fetch(searchUrl);
 
         if (!searchResponse.ok) {
             const error = await searchResponse.json();
@@ -120,18 +131,25 @@ export async function searchVideos(
 
         const detailsData = await detailsResponse.json();
 
-        return detailsData.items.map((item: any) => ({
-            id: item.id,
-            title: item.snippet.title,
-            channelName: item.snippet.channelTitle,
-            channelId: item.snippet.channelId,
-            thumbnailUrl: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url,
-            viewCount: parseInt(item.statistics.viewCount || '0'),
-            likeCount: parseInt(item.statistics.likeCount || '0'),
-            commentCount: parseInt(item.statistics.commentCount || '0'),
-            publishedAt: item.snippet.publishedAt,
-            duration: item.contentDetails?.duration,
-        }));
+        return detailsData.items.map((item: any) => {
+            const catId = item.snippet.categoryId;
+            const catInfo = YOUTUBE_CATEGORIES[catId as YouTubeCategoryId];
+
+            return {
+                id: item.id,
+                title: item.snippet.title,
+                channelName: item.snippet.channelTitle,
+                channelId: item.snippet.channelId,
+                categoryId: catId,
+                categoryName: catInfo ? `${catInfo.icon} ${catInfo.title}` : `Category ${catId}`,
+                thumbnailUrl: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url,
+                viewCount: parseInt(item.statistics.viewCount || '0'),
+                likeCount: parseInt(item.statistics.likeCount || '0'),
+                commentCount: parseInt(item.statistics.commentCount || '0'),
+                publishedAt: item.snippet.publishedAt,
+                duration: item.contentDetails?.duration,
+            };
+        });
     } catch (error) {
         console.error('[YouTube API] Error searching videos:', error);
         throw error;
@@ -315,11 +333,11 @@ export function extractTopTopics(videos: YouTubeTrendVideo[], topicType: 'hashta
         } else if (topicType === 'topic') {
             // Use official YouTube category (e.g., "Music", "Gaming", "News")
             if (video.categoryName) {
-                keys = [video.categoryName.toLowerCase()];
+                keys = [video.categoryName];
             } else if (video.categoryId) {
-                // Fallback to category ID if name not available
                 const catInfo = YOUTUBE_CATEGORIES[video.categoryId as YouTubeCategoryId];
-                keys = [(catInfo?.title || `Category ${video.categoryId}`).toLowerCase()];
+                const title = catInfo ? `${catInfo.icon} ${catInfo.title}` : `Category ${video.categoryId}`;
+                keys = [title];
             }
         }
 
@@ -407,7 +425,7 @@ export function parseDuration(isoDuration: string | undefined): string {
 export async function fetchVideosByCategory(
     apiKey: string,
     regionCode: RegionCode,
-    categoryId: '10' | '20' | '25' | '44',
+    categoryId: YouTubeCategoryId,
     maxResults: number = 50
 ): Promise<YouTubeTrendVideo[]> {
     const region = REGION_MAP[regionCode];
@@ -460,7 +478,7 @@ export async function fetchVideosByCategory(
                     channelName: item.snippet.channelTitle,
                     channelId: item.snippet.channelId,
                     categoryId: catId,
-                    categoryName: catInfo?.title || `Category ${catId}`,
+                    categoryName: catInfo ? `${catInfo.icon} ${catInfo.title}` : `Category ${catId}`,
                     thumbnailUrl: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url,
                     viewCount: parseInt(item.statistics.viewCount || '0'),
                     likeCount: parseInt(item.statistics.likeCount || '0'),

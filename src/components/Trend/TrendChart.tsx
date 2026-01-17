@@ -23,34 +23,19 @@ interface TrendChartProps {
     topics: YouTubeTrendTopic[];
     onTopicClick: (topic: YouTubeTrendTopic) => void;
     selectedTopicId?: string;
-    onFilterChange?: (filter: 'all' | 'hashtag' | 'category') => void;
 }
 
 type SortMode = 'views' | 'engagement';
-type FilterMode = 'all' | 'hashtag' | 'category';
 
 export const TrendChart: React.FC<TrendChartProps> = ({
     topics,
     onTopicClick,
-    selectedTopicId,
-    onFilterChange
+    selectedTopicId
 }) => {
     const [sortMode, setSortMode] = useState<SortMode>('views');
-    const [filterMode, setFilterMode] = useState<FilterMode>('all');
-
-    // Handle filter change
-    const handleFilterChange = (mode: FilterMode) => {
-        setFilterMode(mode);
-        onFilterChange?.(mode);
-    };
-
-    // Filter topics based on mode
-    const filteredTopics = filterMode === 'all'
-        ? topics
-        : topics.filter(t => t.topicType === filterMode);
 
     // Sort topics based on mode
-    const sortedTopics = [...filteredTopics].sort((a, b) => {
+    const sortedTopics = [...topics].sort((a, b) => {
         if (sortMode === 'views') {
             return b.avgViews - a.avgViews;
         }
@@ -109,44 +94,11 @@ export const TrendChart: React.FC<TrendChartProps> = ({
         return null;
     };
 
-    const hashtagCount = topics.filter(t => t.topicType === 'hashtag').length;
-    const categoryCount = topics.filter(t => t.topicType === 'category').length;
 
     return (
         <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
             {/* Controls */}
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-                {/* Filter: Hashtag vs Category */}
-                <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-500">분류:</span>
-                    <button
-                        onClick={() => handleFilterChange('all')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${filterMode === 'all'
-                                ? 'bg-[var(--color-primary)] text-black'
-                                : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                            }`}
-                    >
-                        📊 전체
-                    </button>
-                    <button
-                        onClick={() => handleFilterChange('hashtag')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${filterMode === 'hashtag'
-                                ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                                : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                            }`}
-                    >
-                        <Hash size={12} /> 해시태그 ({hashtagCount})
-                    </button>
-                    <button
-                        onClick={() => handleFilterChange('category')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${filterMode === 'category'
-                                ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
-                                : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                            }`}
-                    >
-                        <Tag size={12} /> 주제 ({categoryCount})
-                    </button>
-                </div>
+            <div className="flex items-center justify-end mb-4 flex-wrap gap-3">
 
                 {/* Sort */}
                 <div className="flex items-center gap-2">
@@ -154,8 +106,8 @@ export const TrendChart: React.FC<TrendChartProps> = ({
                     <button
                         onClick={() => setSortMode('views')}
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${sortMode === 'views'
-                                ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
-                                : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                            ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
+                            : 'bg-white/5 text-gray-400 hover:bg-white/10'
                             }`}
                     >
                         조회수 ▼
@@ -163,8 +115,8 @@ export const TrendChart: React.FC<TrendChartProps> = ({
                     <button
                         onClick={() => setSortMode('engagement')}
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${sortMode === 'engagement'
-                                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                                : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                            ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                            : 'bg-white/5 text-gray-400 hover:bg-white/10'
                             }`}
                     >
                         참여율 ▼

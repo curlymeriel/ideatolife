@@ -131,6 +131,8 @@ const GEMINI_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/
 const GEMINI_2_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent';
 const GEMINI_1_5_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
 
+import type { StrategicAnalysis, StrategyInsight, YouTubeTrendVideo, ChannelAnalysis, TrendAnalysisInsights } from '../store/types';
+
 // Default instructions (can be overridden by UI)
 export const DEFAULT_SCRIPT_INSTRUCTIONS = `
       **Instructions:**
@@ -666,7 +668,185 @@ ${customInstructions || DEFAULT_SCRIPT_INSTRUCTIONS}
         throw lastError; // Re-throw the last error to be caught by the UI
 
     } catch (error) {
-        console.error('Gemini Script Generation Failed (Fatal):', error);
+        console.error('Gemini Consultation Failed:', error);
+        throw error;
+    }
+};
+
+export const analyzeCompetitorStrategy = async (
+    videos: any[],
+    apiKey: string,
+    queryContext: string
+): Promise<StrategicAnalysis> => {
+    if (!apiKey) {
+        return {
+            targetAudience: "초기 단계의 크리에이터 및 성장을 꿈꾸는 유튜브 시청층",
+            hookPatterns: ["질문으로 시작하기", "결과물 먼저 보여주기", "반전 있는 썸네일"],
+            visualStrategies: ["빠른 컷 전환", "채도 높은 썸네일", "자막 강조"],
+            emotionalTriggers: ["호기심", "성장의 욕구", "공포 마케팅"],
+            competitiveEdges: ["독보적인 기술력", "친근한 설명 방식"],
+            contentGapOpportunities: ["중장년층을 위한 기술 가이드", "실패 사례 분석"]
+        };
+    }
+
+    // Updated StrategicAnalysis interface internally to match or handle old structure
+    // (Note: StrategicAnalysis in types.ts should be updated if possible, 
+    // but for now I'll map the richer data to the existing structure for backward compatibility 
+    // or slightly adjust the prompt to be richer within the strings)
+
+    const prompt = `
+당신은 세계적인 YouTube 성장 컨설턴트이자 데이터 분석가입니다. 
+다음 YouTube 검색/트렌드 데이터를 바탕으로, 단순히 요약하는 수준을 넘어 '실행 가능한 고도의 전략 리포트'를 작성하세요.
+
+사용자 입력 컨텍스트: ${queryContext}
+
+데이터 (동영상 리스트):
+${JSON.stringify(videos.map(v => ({ title: v.title, channel: v.channelName, views: v.viewCount, publishedAt: v.publishedAt })), null, 2)}
+
+분석 가이드라인 (심층 분석):
+1. **Target Audience (Hyper-Niche):** 단순히 '20대 남성'이 아니라, "무엇을 해결하고 싶어하고 무엇을 두려워하는지"에 대한 심리 페르소나를 정의하세요.
+2. **Hook Strategies (The First 3s):** 시각적(Thumbnail), 청각적(Intro music/voice), 텍스트(Title keywords)가 어떻게 결합되어 있는지 분석하세요.
+3. **Retention Tactics:** 영상 중간에 시청자가 나가지 못하게 하는 '정보의 배치'나 '반전' 요소를 찾아내세요.
+4. **Niche Gap (Blue Ocean):** 경쟁자들이 "당연하게 여기고 지나치는 부분"이나 "댓글에서 시청자들이 계속 요구하지만 해결되지 않는 갈증"을 포착하세요.
+
+응답은 JSON 형식으로만 해주세요 (Markdown 블록 없이):
+{
+  "targetAudience": "...",
+  "hookPatterns": ["...", "..."],
+  "visualStrategies": ["...", "..."],
+  "emotionalTriggers": ["...", "..."],
+  "competitiveEdges": ["...", "..."],
+  "contentGapOpportunities": ["...", "..."]
+}
+`;
+
+    try {
+        const response = await axios.post(
+            `${GEMINI_2_5_FLASH_URL}?key=${apiKey}`,
+            {
+                contents: [{ parts: [{ text: prompt }] }]
+            }
+        );
+
+        const text = response.data.candidates[0].content.parts[0].text;
+        const cleanJson = text.replace(/```json\n ?|\n ? ```/g, '').trim();
+        return JSON.parse(cleanJson);
+    } catch (error) {
+        console.error('[Gemini] Strategic Analysis Failed:', error);
+        throw error;
+    }
+};
+
+export const generateStrategyInsight = async (
+    trendSnapshot: any,
+    competitorSnapshot: any,
+    apiKey: string
+): Promise<StrategyInsight> => {
+    if (!apiKey) {
+        // Mock success response
+        return {
+            id: 'mock-strategy',
+            createdAt: Date.now(),
+            executiveSummary: "본 채널은 '실무 중심의 도파민 지식 콘텐츠'를 핵심 전략으로 설정합니다.",
+            keyOpportunities: ["3D 툴 입문자의 급격한 증가", "쉽고 친근한 튜토리얼의 부재"],
+            keyRisks: ["기술 변화 속도가 매우 빠름", "유사 장르의 경쟁 심화"],
+            recommendedPillars: [
+                { pillarName: "도파민 지식", reason: "시청자의 즉각적인 호기심 해결" },
+                { pillarName: "실무 워크플로우", reason: "실질적인 도움을 주는 전문성 확보" }
+            ],
+            recommendedSeries: [
+                {
+                    id: 's1',
+                    title: "1분 만에 끝내는 마스터 클래스",
+                    description: "복잡한 기술을 1분 내외의 강력한 후킹과 함께 전달하는 숏폼 시리즈",
+                    targetPillar: "도파민 지식",
+                    expectedAudience: "바쁜 현대인 및 쇼츠 중독자",
+                    benchmarkVideos: []
+                }
+            ],
+            recommendedEpisodes: [
+                {
+                    id: 'e1',
+                    ideaTitle: "언리얼 엔진으로 5분 만에 시네마틱 만들기",
+                    oneLiner: "누구나 할 수 있는 하이퀄리티 배경 제작법",
+                    angle: "초보자의 눈높이에서 가장 화려한 결과물 도출",
+                    format: "Vertical Shorts",
+                    notes: "배경 음악 선정이 매우 중요함"
+                }
+            ]
+        };
+    }
+
+    const prompt = `
+당신은 최고의 YouTube 콘텐츠 전략가입니다.다음 '시장 데이터'와 '경쟁자 분석 데이터'를 기반으로 채널의 필승 전략을 수립하세요.
+
+1. 시장 데이터(TrendSnapshot):
+    - 컨텍스트: ${trendSnapshot.queryContext}
+    - 키워드: ${trendSnapshot.keywords.join(', ')}
+    - 주요 주제: ${trendSnapshot.description}
+
+    2. 경쟁자 분석 데이터(CompetitorSnapshot):
+    - 타겟 페르소나: ${competitorSnapshot.analysis?.targetAudience}
+    - 후킹 패턴: ${competitorSnapshot.analysis?.hookPatterns?.join(', ')}
+    - 블루오션 기회: ${competitorSnapshot.analysis?.contentGapOpportunities?.join(', ')}
+
+위 데이터를 통합하여 다음 형식의 '전략 인사이트'를 생성하세요(한국어로 응답):
+    - Executive Summary: 전체적인 채널 운영 방향 및 핵심 차별화 전략
+        - Key Opportunities & Risks: 시장 진입 시 활용할 기회와 주의할 리스크
+            - Recommended Pillars: 채널을 지탱할 2 - 3가지 핵심 콘텐츠 기둥(이름 + 선정이유)
+                - Recommended Series: 구체적인 시리즈 기획 1 - 2가지(제목, 설명, 타겟 필러, 예상 시청자)
+                    - Recommended Episodes: 즉시 제작 가능한 에피소드 아이디어 3 - 5가지(제목, 한줄요약, 차별화 포인트(Angle), 포맷)
+
+응답은 JSON 형식으로만 해주세요(Markdown 블록 없이, types.ts의 StrategyInsight 구조와 일치해야 함):
+    {
+        "executiveSummary": "...",
+            "keyOpportunities": ["...", "..."],
+                "keyRisks": ["...", "..."],
+                    "recommendedPillars": [
+                        { "pillarName": "...", "reason": "..." }
+                    ],
+                        "recommendedSeries": [
+                            {
+                                "id": "랜덤ID",
+                                "title": "...",
+                                "description": "...",
+                                "targetPillar": "...",
+                                "expectedAudience": "...",
+                                "benchmarkVideos": []
+                            }
+                        ],
+                            "recommendedEpisodes": [
+                                {
+                                    "id": "랜덤ID",
+                                    "ideaTitle": "...",
+                                    "oneLiner": "...",
+                                    "angle": "...",
+                                    "format": "...",
+                                    "notes": "..."
+                                }
+                            ]
+    }
+    `;
+
+    try {
+        const response = await axios.post(
+            `${GEMINI_2_5_FLASH_URL}?key = ${apiKey} `,
+            {
+                contents: [{ parts: [{ text: prompt }] }]
+            }
+        );
+
+        const text = response.data.candidates[0].content.parts[0].text;
+        const cleanJson = text.replace(/```json\n ?|\n ? ```/g, '').trim();
+        return {
+            ...JSON.parse(cleanJson),
+            id: Math.random().toString(36).substring(2, 9),
+            createdAt: Date.now(),
+            trendSnapshotId: trendSnapshot.id,
+            competitorSnapshotId: competitorSnapshot.id
+        };
+    } catch (error) {
+        console.error('[Gemini] Strategy Generation Failed:', error);
         throw error;
     }
 };
@@ -1204,11 +1384,11 @@ export const consultSupport = async (
     }
 };
 
+
 // =============================================
 // YouTube Trend Analysis Functions (Step 0)
 // =============================================
 
-import type { YouTubeTrendVideo, ChannelAnalysis, TrendAnalysisInsights } from '../store/types';
 
 /**
  * Analyze trending videos and extract insights for storytelling and thumbnails

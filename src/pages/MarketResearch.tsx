@@ -135,6 +135,14 @@ export const MarketResearch: React.FC = () => {
     const [apiLogs, setApiLogs] = useState<string[]>([]);
     const [showApiLogs, setShowApiLogs] = useState(false);
 
+    // Search filter states
+    const [searchMode, setSearchMode] = useState<'trending' | 'search'>('search');
+    const [searchRegion, setSearchRegion] = useState<'Global' | 'KR' | 'US' | 'JP' | 'FR' | 'DE' | 'ES'>('KR');
+    const [trendingCategory, setTrendingCategory] = useState<'mix' | '10' | '20' | '25' | '44'>('mix');
+    const [searchPeriod, setSearchPeriod] = useState<'any' | 'month' | '3months' | 'year'>('any');
+    const [searchOrder, setSearchOrder] = useState<'relevance' | 'viewCount' | 'date'>('relevance');
+    const [searchDuration, setSearchDuration] = useState<'any' | 'short' | 'medium' | 'long'>('any');
+
     // Scroll to bottom on new messages
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -374,13 +382,183 @@ ${AVAILABLE_FUNCTIONS.map(f => `- ${f.name}: ${f.description}`).join('\n')}
 
                 {/* Input */}
                 <div className="p-4 border-t border-[var(--color-border)]">
+                    {/* Mode Selector */}
+                    <div className="mb-4">
+                        <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider block mb-2">조사 방식 선택:</span>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => setSearchMode('trending')}
+                                className={`flex-1 p-3 rounded-lg border-2 transition-all text-left ${searchMode === 'trending'
+                                    ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/10'
+                                    : 'border-white/10 hover:border-white/30'}`}
+                            >
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-lg">🔥</span>
+                                    <span className={`font-bold ${searchMode === 'trending' ? 'text-[var(--color-primary)]' : 'text-white'}`}>실시간 인기</span>
+                                </div>
+                                <p className="text-[10px] text-gray-300">유튜브가 선정한 현재<span className="text-gray-400"> (추정 24~72시간 집계)</span> 가장 핫한 영상</p>
+                            </button>
+                            <button
+                                onClick={() => setSearchMode('search')}
+                                className={`flex-1 p-3 rounded-lg border-2 transition-all text-left ${searchMode === 'search'
+                                    ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/10'
+                                    : 'border-white/10 hover:border-white/30'}`}
+                            >
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-lg">🔍</span>
+                                    <span className={`font-bold ${searchMode === 'search' ? 'text-[var(--color-primary)]' : 'text-white'}`}>키워드 검색</span>
+                                </div>
+                                <p className="text-[10px] text-gray-300">특정 주제로 검색. 모든 필터 적용 가능.</p>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Filter Section */}
+                    <div className="mb-4 p-3 bg-white/5 rounded-lg border border-white/10">
+                        <div className="text-[11px] text-gray-300 font-bold mb-3 flex items-center gap-2">
+                            <span className="text-[var(--color-primary)]">📋</span>
+                            [조사대상필터]
+                            <span className="text-[9px] font-normal text-gray-400">
+                                {searchMode === 'trending'
+                                    ? '실시간 인기 모드: 국가와 카테고리만 적용됩니다.'
+                                    : '키워드 검색 모드: 모든 필터가 적용됩니다.'}
+                            </span>
+                        </div>
+
+                        <div className="space-y-2">
+                            {/* 국가 */}
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-gray-300 font-bold w-16">• 국가:</span>
+                                <div className="flex bg-black/20 rounded-md p-0.5 flex-wrap gap-0.5">
+                                    {[
+                                        { id: 'Global', label: '전세계' },
+                                        { id: 'KR', label: '한국' },
+                                        { id: 'US', label: '미국' },
+                                        { id: 'JP', label: '일본' },
+                                        { id: 'FR', label: '프랑스' },
+                                        { id: 'DE', label: '독일' },
+                                        { id: 'ES', label: '스페인' }
+                                    ].map((r) => (
+                                        <button
+                                            key={r.id}
+                                            onClick={() => setSearchRegion(r.id as any)}
+                                            className={`px-2 py-1 text-[10px] rounded transition-all ${searchRegion === r.id
+                                                ? 'bg-[var(--color-primary)] text-black font-bold'
+                                                : 'text-gray-300 hover:text-white'}`}
+                                        >
+                                            {r.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Trending Mode: 카테고리 */}
+                            {searchMode === 'trending' && (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] text-gray-300 font-bold w-16">• 카테고리:</span>
+                                    <div className="flex bg-black/20 rounded-md p-0.5">
+                                        {[
+                                            { id: 'mix', label: '전체 Mix' },
+                                            { id: '10', label: '🎵 Music' },
+                                            { id: '20', label: '🎮 Gaming' },
+                                            { id: '25', label: '📰 News' },
+                                            { id: '44', label: '🎬 Movies' }
+                                        ].map((c) => (
+                                            <button
+                                                key={c.id}
+                                                onClick={() => setTrendingCategory(c.id as any)}
+                                                className={`px-2 py-1 text-[10px] rounded transition-all ${trendingCategory === c.id
+                                                    ? 'bg-[var(--color-primary)] text-black font-bold'
+                                                    : 'text-gray-300 hover:text-white'}`}
+                                            >
+                                                {c.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Search Mode filters */}
+                            {searchMode === 'search' && (
+                                <>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] text-gray-300 font-bold w-16">• 업로드시점:</span>
+                                        <div className="flex bg-black/20 rounded-md p-0.5">
+                                            {[
+                                                { id: 'any', label: '전체' },
+                                                { id: 'month', label: '최근 1개월' },
+                                                { id: '3months', label: '최근 3개월' },
+                                                { id: 'year', label: '최근 1년' }
+                                            ].map((p) => (
+                                                <button
+                                                    key={p.id}
+                                                    onClick={() => setSearchPeriod(p.id as any)}
+                                                    className={`px-2 py-1 text-[10px] rounded transition-all ${searchPeriod === p.id
+                                                        ? 'bg-[var(--color-primary)] text-black font-bold'
+                                                        : 'text-gray-300 hover:text-white'}`}
+                                                >
+                                                    {p.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] text-gray-300 font-bold w-16">• 선별기준:</span>
+                                        <div className="flex bg-black/20 rounded-md p-0.5">
+                                            {[
+                                                { id: 'relevance', label: '알고리즘 추천' },
+                                                { id: 'viewCount', label: '누적 인기순' },
+                                                { id: 'date', label: '최신 업로드' }
+                                            ].map((o) => (
+                                                <button
+                                                    key={o.id}
+                                                    onClick={() => setSearchOrder(o.id as any)}
+                                                    className={`px-2 py-1 text-[10px] rounded transition-all ${searchOrder === o.id
+                                                        ? 'bg-[var(--color-primary)] text-black font-bold'
+                                                        : 'text-gray-300 hover:text-white'}`}
+                                                >
+                                                    {o.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] text-gray-300 font-bold w-16">• 영상길이:</span>
+                                        <div className="flex bg-black/20 rounded-md p-0.5">
+                                            {[
+                                                { id: 'any', label: '전체' },
+                                                { id: 'short', label: 'Shorts (4분↓)' },
+                                                { id: 'medium', label: '중간 (4~20분)' },
+                                                { id: 'long', label: '장편 (20분↑)' }
+                                            ].map((d) => (
+                                                <button
+                                                    key={d.id}
+                                                    onClick={() => setSearchDuration(d.id as any)}
+                                                    className={`px-2 py-1 text-[10px] rounded transition-all ${searchDuration === d.id
+                                                        ? 'bg-[var(--color-primary)] text-black font-bold'
+                                                        : 'text-gray-300 hover:text-white'}`}
+                                                >
+                                                    {d.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+
                     <div className="flex gap-2">
                         <input
                             type="text"
                             value={inputValue}
                             onChange={(e) => setInputValue(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
-                            placeholder="예: 한국 게이밍 트렌드 분석해줘"
+                            placeholder={searchMode === 'trending'
+                                ? '"분석 시작해줘" 또는 "보여줘"라고 입력하세요'
+                                : '검색할 키워드를 입력하세요 (예: 한국 드라마, 아이폰 리뷰)'}
                             className="flex-1 bg-white/5 border border-[var(--color-border)] rounded-lg px-4 py-2 text-white text-sm focus:outline-none focus:border-[var(--color-primary)]"
                             disabled={isProcessing}
                         />

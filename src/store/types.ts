@@ -138,14 +138,25 @@ export interface YouTubeCategory {
     assignable: boolean;
 }
 
-// YouTube 카테고리 ID 상수 (chart=mostPopular에서 지원되는 카테고리)
-export type YouTubeCategoryId = '10' | '20' | '25' | '44'; // Music, Gaming, News, Movies
+// YouTube 카테고리 ID 상수 (자주 쓰이는 주요 카테고리 확장)
+export type YouTubeCategoryId = '1' | '2' | '10' | '15' | '17' | '19' | '20' | '22' | '23' | '24' | '25' | '26' | '27' | '28' | '44';
 
 export const YOUTUBE_CATEGORIES: Record<YouTubeCategoryId, { title: string; icon: string }> = {
+    '1': { title: 'Film & Animation', icon: '🎬' },
+    '2': { title: 'Autos & Vehicles', icon: '🚗' },
     '10': { title: 'Music', icon: '🎵' },
+    '15': { title: 'Pets & Animals', icon: '🐶' },
+    '17': { title: 'Sports', icon: '⚽' },
+    '19': { title: 'Travel & Events', icon: '✈️' },
     '20': { title: 'Gaming', icon: '🎮' },
-    '25': { title: 'News', icon: '📰' },
-    '44': { title: 'Trailers', icon: '🎬' },
+    '22': { title: 'People & Blogs', icon: '👤' },
+    '23': { title: 'Comedy', icon: '😂' },
+    '24': { title: 'Entertainment', icon: '🎭' },
+    '25': { title: 'News & Politics', icon: '📰' },
+    '26': { title: 'Howto & Style', icon: '💄' },
+    '27': { title: 'Education', icon: '📚' },
+    '28': { title: 'Science & Technology', icon: '🔬' },
+    '44': { title: 'Trailers', icon: '🎞️' },
 };
 
 export interface YouTubeTrendVideo {
@@ -284,8 +295,108 @@ export interface ProjectData {
     trendInsights?: {
         storytelling?: string;   // Step 1 → Step 3 전달용 (후킹멘트, 스토리 전개, 카메라워크)
         thumbnail?: string;      // Step 5 전달용 (썸네일 색감, 텍스트, 구도)
+        target?: string;         // Target audience profile
+        vibe?: string;           // Overall vibe/mood guide
+        references?: string[];    // Benchmark video links
         appliedAt?: number;      // 적용 시간
     };
+}
+
+// ====================
+// Intelligence Layer Entities (Phase 1-3)
+// ====================
+
+export interface TrendSnapshot {
+    id: string;
+    createdAt: number;
+    queryContext: string;
+    keywords: string[];
+    description: string;
+    trendTopics: YouTubeTrendTopic[];
+    rawData?: any;
+}
+
+export interface StrategicAnalysis {
+    targetAudience: string;
+    hookPatterns: string[];
+    visualStrategies: string[];
+    emotionalTriggers: string[];
+    competitiveEdges: string[];
+    contentGapOpportunities: string[];
+}
+
+export interface CompetitorSnapshot {
+    id: string;
+    createdAt: number;
+    trendSnapshotId?: string;
+    focusKeywords: string[];
+    competitorChannels: ChannelAnalysis[];
+    competitorVideos: YouTubeTrendVideo[];
+    summary: string;
+    analysis?: StrategicAnalysis; // NEW: Deep Research results
+}
+
+export interface StrategyInsight {
+    id: string;
+    createdAt: number;
+    executiveSummary: string;
+    keyOpportunities: string[];
+    keyRisks: string[];
+    recommendedPillars: { pillarName: string; reason: string }[];
+    recommendedSeries: {
+        id: string;
+        title: string;
+        description: string;
+        targetPillar: string;
+        expectedAudience: string;
+        benchmarkVideos: string[];
+    }[];
+    recommendedEpisodes: {
+        id: string;
+        ideaTitle: string;
+        oneLiner: string;
+        angle: string;
+        format: string;
+        notes?: string;
+    }[];
+}
+
+export interface IdeaPoolItem {
+    id: string;
+    createdAt: number;
+    title: string;
+    description: string;
+    source: 'Phase3' | 'Manual' | 'AI';
+    sourceId?: string; // e.g., strategyInsightId
+    category?: string; // e.g., pillar name
+    status: 'pending' | 'in_progress' | 'completed';
+    metadata?: {
+        targetAudience?: string;
+        angle?: string;
+        format?: string;
+        notes?: string;
+    };
+}
+
+export interface IdeaItem {
+    id: string;
+    title: string;
+    description: string;
+    status: 'collecting' | 'researching' | 'ready' | 'dropped';
+    strategyInsightId?: string;
+    research?: IdeaResearch;
+    createdAt: number;
+}
+
+export interface IdeaResearch {
+    id: string;
+    ideaId: string;
+    query: string;
+    summary: string;
+    keyInsights: string[];
+    references: { title: string; url: string }[];
+    strategyNotes: string;
+    createdAt: number;
 }
 
 // ====================

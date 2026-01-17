@@ -7,6 +7,7 @@ import { get as idbGet, set as idbSet, del as idbDel, keys as idbKeys } from 'id
 // Import types and slices
 import type { ProjectData, ProjectMetadata } from './types';
 import { createProjectSlice, type ProjectSlice } from './projectSlice';
+import { createIntelligenceSlice, type IntelligenceSlice } from './intelligenceSlice';
 import { createUISlice, type UISlice } from './uiSlice';
 import { saveToIdb, generateAudioKey, generateCutImageKey, generateAssetImageKey } from '../utils/imageStorage';
 
@@ -40,7 +41,7 @@ interface MultiProjectActions {
 }
 
 // Combined Store Type
-type WorkflowStore = ProjectSlice & UISlice & MultiProjectActions;
+type WorkflowStore = ProjectSlice & IntelligenceSlice & UISlice & MultiProjectActions;
 
 // ====================
 // Storage Helpers
@@ -440,6 +441,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
         (set, get) => ({
             // Combine slices
             ...createProjectSlice(set as any, get as any, storeApi as any),
+            ...createIntelligenceSlice(set as any, get as any, storeApi as any),
             ...createUISlice(set as any, get as any, storeApi as any),
 
             // Project metadata
