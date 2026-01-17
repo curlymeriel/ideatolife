@@ -234,27 +234,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         {!isCollapsed && <span>Dashboard</span>}
                     </button>
 
-                    {!isCollapsed && (seriesName || episodeName) && (
-                        <div className="px-4 py-4 border-b border-b-[var(--color-border)] border-t border-t-[var(--color-primary)] bg-[rgba(255,173,117,0.05)]">
-                            <div className="text-xs text-[var(--color-text-muted)] mb-1">Current Project</div>
-                            <div className="text-sm font-semibold text-white truncate">{seriesName || 'Untitled Series'}</div>
-                            <div className="text-xs text-[var(--color-primary)] truncate mb-3">
-                                {episodeName ? `EP.${episodeNumber || 1} ${episodeName}` : 'New Episode'}
-                            </div>
-                            <div className="text-xs text-[var(--color-text-muted)]">
-                                <div className="flex justify-between items-center mb-1">
-                                    <span>Progress</span>
-                                    <span className="text-[var(--color-primary)] font-bold">{progressPercent}%</span>
-                                </div>
-                                <div className="w-full h-1.5 bg-[var(--color-bg)] rounded-full overflow-hidden">
-                                    <div
-                                        className="h-full bg-gradient-to-r from-[var(--color-primary)] to-orange-400 transition-all duration-500"
-                                        style={{ width: `${progressPercent}%` }}
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                    )}
 
                     <nav className="flex-1 overflow-y-auto pb-4 pt-1">
                         {/* Prep Section (Collapsible) */}
@@ -281,10 +260,20 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                         ? 'bg-indigo-500/20 text-indigo-400 font-semibold border-r-2 border-indigo-400'
                                         : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[rgba(255,255,255,0.05)]'
                                         }`}
-                                    title={isCollapsed ? 'Phase 1: Market Research' : undefined}
+                                    title={isCollapsed ? '#1 Phase 1: Market Research' : undefined}
                                 >
-                                    <Search size={16} />
-                                    {!isCollapsed && <span className="flex-1 text-left text-xs text-indigo-300">Phase 1: Market Research</span>}
+                                    {isCollapsed ? (
+                                        <div className="flex flex-col items-center gap-0.5">
+                                            <span className="text-[9px] font-bold">#1</span>
+                                            <Search size={16} />
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <span className={`text-[10px] font-bold min-w-[24px] ${location.pathname === '/research' ? 'text-indigo-400' : 'text-[var(--color-text-muted)]'}`}>#1</span>
+                                            <Search size={16} className="text-indigo-300" />
+                                            <span className="flex-1 text-left text-xs text-indigo-300">Market Research</span>
+                                        </>
+                                    )}
                                 </button>
 
                                 <button
@@ -293,10 +282,20 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                         ? 'bg-indigo-500/20 text-indigo-400 font-semibold border-r-2 border-indigo-400'
                                         : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[rgba(255,255,255,0.05)]'
                                         }`}
-                                    title={isCollapsed ? 'Phase 2: Competitor Analysis' : undefined}
+                                    title={isCollapsed ? '#2 Phase 2: Deep Research' : undefined}
                                 >
-                                    <Users size={16} />
-                                    {!isCollapsed && <span className="flex-1 text-left text-xs text-indigo-300">Phase 2: Deep Research</span>}
+                                    {isCollapsed ? (
+                                        <div className="flex flex-col items-center gap-0.5">
+                                            <span className="text-[9px] font-bold">#2</span>
+                                            <Users size={16} />
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <span className={`text-[10px] font-bold min-w-[24px] ${location.pathname === '/research/competitor' ? 'text-indigo-400' : 'text-[var(--color-text-muted)]'}`}>#2</span>
+                                            <Users size={16} className="text-indigo-300" />
+                                            <span className="flex-1 text-left text-xs text-indigo-300">Deep Research</span>
+                                        </>
+                                    )}
                                 </button>
 
                                 <button
@@ -305,10 +304,20 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                         ? 'bg-indigo-500/20 text-indigo-400 font-semibold border-r-2 border-indigo-400'
                                         : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[rgba(255,255,255,0.05)]'
                                         }`}
-                                    title={isCollapsed ? 'Phase 3: Strategy Formulation' : undefined}
+                                    title={isCollapsed ? '#3 Phase 3: Strategy & Bridge' : undefined}
                                 >
-                                    <TrendingUp size={16} />
-                                    {!isCollapsed && <span className="flex-1 text-left text-xs text-indigo-300">Phase 3: Strategy & Bridge</span>}
+                                    {isCollapsed ? (
+                                        <div className="flex flex-col items-center gap-0.5">
+                                            <span className="text-[9px] font-bold">#3</span>
+                                            <TrendingUp size={16} />
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <span className={`text-[10px] font-bold min-w-[24px] ${location.pathname === '/research/strategy' ? 'text-indigo-400' : 'text-[var(--color-text-muted)]'}`}>#3</span>
+                                            <TrendingUp size={16} className="text-indigo-300" />
+                                            <span className="flex-1 text-left text-xs text-indigo-300">Strategy & Bridge</span>
+                                        </>
+                                    )}
                                 </button>
 
                                 <button
@@ -317,11 +326,43 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                         ? 'bg-indigo-500/20 text-indigo-400 font-semibold border-r-2 border-indigo-400'
                                         : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[rgba(255,255,255,0.05)]'
                                         }`}
-                                    title={isCollapsed ? 'Phase 4: Idea Pool' : undefined}
+                                    title={isCollapsed ? '#4 Phase 4: Idea Pool' : undefined}
                                 >
-                                    <Lightbulb size={16} />
-                                    {!isCollapsed && <span className="flex-1 text-left text-xs text-indigo-300">Phase 4: Idea Pool</span>}
+                                    {isCollapsed ? (
+                                        <div className="flex flex-col items-center gap-0.5">
+                                            <span className="text-[9px] font-bold">#4</span>
+                                            <Lightbulb size={16} />
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <span className={`text-[10px] font-bold min-w-[24px] ${location.pathname === '/research/ideas' ? 'text-indigo-400' : 'text-[var(--color-text-muted)]'}`}>#4</span>
+                                            <Lightbulb size={16} className="text-indigo-300" />
+                                            <span className="flex-1 text-left text-xs text-indigo-300">Idea Pool</span>
+                                        </>
+                                    )}
                                 </button>
+                            </div>
+                        )}
+
+                        {!isCollapsed && (seriesName || episodeName) && (
+                            <div className="px-4 py-4 border-b border-b-[var(--color-border)] border-t border-t-[var(--color-primary)] bg-[rgba(255,173,117,0.05)] mt-4">
+                                <div className="text-xs text-[var(--color-text-muted)] mb-1">Current Project</div>
+                                <div className="text-sm font-semibold text-white truncate">{seriesName || 'Untitled Series'}</div>
+                                <div className="text-xs text-[var(--color-primary)] truncate mb-3">
+                                    {episodeName ? `EP.${episodeNumber || 1} ${episodeName}` : 'New Episode'}
+                                </div>
+                                <div className="text-xs text-[var(--color-text-muted)]">
+                                    <div className="flex justify-between items-center mb-1">
+                                        <span>Progress</span>
+                                        <span className="text-[var(--color-primary)] font-bold">{progressPercent}%</span>
+                                    </div>
+                                    <div className="w-full h-1.5 bg-[var(--color-bg)] rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full bg-gradient-to-r from-[var(--color-primary)] to-orange-400 transition-all duration-500"
+                                            style={{ width: `${progressPercent}%` }}
+                                        />
+                                    </div>
+                                </div>
                             </div>
                         )}
 
@@ -451,7 +492,18 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         <div className="flex items-center gap-3">
                             {isMobile && <Box size={20} className="text-[var(--color-primary)]" />}
                             <div className="text-sm text-[var(--color-text-muted)]">
-                                {isDashboard ? 'Overview' : `Step ${displayStep} of 6`}
+                                {isDashboard ? (
+                                    'Overview'
+                                ) : location.pathname.startsWith('/research') ? (
+                                    location.pathname === '/research' ? 'Phase 1 : Market Research' :
+                                        location.pathname === '/research/competitor' ? 'Phase 2 : Deep Research' :
+                                            location.pathname === '/research/strategy' ? 'Phase 3 : Strategy & Bridge' :
+                                                'Phase 4 : Idea Pool'
+                                ) : currentStepObj ? (
+                                    `Step ${currentStepObj.id} : ${currentStepObj.name}`
+                                ) : (
+                                    `Step ${displayStep} of 6`
+                                )}
                             </div>
                         </div>
                         {!isMobile && (
