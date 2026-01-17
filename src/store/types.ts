@@ -142,21 +142,21 @@ export interface YouTubeCategory {
 export type YouTubeCategoryId = '1' | '2' | '10' | '15' | '17' | '19' | '20' | '22' | '23' | '24' | '25' | '26' | '27' | '28' | '44';
 
 export const YOUTUBE_CATEGORIES: Record<YouTubeCategoryId, { title: string; icon: string }> = {
-    '1': { title: 'Film & Animation', icon: '🎬' },
-    '2': { title: 'Autos & Vehicles', icon: '🚗' },
-    '10': { title: 'Music', icon: '🎵' },
-    '15': { title: 'Pets & Animals', icon: '🐶' },
-    '17': { title: 'Sports', icon: '⚽' },
-    '19': { title: 'Travel & Events', icon: '✈️' },
-    '20': { title: 'Gaming', icon: '🎮' },
-    '22': { title: 'People & Blogs', icon: '👤' },
-    '23': { title: 'Comedy', icon: '😂' },
-    '24': { title: 'Entertainment', icon: '🎭' },
-    '25': { title: 'News & Politics', icon: '📰' },
-    '26': { title: 'Howto & Style', icon: '💄' },
-    '27': { title: 'Education', icon: '📚' },
-    '28': { title: 'Science & Technology', icon: '🔬' },
-    '44': { title: 'Trailers', icon: '🎞️' },
+    '1': { title: '영화/애니', icon: '🎬' },
+    '2': { title: '자동차', icon: '🚗' },
+    '10': { title: '음악', icon: '🎵' },
+    '15': { title: '동물', icon: '🐶' },
+    '17': { title: '스포츠', icon: '⚽' },
+    '19': { title: '여행/이벤트', icon: '✈️' },
+    '20': { title: '게임', icon: '🎮' },
+    '22': { title: '블로그/인물', icon: '👤' },
+    '23': { title: '코미디', icon: '😂' },
+    '24': { title: '엔터테인먼트', icon: '🎭' },
+    '25': { title: '뉴스/정치', icon: '📰' },
+    '26': { title: '노하우/스타일', icon: '💄' },
+    '27': { title: '교육', icon: '📚' },
+    '28': { title: '과학/기술', icon: '🔬' },
+    '44': { title: '예고편', icon: '🎞️' },
 };
 
 export interface YouTubeTrendVideo {
@@ -339,6 +339,8 @@ export interface CompetitorSnapshot {
 export interface StrategyInsight {
     id: string;
     createdAt: number;
+    trendSnapshotId?: string;
+    competitorSnapshotId?: string;
     executiveSummary: string;
     keyOpportunities: string[];
     keyRisks: string[];

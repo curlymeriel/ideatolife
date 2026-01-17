@@ -4,12 +4,10 @@ import { useWorkflowStore } from '../store/workflowStore';
 import {
     Lightbulb,
     Trash2,
-    Rocket,
     Clock,
     Search,
     Filter,
     Plus,
-    ChevronRight,
     CheckCircle2,
     LayoutGrid,
     Target
@@ -18,9 +16,11 @@ import type { IdeaPoolItem } from '../store/types';
 
 export const IdeaPool: React.FC = () => {
     const navigate = useNavigate();
-    const { ideaPool, setProjectInfo, setScript } = useWorkflowStore();
+    const { ideaPool, setProjectInfo, setScript, saveProject } = useWorkflowStore();
     const [searchQuery, setSearchQuery] = useState('');
     const [filterSource, setFilterSource] = useState<string>('all');
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [newIdea, setNewIdea] = useState({ title: '', description: '', category: '' });
 
     const filteredIdeas = ideaPool.filter(idea => {
         const matchesSearch = idea.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -29,12 +29,46 @@ export const IdeaPool: React.FC = () => {
         return matchesSearch && matchesSource;
     });
 
+    const handleAddIdea = () => {
+        if (!newIdea.title || !newIdea.description) return;
+
+        useWorkflowStore.getState().addIdeaToPool({
+            id: Math.random().toString(36).substring(2, 9),
+            createdAt: Date.now(),
+            title: newIdea.title,
+            description: newIdea.description,
+            source: 'Manual',
+            category: newIdea.category || 'Idea',
+            status: 'pending'
+        });
+
+        setNewIdea({ title: '', description: '', category: '' });
+        setIsAddModalOpen(false);
+    };
+
+    const handleStartResearch = (idea: IdeaPoolItem) => {
+        // Workflow Bridge: Go back to Phase 1 Market Research with this idea
+        navigate(`/research?query=${encodeURIComponent(idea.title)}`);
+    };
+
     const handlePromote = (idea: IdeaPoolItem) => {
+        // Workflow Bridge: Transfer strategic data to actual project state
+        // ALWAYS create a NEW project for a new production line
+        const newProjectId = `project-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        const currentApiKeys = useWorkflowStore.getState().apiKeys;
+
+        const { resetToDefault } = useWorkflowStore.getState();
+        resetToDefault();
+
         setProjectInfo({
+            id: newProjectId,
+            apiKeys: currentApiKeys,
             seriesName: idea.title,
             seriesStory: idea.description,
             episodeName: 'New Episode',
             episodePlot: '',
+            lastModified: Date.now(),
+            currentStep: 1,
             trendInsights: {
                 target: idea.metadata?.targetAudience || '',
                 vibe: idea.metadata?.angle || '',
@@ -44,6 +78,7 @@ export const IdeaPool: React.FC = () => {
             }
         });
         setScript([]);
+        saveProject(); // Ensure it's on disk
         navigate('/step/1');
     };
 
@@ -57,11 +92,14 @@ export const IdeaPool: React.FC = () => {
                         아이디어 풀 (Idea Pool)
                     </h1>
                     <p className="text-[var(--color-text-secondary)] mt-1">
-                        전략적으로 도출된 아이디어를 보관하고 프로젝트로 즉시 전환하세요.
+                        발굴한 아이디어를 보관하고 검증하거나 프로젝트로 전환하세요.
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <button className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--color-primary)] text-white hover:opacity-90 transition-all font-medium">
+                    <button
+                        onClick={() => setIsAddModalOpen(true)}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--color-primary)] text-white hover:opacity-90 transition-all font-medium"
+                    >
                         <Plus size={20} />
                         직접 추가
                     </button>
@@ -109,9 +147,18 @@ export const IdeaPool: React.FC = () => {
                                         <Target size={12} />
                                         {idea.category || 'Idea'}
                                     </div>
-                                    <button className="p-2 text-[var(--color-text-secondary)] hover:text-red-500 hover:bg-red-50 transition-all rounded-lg">
-                                        <Trash2 size={18} />
-                                    </button>
+                                    <div className="flex items-center gap-1">
+                                        <button
+                                            onClick={() => handleStartResearch(idea)}
+                                            className="p-2 text-indigo-400 hover:bg-indigo-500/10 transition-all rounded-lg"
+                                            title="시장조사/검증 시작"
+                                        >
+                                            <Search size={18} />
+                                        </button>
+                                        <button className="p-2 text-[var(--color-text-secondary)] hover:text-red-500 hover:bg-red-50 transition-all rounded-lg">
+                                            <Trash2 size={18} />
+                                        </button>
+                                    </div>
                                 </div>
 
                                 <div>
@@ -136,14 +183,20 @@ export const IdeaPool: React.FC = () => {
                                     )}
                                 </div>
 
-                                <button
-                                    onClick={() => handlePromote(idea)}
-                                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[var(--color-primary)]/5 text-[var(--color-primary)] font-bold hover:bg-[var(--color-primary)] hover:text-white transition-all group/btn"
-                                >
-                                    <Rocket size={18} className="group-hover/btn:animate-bounce" />
-                                    제작 시작
-                                    <ChevronRight size={18} className="ml-auto opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all" />
-                                </button>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button
+                                        onClick={() => handleStartResearch(idea)}
+                                        className="flex items-center justify-center gap-2 py-3 rounded-xl bg-indigo-500/10 text-indigo-400 font-bold hover:bg-indigo-500 hover:text-white transition-all text-sm"
+                                    >
+                                        검증/분석
+                                    </button>
+                                    <button
+                                        onClick={() => handlePromote(idea)}
+                                        className="flex items-center justify-center gap-2 py-3 rounded-xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-bold hover:bg-[var(--color-primary)] hover:text-white transition-all text-sm"
+                                    >
+                                        제작 시작
+                                    </button>
+                                </div>
                             </div>
 
                             {idea.status === 'completed' && (
@@ -163,6 +216,66 @@ export const IdeaPool: React.FC = () => {
                     <p className="text-[var(--color-text-secondary)] mt-2">
                         Phase 3 전략에서 아이디어를 저장하거나 직접 추가해보세요.
                     </p>
+                </div>
+            )}
+
+            {/* Add Idea Modal */}
+            {isAddModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsAddModalOpen(false)} />
+                    <div className="relative bg-[var(--color-surface)] w-full max-w-lg rounded-3xl border border-[var(--color-border)] shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="p-8 space-y-6">
+                            <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                                <Plus className="text-[var(--color-primary)]" />
+                                새로운 아이디어 추가
+                            </h2>
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-gray-400">제목</label>
+                                    <input
+                                        type="text"
+                                        className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[var(--color-primary)] transition-all"
+                                        placeholder="아이디어의 핵심 제목을 입력하세요"
+                                        value={newIdea.title}
+                                        onChange={e => setNewIdea({ ...newIdea, title: e.target.value })}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-gray-400">내용/설명</label>
+                                    <textarea
+                                        className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[var(--color-primary)] transition-all min-h-[120px]"
+                                        placeholder="어떤 스토리인가요? 핵심 내용을 설명해주세요"
+                                        value={newIdea.description}
+                                        onChange={e => setNewIdea({ ...newIdea, description: e.target.value })}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-gray-400">카테고리 (선택)</label>
+                                    <input
+                                        type="text"
+                                        className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[var(--color-primary)] transition-all"
+                                        placeholder="예: 브이로그, 정보공유, 미스터리 등"
+                                        value={newIdea.category}
+                                        onChange={e => setNewIdea({ ...newIdea, category: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex gap-4 pt-4">
+                                <button
+                                    className="flex-1 py-4 rounded-2xl bg-white/5 text-gray-400 font-bold hover:bg-white/10 transition-all"
+                                    onClick={() => setIsAddModalOpen(false)}
+                                >
+                                    취소
+                                </button>
+                                <button
+                                    className="flex-1 py-4 rounded-2xl bg-[var(--color-primary)] text-black font-bold hover:opacity-90 transition-all shadow-lg shadow-[var(--color-primary)]/20"
+                                    onClick={handleAddIdea}
+                                >
+                                    아이디어 저장
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

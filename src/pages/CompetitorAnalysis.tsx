@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useWorkflowStore } from '../store/workflowStore';
 import {
     Users,
@@ -26,6 +26,7 @@ export const CompetitorAnalysis: React.FC = () => {
     const navigate = useNavigate();
     const {
         trendSnapshots,
+        competitorSnapshots,
         apiKeys,
         saveCompetitorSnapshot
     } = useWorkflowStore();
@@ -43,6 +44,22 @@ export const CompetitorAnalysis: React.FC = () => {
         setAnalysisResult(null);
         setSaveStatus('idle');
     };
+
+    // Restore state from URL
+    const [searchParams] = useSearchParams();
+    React.useEffect(() => {
+        const snapshotId = searchParams.get('snapshotId');
+        if (snapshotId && trendSnapshots[snapshotId]) {
+            setSelectedSnapshot(trendSnapshots[snapshotId]);
+
+            // Check if analysis already exists and restore it
+            const existingComp = Object.values(competitorSnapshots).find(c => c.trendSnapshotId === snapshotId);
+            if (existingComp && existingComp.analysis) {
+                setAnalysisResult(existingComp.analysis);
+                setSaveStatus('saved');
+            }
+        }
+    }, [searchParams, trendSnapshots, competitorSnapshots]);
 
     const handleDeepDive = async () => {
         if (!selectedSnapshot || !geminiApiKey) return;
@@ -66,6 +83,18 @@ export const CompetitorAnalysis: React.FC = () => {
         }
     };
 
+    const handleProceedToPhase3 = () => {
+        if (!selectedSnapshot || !analysisResult) return;
+
+        // If not saved yet, save it first
+        if (saveStatus !== 'saved') {
+            handleSaveAnalysis();
+        }
+
+        // Navigate immediately with snapshot context
+        navigate(`/research/strategy?snapshotId=${selectedSnapshot.id}`);
+    };
+
     const handleSaveAnalysis = () => {
         if (!selectedSnapshot || !analysisResult) return;
 
@@ -84,10 +113,6 @@ export const CompetitorAnalysis: React.FC = () => {
         });
 
         setSaveStatus('saved');
-        setTimeout(() => {
-            // Option to move to Phase 3
-            // navigate('/research/strategy');
-        }, 1500);
     };
 
     const renderSnapshotList = () => (
@@ -317,7 +342,7 @@ export const CompetitorAnalysis: React.FC = () => {
                         시장 조사
                     </button>
                     <button
-                        onClick={() => navigate('/research/strategy')}
+                        onClick={handleProceedToPhase3}
                         disabled={!analysisResult}
                         className="px-5 py-2 bg-white/10 text-white font-bold rounded-lg hover:bg-[var(--color-primary)] hover:text-black disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2 text-sm transition-all"
                     >
@@ -339,7 +364,7 @@ export const CompetitorAnalysis: React.FC = () => {
             {/* Banner info */}
             <div className="px-6 py-2 bg-indigo-500/10 border-t border-indigo-500/20 flex items-center justify-between text-[10px]">
                 <div className="flex items-center gap-4 text-indigo-400">
-                    <span className="flex items-center gap-1"><BrainCircuit size={12} /> Gemini 2.5 Flash 기반 분석</span>
+                    <span className="flex items-center gap-1"><BrainCircuit size={12} /> Gemini 3.0 Pro 기반 분석</span>
                     <span className="flex items-center gap-1"><Target size={12} /> 시청자 페르소나 및 훅 추출</span>
                 </div>
                 {geminiApiKey ? (

@@ -69,6 +69,13 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         }
     }, [isTablet]);
 
+    // Auto-expand Prep Phases menu when in research section
+    useEffect(() => {
+        if (location.pathname.startsWith('/research')) {
+            setIsPrepOpen(true);
+        }
+    }, [location.pathname]);
+
     const [showGuide, setShowGuide] = useState(false);
     const [showSupport, setShowSupport] = useState(false);
     const [showRescue, setShowRescue] = useState(false);

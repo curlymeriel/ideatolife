@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useWorkflowStore } from '../store/workflowStore';
 import {
     LayoutGrid,
@@ -16,21 +16,30 @@ import {
     Plus,
     Save,
     Sparkles,
-    BookmarkPlus
+    BookmarkPlus,
+    BrainCircuit,
+    ShieldCheck,
+    ChevronRight,
 } from 'lucide-react';
 import { generateStrategyInsight } from '../services/gemini';
 import type { CompetitorSnapshot, StrategyInsight } from '../store/types';
 
 export const StrategyFormulation: React.FC = () => {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const snapshotId = searchParams.get('snapshotId');
+
     const {
         trendSnapshots,
         competitorSnapshots,
+        strategyInsights,
+        ideaPool,
         apiKeys,
         saveStrategyInsight,
         addIdeaToPool,
         setProjectInfo,
-        setScript
+        setScript,
+        isHydrated
     } = useWorkflowStore();
 
     const geminiApiKey = apiKeys?.gemini || '';
@@ -43,10 +52,42 @@ export const StrategyFormulation: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'summary' | 'pillars' | 'series' | 'episodes'>('summary');
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
+    // Restoration and URL Selection Effect
+    React.useEffect(() => {
+        if (!isHydrated) return;
+
+        // 1. Auto-selection from URL
+        if (snapshotId && (!selectedCompetitor || selectedCompetitor.id !== snapshotId)) {
+            const found = competitorSnapshots[snapshotId];
+            if (found) {
+                console.log(`[Strategy] Auto-selecting competitor from URL: ${snapshotId}`);
+                setSelectedCompetitor(found);
+            }
+        }
+
+        // 2. Data Restoration
+        if (selectedCompetitor) {
+            // Check if we already have a strategy for this competitor
+            const existing = Object.values(strategyInsights).find(
+                s => s.competitorSnapshotId === selectedCompetitor.id
+            );
+            if (existing) {
+                console.log(`[Strategy] Restoring existing strategy insight: ${existing.id}`);
+                setStrategyResult(existing);
+                setSaveStatus('saved');
+            } else {
+                // IMPORTANT: Only clear if it's NOT currently generating
+                // This prevented the "disappearing during generation" bug in Phase 2
+                if (!isGenerating) {
+                    setStrategyResult(null);
+                    setSaveStatus('idle');
+                }
+            }
+        }
+    }, [isHydrated, snapshotId, selectedCompetitor, strategyInsights, isGenerating]);
+
     const handleSelectCompetitor = (comp: CompetitorSnapshot) => {
         setSelectedCompetitor(comp);
-        setStrategyResult(null);
-        setSaveStatus('idle');
     };
 
     const handleSaveToPool = (episode: any, series: any) => {
@@ -67,6 +108,45 @@ export const StrategyFormulation: React.FC = () => {
             }
         });
         // Could add a toast or success state here
+    };
+
+    const handleSaveAllToPool = () => {
+        if (!strategyResult) return;
+
+        let count = 0;
+        strategyResult.recommendedEpisodes.forEach(episode => {
+            // Check if already in pool to avoid duplicates
+            const exists = ideaPool.some(item =>
+                item.title === episode.ideaTitle &&
+                item.sourceId === strategyResult.id
+            );
+
+            if (!exists) {
+                addIdeaToPool({
+                    id: Math.random().toString(36).substring(2, 9),
+                    createdAt: Date.now(),
+                    title: episode.ideaTitle,
+                    description: episode.oneLiner,
+                    source: 'Phase3',
+                    sourceId: strategyResult.id,
+                    category: strategyResult.recommendedSeries[0]?.title || 'Strategy',
+                    status: 'pending',
+                    metadata: {
+                        targetAudience: strategyResult.recommendedSeries[0]?.expectedAudience || '',
+                        angle: episode.angle,
+                        format: episode.format,
+                        notes: episode.notes
+                    }
+                });
+                count++;
+            }
+        });
+
+        if (count > 0) {
+            alert(`${count}개의 아이디어가 아이디어 풀에 저장되었습니다.`);
+        } else {
+            alert('이미 모든 아이디어가 저장되어 있습니다.');
+        }
     };
 
     const handleGenerateStrategy = async () => {
@@ -99,13 +179,35 @@ export const StrategyFormulation: React.FC = () => {
         setSaveStatus('saved');
     };
 
-    const handlePromoteToProject = (series: any, episode?: any) => {
-        // Workflow Bridge: Transfer strategic data to actual project state
+    const handlePromoteToProject = async (series: any, episode?: any) => {
+        // 1. Auto-save strategy if not yet saved (important for the Bridge)
+        if (saveStatus !== 'saved' && strategyResult) {
+            saveStrategyInsight(strategyResult);
+        }
+
+        // 2. Workflow Bridge: ALWAYS create a NEW project for a new series/episode promotion
+        // This prevents overwriting the currently active project
+        const newProjectId = `project-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+        console.log(`[Strategy] Promoting to NEW project: ${series.title}. New ID: ${newProjectId}`);
+
+        // Get current API keys to preserve them
+        const currentApiKeys = useWorkflowStore.getState().apiKeys;
+
+        // Reset to default but with a NEW ID and existing API keys
+        const { resetToDefault } = useWorkflowStore.getState();
+        resetToDefault(); // This resets most state to empty/defaults
+
+        // Now set the new ID and strategy info
         setProjectInfo({
+            id: newProjectId,
+            apiKeys: currentApiKeys, // Restore keys
             seriesName: series.title,
             seriesStory: series.description,
             episodeName: episode?.ideaTitle || 'New Episode',
             episodePlot: episode?.oneLiner || '',
+            lastModified: Date.now(),
+            currentStep: 1,
             trendInsights: {
                 target: series.expectedAudience,
                 vibe: episode?.angle || '',
@@ -115,8 +217,12 @@ export const StrategyFormulation: React.FC = () => {
             }
         });
 
-        // Initialize script with a placeholder or empty
+        // Initialize script
         setScript([]);
+
+        // Force a save to disk immediately so Step 1 can load it reliably
+        const { saveProject } = useWorkflowStore.getState();
+        await saveProject();
 
         // Navigate to Step 1 for refinement
         navigate('/step/1');
@@ -356,6 +462,38 @@ export const StrategyFormulation: React.FC = () => {
                             ))}
                         </div>
                     )}
+
+                    {/* Action Bridge Section */}
+                    {strategyResult && (
+                        <div className="mt-12 pt-8 border-t border-white/10 flex flex-col md:flex-row items-center justify-between gap-6 bg-indigo-500/5 p-8 rounded-3xl">
+                            <div className="flex-1">
+                                <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+                                    <Lightbulb className="text-yellow-400" />
+                                    전략 실행 포인트 (Execution Point)
+                                </h3>
+                                <p className="text-gray-400 text-sm">
+                                    도출된 전략적 방향성을 기반으로 실제 콘텐츠 제작을 위한 아이디어 풀을 구축하세요.<br />
+                                    모든 추천 에피소드를 저장하고 관리할 수 있습니다.
+                                </p>
+                            </div>
+                            <div className="flex flex-wrap gap-3">
+                                <button
+                                    onClick={handleSaveAllToPool}
+                                    className="px-6 py-3 bg-white/10 text-white font-bold rounded-xl hover:bg-white/20 transition-all flex items-center gap-2"
+                                >
+                                    <BookmarkPlus size={20} />
+                                    전체 아이디어 담기
+                                </button>
+                                <button
+                                    onClick={() => navigate('/research/ideas')}
+                                    className="px-6 py-3 bg-[var(--color-primary)] text-black font-bold rounded-xl hover:opacity-90 transition-all flex items-center gap-2 shadow-lg shadow-[var(--color-primary)]/20"
+                                >
+                                    아이디어 풀 (Phase 4) 이동
+                                    <ChevronRight size={20} />
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         );
@@ -375,7 +513,10 @@ export const StrategyFormulation: React.FC = () => {
                 </div>
                 <div className="flex gap-3">
                     <button
-                        onClick={() => navigate('/research/competitor')}
+                        onClick={() => navigate(selectedCompetitor?.trendSnapshotId
+                            ? `/research/competitor?snapshotId=${selectedCompetitor.trendSnapshotId}`
+                            : '/research/competitor'
+                        )}
                         className="px-4 py-2 bg-white/5 text-gray-400 rounded-lg hover:bg-white/10 flex items-center gap-2 text-sm"
                     >
                         <ArrowLeft size={16} />
@@ -396,6 +537,19 @@ export const StrategyFormulation: React.FC = () => {
                     {renderSelectionArea()}
                     {renderStrategyDashboard()}
                 </div>
+            </div>
+
+            {/* Banner info */}
+            <div className="px-6 py-2 bg-indigo-500/10 border-t border-indigo-500/20 flex items-center justify-between text-[10px]">
+                <div className="flex items-center gap-4 text-indigo-400">
+                    <span className="flex items-center gap-1"><BrainCircuit size={12} /> Gemini 3.0 Pro 기반 전략 수립</span>
+                    <span className="flex items-center gap-1"><Target size={12} /> Content Pillars & Series Planning</span>
+                </div>
+                {geminiApiKey ? (
+                    <span className="text-green-500 flex items-center gap-1"><ShieldCheck size={12} /> Deep Research Engine Connected</span>
+                ) : (
+                    <span className="text-orange-500 flex items-center gap-1"><Zap size={12} /> API Key required for AI Consulting</span>
+                )}
             </div>
         </div>
     );

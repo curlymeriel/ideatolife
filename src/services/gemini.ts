@@ -720,21 +720,40 @@ ${JSON.stringify(videos.map(v => ({ title: v.title, channel: v.channelName, view
 }
 `;
 
-    try {
-        const response = await axios.post(
-            `${GEMINI_2_5_FLASH_URL}?key=${apiKey}`,
-            {
-                contents: [{ parts: [{ text: prompt }] }]
-            }
-        );
+    // Fallback model list for Competitor Analysis
+    const models = [
+        { name: 'Gemini 3 Pro (Preview)', url: GEMINI_3_PRO_URL },     // Priority 1
+        { name: 'Gemini 3 Flash (Preview)', url: GEMINI_3_FLASH_URL }, // Priority 2
+        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },       // Priority 3
+        { name: 'Gemini 1.5 Flash', url: GEMINI_1_5_FLASH_URL }        // Priority 4
+    ];
 
-        const text = response.data.candidates[0].content.parts[0].text;
-        const cleanJson = text.replace(/```json\n ?|\n ? ```/g, '').trim();
-        return JSON.parse(cleanJson);
-    } catch (error) {
-        console.error('[Gemini] Strategic Analysis Failed:', error);
-        throw error;
+    let lastError: any = null;
+
+    for (const model of models) {
+        try {
+            console.log(`[Gemini] Competitor Analysis with model: ${model.name}`);
+            const response = await axios.post(
+                `${model.url}?key=${apiKey}`,
+                {
+                    contents: [{ parts: [{ text: prompt }] }]
+                }
+            );
+
+            const text = response.data.candidates[0].content.parts[0].text;
+            const cleanJson = text.replace(/```json\n ?|\n ? ```/g, '').trim();
+            return JSON.parse(cleanJson);
+
+        } catch (error: any) {
+            console.warn(`[Gemini] Model ${model.name} failed:`, error.message);
+            lastError = error;
+            // Continue to next model
+        }
     }
+
+    // If all failed
+    console.error('[Gemini] All Strategic Analysis models failed:', lastError);
+    throw lastError;
 };
 
 export const generateStrategyInsight = async (
@@ -828,27 +847,48 @@ export const generateStrategyInsight = async (
     }
     `;
 
-    try {
-        const response = await axios.post(
-            `${GEMINI_2_5_FLASH_URL}?key = ${apiKey} `,
-            {
-                contents: [{ parts: [{ text: prompt }] }]
-            }
-        );
+    const models = [
+        { name: 'Gemini 3 Pro (Preview)', url: GEMINI_3_PRO_URL },     // Priority 1
+        { name: 'Gemini 3 Flash (Preview)', url: GEMINI_3_FLASH_URL }, // Priority 2
+        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },       // Priority 3
+        { name: 'Gemini 1.5 Flash', url: GEMINI_1_5_FLASH_URL }        // Priority 4
+    ];
 
-        const text = response.data.candidates[0].content.parts[0].text;
-        const cleanJson = text.replace(/```json\n ?|\n ? ```/g, '').trim();
-        return {
-            ...JSON.parse(cleanJson),
-            id: Math.random().toString(36).substring(2, 9),
-            createdAt: Date.now(),
-            trendSnapshotId: trendSnapshot.id,
-            competitorSnapshotId: competitorSnapshot.id
-        };
-    } catch (error) {
-        console.error('[Gemini] Strategy Generation Failed:', error);
-        throw error;
+    let lastError: any = null;
+
+    for (const model of models) {
+        try {
+            console.log(`[Gemini] Strategy Generation with model: ${model.name}`);
+            const response = await axios.post(
+                `${model.url}?key=${apiKey}`,
+                {
+                    contents: [{ parts: [{ text: prompt }] }]
+                }
+            );
+
+            const text = response.data.candidates[0].content.parts[0].text;
+            const cleanJson = text.replace(/```json\n?|\n?```/g, '').trim();
+            const result = JSON.parse(cleanJson);
+
+            // Add ID and timestamps if missing
+            return {
+                ...result,
+                id: result.id || Math.random().toString(36).substring(2, 9),
+                createdAt: Date.now(),
+                trendSnapshotId: trendSnapshot.id,
+                competitorSnapshotId: competitorSnapshot.id
+            };
+
+        } catch (error: any) {
+            console.warn(`[Gemini] Model ${model.name} failed:`, error.message);
+            lastError = error;
+            // Continue to next model
+        }
     }
+
+    // If all failed
+    console.error('[Gemini] All Strategy Generation models failed:', lastError);
+    throw lastError;
 };
 
 import { DEFAULT_CONSULTANT_INSTRUCTION } from '../data/personaTemplates';

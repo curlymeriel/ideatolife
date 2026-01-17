@@ -8,13 +8,14 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useWorkflowStore } from '../store/workflowStore';
 import {
     MessageSquare, Send, Loader2,
     BarChart3, Download, ArrowRight, Code, ChevronDown, ChevronUp
 } from 'lucide-react';
 
-import type { YouTubeTrendVideo } from '../store/types';
+import type { YouTubeTrendVideo, TrendSnapshot } from '../store/types';
 import { fetchTrendingVideos, fetchVideosByCategory, searchVideos, extractTopTopics } from '../services/youtube';
 import { TrendChart } from '../components/Trend/TrendChart';
 import { TrendVideoCard } from '../components/Trend/TrendVideoCard';
@@ -98,7 +99,10 @@ const AVAILABLE_FUNCTIONS: FunctionDeclaration[] = [
 ];
 
 export const MarketResearch: React.FC = () => {
-    const { apiKeys } = useWorkflowStore();
+    const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const queryParam = searchParams.get('query');
+    const { apiKeys, saveTrendSnapshot } = useWorkflowStore();
     const geminiApiKey = apiKeys?.gemini || '';
 
     // Chat state
@@ -106,17 +110,16 @@ export const MarketResearch: React.FC = () => {
         {
             id: 'welcome',
             role: 'assistant',
-            content: `안녕하세요! 👋 YouTube 시장 조사를 도와드리겠습니다.
+            content: `안녕하세요! 👋 AI 시장조사팀장입니다.
 
-**사용 가능한 기능:**
-1. 🔥 카테고리별 인기 영상 조회 (Music, Gaming, News, Movies)
-2. 🔍 키워드 검색
-3. 📊 트렌드 분석
+**사용 방법:**
 
-어떤 조사를 시작할까요? 예를 들어:
-1. "한국 게이밍 트렌드 알려줘"
-2. "일본 뉴스 카테고리 인기 영상 가져와"
-3. "먹방 관련 영상 검색해줘"`,
+**1. 필터 활용 (아래 옵션 설정 후)**
+- 🔥 실시간 인기: **"보여줘"**라고 입력
+- 🔍 키워드 검색: **"아이폰 리뷰 찾아줘"** 처럼 주제를 포함하여 입력
+
+**2. 직접 요청 (필터 무관)**
+- 구체적으로 명령 (예: "일본 게이밍 트렌드 알려줘")`,
             timestamp: new Date()
         }
     ]);
@@ -127,6 +130,7 @@ export const MarketResearch: React.FC = () => {
     // Results state
     const [currentVideos, setCurrentVideos] = useState<YouTubeTrendVideo[]>([]);
     const [displayedVideos, setDisplayedVideos] = useState<YouTubeTrendVideo[]>([]);
+    const [isExpanded, setIsExpanded] = useState(false); // NEW: Toggle 'Show More'
     const [topicsByType, setTopicsByType] = useState<{ topic: any[]; keyword: any[]; hashtag: any[] }>({
         topic: [], keyword: [], hashtag: []
     });
@@ -136,12 +140,61 @@ export const MarketResearch: React.FC = () => {
     const [showApiLogs, setShowApiLogs] = useState(false);
 
     // Search filter states
-    const [searchMode, setSearchMode] = useState<'trending' | 'search'>('search');
+    const [searchMode, setSearchMode] = useState<'trending' | 'search'>('trending');
     const [searchRegion, setSearchRegion] = useState<'Global' | 'KR' | 'US' | 'JP' | 'FR' | 'DE' | 'ES'>('KR');
     const [trendingCategory, setTrendingCategory] = useState<'mix' | '10' | '20' | '25' | '44'>('mix');
     const [searchPeriod, setSearchPeriod] = useState<'any' | 'month' | '3months' | 'year'>('any');
     const [searchOrder, setSearchOrder] = useState<'relevance' | 'viewCount' | 'date'>('relevance');
     const [searchDuration, setSearchDuration] = useState<'any' | 'short' | 'medium' | 'long'>('any');
+    const [executedQuery, setExecutedQuery] = useState(''); // NEW: Persist actual search term
+    const initialQueryProcessed = useRef(false);
+
+    // Effect to handle incoming query from URL
+    useEffect(() => {
+        if (queryParam && !initialQueryProcessed.current && geminiApiKey) {
+            initialQueryProcessed.current = true;
+            setSearchMode('search');
+            // Populate input and trigger send
+            setInputValue(`${queryParam} 분석해줘`);
+
+            // To automate, we need to defer execution until state is updated
+            setTimeout(() => {
+                const sendBtn = document.getElementById('chat-send-button');
+                sendBtn?.click();
+            }, 500);
+        }
+    }, [queryParam, geminiApiKey]);
+
+    // NEW: Phase 2 Navigation Handler
+    const handleNavigateToPhase2 = () => {
+        // Create Snapshot
+        const snapshotId = Date.now().toString();
+        const snapshot: TrendSnapshot = {
+            id: snapshotId,
+            createdAt: Date.now(),
+            queryContext: searchMode === 'trending'
+                ? `${searchRegion} / ${trendingCategory}`
+                : `${searchRegion} / Search: ${executedQuery || inputValue || 'Unknown'}`,
+            keywords: topicsByType.keyword.slice(0, 5).map(t => t.topic),
+            description: selectedTopic
+                ? `'${selectedTopic.topic}' 관련 심층 분석 요청`
+                : '전체 트렌드 분석 요청',
+            trendTopics: topicsByType.topic, // Original analysis
+            // Use displayedVideos to capture the current filter context (if any specific topic was selected)
+            // But we might want to store ALL videos in the snapshot, but mark the 'focus'
+            rawData: {
+                selectedTopicId: selectedTopic?.id,
+                videos: displayedVideos
+            }
+        };
+
+        // Save to Store
+        saveTrendSnapshot(snapshot);
+
+        // Navigate
+        navigate(`/research/competitor?snapshotId=${snapshotId}`);
+    };
+
 
     // Scroll to bottom on new messages
     useEffect(() => {
@@ -159,7 +212,28 @@ export const MarketResearch: React.FC = () => {
             case 'fetchVideosByCategory':
                 return await fetchVideosByCategory(geminiApiKey, args.regionCode, args.categoryId, args.maxResults || 50);
             case 'searchVideos':
-                return await searchVideos(geminiApiKey, args.query, args.regionCode, args.maxResults || 25);
+                // Calculate publishedAfter based on searchPeriod state
+                let publishedAfter: string | undefined;
+                if (searchPeriod !== 'any') {
+                    const date = new Date();
+                    if (searchPeriod === 'month') date.setMonth(date.getMonth() - 1);
+                    else if (searchPeriod === '3months') date.setMonth(date.getMonth() - 3);
+                    else if (searchPeriod === 'year') date.setFullYear(date.getFullYear() - 1);
+                    publishedAfter = date.toISOString();
+                }
+
+                // Capture the executed query for Phase 2 context
+                setExecutedQuery(args.query);
+
+                return await searchVideos(
+                    geminiApiKey,
+                    args.query,
+                    args.regionCode,
+                    args.maxResults || 25,
+                    publishedAfter,
+                    searchOrder,
+                    searchDuration
+                );
             case 'extractTopTopics':
                 return extractTopTopics(args.videos);
             default:
@@ -200,6 +274,21 @@ export const MarketResearch: React.FC = () => {
             // Build system prompt with function declarations
             const systemPrompt = `당신은 YouTube 시장 조사 전문가입니다. 사용자의 요청에 따라 YouTube 데이터를 분석합니다.
 
+현재 사용자가 UI에서 선택한 필터 설정은 다음과 같습니다:
+- 조사 모드: ${searchMode === 'trending' ? '실시간 인기 트렌드 (Trending)' : '키워드 검색 (Search)'}
+- 대상 국가: ${searchRegion}
+${searchMode === 'trending' ? `- 선택된 카테고리: ${trendingCategory} (mix=전체, 10=Music, 20=Gaming, 25=News, 44=Movies)` : ''}
+${searchMode === 'search' ? `- 기간: ${searchPeriod}` : ''}
+${searchMode === 'search' ? `- 정렬: ${searchOrder}` : ''}
+${searchMode === 'search' ? `- 길이: ${searchDuration}` : ''}
+
+중요 지침:
+1. 사용자가 "보여줘", "분석해줘", "시작해" 등 구체적인 조건(국가, 카테고리 등) 없이 요청하면, 무조건 위 **[현재 필터 설정]** 값을 사용하여 함수를 호출하세요.
+   - 예: "보여줘" (현재설정: KR, Gaming) -> fetchVideosByCategory(regionCode='KR', categoryId='20') 호출
+   - 예: "보여줘" (현재설정: JP, Mix) -> fetchTrendingVideos(regionCode='JP') 호출
+2. 사용자가 명시적으로 조건을 변경하여 요청한 경우에만(예: "미국 거 보여줘") 그 조건을 우선시하세요.
+3. 검색 모드(search)에서 검색어 없이 "보여줘"라고 하면 "검색어를 입력해주세요"라고 안내하세요.
+
 사용 가능한 함수:
 ${AVAILABLE_FUNCTIONS.map(f => `- ${f.name}: ${f.description}`).join('\n')}
 
@@ -221,7 +310,8 @@ ${AVAILABLE_FUNCTIONS.map(f => `- ${f.name}: ${f.description}`).join('\n')}
 
 예시:
 - "한국 게이밍 인기 영상 가져와" → [FUNCTION_CALL: fetchVideosByCategory({"regionCode": "KR", "categoryId": "20"})]
-- "먹방 검색해줘" → [FUNCTION_CALL: searchVideos({"query": "먹방", "regionCode": "KR"})]`;
+- "먹방 검색해줘" → [FUNCTION_CALL: searchVideos({"query": "먹방", "regionCode": "KR"})]
+- "보여줘" (만약 현재 설정이 JP, Music이라면) → [FUNCTION_CALL: fetchVideosByCategory({"regionCode": "JP", "categoryId": "10"})]`;
 
             const response = await fetch(
                 `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`,
@@ -340,7 +430,7 @@ ${AVAILABLE_FUNCTIONS.map(f => `- ${f.name}: ${f.description}`).join('\n')}
                 <div className="p-4 border-b border-[var(--color-border)]">
                     <h2 className="text-lg font-bold text-white flex items-center gap-2">
                         <MessageSquare className="text-[var(--color-primary)]" size={20} />
-                        AI 시장 조사 어시스턴트
+                        AI 시장조사팀장
                     </h2>
                     <p className="text-xs text-gray-400 mt-1">AI와 대화하며 YouTube 트렌드를 분석하세요</p>
                 </div>
@@ -563,6 +653,7 @@ ${AVAILABLE_FUNCTIONS.map(f => `- ${f.name}: ${f.description}`).join('\n')}
                             disabled={isProcessing}
                         />
                         <button
+                            id="chat-send-button"
                             onClick={handleSendMessage}
                             disabled={isProcessing || !inputValue.trim()}
                             className="px-4 py-2 bg-[var(--color-primary)] text-black rounded-lg font-medium hover:bg-[var(--color-primary)]/90 disabled:opacity-50"
@@ -696,14 +787,21 @@ ${AVAILABLE_FUNCTIONS.map(f => `- ${f.name}: ${f.description}`).join('\n')}
                                         )}
                                     </h3>
                                     <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-                                        {displayedVideos.slice(0, 12).map((video, i) => (
+                                        {(isExpanded ? displayedVideos : displayedVideos.slice(0, 12)).map((video, i) => (
                                             <TrendVideoCard key={video.id} video={video} rank={i + 1} />
                                         ))}
                                     </div>
                                     {displayedVideos.length > 12 && (
-                                        <p className="text-xs text-gray-500 mt-2 text-center">
-                                            + {displayedVideos.length - 12}개 더 있음
-                                        </p>
+                                        <button
+                                            onClick={() => setIsExpanded(!isExpanded)}
+                                            className="w-full mt-3 py-2 text-xs text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors flex items-center justify-center gap-1"
+                                        >
+                                            {isExpanded ? (
+                                                <>접기 <ChevronUp size={14} /></>
+                                            ) : (
+                                                <>+ {displayedVideos.length - 12}개 더 보기 <ChevronDown size={14} /></>
+                                            )}
+                                        </button>
                                     )}
                                 </div>
                             )}
@@ -714,9 +812,14 @@ ${AVAILABLE_FUNCTIONS.map(f => `- ${f.name}: ${f.description}`).join('\n')}
                 {/* Footer: Next Step */}
                 {currentVideos.length > 0 && (
                     <div className="p-4 border-t border-[var(--color-border)]">
-                        <button className="w-full px-4 py-3 bg-[var(--color-primary)] text-black font-bold rounded-lg hover:bg-[var(--color-primary)]/90 flex items-center justify-center gap-2">
+                        <button
+                            onClick={handleNavigateToPhase2}
+                            className="w-full px-4 py-3 bg-[var(--color-primary)] text-black font-bold rounded-lg hover:bg-[var(--color-primary)]/90 flex items-center justify-center gap-2 transition-colors"
+                        >
                             <ArrowRight size={18} />
-                            선택한 채널/콘텐츠로 벤치마킹 분석 (Phase 2)
+                            {selectedTopic
+                                ? `'${selectedTopic.topic}' 심층 벤치마킹 분석 (Phase 2)`
+                                : '조회된 결과로 벤치마킹 분석 (Phase 2)'}
                         </button>
                     </div>
                 )}
