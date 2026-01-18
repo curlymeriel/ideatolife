@@ -17,7 +17,8 @@ import {
     ShieldCheck,
     Lightbulb,
     Loader2,
-    Save
+    Save,
+    Trash2
 } from 'lucide-react';
 import { analyzeCompetitorStrategy } from '../services/gemini';
 import type { StrategicAnalysis, TrendSnapshot, YouTubeTrendVideo } from '../store/types';
@@ -28,7 +29,8 @@ export const CompetitorAnalysis: React.FC = () => {
         trendSnapshots,
         competitorSnapshots,
         apiKeys,
-        saveCompetitorSnapshot
+        saveCompetitorSnapshot,
+        deleteTrendSnapshot
     } = useWorkflowStore();
     const geminiApiKey = apiKeys?.gemini || '';
 
@@ -138,14 +140,32 @@ export const CompetitorAnalysis: React.FC = () => {
                         <div
                             key={snapshot.id}
                             onClick={() => handleSelectSnapshot(snapshot)}
-                            className={`p-4 rounded-xl border transition-all cursor-pointer ${selectedSnapshot?.id === snapshot.id
+                            className={`p-4 rounded-xl border transition-all cursor-pointer relative group ${selectedSnapshot?.id === snapshot.id
                                 ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5 ring-1 ring-[var(--color-primary)]'
                                 : 'border-[var(--color-border)] bg-white/5 hover:border-white/30'
                                 }`}
                         >
                             <div className="flex justify-between items-start mb-2">
                                 <span className="text-[10px] text-gray-500">{new Date(snapshot.createdAt).toLocaleDateString()}</span>
-                                {selectedSnapshot?.id === snapshot.id && <CheckCircle2 className="text-[var(--color-primary)]" size={16} />}
+                                <div className="flex items-center gap-2">
+                                    {selectedSnapshot?.id === snapshot.id && <CheckCircle2 className="text-[var(--color-primary)]" size={16} />}
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (confirm('정말 이 리서치 데이터를 삭제하시겠습니까?')) {
+                                                deleteTrendSnapshot(snapshot.id);
+                                                if (selectedSnapshot?.id === snapshot.id) {
+                                                    setSelectedSnapshot(null);
+                                                    setAnalysisResult(null);
+                                                }
+                                            }
+                                        }}
+                                        className="text-gray-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity p-1"
+                                        title="삭제"
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                </div>
                             </div>
                             <h3 className="text-white font-bold mb-1 line-clamp-1">{snapshot.queryContext}</h3>
                             <p className="text-xs text-gray-400 line-clamp-1">{snapshot.description}</p>
@@ -177,14 +197,89 @@ export const CompetitorAnalysis: React.FC = () => {
                             ))}
                         </div>
                     </div>
+                </div>
+
+                {/* Competitor Channels Section (NEW) */}
+                {selectedSnapshot.channels && selectedSnapshot.channels.length > 0 ? (
+                    <div className="bg-white/5 rounded-xl p-4 border border-[var(--color-border)]">
+                        <h3 className="text-md font-bold text-white mb-3 flex items-center gap-2">
+                            <TrendingUp size={18} className="text-[var(--color-primary)]" />
+                            경쟁 채널 심층 프로필 ({selectedSnapshot.channels.length})
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {selectedSnapshot.channels.slice(0, 4).map((channel, idx) => (
+                                <div key={channel.channelId} className="bg-black/20 p-4 rounded-lg border border-white/5 hover:border-[var(--color-primary)]/50 transition-colors">
+                                    <div className="flex items-start gap-3 mb-3">
+                                        <img src={channel.channelThumbnail} alt={channel.channelName} className="w-14 h-14 rounded-full object-cover border-2 border-white/10" />
+                                        <div className="flex-1 min-w-0">
+                                            <h4 className="font-bold text-white text-sm truncate">{channel.channelName}</h4>
+                                            <div className="flex items-center gap-2 text-xs text-gray-400 mt-1">
+                                                <span className="text-[var(--color-primary)] font-bold">{idx + 1}위</span>
+                                                <span>•</span>
+                                                <span>구독자 {channel.subscriberCount.toLocaleString()}</span>
+                                            </div>
+                                            <p className="text-[10px] text-gray-500 line-clamp-2 mt-1">{channel.description || '채널 설명이 없습니다.'}</p>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                                        <div className="bg-white/5 p-2 rounded">
+                                            <span className="block text-[10px] text-gray-500 mb-1">영상 수</span>
+                                            <span className="text-gray-300 font-medium">{channel.videoCount}</span>
+                                        </div>
+                                        <div className="bg-white/5 p-2 rounded">
+                                            <span className="block text-[10px] text-gray-500 mb-1">총 조회수</span>
+                                            <span className="text-gray-300 font-medium">{(channel.viewCount / 10000).toFixed(0)}만</span>
+                                        </div>
+                                        <div className="bg-white/5 p-2 rounded">
+                                            <span className="block text-[10px] text-gray-500 mb-1">평균 조회</span>
+                                            <span className="text-[var(--color-primary)] font-bold">{(channel.viewCount / (channel.videoCount || 1)).toFixed(0)}</span>
+                                        </div>
+                                    </div>
+                                    {channel.keywords && (
+                                        <div className="mt-3 pt-3 border-t border-white/10">
+                                            <div className="flex flex-wrap gap-1">
+                                                {channel.keywords.split(' ').slice(0, 3).map((k: string, i: number) => (
+                                                    <span key={i} className="text-[9px] bg-white/5 text-gray-400 px-1.5 py-0.5 rounded-full border border-white/5">
+                                                        {k.replace(/"/g, '')}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ) : (
+                    /* Fallback: Channel List from Videos */
+                    <div className="bg-white/5 rounded-xl p-4 border border-[var(--color-border)]">
+                        <h3 className="text-md font-bold text-white mb-3 flex items-center gap-2">
+                            <Users size={18} className="text-[var(--color-primary)]" />
+                            주요 경쟁 채널 (비디오 기반)
+                        </h3>
+                        <div className="flex flex-wrap gap-2">
+                            {Array.from(new Set(videos.map(v => v.channelName))).slice(0, 10).map((channelName, i) => (
+                                <span key={i} className="px-3 py-1 bg-black/40 border border-white/10 rounded-full text-xs text-gray-300">
+                                    {channelName}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Deep Dive Action Area */}
+                <div className="bg-white/5 rounded-xl p-6 border border-[var(--color-border)] text-center">
+                    <h3 className="text-lg font-bold text-white mb-2">🚀 AI 심층 전략 분석</h3>
+                    <p className="text-sm text-gray-400 mb-4">선택된 리서치 데이터를 바탕으로 경쟁사의 핵심 성공 전략을 분석합니다.</p>
                     <button
                         onClick={handleDeepDive}
                         disabled={isAnalyzing || !geminiApiKey}
-                        className="px-6 py-2.5 bg-[var(--color-primary)] text-black font-bold rounded-lg hover:bg-[var(--color-primary)]/90 disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-[var(--color-primary)]/10"
+                        className="mx-auto px-8 py-3 bg-[var(--color-primary)] text-black font-bold rounded-xl hover:bg-[var(--color-primary)]/90 disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-[var(--color-primary)]/20 transition-all hover:scale-105"
                     >
                         {isAnalyzing ? <Loader2 className="animate-spin" size={20} /> : <BrainCircuit size={20} />}
-                        Gemini Deep Research 시작
+                        분석 시작 (Deep Dive)
                     </button>
+                    {!geminiApiKey && <p className="text-xs text-red-400 mt-2">* API 키 설정이 필요합니다.</p>}
                 </div>
 
                 {/* Analysis Results Display */}
@@ -297,7 +392,7 @@ export const CompetitorAnalysis: React.FC = () => {
                 {/* Video Previews (Collapsible or bottom) */}
                 <div className="space-y-3">
                     <h4 className="text-gray-400 text-xs uppercase tracking-widest flex items-center gap-2">
-                        참고한 경쟁 채널/동영상 {videos.length}개
+                        참고한 경합 채널/동영상 {videos.length}개
                     </h4>
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
                         {videos.slice(0, 12).map((video, i) => (
@@ -330,7 +425,7 @@ export const CompetitorAnalysis: React.FC = () => {
                         <TrendingUp size={14} /> Intelligence Layer
                     </div>
                     <h1 className="text-xl font-bold text-white flex items-center gap-2 leading-none">
-                        Phase 2: 경쟁 채널 심도 분석 (Deep Research)
+                        Phase 2: 경합 영상과 채널 심도 분석 (Deep Research)
                     </h1>
                 </div>
                 <div className="flex gap-3">

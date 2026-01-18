@@ -236,27 +236,52 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
 
                     <nav className="flex-1 overflow-y-auto pb-4 pt-1">
-                        {/* Prep Section (Collapsible) */}
-                        {!isCollapsed && (
-                            <div className="px-2 mt-2">
+                        {/* Prep Section (Collapsible & Functional) */}
+                        <div className="mt-2 relative group">
+                            <div className={`flex items-center transition-all ${location.pathname === '/research/guide'
+                                ? 'bg-orange-500/20 border-r-2 border-orange-400'
+                                : 'hover:bg-[rgba(255,255,255,0.05)]'
+                                }`}>
                                 <button
-                                    onClick={() => setIsPrepOpen(!isPrepOpen)}
-                                    className="w-full px-2 py-2 flex items-center justify-between text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider hover:text-white transition-colors group"
+                                    onClick={() => navigate('/research/guide')}
+                                    className={`flex-1 px-4 py-3 flex items-center ${isCollapsed ? 'justify-center flex-col gap-0.5' : 'gap-3'} transition-all ${location.pathname === '/research/guide'
+                                        ? 'text-orange-400 font-semibold'
+                                        : 'text-[var(--color-text-muted)] hover:text-white'
+                                        }`}
+                                    title={isCollapsed ? '#0 Prep Phases Overview' : undefined}
                                 >
-                                    <div className="flex items-center gap-2">
-                                        <Sparkles size={14} className="text-orange-400" />
-                                        <span>Prep Phases</span>
-                                    </div>
-                                    <ChevronDown size={14} className={`transition-transform duration-300 ${isPrepOpen ? 'rotate-180' : ''}`} />
+                                    {isCollapsed ? (
+                                        <>
+                                            <span className="text-[9px] font-bold">#0</span>
+                                            <Sparkles size={16} className="text-orange-400" />
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span className={`text-[10px] font-bold min-w-[24px] ${location.pathname === '/research/guide' ? 'text-orange-400' : 'text-[var(--color-text-muted)]'}`}>#0</span>
+                                            <Sparkles size={16} className="text-orange-400" />
+                                            <span className="flex-1 text-left text-xs font-semibold uppercase tracking-wider">Prep Phases</span>
+                                        </>
+                                    )}
                                 </button>
+                                {!isCollapsed && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setIsPrepOpen(!isPrepOpen);
+                                        }}
+                                        className={`p-3 transition-colors ${location.pathname === '/research/guide' ? 'text-orange-400' : 'text-[var(--color-text-muted)] hover:text-white'}`}
+                                    >
+                                        <ChevronDown size={14} className={`transition-transform duration-300 ${isPrepOpen ? 'rotate-180' : ''}`} />
+                                    </button>
+                                )}
                             </div>
-                        )}
+                        </div>
 
-                        {(isPrepOpen || isCollapsed) && (
-                            <div className={`space-y-0.5 ${!isCollapsed ? 'pl-2' : ''} animate-in slide-in-from-top-2 duration-300`}>
+                        {isPrepOpen && !isCollapsed && (
+                            <div className={`space-y-0.5 animate-in slide-in-from-top-2 duration-300`}>
                                 <button
                                     onClick={() => navigate('/research')}
-                                    className={`w-full px-4 py-2.5 flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} transition-all ${location.pathname === '/research'
+                                    className={`w-full pl-8 pr-4 py-2.5 flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} transition-all ${location.pathname === '/research'
                                         ? 'bg-indigo-500/20 text-indigo-400 font-semibold border-r-2 border-indigo-400'
                                         : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[rgba(255,255,255,0.05)]'
                                         }`}
@@ -278,7 +303,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
                                 <button
                                     onClick={() => navigate('/research/competitor')}
-                                    className={`w-full px-4 py-2.5 flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} transition-all ${location.pathname === '/research/competitor'
+                                    className={`w-full pl-8 pr-4 py-2.5 flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} transition-all ${location.pathname === '/research/competitor'
                                         ? 'bg-indigo-500/20 text-indigo-400 font-semibold border-r-2 border-indigo-400'
                                         : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[rgba(255,255,255,0.05)]'
                                         }`}
@@ -300,7 +325,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
                                 <button
                                     onClick={() => navigate('/research/strategy')}
-                                    className={`w-full px-4 py-2.5 flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} transition-all ${location.pathname === '/research/strategy'
+                                    className={`w-full pl-8 pr-4 py-2.5 flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} transition-all ${location.pathname === '/research/strategy'
                                         ? 'bg-indigo-500/20 text-indigo-400 font-semibold border-r-2 border-indigo-400'
                                         : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[rgba(255,255,255,0.05)]'
                                         }`}
@@ -322,7 +347,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
                                 <button
                                     onClick={() => navigate('/research/ideas')}
-                                    className={`w-full px-4 py-2.5 flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} transition-all ${location.pathname === '/research/ideas'
+                                    className={`w-full pl-8 pr-4 py-2.5 flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} transition-all ${location.pathname === '/research/ideas'
                                         ? 'bg-indigo-500/20 text-indigo-400 font-semibold border-r-2 border-indigo-400'
                                         : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[rgba(255,255,255,0.05)]'
                                         }`}
@@ -495,10 +520,11 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                 {isDashboard ? (
                                     'Overview'
                                 ) : location.pathname.startsWith('/research') ? (
-                                    location.pathname === '/research' ? 'Phase 1 : Market Research' :
-                                        location.pathname === '/research/competitor' ? 'Phase 2 : Deep Research' :
-                                            location.pathname === '/research/strategy' ? 'Phase 3 : Strategy & Bridge' :
-                                                'Phase 4 : Idea Pool'
+                                    location.pathname === '/research/guide' ? 'Prep Phases Guide' :
+                                        location.pathname === '/research' ? 'Phase 1 : Market Research' :
+                                            location.pathname === '/research/competitor' ? 'Phase 2 : 경합 영상과 채널 심도 분석' :
+                                                location.pathname === '/research/strategy' ? 'Phase 3 : Strategy & Bridge' :
+                                                    'Phase 4 : Idea Pool'
                                 ) : currentStepObj ? (
                                     `Step ${currentStepObj.id} : ${currentStepObj.name}`
                                 ) : (

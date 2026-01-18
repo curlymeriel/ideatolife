@@ -12,6 +12,7 @@ const MarketResearch = lazyImport(() => import('./pages/MarketResearch').then(mo
 const CompetitorAnalysis = lazyImport(() => import('./pages/CompetitorAnalysis').then(module => ({ default: module.CompetitorAnalysis })));
 const StrategyFormulation = lazyImport(() => import('./pages/StrategyFormulation').then(module => ({ default: module.StrategyFormulation })));
 const IdeaPool = lazyImport(() => import('./pages/IdeaPool').then(m => ({ default: m.IdeaPool })));
+const PrepPhasesGuide = lazyImport(() => import('./pages/PrepPhasesGuide').then(module => ({ default: module.PrepPhasesGuide })));
 const Step1_Setup = lazyImport(() => import('./pages/Step1_Setup').then(module => ({ default: module.Step1_Setup })));
 const Step2_Style = lazyImport(() => import('./pages/Step2_Style').then(module => ({ default: module.Step2_Style })));
 const Step3_Production = lazyImport(() => import('./pages/Step3_Production').then(module => ({ default: module.Step3_Production })));
@@ -44,6 +45,7 @@ export const App: React.FC = () => {
                   <Route path="/research/competitor" element={<ErrorBoundary><CompetitorAnalysis /></ErrorBoundary>} />
                   <Route path="/research/strategy" element={<ErrorBoundary><StrategyFormulation /></ErrorBoundary>} />
                   <Route path="/research/ideas" element={<ErrorBoundary><IdeaPool /></ErrorBoundary>} />
+                  <Route path="/research/guide" element={<ErrorBoundary><PrepPhasesGuide /></ErrorBoundary>} />
                   <Route path="/step/1" element={<ErrorBoundary><Step1_Setup /></ErrorBoundary>} />
                   <Route path="/step/2" element={<ErrorBoundary><Step2_Style /></ErrorBoundary>} />
                   <Route path="/step/3" element={<ErrorBoundary><Step3_Production /></ErrorBoundary>} />

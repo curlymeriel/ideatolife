@@ -15,8 +15,8 @@ import {
     BarChart3, Download, ArrowRight, Code, ChevronDown, ChevronUp
 } from 'lucide-react';
 
-import type { YouTubeTrendVideo, TrendSnapshot } from '../store/types';
-import { fetchTrendingVideos, fetchVideosByCategory, searchVideos, extractTopTopics } from '../services/youtube';
+import type { YouTubeTrendVideo, TrendSnapshot, ChannelAnalysis } from '../store/types';
+import { fetchTrendingVideos, fetchVideosByCategory, searchVideos, extractTopTopics, searchChannels } from '../services/youtube';
 import { TrendChart } from '../components/Trend/TrendChart';
 import { TrendVideoCard } from '../components/Trend/TrendVideoCard';
 
@@ -86,6 +86,19 @@ const AVAILABLE_FUNCTIONS: FunctionDeclaration[] = [
         }
     },
     {
+        name: 'searchChannels',
+        description: '키워드로 관련 전문 채널을 검색하고 구독자 수 기반으로 정렬합니다.',
+        parameters: {
+            type: 'object',
+            properties: {
+                query: { type: 'string', description: '채널 검색어' },
+                regionCode: { type: 'string', description: '지역 코드', enum: ['KR', 'JP', 'FR', 'DE', 'ES', 'US', 'Global'] },
+                maxResults: { type: 'number', description: '최대 결과 수 (기본 15)' }
+            },
+            required: ['query', 'regionCode']
+        }
+    },
+    {
         name: 'extractTopTopics',
         description: '영상 목록에서 인기 주제와 해시태그를 추출합니다.',
         parameters: {
@@ -102,8 +115,9 @@ export const MarketResearch: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const queryParam = searchParams.get('query');
-    const { apiKeys, saveTrendSnapshot } = useWorkflowStore();
+    const { apiKeys, saveTrendSnapshot, exportResearchData, importResearchData } = useWorkflowStore();
     const geminiApiKey = apiKeys?.gemini || '';
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Chat state
     const [messages, setMessages] = useState<ChatMessage[]>([
@@ -129,18 +143,20 @@ export const MarketResearch: React.FC = () => {
 
     // Results state
     const [currentVideos, setCurrentVideos] = useState<YouTubeTrendVideo[]>([]);
+    const [currentChannels, setCurrentChannels] = useState<ChannelAnalysis[]>([]); // NEW
     const [displayedVideos, setDisplayedVideos] = useState<YouTubeTrendVideo[]>([]);
     const [isExpanded, setIsExpanded] = useState(false); // NEW: Toggle 'Show More'
     const [topicsByType, setTopicsByType] = useState<{ topic: any[]; keyword: any[]; hashtag: any[] }>({
         topic: [], keyword: [], hashtag: []
     });
-    const [analysisTab, setAnalysisTab] = useState<'topic' | 'keyword' | 'hashtag'>('topic');
+    const [analysisTab, setAnalysisTab] = useState<'topic' | 'keyword' | 'hashtag' | 'channel'>('topic');
     const [selectedTopic, setSelectedTopic] = useState<any>(null);
     const [apiLogs, setApiLogs] = useState<string[]>([]);
     const [showApiLogs, setShowApiLogs] = useState(false);
 
     // Search filter states
     const [searchMode, setSearchMode] = useState<'trending' | 'search'>('trending');
+    const [searchType, setSearchType] = useState<'video' | 'channel'>('video'); // NEW
     const [searchRegion, setSearchRegion] = useState<'Global' | 'KR' | 'US' | 'JP' | 'FR' | 'DE' | 'ES'>('KR');
     const [trendingCategory, setTrendingCategory] = useState<'mix' | '10' | '20' | '25' | '44'>('mix');
     const [searchPeriod, setSearchPeriod] = useState<'any' | 'month' | '3months' | 'year'>('any');
@@ -180,6 +196,7 @@ export const MarketResearch: React.FC = () => {
                 ? `'${selectedTopic.topic}' 관련 심층 분석 요청`
                 : '전체 트렌드 분석 요청',
             trendTopics: topicsByType.topic, // Original analysis
+            channels: currentChannels, // NEW: Save channels
             // Use displayedVideos to capture the current filter context (if any specific topic was selected)
             // But we might want to store ALL videos in the snapshot, but mark the 'focus'
             rawData: {
@@ -236,6 +253,15 @@ export const MarketResearch: React.FC = () => {
                 );
             case 'extractTopTopics':
                 return extractTopTopics(args.videos);
+            case 'searchChannels':
+                // Capture the executed query
+                setExecutedQuery(args.query);
+                return await searchChannels(
+                    geminiApiKey,
+                    args.query,
+                    args.regionCode,
+                    args.maxResults || 15
+                );
             default:
                 throw new Error(`Unknown function: ${name}`);
         }
@@ -288,6 +314,7 @@ ${searchMode === 'search' ? `- 길이: ${searchDuration}` : ''}
    - 예: "보여줘" (현재설정: JP, Mix) -> fetchTrendingVideos(regionCode='JP') 호출
 2. 사용자가 명시적으로 조건을 변경하여 요청한 경우에만(예: "미국 거 보여줘") 그 조건을 우선시하세요.
 3. 검색 모드(search)에서 검색어 없이 "보여줘"라고 하면 "검색어를 입력해주세요"라고 안내하세요.
+4. **스마트 키워드 확장**: 사용자가 입력한 검색어가 대상 국가의 언어와 다를 경우, 더 정확한 결과를 위해 해당 언어로 번역하거나 관련 현지 키워드를 포함하여 검색하세요. (예: KR 대상 "K-Drama" -> "한국 드라마" OR "K-Drama")
 
 사용 가능한 함수:
 ${AVAILABLE_FUNCTIONS.map(f => `- ${f.name}: ${f.description}`).join('\n')}
@@ -377,6 +404,10 @@ ${AVAILABLE_FUNCTIONS.map(f => `- ${f.name}: ${f.description}`).join('\n')}
                             });
                             setSelectedTopic(null);
                             setAnalysisTab('topic'); // Default to topic tab
+                        } else if (result[0].channelId && result[0].subscriberCount !== undefined) {
+                            // Channels
+                            setCurrentChannels(result);
+                            setAnalysisTab('channel'); // Switch to channel tab
                         }
                     }
 
@@ -427,12 +458,48 @@ ${AVAILABLE_FUNCTIONS.map(f => `- ${f.name}: ${f.description}`).join('\n')}
             {/* Left Panel: AI Chat */}
             <div className="w-[40%] flex flex-col bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)]">
                 {/* Header */}
-                <div className="p-4 border-b border-[var(--color-border)]">
-                    <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                        <MessageSquare className="text-[var(--color-primary)]" size={20} />
-                        AI 시장조사팀장
-                    </h2>
-                    <p className="text-xs text-gray-400 mt-1">AI와 대화하며 YouTube 트렌드를 분석하세요</p>
+                <div className="p-4 border-b border-[var(--color-border)] flex justify-between items-center">
+                    <div>
+                        <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                            <MessageSquare className="text-[var(--color-primary)]" size={20} />
+                            AI 시장조사팀장
+                        </h2>
+                        <p className="text-xs text-gray-400 mt-1">AI와 대화하며 YouTube 트렌드를 분석하세요</p>
+                    </div>
+                    <div className="flex gap-2">
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            accept=".json"
+                            className="hidden"
+                            onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                    const reader = new FileReader();
+                                    reader.onload = (ev) => {
+                                        if (ev.target?.result) {
+                                            importResearchData(ev.target.result as string);
+                                        }
+                                    };
+                                    reader.readAsText(file);
+                                }
+                            }}
+                        />
+                        <button
+                            onClick={() => exportResearchData()}
+                            className="p-1.5 text-gray-400 hover:text-[var(--color-primary)] hover:bg-white/5 rounded-lg transition-colors"
+                            title="리서치 데이터 백업 (JSON)"
+                        >
+                            <Download size={16} />
+                        </button>
+                        <button
+                            onClick={() => fileInputRef.current?.click()}
+                            className="p-1.5 text-gray-400 hover:text-green-400 hover:bg-white/5 rounded-lg transition-colors"
+                            title="리서치 데이터 복구"
+                        >
+                            <ArrowRight className="rotate-90" size={16} /> {/* Import Icon substitute */}
+                        </button>
+                    </div>
                 </div>
 
                 {/* Messages */}
@@ -501,6 +568,31 @@ ${AVAILABLE_FUNCTIONS.map(f => `- ${f.name}: ${f.description}`).join('\n')}
                                 <p className="text-[10px] text-gray-300">특정 주제로 검색. 모든 필터 적용 가능.</p>
                             </button>
                         </div>
+
+                        {/* Search Type Selector (Visible only in Search Mode) */}
+                        {searchMode === 'search' && (
+                            <div className="mt-2 bg-white/5 p-2 rounded-lg flex items-center gap-3">
+                                <span className="text-[10px] text-gray-400 font-bold ml-1">검색 대상:</span>
+                                <div className="flex gap-1 flex-1">
+                                    <button
+                                        onClick={() => setSearchType('video')}
+                                        className={`flex-1 py-1.5 px-3 rounded text-xs font-medium transition-all ${searchType === 'video'
+                                            ? 'bg-[var(--color-primary)] text-black'
+                                            : 'bg-black/20 text-gray-400 hover:text-white'}`}
+                                    >
+                                        🎬 동영상
+                                    </button>
+                                    <button
+                                        onClick={() => setSearchType('channel')}
+                                        className={`flex-1 py-1.5 px-3 rounded text-xs font-medium transition-all ${searchType === 'channel'
+                                            ? 'bg-[var(--color-primary)] text-black'
+                                            : 'bg-black/20 text-gray-400 hover:text-white'}`}
+                                    >
+                                        📺 전문 채널
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Filter Section */}
@@ -704,8 +796,9 @@ ${AVAILABLE_FUNCTIONS.map(f => `- ${f.name}: ${f.description}`).join('\n')}
                 )}
 
                 {/* Results Content */}
+                {/* Results Content */}
                 <div className="flex-1 overflow-y-auto p-4">
-                    {currentVideos.length === 0 && topicsByType.topic.length === 0 ? (
+                    {currentVideos.length === 0 && currentChannels.length === 0 && topicsByType.topic.length === 0 ? (
                         <div className="h-full flex items-center justify-center text-gray-500">
                             <div className="text-center">
                                 <BarChart3 size={48} className="mx-auto mb-3 opacity-30" />
@@ -715,95 +808,156 @@ ${AVAILABLE_FUNCTIONS.map(f => `- ${f.name}: ${f.description}`).join('\n')}
                     ) : (
                         <div className="space-y-6">
                             {/* Analysis Tabs */}
-                            {(topicsByType.topic.length > 0 || topicsByType.keyword.length > 0 || topicsByType.hashtag.length > 0) && (
-                                <div>
-                                    {/* Tab Buttons */}
-                                    <div className="flex gap-2 mb-3">
+                            <div>
+                                {/* Tab Buttons */}
+                                <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
+                                    {(topicsByType.topic.length > 0) && (
                                         <button
                                             onClick={() => { setAnalysisTab('topic'); setSelectedTopic(null); setDisplayedVideos(currentVideos); }}
-                                            className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-all ${analysisTab === 'topic'
+                                            className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-all whitespace-nowrap ${analysisTab === 'topic'
                                                 ? 'bg-[var(--color-primary)] text-black'
                                                 : 'bg-white/5 text-gray-400 hover:bg-white/10'
                                                 }`}
                                         >
                                             📂 주제 ({topicsByType.topic.length})
                                         </button>
+                                    )}
+                                    {(currentChannels.length > 0) && (
+                                        <button
+                                            onClick={() => { setAnalysisTab('channel'); setSelectedTopic(null); }}
+                                            className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-all whitespace-nowrap ${analysisTab === 'channel'
+                                                ? 'bg-[var(--color-primary)] text-black'
+                                                : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                                                }`}
+                                        >
+                                            📺 채널 ({currentChannels.length})
+                                        </button>
+                                    )}
+                                    {topicsByType.keyword.length > 0 && (
                                         <button
                                             onClick={() => { setAnalysisTab('keyword'); setSelectedTopic(null); setDisplayedVideos(currentVideos); }}
-                                            className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-all ${analysisTab === 'keyword'
+                                            className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-all whitespace-nowrap ${analysisTab === 'keyword'
                                                 ? 'bg-[var(--color-primary)] text-black'
                                                 : 'bg-white/5 text-gray-400 hover:bg-white/10'
                                                 }`}
                                         >
                                             🔑 키워드 ({topicsByType.keyword.length})
                                         </button>
+                                    )}
+                                    {topicsByType.hashtag.length > 0 && (
                                         <button
                                             onClick={() => { setAnalysisTab('hashtag'); setSelectedTopic(null); setDisplayedVideos(currentVideos); }}
-                                            className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-all ${analysisTab === 'hashtag'
+                                            className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-all whitespace-nowrap ${analysisTab === 'hashtag'
                                                 ? 'bg-[var(--color-primary)] text-black'
                                                 : 'bg-white/5 text-gray-400 hover:bg-white/10'
                                                 }`}
                                         >
                                             # 해시태그 ({topicsByType.hashtag.length})
                                         </button>
-                                    </div>
-
-                                    {/* Chart */}
-                                    <TrendChart
-                                        topics={topicsByType[analysisTab]}
-                                        selectedTopicId={selectedTopic?.id}
-                                        onTopicClick={(topic) => {
-                                            setSelectedTopic(topic);
-                                            if (topic.relatedVideos && topic.relatedVideos.length > 0) {
-                                                setDisplayedVideos(topic.relatedVideos);
-                                            } else {
-                                                setDisplayedVideos(currentVideos);
-                                            }
-                                        }}
-                                    />
-                                    {selectedTopic && (
-                                        <button
-                                            onClick={() => {
-                                                setSelectedTopic(null);
-                                                setDisplayedVideos(currentVideos);
-                                            }}
-                                            className="mt-2 text-xs text-[var(--color-primary)] hover:underline"
-                                        >
-                                            ✕ 필터 해제 (전체 보기)
-                                        </button>
                                     )}
                                 </div>
-                            )}
 
-                            {/* Videos Grid */}
-                            {displayedVideos.length > 0 && (
+                                {/* Chart (Hide for Channel Tab) */}
+                                {analysisTab !== 'channel' && topicsByType[analysisTab] && (
+                                    <>
+                                        <TrendChart
+                                            topics={topicsByType[analysisTab]}
+                                            selectedTopicId={selectedTopic?.id}
+                                            onTopicClick={(topic) => {
+                                                setSelectedTopic(topic);
+                                                if (topic.relatedVideos && topic.relatedVideos.length > 0) {
+                                                    setDisplayedVideos(topic.relatedVideos);
+                                                } else {
+                                                    setDisplayedVideos(currentVideos);
+                                                }
+                                            }}
+                                        />
+                                        {selectedTopic && (
+                                            <button
+                                                onClick={() => {
+                                                    setSelectedTopic(null);
+                                                    setDisplayedVideos(currentVideos);
+                                                }}
+                                                className="mt-2 text-xs text-[var(--color-primary)] hover:underline"
+                                            >
+                                                ✕ 필터 해제 (전체 보기)
+                                            </button>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+
+                            {/* Content Grid */}
+                            {analysisTab === 'channel' ? (
                                 <div>
                                     <h3 className="text-md font-bold text-white mb-3 flex items-center gap-2">
-                                        🎬 영상 목록
-                                        {selectedTopic && (
-                                            <span className="text-sm font-normal text-[var(--color-primary)]">
-                                                - {selectedTopic.topic}
-                                            </span>
-                                        )}
+                                        📢 전문 채널 목록
+                                        <span className="text-xs font-normal text-gray-500 ml-2">구독자 순 정렬</span>
                                     </h3>
-                                    <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-                                        {(isExpanded ? displayedVideos : displayedVideos.slice(0, 12)).map((video, i) => (
-                                            <TrendVideoCard key={video.id} video={video} rank={i + 1} />
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {currentChannels.map((channel) => (
+                                            <div key={channel.channelId} className="bg-white/5 p-4 rounded-xl border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-all">
+                                                <div className="flex items-center gap-3 mb-3">
+                                                    <img src={channel.channelThumbnail} alt={channel.channelName} className="w-12 h-12 rounded-full object-cover border border-white/10" />
+                                                    <div className="flex-1 min-w-0">
+                                                        <h4 className="font-bold text-white text-sm truncate">{channel.channelName}</h4>
+                                                        <p className="text-xs text-gray-400">구독자 {channel.subscriberCount.toLocaleString()}명</p>
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2 text-center mb-3">
+                                                    <div className="bg-black/20 p-2 rounded-lg">
+                                                        <span className="block text-[10px] text-gray-500">총 조회수</span>
+                                                        <span className="text-xs font-bold text-gray-300">{channel.viewCount > 10000 ? `${(channel.viewCount / 10000).toFixed(1)}만` : channel.viewCount.toLocaleString()}</span>
+                                                    </div>
+                                                    <div className="bg-black/20 p-2 rounded-lg">
+                                                        <span className="block text-[10px] text-gray-500">동영상</span>
+                                                        <span className="text-xs font-bold text-gray-300">{channel.videoCount}개</span>
+                                                    </div>
+                                                </div>
+                                                {channel.keywords && (
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {channel.keywords.split(' ').slice(0, 3).map((k: string, i: number) => (
+                                                            <span key={i} className="text-[10px] text-gray-400 bg-white/5 px-1.5 py-0.5 rounded">
+                                                                {k.replace(/"/g, '')}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
                                         ))}
                                     </div>
-                                    {displayedVideos.length > 12 && (
-                                        <button
-                                            onClick={() => setIsExpanded(!isExpanded)}
-                                            className="w-full mt-3 py-2 text-xs text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors flex items-center justify-center gap-1"
-                                        >
-                                            {isExpanded ? (
-                                                <>접기 <ChevronUp size={14} /></>
-                                            ) : (
-                                                <>+ {displayedVideos.length - 12}개 더 보기 <ChevronDown size={14} /></>
-                                            )}
-                                        </button>
-                                    )}
                                 </div>
+                            ) : (
+                                /* Video Grid */
+                                displayedVideos.length > 0 && (
+                                    <div>
+                                        <h3 className="text-md font-bold text-white mb-3 flex items-center gap-2">
+                                            🎬 영상 목록
+                                            {selectedTopic && (
+                                                <span className="text-sm font-normal text-[var(--color-primary)]">
+                                                    - {selectedTopic.topic}
+                                                </span>
+                                            )}
+                                        </h3>
+                                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                                            {(isExpanded ? displayedVideos : displayedVideos.slice(0, 12)).map((video, i) => (
+                                                <TrendVideoCard key={video.id} video={video} rank={i + 1} />
+                                            ))}
+                                        </div>
+                                        {displayedVideos.length > 12 && (
+                                            <button
+                                                onClick={() => setIsExpanded(!isExpanded)}
+                                                className="w-full mt-3 py-2 text-xs text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors flex items-center justify-center gap-1"
+                                            >
+                                                {isExpanded ? (
+                                                    <>접기 <ChevronUp size={14} /></>
+                                                ) : (
+                                                    <>+ {displayedVideos.length - 12}개 더 보기 <ChevronDown size={14} /></>
+                                                )}
+                                            </button>
+                                        )}
+                                    </div>
+                                )
                             )}
                         </div>
                     )}

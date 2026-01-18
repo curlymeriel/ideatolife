@@ -155,7 +155,11 @@ export const IdeaPool: React.FC = () => {
                                         >
                                             <Search size={18} />
                                         </button>
-                                        <button className="p-2 text-[var(--color-text-secondary)] hover:text-red-500 hover:bg-red-50 transition-all rounded-lg">
+                                        <button
+                                            onClick={() => useWorkflowStore.getState().deleteIdeaFromPool(idea.id)}
+                                            className="p-2 text-[var(--color-text-secondary)] hover:text-red-500 hover:bg-red-50 transition-all rounded-lg"
+                                            title="아이디어 삭제"
+                                        >
                                             <Trash2 size={18} />
                                         </button>
                                     </div>

@@ -504,3 +504,91 @@ export async function fetchVideosByCategory(
         throw error;
     }
 }
+
+/**
+ * Search for channels by keyword and return detailed analysis
+ * Performs a 2-step process:
+ * 1. Search for channels (get IDs)
+ * 2. Fetch detailed statistics (subscriber count, etc)
+ * 3. Sort by subscriber count (influence)
+ */
+export async function searchChannels(
+    apiKey: string,
+    query: string,
+    regionCode: RegionCode,
+    maxResults: number = 10
+): Promise<ChannelAnalysis[]> {
+    try {
+        // Step 1: Search for channels
+        const searchUrl = `${YOUTUBE_API_BASE}/search?part=snippet&q=${encodeURIComponent(query)}` +
+            `&type=channel&regionCode=${REGION_MAP[regionCode]}&maxResults=${maxResults}&key=${apiKey}`;
+
+        const searchResponse = await fetch(searchUrl);
+        if (!searchResponse.ok) {
+            throw new Error(`Channel search failed: ${searchResponse.statusText}`);
+        }
+        const searchData = await searchResponse.json();
+
+        if (!searchData.items || searchData.items.length === 0) {
+            return [];
+        }
+
+        const channelIds = searchData.items.map((item: any) => item.snippet.channelId);
+
+        // Step 2: Get detailed statistics
+        return await getChannelsDetails(apiKey, channelIds);
+
+    } catch (error) {
+        console.error('[YouTube API] Error searching channels:', error);
+        throw error;
+    }
+}
+
+/**
+ * Fetch detailed stats for multiple channels
+ */
+export async function getChannelsDetails(
+    apiKey: string,
+    channelIds: string[]
+): Promise<ChannelAnalysis[]> {
+    if (channelIds.length === 0) return [];
+
+    try {
+        const ids = channelIds.join(',');
+        const url = `${YOUTUBE_API_BASE}/channels?part=snippet,statistics,contentDetails,brandingSettings` +
+            `&id=${ids}&key=${apiKey}`;
+
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Channel details fetch failed: ${response.statusText}`);
+        }
+        const data = await response.json();
+
+        if (!data.items) return [];
+
+        // Map to ChannelAnalysis
+        const channels: ChannelAnalysis[] = data.items.map((item: any) => ({
+            channelId: item.id,
+            channelName: item.snippet.title,
+            channelThumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url,
+            subscriberCount: parseInt(item.statistics.subscriberCount || '0'),
+            videoCount: parseInt(item.statistics.videoCount || '0'),
+            viewCount: parseInt(item.statistics.viewCount || '0'),
+            avgViews: 0, // Calculated in Phase 2 or separate detailed fetch
+            avgEngagement: 0,
+            topVideos: [], // Populated in Phase 2
+            recentVideos: [],
+            description: item.snippet.description, // Optional but useful for Phase 2
+            publishedAt: item.snippet.publishedAt,
+            country: item.snippet.country,
+            keywords: item.brandingSettings?.channel?.keywords
+        }));
+
+        // Sort by subscriber count descending
+        return channels.sort((a, b) => b.subscriberCount - a.subscriberCount);
+
+    } catch (error) {
+        console.error('[YouTube API] Error fetching channel details:', error);
+        return [];
+    }
+}

@@ -862,13 +862,16 @@ export const generateStrategyInsight = async (
             const response = await axios.post(
                 `${model.url}?key=${apiKey}`,
                 {
-                    contents: [{ parts: [{ text: prompt }] }]
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: {
+                        temperature: 0.7,
+                        response_mime_type: "application/json"
+                    }
                 }
             );
 
             const text = response.data.candidates[0].content.parts[0].text;
-            const cleanJson = text.replace(/```json\n?|\n?```/g, '').trim();
-            const result = JSON.parse(cleanJson);
+            const result = JSON.parse(text);
 
             // Add ID and timestamps if missing
             return {
@@ -1622,5 +1625,47 @@ Write in Korean. Be specific and actionable. Format with headers and bullet poin
         console.error('[Gemini] Channel analysis failed:', error);
         return `채널 분석 실패: ${error.message || 'Unknown error'}`;
     }
+};
+
+export const generateText = async (
+    prompt: string,
+    apiKey: string,
+    systemInstruction?: string
+): Promise<string> => {
+    if (!apiKey) return "API Key is missing.";
+
+    // Use Gemini 2.5/Pro models for chat
+    const models = [
+        { name: 'Gemini 3 Pro (Preview)', url: GEMINI_3_PRO_URL },
+        { name: 'Gemini 3 Flash (Preview)', url: GEMINI_3_FLASH_URL },
+        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },
+        { name: 'Gemini 1.5 Pro', url: GEMINI_PRO_URL },
+        { name: 'Gemini 1.5 Flash', url: GEMINI_1_5_FLASH_URL }
+    ];
+
+    let lastError: any = null;
+
+    // Combine system instruction if provided
+    const finalPrompt = systemInstruction
+        ? `${systemInstruction}\n\nUser Query: ${prompt}`
+        : prompt;
+
+    for (const model of models) {
+        try {
+            const response = await axios.post(
+                `${model.url}?key=${apiKey}`,
+                {
+                    contents: [{ parts: [{ text: finalPrompt }] }]
+                }
+            );
+
+            return response.data.candidates[0].content.parts[0].text;
+        } catch (error: any) {
+            console.warn(`[Gemini] Chat generation failed with ${model.name}:`, error.message);
+            lastError = error;
+        }
+    }
+
+    throw lastError || new Error("All models failed to generate text");
 };
 

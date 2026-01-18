@@ -226,6 +226,10 @@ export interface ChannelAnalysis {
     avgEngagement: number;
     topVideos: YouTubeTrendVideo[];
     recentVideos: YouTubeTrendVideo[];
+    description?: string;
+    keywords?: string;
+    publishedAt?: string;
+    country?: string;
     improvementSuggestions?: {
         thumbnail: string[];
         title: string[];
@@ -313,6 +317,7 @@ export interface TrendSnapshot {
     keywords: string[];
     description: string;
     trendTopics: YouTubeTrendTopic[];
+    channels?: ChannelAnalysis[];
     rawData?: any;
 }
 
@@ -361,6 +366,18 @@ export interface StrategyInsight {
         format: string;
         notes?: string;
     }[];
+    channelIdentity?: ChannelIdentity; // NEW: Branding & Identity
+}
+
+export interface ChannelIdentity {
+    channelName: string;
+    handle: string;
+    bio: string;
+    colorPalette: string[];
+    bannerPrompt?: string;
+    bannerUrl?: string;
+    profilePrompt?: string;
+    profileUrl?: string;
 }
 
 export interface IdeaPoolItem {

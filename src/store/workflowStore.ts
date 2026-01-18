@@ -38,6 +38,10 @@ interface MultiProjectActions {
     importData: (jsonString: string) => void;
     importZip: (file: File) => Promise<void>;
     resetToDefault: () => void;
+
+    // Prep Phase Data Management
+    exportResearchData: () => void;
+    importResearchData: (jsonString: string) => Promise<void>;
 }
 
 // Combined Store Type
@@ -698,6 +702,59 @@ export const useWorkflowStore = create<WorkflowStore>()(
                     },
                     lastModified: Date.now()
                 }));
+            },
+
+            // ====================
+            // Global Data Management (Phase 1-4)
+            // ====================
+            exportResearchData: () => {
+                const state = get() as any;
+                const researchData = {
+                    version: 1,
+                    exportedAt: Date.now(),
+                    trendSnapshots: state.trendSnapshots,
+                    competitorSnapshots: state.competitorSnapshots,
+                    strategyInsights: state.strategyInsights,
+                    ideaPool: state.ideaPool
+                };
+
+                const blob = new Blob([JSON.stringify(researchData, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `research_backup_${new Date().toISOString().slice(0, 10)}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            },
+
+            importResearchData: async (jsonString: string) => {
+                try {
+                    const data = JSON.parse(jsonString);
+                    if (!data.trendSnapshots && !data.strategyInsights) {
+                        throw new Error('Invalid research data format');
+                    }
+
+                    set((state: any) => ({
+                        trendSnapshots: { ...state.trendSnapshots, ...data.trendSnapshots },
+                        competitorSnapshots: { ...state.competitorSnapshots, ...data.competitorSnapshots },
+                        strategyInsights: { ...state.strategyInsights, ...data.strategyInsights },
+                        ideaPool: [...state.ideaPool, ...(data.ideaPool || [])]
+                    }));
+
+                    // Persist to indexedDB for "idea-lab-storage"
+                    // Trigger a dummy state update or explicitly force persist if needed.
+                    // Since 'storage' middleware handles all 'set' calls, this should persist.
+                    // However, we can also force a 'storage-update' broadcast
+                    syncChannel.postMessage({ type: 'STORAGE_UPDATED' });
+
+                    alert(`Research data imported successfully.\nSnapshots: ${Object.keys(data.trendSnapshots || {}).length}\nStrategies: ${Object.keys(data.strategyInsights || {}).length}`);
+
+                } catch (e) {
+                    console.error('Failed to import research data:', e);
+                    alert('Failed to import research data. Invalid file format.');
+                }
             },
 
             createProject: async (sourceSeries?: string) => {
