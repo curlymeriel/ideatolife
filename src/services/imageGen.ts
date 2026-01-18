@@ -9,7 +9,7 @@ export const generateImage = async (
     apiKey: string,
     referenceImages?: string | string[], // Optional base64 string(s) for Image-to-Image
     aspectRatio?: string, // Target aspect ratio (e.g., '16:9', '9:16', '1:1', '2.35:1')
-    modelName: string = 'gemini-3-pro-image-preview',
+    modelName: string = 'imagen-3.0-generate-001',
     candidateCount: number = 1
 ): Promise<{ urls: string[] }> => {
     if (!apiKey) {

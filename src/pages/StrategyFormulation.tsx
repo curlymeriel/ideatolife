@@ -199,7 +199,7 @@ export const StrategyFormulation: React.FC = () => {
             );
             setStrategyResult(result);
             saveStrategyInsight(result);
-            setActiveTab('summary');
+            setActiveTab('report');
             setSaveStatus('saved');
         } catch (error) {
             console.error('Strategy generation failed:', error);
@@ -242,20 +242,25 @@ export const StrategyFormulation: React.FC = () => {
     };
 
     const handleGenerateIdentityText = async () => {
-        if (!strategyResult || !geminiApiKey) return;
+        if (!geminiApiKey || !strategyResult) return;
         setIsIdentityGenerating(true);
-        const prompt = `YouTube Brand Identity suggest for: ${strategyResult.executiveSummary}. Return JSON with channelName, handle, bio, colorPalette, bannerPrompt, profilePrompt.`;
         try {
-            const response = await generateText(prompt, geminiApiKey, "Return ONLY valid JSON.");
-            const cleanJson = response.replace(/```json\n?|\n?```/g, '').trim();
-            const data = JSON.parse(cleanJson);
+            const prompt = `Based on the following strategy, generate a YouTube channel name, handle, bio, banner prompt, and profile prompt:
+            Executive Summary: ${strategyResult.executiveSummary}
+            Key Opportunities: ${strategyResult.keyOpportunities.join(', ')}
+            Recommended Series: ${strategyResult.recommendedSeries[0]?.title}
+            Return as JSON: { channelName, handle, bio, colorPalette: [], bannerPrompt, profilePrompt }`;
+
+            const text = await generateText(prompt, geminiApiKey, "application/json");
+            const result = JSON.parse(text);
+
             setChannelIdentity(prev => ({
-                ...prev, channelName: data.channelName, handle: data.handle, bio: data.bio,
-                colorPalette: data.colorPalette, bannerPrompt: data.bannerPrompt, profilePrompt: data.profilePrompt
+                ...prev,
+                ...result
             }));
             setSaveStatus('idle');
         } catch (error) {
-            console.error("Identity generation failed:", error);
+            console.error('Branding generation failed:', error);
         } finally {
             setIsIdentityGenerating(false);
         }
@@ -263,8 +268,18 @@ export const StrategyFormulation: React.FC = () => {
 
     const handleGenerateArt = async (type: 'banner' | 'profile') => {
         if (!geminiApiKey) return;
-        const prompt = type === 'banner' ? channelIdentity.bannerPrompt : channelIdentity.profilePrompt;
-        if (!prompt) return;
+        let prompt = type === 'banner' ? channelIdentity.bannerPrompt : channelIdentity.profilePrompt;
+
+        if (!prompt) {
+            // If prompt is empty, try to generate it first or use a fallback
+            if (channelIdentity.channelName) {
+                prompt = `${type === 'banner' ? 'YouTube banner background' : 'YouTube profile icon'} for a channel named "${channelIdentity.channelName}" focused on ${strategyResult?.executiveSummary.substring(0, 100)}`;
+            } else {
+                alert('속성(프롬프트) 정보가 비어있습니다. "자동 생성"을 먼저 누르거나 직접 입력해주세요.');
+                return;
+            }
+        }
+
         setIsArtGenerating(type);
         try {
             const aspectRatio = type === 'banner' ? '16:9' : '1:1';
@@ -272,9 +287,12 @@ export const StrategyFormulation: React.FC = () => {
             if (result.urls?.[0]) {
                 setChannelIdentity(prev => ({ ...prev, [type === 'banner' ? 'bannerUrl' : 'profileUrl']: result.urls[0] }));
                 setSaveStatus('idle');
+            } else {
+                alert('이미지 생성에 실패했습니다. 구글 서버 상태를 확인해주세요.');
             }
-        } catch (error) {
-            console.error(`${type} generation failed:`, error);
+        } catch (error: any) {
+            console.error('Art generation failed:', error);
+            alert(`이미지 생성 오류: ${error.message}`);
         } finally {
             setIsArtGenerating(null);
         }
@@ -300,58 +318,54 @@ export const StrategyFormulation: React.FC = () => {
         navigate('/step/1');
     };
 
-    const renderSelectionArea = () => (
-        <div className="space-y-4">
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <LayoutGrid size={20} className="text-[var(--color-primary)]" />
-                분석된 경쟁 데이터 선택
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {competitors.length === 0 ? (
-                    <div className="col-span-full h-40 flex flex-col items-center justify-center text-gray-500 border border-dashed border-[var(--color-border)] rounded-xl bg-white/5">
-                        <Target className="mb-2 opacity-30" size={32} />
-                        <p>분석된 경쟁자 스냅샷이 없습니다.</p>
-                        <button onClick={() => navigate('/research/competitor')} className="mt-2 text-[var(--color-primary)] hover:underline text-sm">
-                            Phase 2에서 경쟁 분석을 먼저 수행하세요
-                        </button>
-                    </div>
-                ) : (
-                    competitors.map(comp => (
-                        <div
-                            key={comp.id}
-                            onClick={() => handleSelectCompetitor(comp)}
-                            className={`p-4 rounded-xl border transition-all cursor-pointer relative group ${selectedCompetitor?.id === comp.id
-                                ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5 ring-1 ring-[var(--color-primary)]'
-                                : 'border-[var(--color-border)] bg-white/5 hover:border-white/30'
-                                }`}
-                        >
-                            <div className="flex justify-between items-start mb-2">
-                                <span className="text-[10px] text-gray-500">{new Date(comp.createdAt).toLocaleDateString()}</span>
-                                <div className="flex items-center gap-2">
-                                    {selectedCompetitor?.id === comp.id && <CheckCircle2 className="text-[var(--color-primary)]" size={16} />}
-                                    {Object.values(strategyInsights).some(s => s.competitorSnapshotId === comp.id) && (
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                if (confirm('이 페르소나에 대해 수립된 모든 전략과 브랜딩 데이터를 초기화하시겠습니까?')) {
-                                                    const si = Object.values(strategyInsights).find(s => s.competitorSnapshotId === comp.id);
-                                                    if (si) deleteStrategyInsight(si.id);
-                                                }
-                                            }}
-                                            className="text-gray-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity p-1"
-                                        >
-                                            <Trash2 size={14} />
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                            <h3 className="text-white font-bold mb-1 line-clamp-1">{comp.summary || '경쟁자 심층 분석'}</h3>
+    const renderSelectionArea = () => {
+        const isCompact = !!strategyResult;
+
+        return (
+            <div className={`space-y-4 transition-all duration-500 ${isCompact ? 'bg-white/5 p-4 rounded-2xl border border-white/10' : ''}`}>
+                <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                        <LayoutGrid size={20} className="text-[var(--color-primary)]" />
+                        분석된 경쟁 데이터 선택
+                    </h2>
+                    {isCompact && (
+                        <span className="text-[10px] text-gray-500 font-medium">선택됨: {selectedCompetitor?.summary.substring(0, 30)}...</span>
+                    )}
+                </div>
+
+                <div className={`${isCompact ? 'flex gap-3 overflow-x-auto pb-2 no-scrollbar' : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'}`}>
+                    {competitors.length === 0 ? (
+                        <div className="col-span-full h-40 flex flex-col items-center justify-center text-gray-500 border border-dashed border-[var(--color-border)] rounded-xl bg-white/5">
+                            <Target className="mb-2 opacity-30" size={32} />
+                            <p>분석된 경쟁자 스냅샷이 없습니다.</p>
+                            <button onClick={() => navigate('/research/competitor')} className="mt-2 text-[var(--color-primary)] hover:underline text-sm">
+                                Phase 2에서 경쟁 분석을 먼저 수행하세요
+                            </button>
                         </div>
-                    ))
-                )}
+                    ) : (
+                        competitors.map(comp => (
+                            <div
+                                key={comp.id}
+                                onClick={() => handleSelectCompetitor(comp)}
+                                className={`rounded-xl border transition-all cursor-pointer relative group flex-shrink-0 ${isCompact ? 'w-64 p-3' : 'p-4'} ${selectedCompetitor?.id === comp.id
+                                    ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5 ring-1 ring-[var(--color-primary)]'
+                                    : 'border-[var(--color-border)] bg-white/5 hover:border-white/30'
+                                    }`}
+                            >
+                                <div className="flex justify-between items-start mb-2">
+                                    <span className="text-[10px] text-gray-500">{new Date(comp.createdAt).toLocaleDateString()}</span>
+                                    <div className="flex items-center gap-2">
+                                        {selectedCompetitor?.id === comp.id && <CheckCircle2 className="text-[var(--color-primary)]" size={16} />}
+                                    </div>
+                                </div>
+                                <h3 className={`text-white font-bold mb-1 ${isCompact ? 'text-sm line-clamp-1' : 'line-clamp-1'}`}>{comp.summary || '경쟁자 심층 분석'}</h3>
+                            </div>
+                        ))
+                    )}
+                </div>
             </div>
-        </div>
-    );
+        );
+    };
 
     const renderStrategyDashboard = () => {
         if (!selectedCompetitor) return null;
@@ -372,13 +386,13 @@ export const StrategyFormulation: React.FC = () => {
             <div className="flex flex-col h-full bg-[#0A0A0A] border border-white/5 rounded-3xl overflow-hidden shadow-2xl">
                 <div className="bg-[#151515] border-b border-white/5 px-6 py-3 flex items-center justify-between sticky top-0 z-30">
                     <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
-                        {['summary', 'pillars', 'series', 'episodes', 'identity'].map(tab => (
+                        {['report', 'summary', 'pillars', 'series', 'episodes', 'identity'].map(tab => (
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab as any)}
                                 className={`px-4 py-2 text-xs font-bold rounded-lg transition-all capitalize ${activeTab === tab ? 'bg-[var(--color-primary)] text-black' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
                             >
-                                {tab}
+                                {tab === 'report' ? 'Full Report' : tab}
                             </button>
                         ))}
                     </div>
@@ -386,14 +400,88 @@ export const StrategyFormulation: React.FC = () => {
                         <div className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border ${saveStatus === 'saved' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-orange-500/10 text-orange-400 border-orange-500/20'}`}>
                             {saveStatus === 'saved' ? '저장됨' : '저장 필요'}
                         </div>
-                        <button onClick={handleSaveStrategy} disabled={saveStatus !== 'idle'} className={`px-4 py-2 rounded-lg flex items-center gap-2 text-xs font-bold transition-all ${saveStatus === 'saved' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-[var(--color-primary)] text-black hover:opacity-90'}`}>
-                            <Save size={14} /> {saveStatus === 'saving' ? '저장 중...' : '전체 저장'}
+
+                        {/* Export Menu */}
+                        <div className="relative group">
+                            <button className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white rounded-lg flex items-center gap-2 text-xs border border-white/10 transition-all font-bold">
+                                <Save size={14} />
+                                내보내기
+                            </button>
+                            <div className="hidden group-hover:block absolute right-0 top-full mt-1 w-48 bg-[#1A1A1A] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden">
+                                <button
+                                    onClick={() => ResearchReporter.exportToDocx(strategyResult!)}
+                                    className="w-full text-left px-4 py-3 hover:bg-white/5 text-sm text-gray-300 hover:text-white flex items-center gap-2"
+                                >
+                                    Word (.docx)
+                                </button>
+                                <button
+                                    onClick={() => ResearchReporter.exportToPptx(strategyResult!)}
+                                    className="w-full text-left px-4 py-3 hover:bg-white/5 text-sm text-gray-300 hover:text-white flex items-center gap-2"
+                                >
+                                    PowerPoint (.pptx)
+                                </button>
+                                <button
+                                    onClick={() => ResearchReporter.exportToPdf(strategyResult!)}
+                                    className="w-full text-left px-4 py-3 hover:bg-white/5 text-sm text-gray-300 hover:text-white flex items-center gap-2"
+                                >
+                                    PDF (.pdf)
+                                </button>
+                            </div>
+                        </div>
+
+                        <button onClick={handleSaveStrategy} disabled={saveStatus !== 'idle'} className={`px-4 py-2 rounded-lg flex items-center gap-2 text-xs font-bold transition-all ${saveStatus === 'saved' ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-[var(--color-primary)] text-black hover:opacity-90'}`}>
+                            <Save size={14} /> {saveStatus === 'saving' ? '저장 중...' : saveStatus === 'saved' ? '완료' : '전체 저장'}
                         </button>
                     </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-8 md:p-12 custom-scrollbar bg-gradient-to-b from-[#111] to-black">
-                    <div className="max-w-4xl mx-auto space-y-10">
+                    <div className="max-w-4xl mx-auto space-y-16">
+                        {activeTab === 'report' && (
+                            <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700 bg-white/[0.02] p-12 rounded-[48px] border border-white/5 shadow-2xl">
+                                <div className="text-center space-y-4 mb-16">
+                                    <div className="inline-block px-4 py-1.5 bg-[var(--color-primary)]/10 text-[var(--color-primary)] text-xs font-black uppercase tracking-widest rounded-full mb-4">Strategic Intelligence Report</div>
+                                    <h1 className="text-5xl font-black text-white tracking-tight">{channelIdentity.channelName || 'YouTube Strategy'}</h1>
+                                    <p className="text-gray-500 font-medium">Generated by Gemini AI • {new Date(strategyResult.createdAt).toLocaleDateString()}</p>
+                                </div>
+
+                                <section className="space-y-6">
+                                    <h2 className="text-2xl font-bold text-white border-b border-white/10 pb-4">1. Executive Summary</h2>
+                                    <p className="text-xl text-gray-300 leading-relaxed italic border-l-4 border-[var(--color-primary)] pl-6">"{strategyResult.executiveSummary}"</p>
+                                </section>
+
+                                <section className="space-y-6">
+                                    <h2 className="text-2xl font-bold text-white border-b border-white/10 pb-4">2. Strategic Pillars</h2>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        {strategyResult.recommendedPillars.map((p, i) => (
+                                            <div key={i} className="bg-white/5 p-6 rounded-2xl">
+                                                <h3 className="font-bold text-[var(--color-primary)] mb-2">{p.pillarName}</h3>
+                                                <p className="text-sm text-gray-400">{p.reason}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </section>
+
+                                <section className="space-y-6">
+                                    <h2 className="text-2xl font-bold text-white border-b border-white/10 pb-4">3. Recommended Series</h2>
+                                    {strategyResult.recommendedSeries.map((s, i) => (
+                                        <div key={i} className="bg-white/5 p-8 rounded-3xl space-y-4">
+                                            <h3 className="text-2xl font-bold text-white">{s.title}</h3>
+                                            <p className="text-gray-400">{s.description}</p>
+                                            <div className="flex gap-4 text-xs font-bold text-[var(--color-primary)] uppercase">
+                                                <span>Pillar: {s.targetPillar}</span>
+                                                <span className="text-gray-600">|</span>
+                                                <span>Audience: {s.expectedAudience}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </section>
+
+                                <div className="h-px bg-white/5 my-12" />
+                                <div className="text-center text-gray-600 text-[10px] uppercase tracking-widest">End of Intelligence Report</div>
+                            </div>
+                        )}
+
                         {activeTab === 'summary' && (
                             <div className="space-y-8 animate-in fade-in duration-300">
                                 <h3 className="text-3xl font-black text-white">Executive Strategy Summary</h3>
@@ -514,8 +602,14 @@ export const StrategyFormulation: React.FC = () => {
                                                 </div>
                                             </div>
                                             <div className="flex gap-4">
-                                                <button onClick={() => handleGenerateArt('profile')} disabled={isArtGenerating === 'profile'} className="flex-1 py-3 bg-white/10 rounded-xl text-xs font-bold">건셉 생성 (Profile)</button>
-                                                <button onClick={() => handleGenerateArt('banner')} disabled={isArtGenerating === 'banner'} className="flex-1 py-3 bg-white/10 rounded-xl text-xs font-bold">건셉 생성 (Banner)</button>
+                                                <button onClick={() => handleGenerateArt('profile')} disabled={isArtGenerating === 'profile'} className="flex-1 py-3 bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 text-[var(--color-primary)] rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-inner">
+                                                    {isArtGenerating === 'profile' ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                                                    컨셉 생성 (Profile)
+                                                </button>
+                                                <button onClick={() => handleGenerateArt('banner')} disabled={isArtGenerating === 'banner'} className="flex-1 py-3 bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 text-[var(--color-primary)] rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-inner">
+                                                    {isArtGenerating === 'banner' ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                                                    컨셉 생성 (Banner)
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
@@ -539,6 +633,24 @@ export const StrategyFormulation: React.FC = () => {
                 <div>
                     <div className="flex items-center gap-2 text-xs text-[var(--color-primary)] font-bold uppercase tracking-widest mb-1"><TrendingUp size={14} /> Intelligence Layer</div>
                     <h1 className="text-xl font-bold text-white leading-none">Phase 3 : AI Strategic Planning</h1>
+                </div>
+
+                <div className="flex gap-3">
+                    <button
+                        onClick={() => navigate('/research/competitor')}
+                        className="px-4 py-2 bg-white/5 text-gray-400 rounded-lg hover:bg-white/10 flex items-center gap-2 text-sm"
+                    >
+                        <ArrowLeft size={16} />
+                        경쟁 분석 (P2)
+                    </button>
+                    <button
+                        onClick={() => navigate('/research/ideas')}
+                        disabled={!strategyResult}
+                        className="px-5 py-2 bg-white/10 text-white font-bold rounded-lg hover:bg-[var(--color-primary)] hover:text-black disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2 text-sm transition-all"
+                    >
+                        아이디어 풀 (Next)
+                        <ArrowRight size={16} />
+                    </button>
                 </div>
             </div>
 
