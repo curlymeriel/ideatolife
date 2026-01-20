@@ -759,7 +759,8 @@ ${JSON.stringify(videos.map(v => ({ title: v.title, channel: v.channelName, view
 export const generateStrategyInsight = async (
     trendSnapshot: any,
     competitorSnapshot: any,
-    apiKey: string
+    apiKey: string,
+    chatHistory?: Array<{ role: 'user' | 'model', text: string }> // NEW: context from discussion
 ): Promise<StrategyInsight> => {
     if (!apiKey) {
         // Mock success response
@@ -792,66 +793,112 @@ export const generateStrategyInsight = async (
                     format: "Vertical Shorts",
                     notes: "배경 음악 선정이 매우 중요함"
                 }
-            ]
+            ],
+            characters: [
+                { name: "마스터 K", role: "메인 멘토", personality: "냉철하지만 따뜻한 조언가", visualGuide: "오피스룩, 따뜻한 조명, 스마트한 안경" }
+            ],
+            techStack: [
+                { phase: "기획", tool: "Gemini 2.5 Flash", usage: "대본 및 기획안 전반" }
+            ],
+            marketingStrategy: {
+                kpis: ["구독자 1만명", "평균 조회수 10만"],
+                viralElements: ["반전 시나리오", "시청자 참여 투표"],
+                interactiveIdeas: []
+            }
         };
     }
 
+    const chatContext = chatHistory && chatHistory.length > 0
+        ? `\n\n**[CRITICAL] User's Strategic Direction (from Chat):**\n${chatHistory.map(m => `${m.role === 'user' ? 'User' : 'AI'}: ${m.text}`).join('\n')}\n\nIMPORTANT: The above discussion contains the user's latest creative vision and strategic requirements. Prioritize these ideas and requirements over the generic analysis. Construct a COHESIVE and FRESH strategy report that fully integrates these new concepts.`
+        : '';
+
     const prompt = `
-당신은 최고의 YouTube 콘텐츠 전략가입니다.다음 '시장 데이터'와 '경쟁자 분석 데이터'를 기반으로 채널의 필승 전략을 수립하세요.
+당신은 최고의 YouTube 콘텐츠 전략가입니다. 다음 '시장 데이터', '경쟁자 분석 데이터', 그리고 '사용자의 특별 기획 방향(채팅)'을 기반으로 채널의 필승 전략을 수립하세요.
 
-1. 시장 데이터(TrendSnapshot):
-    - 컨텍스트: ${trendSnapshot.queryContext}
-    - 키워드: ${trendSnapshot.keywords.join(', ')}
-    - 주요 주제: ${trendSnapshot.description}
+${chatContext}
 
-    2. 경쟁자 분석 데이터(CompetitorSnapshot):
-    - 타겟 페르소나: ${competitorSnapshot.analysis?.targetAudience}
-    - 후킹 패턴: ${competitorSnapshot.analysis?.hookPatterns?.join(', ')}
-    - 블루오션 기회: ${competitorSnapshot.analysis?.contentGapOpportunities?.join(', ')}
+1. 기초 리서치 데이터:
+    - 시장 컨텍스트: ${trendSnapshot.queryContext}
+    - 타겟 페르소나 기초: ${competitorSnapshot.analysis?.targetAudience || '정보 없음'}
+    - 경쟁자 후킹/공백 패턴: ${competitorSnapshot.analysis?.contentGapOpportunities?.join(', ') || '정보 없음'}
+
+지시사항: 기초 리서치 데이터를 토대로 하되, 위에 제공된 '사용자의 특별 기획 방향(채팅)'을 핵심 원동력으로 삼아 아예 새로운 버전의 전략을 수립하십시오. 기존의 뻔한 분석이 아닌, 사용자가 제안한 참신한 아이디어가 전략 전체(Executive Summary부터 Episode까지)에 녹아들어야 합니다.
 
 위 데이터를 통합하여 다음 형식의 '전략 인사이트'를 생성하세요(한국어로 응답):
     - Executive Summary: 전체적인 채널 운영 방향 및 핵심 차별화 전략
-        - Key Opportunities & Risks: 시장 진입 시 활용할 기회와 주의할 리스크
-            - Recommended Pillars: 채널을 지탱할 2 - 3가지 핵심 콘텐츠 기둥(이름 + 선정이유)
-                - Recommended Series: 구체적인 시리즈 기획 1 - 2가지(제목, 설명, 타겟 필러, 예상 시청자)
-                    - Recommended Episodes: 즉시 제작 가능한 에피소드 아이디어 3 - 5가지(제목, 한줄요약, 차별화 포인트(Angle), 포맷)
+    - Key Opportunities & Risks: 시장 진입 시 활용할 기회와 주의할 리스크
+    - Recommended Pillars: 채널을 지탱할 2-3가지 핵심 콘텐츠 기둥
+    - Recommended Series: 시리즈 기획 1-2가지(제목, 설명, 타겟 필러, 예상 시청자)
+    - Recommended Episodes: 즉시 제작 가능한 에피소드 아이디어 3-5가지
+    - Characters: 비중 있는 캐릭터/페르소나 정의 (이름, 역할, 성격, 비주얼 가이드 프롬프트 포함)
+    - Tech Stack: 제작 단계별 권장 AI 도구 및 활용법 (기획, 이미지, 비디오, 오디오 등)
+    - Marketing & KPI: 인터랙티브 요소, 바이럴 전략 및 주요 목표 지표(KPI)
+    - Channel Identity: 채널명, 슬로건, 핵심 가치, 미션, 타겟 오디언스, 톤앤매너, 컬러 팔레트
 
 응답은 JSON 형식으로만 해주세요(Markdown 블록 없이, types.ts의 StrategyInsight 구조와 일치해야 함):
     {
         "executiveSummary": "...",
-            "keyOpportunities": ["...", "..."],
-                "keyRisks": ["...", "..."],
-                    "recommendedPillars": [
-                        { "pillarName": "...", "reason": "..." }
-                    ],
-                        "recommendedSeries": [
-                            {
-                                "id": "랜덤ID",
-                                "title": "...",
-                                "description": "...",
-                                "targetPillar": "...",
-                                "expectedAudience": "...",
-                                "benchmarkVideos": []
-                            }
-                        ],
-                            "recommendedEpisodes": [
-                                {
-                                    "id": "랜덤ID",
-                                    "ideaTitle": "...",
-                                    "oneLiner": "...",
-                                    "angle": "...",
-                                    "format": "...",
-                                    "notes": "..."
-                                }
-                            ]
+        "keyOpportunities": ["...", "..."],
+        "keyRisks": ["...", "..."],
+        "recommendedPillars": [
+            { "pillarName": "...", "reason": "..." }
+        ],
+        "recommendedSeries": [
+            {
+                "id": "랜덤ID",
+                "title": "...",
+                "description": "...",
+                "targetPillar": "...",
+                "expectedAudience": "...",
+                "benchmarkVideos": []
+            }
+        ],
+        "recommendedEpisodes": [
+            {
+                "id": "랜덤ID",
+                "ideaTitle": "...",
+                "oneLiner": "...",
+                "angle": "...",
+                "format": "...",
+                "notes": "..."
+            }
+        ],
+        "characters": [
+            { "name": "...", "role": "...", "personality": "...", "visualGuide": "PROMPT_HERE", "age": "..." }
+        ],
+        "techStack": [
+            { "phase": "기획/이미지/비디오/오디오", "tool": "...", "usage": "..." }
+        ],
+        "marketingStrategy": {
+            "kpis": ["...", "..."],
+            "viralElements": ["...", "..."],
+            "interactiveIdeas": ["...", "..."]
+        },
+        "channelIdentity": {
+            "channelName": "...",
+            "handle": "...",
+            "bio": "...",
+            "slogan": "...",
+            "coreValues": ["...", "..."],
+            "mission": "...",
+            "targetAudience": "...",
+            "toneOfVoice": "...",
+            "colorPalette": ["#...", "..."],
+            "bannerPrompt": "...",
+            "profilePrompt": "...",
+            "seoTags": ["...", "..."],
+            "hashtags": ["...", "..."],
+            "introText": "..."
+        }
     }
     `;
 
+    // Prioritize stable models for reliability
     const models = [
-        { name: 'Gemini 3 Pro (Preview)', url: GEMINI_3_PRO_URL },     // Priority 1
-        { name: 'Gemini 3 Flash (Preview)', url: GEMINI_3_FLASH_URL }, // Priority 2
-        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },       // Priority 3
-        { name: 'Gemini 1.5 Flash', url: GEMINI_1_5_FLASH_URL }        // Priority 4
+        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },       // Priority 1
+        { name: 'Gemini 2.0 Flash', url: GEMINI_2_URL },              // Priority 2
+        { name: 'Gemini 3 Flash (Preview)', url: GEMINI_3_FLASH_URL }, // Priority 3
+        { name: 'Gemini 3 Pro (Preview)', url: GEMINI_3_PRO_URL },     // Priority 4
     ];
 
     let lastError: any = null;
@@ -867,7 +914,8 @@ export const generateStrategyInsight = async (
                         temperature: 0.7,
                         response_mime_type: "application/json"
                     }
-                }
+                },
+                { timeout: 120000 } // 120 second timeout
             );
 
             const text = response.data.candidates[0].content.parts[0].text;
@@ -1630,17 +1678,20 @@ Write in Korean. Be specific and actionable. Format with headers and bullet poin
 export const generateText = async (
     prompt: string,
     apiKey: string,
+    responseMimeType?: string,
+    generationConfig?: any,
     systemInstruction?: string
 ): Promise<string> => {
     if (!apiKey) return "API Key is missing.";
 
-    // Use Gemini 2.5/Pro models for chat
+    console.log('[generateText] Starting with prompt length:', prompt.length);
+
+    // Prioritize stable models for reliability with long inputs
     const models = [
-        { name: 'Gemini 3 Pro (Preview)', url: GEMINI_3_PRO_URL },
-        { name: 'Gemini 3 Flash (Preview)', url: GEMINI_3_FLASH_URL },
-        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },
-        { name: 'Gemini 1.5 Pro', url: GEMINI_PRO_URL },
-        { name: 'Gemini 1.5 Flash', url: GEMINI_1_5_FLASH_URL }
+        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },       // Priority 1: Most stable
+        { name: 'Gemini 2.0 Flash', url: GEMINI_2_URL },              // Priority 2: Fast fallback
+        { name: 'Gemini 3 Flash (Preview)', url: GEMINI_3_FLASH_URL }, // Priority 3: Latest
+        { name: 'Gemini 3 Pro (Preview)', url: GEMINI_3_PRO_URL },     // Priority 4: Powerful but slow
     ];
 
     let lastError: any = null;
@@ -1650,22 +1701,33 @@ export const generateText = async (
         ? `${systemInstruction}\n\nUser Query: ${prompt}`
         : prompt;
 
+    console.log('[generateText] Final prompt length:', finalPrompt.length);
+
     for (const model of models) {
         try {
+            console.log(`[generateText] Trying model: ${model.name}...`);
             const response = await axios.post(
                 `${model.url}?key=${apiKey}`,
                 {
-                    contents: [{ parts: [{ text: finalPrompt }] }]
-                }
+                    contents: [{ parts: [{ text: finalPrompt }] }],
+                    generationConfig: {
+                        temperature: generationConfig?.temperature ?? 0.7,
+                        response_mime_type: responseMimeType || generationConfig?.response_mime_type,
+                        ...generationConfig
+                    }
+                },
+                { timeout: 120000 } // 120 second timeout for long inputs
             );
 
+            console.log(`[generateText] Success with ${model.name}!`);
             return response.data.candidates[0].content.parts[0].text;
         } catch (error: any) {
-            console.warn(`[Gemini] Chat generation failed with ${model.name}:`, error.message);
+            console.warn(`[generateText] ${model.name} failed:`, error.code || error.message);
             lastError = error;
         }
     }
 
+    console.error('[generateText] All models failed.');
     throw lastError || new Error("All models failed to generate text");
 };
 

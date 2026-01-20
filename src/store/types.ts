@@ -366,6 +366,23 @@ export interface StrategyInsight {
         format: string;
         notes?: string;
     }[];
+    characters?: {
+        name: string;
+        role: string;
+        personality: string;
+        visualGuide: string;
+        age?: string | number;
+    }[];
+    techStack?: {
+        phase: string;
+        tool: string;
+        usage: string;
+    }[];
+    marketingStrategy?: {
+        kpis: string[];
+        viralElements: string[];
+        interactiveIdeas?: string[];
+    };
     channelIdentity?: ChannelIdentity; // NEW: Branding & Identity
 }
 
@@ -373,11 +390,19 @@ export interface ChannelIdentity {
     channelName: string;
     handle: string;
     bio: string;
+    slogan?: string;         // NEW: Catchy slogan
+    coreValues?: string[];   // NEW: Branding values
+    mission?: string;        // NEW: Core purpose of the channel
+    targetAudience?: string; // NEW: Detailed description of who this is for
+    toneOfVoice?: string;    // NEW: Style of communication
     colorPalette: string[];
     bannerPrompt?: string;
     bannerUrl?: string;
     profilePrompt?: string;
     profileUrl?: string;
+    seoTags?: string[];
+    hashtags?: string[];
+    introText?: string;
 }
 
 export interface IdeaPoolItem {
