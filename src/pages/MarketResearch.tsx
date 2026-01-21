@@ -12,7 +12,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useWorkflowStore } from '../store/workflowStore';
 import {
     MessageSquare, Send, Loader2,
-    BarChart3, Download, ArrowRight, Code, ChevronDown, ChevronUp
+    BarChart3, Download, ArrowRight, Code, ChevronDown, ChevronUp, CheckCircle2
 } from 'lucide-react';
 
 import type { YouTubeTrendVideo, TrendSnapshot, ChannelAnalysis } from '../store/types';
@@ -463,6 +463,9 @@ ${AVAILABLE_FUNCTIONS.map(f => `- ${f.name}: ${f.description}`).join('\n')}
                         <h2 className="text-lg font-bold text-white flex items-center gap-2">
                             <MessageSquare className="text-[var(--color-primary)]" size={20} />
                             AI 시장조사팀장
+                            <span className="ml-2 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/10 text-[10px] text-green-500 border border-green-500/20 font-medium">
+                                <CheckCircle2 size={10} /> Auto-saved to Browser
+                            </span>
                         </h2>
                         <p className="text-xs text-gray-400 mt-1">AI와 대화하며 YouTube 트렌드를 분석하세요</p>
                     </div>

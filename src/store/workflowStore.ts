@@ -9,7 +9,8 @@ import type { ProjectData, ProjectMetadata } from './types';
 import { createProjectSlice, type ProjectSlice } from './projectSlice';
 import { createIntelligenceSlice, type IntelligenceSlice } from './intelligenceSlice';
 import { createUISlice, type UISlice } from './uiSlice';
-import { saveToIdb, generateAudioKey, generateCutImageKey, generateAssetImageKey } from '../utils/imageStorage';
+import { saveToIdb, generateAudioKey, generateCutImageKey, generateAssetImageKey, resolveUrl, loadFromIdb, parseIdbUrl } from '../utils/imageStorage';
+import { selectLocalFolder, saveFileToHandle, readFilesFromDirectory, type LocalFolderHandle } from '../utils/localFileSystem';
 
 // ====================
 // Multi-Project Actions
@@ -42,6 +43,13 @@ interface MultiProjectActions {
     // Prep Phase Data Management
     exportResearchData: () => void;
     importResearchData: (jsonString: string) => Promise<void>;
+
+    // Local Sync
+    localFolder: LocalFolderHandle | null;
+    isSyncingLibrary: boolean;
+    connectLocalFolder: () => Promise<void>;
+    disconnectLocalFolder: () => void;
+    forceSyncLibrary: () => Promise<void>;
 }
 
 // Combined Store Type
@@ -436,6 +444,215 @@ const storage: StateStorage = {
     },
 };
 
+/**
+ * Helper to sync all project assets (images/audio) to a connected local folder
+ */
+async function syncProjectAssetsToPC(projectData: ProjectData, directoryHandle: FileSystemDirectoryHandle) {
+    const assetsToSync: string[] = [];
+
+    // 1. Collect all idb:// URLs
+    // From script
+    if (Array.isArray(projectData.script)) {
+        projectData.script.forEach((cut: any) => {
+            if (cut.finalImageUrl && cut.finalImageUrl.startsWith('idb://')) assetsToSync.push(cut.finalImageUrl);
+            if (cut.draftImageUrl && cut.draftImageUrl.startsWith('idb://')) assetsToSync.push(cut.draftImageUrl);
+            if (cut.audioUrl && cut.audioUrl.startsWith('idb://')) assetsToSync.push(cut.audioUrl);
+            if (cut.userReferenceImage && cut.userReferenceImage.startsWith('idb://')) assetsToSync.push(cut.userReferenceImage);
+        });
+    }
+
+    // From assetDefinitions
+    if (projectData.assetDefinitions) {
+        Object.values(projectData.assetDefinitions).forEach((asset: any) => {
+            if (asset.referenceImage && asset.referenceImage.startsWith('idb://')) assetsToSync.push(asset.referenceImage);
+            if (asset.masterImage && asset.masterImage.startsWith('idb://')) assetsToSync.push(asset.masterImage);
+            if (asset.draftImage && asset.draftImage.startsWith('idb://')) assetsToSync.push(asset.draftImage);
+        });
+    }
+
+    // From masterStyle
+    if (projectData.masterStyle?.referenceImage && projectData.masterStyle.referenceImage.startsWith('idb://')) {
+        assetsToSync.push(projectData.masterStyle.referenceImage);
+    }
+
+    // From thumbnailUrl
+    if (projectData.thumbnailUrl && projectData.thumbnailUrl.startsWith('idb://')) {
+        assetsToSync.push(projectData.thumbnailUrl);
+    }
+
+    // Deduplicate
+    const uniqueAssets = Array.from(new Set(assetsToSync));
+    if (uniqueAssets.length === 0) return;
+
+    console.log(`[LocalSync] Deep scanning ${uniqueAssets.length} assets for PC sync...`);
+
+    // 2. Resolve and save each asset
+    for (const idbUrl of uniqueAssets) {
+        try {
+            const parsed = parseIdbUrl(idbUrl);
+            if (!parsed) continue;
+
+            const binaryData = await loadFromIdb(idbUrl);
+            if (!binaryData) {
+                console.warn(`[LocalSync] Asset data not found in IndexedDB: ${idbUrl}`);
+                continue;
+            }
+
+            // Determine file extension
+            let ext = '';
+            if (parsed.type === 'images' || parsed.type === 'assets') ext = '.jpg';
+            else if (parsed.type === 'audio') ext = '.mp3';
+            else if (parsed.type === 'video') ext = '.mp4';
+
+            // Clean up key for filename
+            const safeKey = parsed.key.replace(/[/\\?%*:|"<>]/g, '-');
+            const fileName = `${safeKey}${ext}`;
+
+            await saveFileToHandle(directoryHandle, ['assets', parsed.type, fileName], binaryData);
+        } catch (e) {
+            console.error(`[LocalSync] Failed to sync asset ${idbUrl}:`, e);
+        }
+    }
+}
+
+/**
+ * Sync global research data (intelligence layer) to PC
+ */
+async function syncIntelligenceLayerToPC(state: any, directoryHandle: FileSystemDirectoryHandle) {
+    try {
+        const intelligenceData = {
+            trendSnapshots: state.trendSnapshots || {},
+            competitorSnapshots: state.competitorSnapshots || {},
+            strategyInsights: state.strategyInsights || {},
+            ideaPool: state.ideaPool || [],
+            lastModified: Date.now()
+        };
+
+        await saveFileToHandle(
+            directoryHandle,
+            ['global-research.json'],
+            JSON.stringify(intelligenceData, null, 2)
+        );
+        console.log("[LocalSync] Synced global-research.json to PC");
+    } catch (e) {
+        console.error("[LocalSync] Failed to sync intelligence layer:", e);
+    }
+}
+
+/**
+ * Sync EVERY project and its assets to PC (Full Library Backup)
+ */
+async function syncAllToPC(state: any, directoryHandle: FileSystemDirectoryHandle) {
+    console.log("[LocalSync] Deep library sync started...");
+
+    // 1. Sync Intelligence Layer
+    await syncIntelligenceLayerToPC(state, directoryHandle);
+
+    // 2. Sync all saved projects
+    const savedProjects = state.savedProjects || {};
+    const projectIds = Object.keys(savedProjects);
+
+    for (const projectId of projectIds) {
+        try {
+            // Load full project data from IDB
+            const projectData = await idbGet(`project-${projectId}`);
+            if (!projectData) continue;
+
+            // Sync JSON
+            const fileName = `project-${projectId}.json`;
+            await saveFileToHandle(
+                directoryHandle,
+                ['projects', fileName],
+                JSON.stringify(projectData, null, 2)
+            );
+
+            // Sync Assets
+            await syncProjectAssetsToPC(projectData, directoryHandle);
+
+        } catch (e) {
+            console.error(`[LocalSync] Failed to sync project ${projectId} in full sync:`, e);
+        }
+    }
+
+    console.log("[LocalSync] Full library sync complete.");
+}
+
+/**
+ * Helper to scan and restore projects/assets from a connected local folder
+ */
+async function restoreFromLocalFolder(directoryHandle: FileSystemDirectoryHandle) {
+    try {
+        console.log("[LocalSync] Starting restore scan...");
+        const files = await readFilesFromDirectory(directoryHandle);
+
+        // 0. Process Global Research
+        const globalFile = files.find(f => f.name === 'global-research.json');
+        if (globalFile) {
+            try {
+                const text = await globalFile.file.text();
+                const globalData = JSON.parse(text);
+                // We DON'T auto-overwrite global DB here to avoid wiping current session
+                // But we can merge it if needed. For now, let's at least log it found.
+                console.log("[LocalSync] Found global-research.json in folder.");
+                // Implementation note: Usually it's better to let the user decide to import research.
+                // However, for "instant recovery" on a new PC, we might want to merge it.
+                useWorkflowStore.setState((state: any) => ({
+                    trendSnapshots: { ...state.trendSnapshots, ...(globalData.trendSnapshots || {}) },
+                    competitorSnapshots: { ...state.competitorSnapshots, ...(globalData.competitorSnapshots || {}) },
+                    strategyInsights: { ...state.strategyInsights, ...(globalData.strategyInsights || {}) },
+                    ideaPool: [...state.ideaPool, ...(globalData.ideaPool || []).filter((newItem: any) => !state.ideaPool.some((oldItem: any) => oldItem.id === newItem.id))]
+                }));
+            } catch (e) {
+                console.error("[LocalSync] Failed to restore global research:", e);
+            }
+        }
+
+        // 1. Process Projects
+        const projectFiles = files.filter(f => f.path[0] === 'projects' && f.name.endsWith('.json'));
+        console.log(`[LocalSync] Found ${projectFiles.length} project files.`);
+
+        for (const pFile of projectFiles) {
+            try {
+                const text = await pFile.file.text();
+                const projectData = JSON.parse(text);
+                if (projectData.id) {
+                    await idbSet(`project-${projectData.id}`, projectData);
+                    console.log(`[LocalSync] Restored project metadata: ${projectData.id}`);
+                }
+            } catch (e) {
+                console.error(`[LocalSync] Failed to parse project file ${pFile.name}:`, e);
+            }
+        }
+
+        // 2. Process Assets
+        const assetFiles = files.filter(f => f.path[0] === 'assets');
+        console.log(`[LocalSync] Found ${assetFiles.length} potential asset files.`);
+
+        for (const aFile of assetFiles) {
+            try {
+                // path is ['assets', 'images', 'fileName.jpg']
+                const type = aFile.path[1] as any;
+                if (!['images', 'assets', 'audio', 'video'].includes(type)) continue;
+
+                // key is fileName without extension
+                const key = aFile.name.split('.')[0];
+
+                // Save to IDB if not already there (or overwrite to ensure sync)
+                await saveToIdb(type, key, aFile.file);
+                // No need to log every asset, can be hundreds
+            } catch (e) {
+                console.error(`[LocalSync] Failed to restore asset ${aFile.name}:`, e);
+            }
+        }
+
+        console.log("[LocalSync] Restore complete.");
+        syncChannel.postMessage({ type: 'STORAGE_UPDATED' }); // Trigger UI refresh
+
+    } catch (error) {
+        console.error("[LocalSync] Restore failed:", error);
+    }
+}
+
 // ====================
 // Store Creation
 // ====================
@@ -451,6 +668,42 @@ export const useWorkflowStore = create<WorkflowStore>()(
             // Project metadata
             id: 'default-project',
             lastModified: Date.now(),
+            localFolder: null,
+            isSyncingLibrary: false,
+
+            connectLocalFolder: async () => {
+                const folder = await selectLocalFolder();
+                if (folder) {
+                    set({ localFolder: folder });
+                    // CRITICAL: Save handle to IDB because persist middleware can't serialize it to JSON
+                    await idbSet('local-folder-handle', folder);
+
+                    // NEW: SYNC & RESTORE
+                    // 1. First, restore any projects/assets from the folder to browser DB
+                    await restoreFromLocalFolder(folder.handle);
+
+                    // 2. Then, trigger a FULL backup to ensure PC folder has everything in browser DB
+                    await syncAllToPC(get(), folder.handle);
+                }
+            },
+            disconnectLocalFolder: async () => {
+                set({ localFolder: null });
+                await idbDel('local-folder-handle');
+            },
+            forceSyncLibrary: async () => {
+                const { localFolder } = get();
+                if (localFolder?.handle) {
+                    set({ isSyncingLibrary: true });
+                    try {
+                        await syncAllToPC(get(), localFolder.handle);
+                        console.log("[LocalSync] Manual library sync success.");
+                    } finally {
+                        set({ isSyncingLibrary: false });
+                    }
+                } else {
+                    console.error("[LocalSync] Cannot sync: No folder connected.");
+                }
+            },
 
             // Wrap project actions to trigger save
             setProjectInfo: (info) => {
@@ -513,6 +766,74 @@ export const useWorkflowStore = create<WorkflowStore>()(
             },
             prevStep: () => {
                 set((state: any) => ({ currentStep: Math.max(state.currentStep - 1, 1) }));
+            },
+
+            // OVERRIDE Intelligence Actions for PC Sync
+            saveTrendSnapshot: (snapshot) => {
+                set((state: any) => ({
+                    trendSnapshots: { ...state.trendSnapshots, [snapshot.id]: snapshot }
+                }));
+                const { localFolder } = get();
+                if (localFolder?.handle) syncIntelligenceLayerToPC(get(), localFolder.handle);
+            },
+            deleteTrendSnapshot: (id) => {
+                set((state: any) => {
+                    const { [id]: deleted, ...rest } = state.trendSnapshots;
+                    return { trendSnapshots: rest };
+                });
+                const { localFolder } = get();
+                if (localFolder?.handle) syncIntelligenceLayerToPC(get(), localFolder.handle);
+            },
+            saveCompetitorSnapshot: (snapshot) => {
+                set((state: any) => ({
+                    competitorSnapshots: { ...state.competitorSnapshots, [snapshot.id]: snapshot }
+                }));
+                const { localFolder } = get();
+                if (localFolder?.handle) syncIntelligenceLayerToPC(get(), localFolder.handle);
+            },
+            deleteCompetitorSnapshot: (id) => {
+                set((state: any) => {
+                    const { [id]: deleted, ...rest } = state.competitorSnapshots;
+                    return { competitorSnapshots: rest };
+                });
+                const { localFolder } = get();
+                if (localFolder?.handle) syncIntelligenceLayerToPC(get(), localFolder.handle);
+            },
+            saveStrategyInsight: (insight) => {
+                set((state: any) => ({
+                    strategyInsights: { ...state.strategyInsights, [insight.id]: insight }
+                }));
+                const { localFolder } = get();
+                if (localFolder?.handle) syncIntelligenceLayerToPC(get(), localFolder.handle);
+            },
+            deleteStrategyInsight: (id) => {
+                set((state: any) => {
+                    const { [id]: deleted, ...rest } = state.strategyInsights;
+                    return { strategyInsights: rest };
+                });
+                const { localFolder } = get();
+                if (localFolder?.handle) syncIntelligenceLayerToPC(get(), localFolder.handle);
+            },
+            addIdeaToPool: (idea) => {
+                set((state: any) => ({
+                    ideaPool: [...state.ideaPool, idea]
+                }));
+                const { localFolder } = get();
+                if (localFolder?.handle) syncIntelligenceLayerToPC(get(), localFolder.handle);
+            },
+            updateIdeaStatus: (id, status) => {
+                set((state: any) => ({
+                    ideaPool: state.ideaPool.map(i => i.id === id ? { ...i, status } : i)
+                }));
+                const { localFolder } = get();
+                if (localFolder?.handle) syncIntelligenceLayerToPC(get(), localFolder.handle);
+            },
+            deleteIdeaFromPool: (id) => {
+                set((state: any) => ({
+                    ideaPool: state.ideaPool.filter(i => i.id !== id)
+                }));
+                const { localFolder } = get();
+                if (localFolder?.handle) syncIntelligenceLayerToPC(get(), localFolder.handle);
             },
 
             // Multi-project Actions
@@ -627,6 +948,27 @@ export const useWorkflowStore = create<WorkflowStore>()(
                 };
 
                 await saveProjectToDisk(projectData);
+
+                // LOCAL SYNC: Save to PC if folder is connected
+                if (state.localFolder?.handle) {
+                    try {
+                        const fileName = `project-${projectId}.json`;
+                        await saveFileToHandle(
+                            state.localFolder.handle,
+                            ['projects', fileName],
+                            JSON.stringify(projectData, null, 2)
+                        );
+                        console.log(`[LocalSync] Synced ${fileName} to PC`);
+
+                        // NEW: LIVE ASSET SYNC
+                        // We also sync binary assets (images, audio) to the local folder
+                        await syncProjectAssetsToPC(projectData, state.localFolder.handle);
+
+                    } catch (e) {
+                        console.error("[LocalSync] Failed to sync to local folder:", e);
+                    }
+                }
+
 
                 // Calculate progress for metadata cache (same logic as MainLayout/Dashboard)
                 const safeScript = Array.isArray(state.script) ? state.script : [];
@@ -1450,21 +1792,37 @@ export const useWorkflowStore = create<WorkflowStore>()(
                         }
 
                         // === FINAL STATE UPDATE ===
-                        // We update the store with the merged list
-                        // And we set the ACTIVE project to the one we just imported
-                        const migratedState = {
-                            ...stateToLoad, // Set active project properties
+                        // We calculate the merged state to PRESERVE global research data
+                        // This prevents the "Import Wipes Research" bug.
+                        const currentState = get() as any;
+                        const mergedTrend = { ...(currentState.trendSnapshots || {}), ...(stateToLoad.trendSnapshots || {}) };
+                        const mergedCompetitor = { ...(currentState.competitorSnapshots || {}), ...(stateToLoad.competitorSnapshots || {}) };
+                        const mergedStrategy = { ...(currentState.strategyInsights || {}), ...(stateToLoad.strategyInsights || {}) };
+
+                        const incomingIdeas = stateToLoad.ideaPool || [];
+                        const existingIdeaTitles = new Set((currentState.ideaPool || []).map((i: any) => i.title));
+                        const mergedIdeaPool = [...(currentState.ideaPool || []), ...incomingIdeas.filter((i: any) => !existingIdeaTitles.has(i.title))];
+
+                        const finalState = {
+                            ...stateToLoad,
                             id: validProjectId,
-                            savedProjects: newSavedProjects, // Set merged list
+                            savedProjects: newSavedProjects,
+                            trendSnapshots: mergedTrend,
+                            competitorSnapshots: mergedCompetitor,
+                            strategyInsights: mergedStrategy,
+                            ideaPool: mergedIdeaPool,
+                            apiKeys: (stateToLoad.apiKeys && Object.keys(stateToLoad.apiKeys).length >= 1)
+                                ? stateToLoad.apiKeys
+                                : (currentState.apiKeys || {}),
                             isHydrated: true,
-                            saveStatus: 'idle', // FORCE IDLE
+                            saveStatus: 'idle',
                         };
 
-                        set(migratedState);
+                        set(finalState);
 
                         console.log("[Store] Forcing immediate persistence of main state...");
                         const stateToPersist = {
-                            state: { ...migratedState, saveStatus: 'idle', isHydrated: false },
+                            state: { ...finalState, saveStatus: 'idle', isHydrated: false },
                             version: 7
                         };
                         await idbSet('idea-lab-storage', JSON.stringify(stateToPersist));
@@ -1507,7 +1865,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
             storage: createJSONStorage(() => storage),
             version: 7,
             partialize: (state) => {
-                const { saveStatus, isHydrated, ...rest } = state as any;
+                const { saveStatus, isHydrated, localFolder, isSyncingLibrary, ...rest } = state as any;
 
                 // Strip large Base64 data from script to prevent persist bloat
                 // The full data is saved in individual project files (project-{id})
@@ -1606,11 +1964,24 @@ export const useWorkflowStore = create<WorkflowStore>()(
                             console.warn(`[Store] Failed to auto-load project ${projectId}:`, err);
                         });
                     }
+
+                    // MANUAL REHYDRATION: localFolder handle (cannot be JSON stringified)
+                    idbGet('local-folder-handle').then(handle => {
+                        if (handle) {
+                            console.log("[LocalSync] Restored folder handle from IDB:", (handle as any).name);
+                            useWorkflowStore.setState({ localFolder: handle as any });
+                        }
+                    });
                 }
             }
         }
     )
 );
+
+
+// Export types for backward compatibility
+
+
 
 // Export types for backward compatibility
 export type { ProjectData, ProjectMetadata, ApiKeys, Character, Location, Asset, AssetDefinition, MasterStyle, StyleAnchor, ThumbnailSettings, AspectRatio, TtsModel, ImageModel } from './types';

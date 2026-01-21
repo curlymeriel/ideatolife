@@ -186,7 +186,9 @@ export const StrategyFormulation: React.FC = () => {
                 targetAudience: series.expectedAudience,
                 angle: episode.angle,
                 format: episode.format,
-                notes: episode.notes
+                notes: episode.notes,
+                seriesTitle: series.title,
+                seriesDescription: series.description
             }
         });
     };
@@ -212,7 +214,9 @@ export const StrategyFormulation: React.FC = () => {
                         targetAudience: strategyResult.recommendedSeries[0]?.expectedAudience || '',
                         angle: episode.angle,
                         format: episode.format,
-                        notes: episode.notes
+                        notes: episode.notes,
+                        seriesTitle: strategyResult.recommendedSeries[0]?.title || '',
+                        seriesDescription: strategyResult.recommendedSeries[0]?.description || ''
                     }
                 });
                 count++;
@@ -1149,7 +1153,12 @@ export const StrategyFormulation: React.FC = () => {
             <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between bg-[#0F0F0F]">
                 <div>
                     <div className="flex items-center gap-2 text-xs text-[var(--color-primary)] font-bold uppercase tracking-widest mb-1"><TrendingUp size={14} /> Intelligence Layer</div>
-                    <h1 className="text-xl font-bold text-white leading-none">Phase 3 : AI Strategic Planning</h1>
+                    <h1 className="text-xl font-bold text-white flex items-center gap-2 leading-none">
+                        Phase 3 : AI Strategic Planning
+                        <span className="ml-2 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/10 text-[10px] text-green-500 border border-green-500/20 font-medium font-bold">
+                            <CheckCircle2 size={10} /> Auto-saved to Browser
+                        </span>
+                    </h1>
                 </div>
 
                 <div className="flex gap-3">
@@ -1250,7 +1259,14 @@ export const StrategyFormulation: React.FC = () => {
                     initialPrompt={showArtModal === 'banner' ? channelIdentity.bannerPrompt : channelIdentity.profilePrompt}
                     initialUrl={showArtModal === 'banner' ? channelIdentity.bannerUrl : channelIdentity.profileUrl}
                     apiKey={geminiApiKey}
-                    strategyContext={strategyResult?.executiveSummary || ''}
+                    strategyContext={`
+Channel Name: ${channelIdentity.channelName}
+Slogan: ${(channelIdentity as any).slogan}
+Mission: ${(channelIdentity as any).mission}
+Target Audience: ${(channelIdentity as any).targetAudience}
+Tone of Voice: ${(channelIdentity as any).toneOfVoice}
+Strategy Executive Summary: ${strategyResult?.executiveSummary || ''}
+`.trim()}
                     characters={strategyResult?.characters}
                     onSave={handleSaveArt}
                 />

@@ -63,10 +63,12 @@ export const IdeaPool: React.FC = () => {
         setProjectInfo({
             id: newProjectId,
             apiKeys: currentApiKeys,
-            seriesName: idea.title,
-            seriesStory: idea.description,
-            episodeName: 'New Episode',
-            episodePlot: '',
+            // Promote series-level info from metadata, fallback to idea title for manual entries
+            seriesName: idea.metadata?.seriesTitle || idea.title,
+            seriesStory: idea.metadata?.seriesDescription || idea.description,
+            // Promote episode-level info from idea title/description
+            episodeName: idea.metadata?.seriesTitle ? idea.title : 'New Episode',
+            episodePlot: idea.metadata?.seriesTitle ? idea.description : '',
             lastModified: Date.now(),
             currentStep: 1,
             trendInsights: {
@@ -90,6 +92,9 @@ export const IdeaPool: React.FC = () => {
                     <h1 className="text-3xl font-bold text-[var(--color-text-primary)] flex items-center gap-3">
                         <Lightbulb className="text-yellow-400 fill-yellow-400/20" size={32} />
                         아이디어 풀 (Idea Pool)
+                        <span className="ml-2 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/10 text-xs text-green-500 border border-green-500/20 font-medium">
+                            <CheckCircle2 size={12} /> Auto-saved to Browser
+                        </span>
                     </h1>
                     <p className="text-[var(--color-text-secondary)] mt-1">
                         발굴한 아이디어를 보관하고 검증하거나 프로젝트로 전환하세요.

@@ -419,6 +419,8 @@ export interface IdeaPoolItem {
         angle?: string;
         format?: string;
         notes?: string;
+        seriesTitle?: string;       // NEW: Pre-discussed series title
+        seriesDescription?: string; // NEW: Pre-discussed series description
     };
 }
 

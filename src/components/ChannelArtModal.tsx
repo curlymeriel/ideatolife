@@ -52,6 +52,7 @@ export const ChannelArtModal: React.FC<ChannelArtModalProps> = ({
     const [isChatProcessing, setIsChatProcessing] = useState(false);
     const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant', text: string }>>([]);
     const [showLargeView, setShowLargeView] = useState(false);
+    const [feedbackTarget, setFeedbackTarget] = useState<'prompt' | 'image'>('image');
 
     // Combine default categories with dynamic character categories
     const referenceCategories = [
@@ -69,6 +70,34 @@ export const ChannelArtModal: React.FC<ChannelArtModalProps> = ({
         }
     }, [isOpen, initialPrompt, initialUrl]);
 
+    const analyzeReferences = async () => {
+        if (taggedReferences.length === 0) return '';
+
+        const analysisResults = await Promise.all(taggedReferences.map(async (ref) => {
+            const matches = ref.url.match(/^data:(.+);base64,(.+)$/);
+            if (!matches) return null;
+
+            const cat = referenceCategories.find(c => c.value === ref.category);
+            const catLabel = cat?.label || ref.category;
+
+            // Explicitly handle character tags for better AI understanding
+            const isCharacter = ref.category.startsWith('character-');
+            const characterName = isCharacter ? ref.category.replace('character-', '') : '';
+
+            const prompt = isCharacter
+                ? `This is a reference image for the character named "${characterName}". Analyze the visual features of this character in extreme detail (appearance, costume, style, lighting) for high-quality AI image generation. Output ONLY the descriptive English text.`
+                : `Analyze this image for its "${catLabel}" aspects. Provide a detailed visual description in English for AI image generation. Output ONLY the description.`;
+
+            try {
+                const result = await generateText(prompt, apiKey, undefined, [{ mimeType: matches[1], data: matches[2] }]);
+                return `[Reference: ${catLabel}]\n${result}`;
+            } catch (e) {
+                return null;
+            }
+        }));
+        return analysisResults.filter(Boolean).join('\n\n');
+    };
+
     const handleGenerate = async () => {
         if (!prompt || !apiKey) return;
         setIsGenerating(true);
@@ -78,7 +107,10 @@ export const ChannelArtModal: React.FC<ChannelArtModalProps> = ({
             const result = await generateImage(prompt, apiKey, refUrls.length > 0 ? refUrls : undefined, aspectRatio, 'imagen-3.0-generate-001');
             if (result.urls?.[0]) {
                 const resolved = await resolveUrl(result.urls[0]) || result.urls[0];
-                setHistory(prev => [resolved, ...prev]);
+                setHistory(prev => {
+                    const newHistory = [resolved, ...prev];
+                    return Array.from(new Set(newHistory)); // Ensure uniqueness
+                });
                 setSelectedUrl(resolved);
             }
         } catch (error: any) {
@@ -93,41 +125,28 @@ export const ChannelArtModal: React.FC<ChannelArtModalProps> = ({
         if (!apiKey) return;
         setIsExpanding(true);
         try {
-            let referenceContext = '';
-
             // Analyze references if present
-            if (taggedReferences.length > 0) {
-                const analysisResults = await Promise.all(taggedReferences.map(async (ref) => {
-                    const matches = ref.url.match(/^data:(.+);base64,(.+)$/);
-                    if (!matches) return null;
+            const referenceContext = await analyzeReferences();
 
-                    const catLabel = referenceCategories.find(c => c.value === ref.category)?.label || ref.category;
-                    const prompt = `Analyze this image for ${catLabel} aspects. Provide a detailed visual description in English for AI image generation. Output ONLY the description.`;
+            const systemPrompt = `당신은 유튜브 ${type === 'banner' ? '배너' : '프로필'} 디자인 및 채널 브랜딩 전문가입니다. 채널의 정체성(Mission, Tone, Target)과 참조 이미지의 시각적 특징을 결합하여, AI 이미지 생성을 위한 고품질의 영어 프롬프트를 작성하세요.`;
+            const fullPrompt = `[채널 브랜딩 및 전략 정보]
+${strategyContext}
 
-                    try {
-                        const result = await generateText(prompt, apiKey, undefined, [{ mimeType: matches[1], data: matches[2] }]);
-                        return `[Reference: ${catLabel}]\n${result}`;
-                    } catch (e) {
-                        return null;
-                    }
-                }));
-                referenceContext = analysisResults.filter(Boolean).join('\n\n');
-            }
+[사용자 현재 의도]
+${prompt || (type === 'banner' ? 'A professional YouTube banner' : 'A premium profile icon')}
 
-            const systemPrompt = `당신은 유튜브 ${type === 'banner' ? '배너' : '프로필'} 디자인 전문가입니다. 다음 전략 및 이미지 분석 맥락을 바탕으로 고품질의 이미지 생성 프롬프트를 작성해주세요. 프리미엄하고 감각적인 최신 트렌드를 반영해야 합니다. 영어로만 상세하게 출력하세요.`;
-            const fullPrompt = `채널명: ${channelName}
-현재 프롬프트: ${prompt}
-전략 맥락: ${strategyContext}
-${referenceContext ? `참조 이미지 분석 및 카테고리 정보:\n${referenceContext}` : ''}
+${referenceContext ? `[참조 이미지 시각적 분석]\n${referenceContext}` : ''}
 
-[지침]
-위 정보들을 종합하여, 시각적으로 매우 상세하고 일관성 있는 제작용 프롬프트로 확장해줘.
-특히, 참조 이미지의 각 카테고리(Face, Style, Color, Composition, Character 등) 정보가 프롬프트 내에 '구체적인 시각 효과'로 정확히 반영되어야 해. 
-예를 들어, Style 참조라면 해당 스타일의 특징을 프롬프트에 녹여내고, Color 참조라면 해당 색감을 정의에 포함시켜줘.`;
+[프롬프트 작성 지침]
+1. 위 브랜딩 정보(미션, 타겟, 톤앤매너)를 시각적으로 형상화하세요.
+2. 참조 이미지(캐릭터 특징, 스타일, 색감 등)가 있다면 이를 프롬프트에 구체적으로 녹여내세요.
+3. 배경의 분위기, 조명, 구도, 텍스처 등을 전문적인 사진/그래픽 용어를 사용하여 묘사하세요.
+4. 출력은 '오직 1개의 통합된 영어 프롬프트'만 하세요. (한국어 설명 금지)`;
 
             const result = await generateText(fullPrompt, apiKey, undefined, undefined, systemPrompt);
             if (result) {
-                setPrompt(result.trim());
+                const cleanResult = result.replace(/^["']|["']$/g, '').replace(/^(Prompt|Output):\s*/i, '').trim();
+                setPrompt(cleanResult);
             }
         } catch (error) {
             console.error('AI Expand failed:', error);
@@ -162,7 +181,7 @@ ${referenceContext ? `참조 이미지 분석 및 카테고리 정보:\n${refere
 
     const handleChatSubmit = async (e?: React.FormEvent) => {
         e?.preventDefault();
-        if (!chatInput.trim() || !apiKey || isChatProcessing || !selectedUrl) return;
+        if (!chatInput.trim() || !apiKey || isChatProcessing) return;
 
         const userMsg = chatInput.trim();
         setChatInput('');
@@ -170,13 +189,43 @@ ${referenceContext ? `참조 이미지 분석 및 카테고리 정보:\n${refere
         setIsChatProcessing(true);
 
         try {
-            const result = await editImageWithChat(selectedUrl, userMsg, apiKey);
-            if (result.image) {
-                const resolved = await resolveUrl(result.image) || result.image;
-                setHistory(prev => [resolved, ...prev]);
-                setSelectedUrl(resolved);
+            if (feedbackTarget === 'prompt') {
+                const referenceContext = await analyzeReferences();
+                const systemPrompt = `당신은 AI 이미지 생성 프롬프트 전문가입니다. 사용자의 피드백과 제공된 참조 자산 정보를 바탕으로 기존 프롬프트를 보완하거나 수정해주세요. 프리미엄하고 상세한 영어 프롬프트만 출력하세요. 사용자가 한국어로 요청하더라도 영어 프롬프트를 생성해야 합니다.`;
+                const fullPrompt = `현재 프롬프트: ${prompt}
+사용자 피드백 (한국어 포함 가능): ${userMsg}
+
+[채널 브랜딩 정보 context]
+${strategyContext}
+
+${referenceContext ? `[참조 이미지 정보]\n${referenceContext}` : ''}
+
+[지침]
+1. 사용자의 피드백을 최우선으로 반영하되, 채널의 브랜딩 톤을 유지하세요.
+2. 참조 이미지에 특정 캐릭터(Character)가 태그되어 있다면, 그 캐릭터의 외양 묘사를 프롬프트의 주 피사체로 정확히 반영하세요.
+3. 수정된 상세 영어 프롬프트만 한 문장 혹은 한 단락으로 출력하세요.`;
+                const result = await generateText(fullPrompt, apiKey, undefined, undefined, systemPrompt);
+                if (result) {
+                    const cleanResult = result.replace(/^["']|["']$/g, '').replace(/^(Prompt|Output):\s*/i, '').trim();
+                    setPrompt(cleanResult);
+                    setChatMessages(prev => [...prev, { role: 'assistant', text: `프롬프트를 수정했습니다. 왼쪽의 '이미지 생성' 버튼을 눌러 결과물을 확인해보세요.` }]);
+                }
+            } else {
+                if (!selectedUrl) {
+                    setChatMessages(prev => [...prev, { role: 'assistant', text: `이미지를 먼저 생성한 후 이미지 기반 수정을 진행할 수 있습니다.` }]);
+                    return;
+                }
+                const result = await editImageWithChat(selectedUrl, userMsg, apiKey);
+                if (result.image) {
+                    const resolved = await resolveUrl(result.image) || result.image;
+                    setHistory(prev => {
+                        const newHistory = [resolved, ...prev];
+                        return Array.from(new Set(newHistory)); // Ensure uniqueness
+                    });
+                    setSelectedUrl(resolved);
+                }
+                setChatMessages(prev => [...prev, { role: 'assistant', text: result.explanation }]);
             }
-            setChatMessages(prev => [...prev, { role: 'assistant', text: result.explanation }]);
         } catch (error: any) {
             setChatMessages(prev => [...prev, { role: 'assistant', text: `오류: ${error.message}` }]);
         } finally {
@@ -285,39 +334,58 @@ ${referenceContext ? `참조 이미지 분석 및 카테고리 정보:\n${refere
                                 </button>
                             </section>
 
-                            {selectedUrl && (
-                                <section className="space-y-4 pt-4 border-t border-white/5">
+                            <section className="space-y-4 pt-4 border-t border-white/5">
+                                <div className="flex items-center justify-between">
                                     <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
                                         <Send size={16} /> AI 편집 피드백
                                     </h3>
-                                    <div className="bg-black/40 border border-white/10 rounded-2xl p-4 min-h-[150px] flex flex-col justify-between">
-                                        <div className="flex-1 overflow-y-auto space-y-3 mb-4 max-h-40 no-scrollbar">
-                                            {chatMessages.length === 0 ? (
-                                                <p className="text-xs text-gray-600 italic">생성된 이미지에 대해 구체적인 수정 사항을 채팅으로 입력해보세요. (예: "배경을 더 어둡게", "로고 크기 키워줘")</p>
-                                            ) : (
-                                                chatMessages.map((m, i) => (
-                                                    <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                                        <div className={`max-w-[85%] p-3 rounded-xl text-xs ${m.role === 'user' ? 'bg-[var(--color-primary)] text-black' : 'bg-white/10 text-gray-300'}`}>
-                                                            {m.text}
-                                                        </div>
-                                                    </div>
-                                                ))
-                                            )}
-                                        </div>
-                                        <form onSubmit={handleChatSubmit} className="relative">
-                                            <input
-                                                value={chatInput}
-                                                onChange={e => setChatInput(e.target.value)}
-                                                placeholder="수정 요청사항 입력..."
-                                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs focus:border-[var(--color-primary)] outline-none"
-                                            />
-                                            <button type="submit" disabled={isChatProcessing} className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-[var(--color-primary)] text-black rounded-lg">
-                                                {isChatProcessing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                                            </button>
-                                        </form>
+                                    <div className="flex bg-white/5 p-1 rounded-xl border border-white/5">
+                                        <button
+                                            onClick={() => setFeedbackTarget('prompt')}
+                                            className={`px-3 py-1 text-[10px] font-black rounded-lg transition-all ${feedbackTarget === 'prompt' ? 'bg-[var(--color-primary)] text-black' : 'text-gray-500 hover:text-white'}`}
+                                        >
+                                            프롬프트
+                                        </button>
+                                        <button
+                                            onClick={() => setFeedbackTarget('image')}
+                                            className={`px-3 py-1 text-[10px] font-black rounded-lg transition-all ${feedbackTarget === 'image' ? 'bg-[var(--color-primary)] text-black' : 'text-gray-500 hover:text-white'}`}
+                                        >
+                                            이미지
+                                        </button>
                                     </div>
-                                </section>
-                            )}
+                                </div>
+                                <div className="bg-black/40 border border-white/10 rounded-2xl p-4 min-h-[150px] flex flex-col justify-between">
+                                    <div className="flex-1 overflow-y-auto space-y-3 mb-4 max-h-40 no-scrollbar">
+                                        {chatMessages.length === 0 ? (
+                                            <p className="text-xs text-gray-600 italic">
+                                                {feedbackTarget === 'prompt'
+                                                    ? "프롬프트를 어떻게 개선하고 싶은지 입력하세요. (예: '더 화려한 배경 추가해줘', '사이버펑크 느낌으로 바꿔줘')"
+                                                    : "이미지의 특정 부분을 어떻게 수정할지 입력하세요. (이미지가 먼저 생성되어야 합니다.)"}
+                                            </p>
+                                        ) : (
+                                            chatMessages.map((m, i) => (
+                                                <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                                    <div className={`max-w-[85%] p-3 rounded-xl text-xs ${m.role === 'user' ? 'bg-[var(--color-primary)] text-black' : 'bg-white/10 text-gray-300'}`}>
+                                                        {m.text}
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                    <form onSubmit={handleChatSubmit} className="relative">
+                                        <input
+                                            value={chatInput}
+                                            onChange={e => setChatInput(e.target.value)}
+                                            placeholder="수정 요청사항 입력..."
+                                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs focus:border-[var(--color-primary)] outline-none"
+                                        />
+                                        <button type="submit" disabled={isChatProcessing} className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-[var(--color-primary)] text-black rounded-lg">
+                                            {isChatProcessing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                                        </button>
+                                    </form>
+                                </div>
+                            </section>
+
                         </div>
                     </div>
 

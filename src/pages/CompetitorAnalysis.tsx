@@ -426,6 +426,9 @@ export const CompetitorAnalysis: React.FC = () => {
                     </div>
                     <h1 className="text-xl font-bold text-white flex items-center gap-2 leading-none">
                         Phase 2: 경합 영상과 채널 심도 분석 (Deep Research)
+                        <span className="ml-2 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/10 text-[10px] text-green-500 border border-green-500/20 font-medium">
+                            <CheckCircle2 size={10} /> Auto-saved to Browser
+                        </span>
                     </h1>
                 </div>
                 <div className="flex gap-3">

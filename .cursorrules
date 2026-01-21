@@ -1,0 +1,25 @@
+# AI Operational Principles for Project "IdeaToLife"
+
+## 1. Environment & Shell (Windows PowerShell)
+- **Identify Environment**: This is a Windows system using PowerShell.
+- **Strict Command Usage**: 
+    - NEVER use `grep`, `find`, or `rm -rf` directly in `run_command`. 
+    - Use `grep_search` and `find_by_name` tools for all searching operations.
+    - Use built-in PowerShell equivalents only if tools are insufficient (e.g., `Get-ChildItem`, `Remove-Item`).
+- **Path Handling**: Always use absolute paths. Avoid using relative paths like `./` or `../` in tool calls unless specified otherwise.
+
+## 2. Tool-First Policy
+- **Prefer Specialized Tools**: 
+    - Use `grep_search` for text content searching.
+    - Use `find_by_name` for file/directory discovery.
+    - Use `list_dir` for exploring folder structures.
+- **Fail-Safe Mode**: If a command fails due to "Invalid Directory" or "Command Not Found", DO NOT retry the same command. Switch to specialized tools immediately.
+
+## 3. Web Development & Aesthetics
+- **Core Stack**: HTML, Javascript, Vanilla CSS (unless Tailwind is already in use).
+- **Design Excellence**: Prioritize premium aesthetics, smooth animations, and curated color palettes.
+- **No Placeholders**: Use `generate_image` for missing assets.
+
+## 4. Stability Logic
+- **Prevention of "Death"**: If execution terminates unexpectedly (e.g., terminal error), analyze the command environment mismatch first before proceeding.
+- **Task Verification**: Always verify terminal command results via `command_status` and wait for completion.
