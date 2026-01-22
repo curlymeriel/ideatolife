@@ -4,11 +4,22 @@ import { jsPDF } from 'jspdf';
 import { saveAs } from 'file-saver';
 import type { StrategyInsight } from '../store/types';
 
+/**
+ * Generate a safe filename for various exports across the app.
+ * Handles Korean characters and removes unsafe filename characters.
+ */
+export function getSafeFilename(baseName: string, extension: string, id?: string) {
+    const safeBase = baseName.replace(/[^a-z0-9가-힣\s-_]/gi, '_').trim();
+    const suffix = id ? `_${id.slice(0, 8)}` : '';
+    return `${safeBase}${suffix}.${extension}`;
+}
+
 export class ResearchReporter {
     /**
      * Export Strategy as Microsoft Word (.docx)
      */
     static async exportToDocx(strategy: StrategyInsight) {
+        console.log('[ResearchReporter] Exporting DOCX for strategy:', strategy.id);
         const doc = new Document({
             sections: [{
                 properties: {},
@@ -41,11 +52,13 @@ export class ResearchReporter {
                     ]).flat(),
 
                     new Paragraph({ text: "4. Episode Recommendations", heading: HeadingLevel.HEADING_2 }),
-                    ...strategy.recommendedEpisodes.map(ep => [
-                        new Paragraph({ text: `${ep.ideaTitle} (${ep.format})`, heading: HeadingLevel.HEADING_3 }),
-                        new Paragraph({ children: [new TextRun({ text: ep.oneLiner, italics: true })] }),
-                        new Paragraph({ text: `Angle: ${ep.angle}`, spacing: { after: 100 } })
-                    ]).flat(),
+                    ...strategy.recommendedSeries.flatMap(series =>
+                        (series.episodes || []).map((ep: { ideaTitle: string; format: string; oneLiner: string; angle: string }) => [
+                            new Paragraph({ text: `${ep.ideaTitle} (${ep.format})`, heading: HeadingLevel.HEADING_3 }),
+                            new Paragraph({ children: [new TextRun({ text: ep.oneLiner, italics: true })] }),
+                            new Paragraph({ text: `Angle: ${ep.angle}`, spacing: { after: 100 } })
+                        ])
+                    ).flat(),
 
                     new Paragraph({ text: "5. Character Personas", heading: HeadingLevel.HEADING_2 }),
                     ...(strategy.characters || []).map(char => [
@@ -81,7 +94,8 @@ export class ResearchReporter {
         });
 
         const blob = await Packer.toBlob(doc);
-        const fileName = `Strategy_Report_${strategy.id.substring(0, 8)}.docx`;
+        const fileName = getSafeFilename('Strategy_Report', 'docx', strategy.id);
+        console.log('[ResearchReporter] Saving DOCX as:', fileName);
         saveAs(blob, fileName);
     }
 
@@ -112,11 +126,12 @@ export class ResearchReporter {
             slide3.addText(`• ${p.pillarName}: ${p.reason}`, { x: 0.5, y: 1.5 + (i * 1.0), w: '90%', fontSize: 14, color: 'FFFFFF' });
         });
 
-        // Slide 4: Episodes
+        // Slide 4: Episodes (flattened from all series)
         const slide4 = pptx.addSlide();
         slide4.background = { color: '0A0A0A' };
         slide4.addText('Episode Ideas', { x: 0.5, y: 0.5, fontSize: 24, color: 'FFD700', bold: true });
-        strategy.recommendedEpisodes.slice(0, 4).forEach((ep, i) => {
+        const allEpisodes = strategy.recommendedSeries.flatMap(s => s.episodes || []);
+        allEpisodes.slice(0, 4).forEach((ep: { ideaTitle: string; oneLiner: string }, i: number) => {
             slide4.addText(`${i + 1}. ${ep.ideaTitle}`, { x: 0.5, y: 1.5 + (i * 0.8), fontSize: 16, color: 'FFFFFF', bold: true });
             slide4.addText(ep.oneLiner, { x: 0.8, y: 1.8 + (i * 0.8), fontSize: 12, color: 'AAAAAA', italic: true });
         });
@@ -155,7 +170,9 @@ export class ResearchReporter {
         idSlide.addText(`SEO/Tags: ${strategy.channelIdentity?.seoTags?.join(', ') || 'None'}`, { x: 0.5, y: 3.8, w: '90%', h: 0.6, fontSize: 10, color: '666666' });
 
         const output = await pptx.write({ outputType: 'blob' });
-        saveAs(output as Blob, `Strategy_Presentation_${strategy.id.substring(0, 8)}.pptx`);
+        const fileName = getSafeFilename('Strategy_Presentation', 'pptx', strategy.id);
+        console.log('[ResearchReporter] Saving PPTX as:', fileName);
+        saveAs(output as Blob, fileName);
     }
 
     /**
@@ -174,7 +191,9 @@ export class ResearchReporter {
         const splitSummary = doc.splitTextToSize(strategy.executiveSummary, 170);
         doc.text(splitSummary, 20, 60);
 
-        doc.save(`Strategy_Report_${strategy.id.substring(0, 8)}.pdf`);
+        const fileName = getSafeFilename('Strategy_Report', 'pdf', strategy.id);
+        console.log('[ResearchReporter] Saving PDF as:', fileName);
+        doc.save(fileName);
     }
 
     static exportToMarkdown(strategy: StrategyInsight): string {

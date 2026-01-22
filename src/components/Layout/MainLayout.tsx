@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useWorkflowStore } from '../../store/workflowStore';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { Film, Palette, FileText, CheckCircle2, Image, Play, Box, Home, RotateCcw, Settings, ChevronDown, Circle, HelpCircle, BookOpen, MessageCircle, ChevronLeft, ChevronRight, Menu, Sparkles, Search, Users, TrendingUp, Lightbulb } from 'lucide-react';
+import { Film, Palette, FileText, CheckCircle2, Image, Play, Box, Home, RotateCcw, Settings, ChevronDown, Circle, HelpCircle, BookOpen, MessageCircle, ChevronLeft, ChevronRight, Menu, Sparkles } from 'lucide-react';
 import { WelcomeGuide } from '../WelcomeGuide';
 import { SupportModal } from '../SupportModal';
 import { RescueModal } from '../RescueModal';
@@ -47,7 +47,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     } = store;
 
     const [showApiConfig, setShowApiConfig] = useState(false);
-    const [isPrepOpen, setIsPrepOpen] = useState(false);
     const location = useLocation();
     const navigate = useNavigate();
 
@@ -69,12 +68,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         }
     }, [isTablet]);
 
-    // Auto-expand Prep Phases menu when in research section
-    useEffect(() => {
-        if (location.pathname.startsWith('/research')) {
-            setIsPrepOpen(true);
-        }
-    }, [location.pathname]);
 
     const [showGuide, setShowGuide] = useState(false);
     const [showSupport, setShowSupport] = useState(false);
@@ -236,138 +229,30 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
 
                     <nav className="flex-1 overflow-y-auto pb-4 pt-1">
-                        {/* Prep Section (Collapsible & Functional) */}
+                        {/* Prep Section (Functional Header navigation handled in header) */}
                         <div className="mt-2 relative group">
-                            <div className={`flex items-center transition-all ${location.pathname === '/research/guide'
-                                ? 'bg-orange-500/20 border-r-2 border-orange-400'
-                                : 'hover:bg-[rgba(255,255,255,0.05)]'
-                                }`}>
-                                <button
-                                    onClick={() => navigate('/research/guide')}
-                                    className={`flex-1 px-4 py-3 flex items-center ${isCollapsed ? 'justify-center flex-col gap-0.5' : 'gap-3'} transition-all ${location.pathname === '/research/guide'
-                                        ? 'text-orange-400 font-semibold'
-                                        : 'text-[var(--color-text-muted)] hover:text-white'
-                                        }`}
-                                    title={isCollapsed ? '#0 Prep Phases Overview' : undefined}
-                                >
-                                    {isCollapsed ? (
-                                        <>
-                                            <span className="text-[9px] font-bold">#0</span>
-                                            <Sparkles size={16} className="text-orange-400" />
-                                        </>
-                                    ) : (
-                                        <>
-                                            <span className={`text-[10px] font-bold min-w-[24px] ${location.pathname === '/research/guide' ? 'text-orange-400' : 'text-[var(--color-text-muted)]'}`}>#0</span>
-                                            <Sparkles size={16} className="text-orange-400" />
-                                            <span className="flex-1 text-left text-xs font-semibold uppercase tracking-wider">Prep Phases</span>
-                                        </>
-                                    )}
-                                </button>
-                                {!isCollapsed && (
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setIsPrepOpen(!isPrepOpen);
-                                        }}
-                                        className={`p-3 transition-colors ${location.pathname === '/research/guide' ? 'text-orange-400' : 'text-[var(--color-text-muted)] hover:text-white'}`}
-                                    >
-                                        <ChevronDown size={14} className={`transition-transform duration-300 ${isPrepOpen ? 'rotate-180' : ''}`} />
-                                    </button>
+                            <button
+                                onClick={() => navigate('/research/guide')}
+                                className={`w-full px-4 py-3 flex items-center ${isCollapsed ? 'justify-center flex-col gap-0.5' : 'gap-3'} transition-all ${location.pathname === '/research/guide'
+                                    ? 'bg-orange-500/20 text-orange-400 font-semibold border-r-2 border-orange-400'
+                                    : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[rgba(255,255,255,0.05)]'
+                                    }`}
+                                title={isCollapsed ? '#0 Prep Phases Overview' : undefined}
+                            >
+                                {isCollapsed ? (
+                                    <div className="flex flex-col items-center gap-0.5">
+                                        <span className="text-[9px] font-bold">#0</span>
+                                        <Sparkles size={16} className="text-orange-400" />
+                                    </div>
+                                ) : (
+                                    <>
+                                        <span className={`text-[10px] font-bold min-w-[24px] ${location.pathname === '/research/guide' ? 'text-orange-400' : 'text-[var(--color-text-muted)]'}`}>#0</span>
+                                        <Sparkles size={16} className="text-orange-400" />
+                                        <span className="flex-1 text-left text-xs font-semibold uppercase tracking-wider">Prep Phases</span>
+                                    </>
                                 )}
-                            </div>
+                            </button>
                         </div>
-
-                        {isPrepOpen && !isCollapsed && (
-                            <div className={`space-y-0.5 animate-in slide-in-from-top-2 duration-300`}>
-                                <button
-                                    onClick={() => navigate('/research')}
-                                    className={`w-full pl-8 pr-4 py-2.5 flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} transition-all ${location.pathname === '/research'
-                                        ? 'bg-indigo-500/20 text-indigo-400 font-semibold border-r-2 border-indigo-400'
-                                        : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[rgba(255,255,255,0.05)]'
-                                        }`}
-                                    title={isCollapsed ? '#1 Phase 1: Market Research' : undefined}
-                                >
-                                    {isCollapsed ? (
-                                        <div className="flex flex-col items-center gap-0.5">
-                                            <span className="text-[9px] font-bold">#1</span>
-                                            <Search size={16} />
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <span className={`text-[10px] font-bold min-w-[24px] ${location.pathname === '/research' ? 'text-indigo-400' : 'text-[var(--color-text-muted)]'}`}>#1</span>
-                                            <Search size={16} className="text-indigo-300" />
-                                            <span className="flex-1 text-left text-xs text-indigo-300">Market Research</span>
-                                        </>
-                                    )}
-                                </button>
-
-                                <button
-                                    onClick={() => navigate('/research/competitor')}
-                                    className={`w-full pl-8 pr-4 py-2.5 flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} transition-all ${location.pathname === '/research/competitor'
-                                        ? 'bg-indigo-500/20 text-indigo-400 font-semibold border-r-2 border-indigo-400'
-                                        : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[rgba(255,255,255,0.05)]'
-                                        }`}
-                                    title={isCollapsed ? '#2 Phase 2: Deep Research' : undefined}
-                                >
-                                    {isCollapsed ? (
-                                        <div className="flex flex-col items-center gap-0.5">
-                                            <span className="text-[9px] font-bold">#2</span>
-                                            <Users size={16} />
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <span className={`text-[10px] font-bold min-w-[24px] ${location.pathname === '/research/competitor' ? 'text-indigo-400' : 'text-[var(--color-text-muted)]'}`}>#2</span>
-                                            <Users size={16} className="text-indigo-300" />
-                                            <span className="flex-1 text-left text-xs text-indigo-300">Deep Research</span>
-                                        </>
-                                    )}
-                                </button>
-
-                                <button
-                                    onClick={() => navigate('/research/strategy')}
-                                    className={`w-full pl-8 pr-4 py-2.5 flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} transition-all ${location.pathname === '/research/strategy'
-                                        ? 'bg-indigo-500/20 text-indigo-400 font-semibold border-r-2 border-indigo-400'
-                                        : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[rgba(255,255,255,0.05)]'
-                                        }`}
-                                    title={isCollapsed ? '#3 Phase 3: Strategy & Bridge' : undefined}
-                                >
-                                    {isCollapsed ? (
-                                        <div className="flex flex-col items-center gap-0.5">
-                                            <span className="text-[9px] font-bold">#3</span>
-                                            <TrendingUp size={16} />
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <span className={`text-[10px] font-bold min-w-[24px] ${location.pathname === '/research/strategy' ? 'text-indigo-400' : 'text-[var(--color-text-muted)]'}`}>#3</span>
-                                            <TrendingUp size={16} className="text-indigo-300" />
-                                            <span className="flex-1 text-left text-xs text-indigo-300">Strategy & Bridge</span>
-                                        </>
-                                    )}
-                                </button>
-
-                                <button
-                                    onClick={() => navigate('/research/ideas')}
-                                    className={`w-full pl-8 pr-4 py-2.5 flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} transition-all ${location.pathname === '/research/ideas'
-                                        ? 'bg-indigo-500/20 text-indigo-400 font-semibold border-r-2 border-indigo-400'
-                                        : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[rgba(255,255,255,0.05)]'
-                                        }`}
-                                    title={isCollapsed ? '#4 Phase 4: Idea Pool' : undefined}
-                                >
-                                    {isCollapsed ? (
-                                        <div className="flex flex-col items-center gap-0.5">
-                                            <span className="text-[9px] font-bold">#4</span>
-                                            <Lightbulb size={16} />
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <span className={`text-[10px] font-bold min-w-[24px] ${location.pathname === '/research/ideas' ? 'text-indigo-400' : 'text-[var(--color-text-muted)]'}`}>#4</span>
-                                            <Lightbulb size={16} className="text-indigo-300" />
-                                            <span className="flex-1 text-left text-xs text-indigo-300">Idea Pool</span>
-                                        </>
-                                    )}
-                                </button>
-                            </div>
-                        )}
 
                         {!isCollapsed && (seriesName || episodeName) && (
                             <div className="px-4 py-4 border-b border-b-[var(--color-border)] border-t border-t-[var(--color-primary)] bg-[rgba(255,173,117,0.05)] mt-4">
@@ -514,21 +399,48 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             <main className={`flex-1 ${mainMargin} bg-[var(--color-bg)] h-full overflow-y-auto min-h-0 transition-all duration-300 ${isMobile ? 'pb-20' : ''}`}>
                 <div className="sticky top-0 z-40 bg-[var(--color-bg)]/80 backdrop-blur-lg border-b border-[var(--color-border)] px-4 md:px-8 py-3 md:py-4">
                     <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-6">
                             {isMobile && <Box size={20} className="text-[var(--color-primary)]" />}
-                            <div className="text-sm text-[var(--color-text-muted)]">
-                                {isDashboard ? (
-                                    'Overview'
-                                ) : location.pathname.startsWith('/research') ? (
-                                    location.pathname === '/research/guide' ? 'Prep Phases Guide' :
-                                        location.pathname === '/research' ? 'Phase 1 : Market Research' :
-                                            location.pathname === '/research/competitor' ? 'Phase 2 : 경합 영상과 채널 심도 분석' :
-                                                location.pathname === '/research/strategy' ? 'Phase 3 : Strategy & Bridge' :
-                                                    'Phase 4 : Idea Pool'
-                                ) : currentStepObj ? (
-                                    `Step ${currentStepObj.id} : ${currentStepObj.name}`
-                                ) : (
-                                    `Step ${displayStep} of 6`
+
+                            <div className="flex items-center gap-4">
+                                <div className="text-sm font-bold tracking-tight">
+                                    {isDashboard ? (
+                                        <span className="text-[var(--color-text-muted)]">Overview</span>
+                                    ) : location.pathname.startsWith('/research') ? (
+                                        <span className="text-orange-400">PREP PHASES</span>
+                                    ) : currentStepObj ? (
+                                        <span className="text-[var(--color-text-muted)]">Step {currentStepObj.id} : {currentStepObj.name}</span>
+                                    ) : (
+                                        <span className="text-[var(--color-text-muted)]">Step {displayStep} of 6</span>
+                                    )}
+                                </div>
+
+                                {location.pathname.startsWith('/research') && (
+                                    <div className="flex items-center gap-2 animate-in slide-in-from-left-4 duration-500">
+                                        <span className="text-[10px] text-gray-600 font-bold ml-1 uppercase tracking-widest">Select Stage</span>
+                                        <ChevronRight size={12} className="text-gray-700" />
+                                        <div className="flex items-center gap-2 px-4 py-1.5 bg-white/5 rounded-full border border-white/10">
+                                            {[
+                                                { id: 1, path: '/research', label: 'Market' },
+                                                { id: 2, path: '/research/competitor', label: 'Deep' },
+                                                { id: 3, path: '/research/strategy', label: 'Strategy' },
+                                                { id: 4, path: '/research/ideas', label: 'Ideas' }
+                                            ].map((phase, i, arr) => (
+                                                <React.Fragment key={phase.id}>
+                                                    <button
+                                                        onClick={() => navigate(phase.path)}
+                                                        className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter transition-all hover:scale-105 ${location.pathname === phase.path
+                                                            ? 'bg-[var(--color-primary)] text-black shadow-[0_0_15px_rgba(255,173,117,0.3)]'
+                                                            : 'text-gray-500 hover:text-white'
+                                                            }`}
+                                                    >
+                                                        #{phase.id} {phase.label}
+                                                    </button>
+                                                    {i < arr.length - 1 && <span className="text-gray-700 text-[10px] font-bold">/</span>}
+                                                </React.Fragment>
+                                            ))}
+                                        </div>
+                                    </div>
                                 )}
                             </div>
                         </div>
@@ -550,6 +462,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             <SupportModal isOpen={showSupport} onClose={() => setShowSupport(false)} />
             <RescueModal isOpen={showRescue} onClose={() => setShowRescue(false)} />
             <AppSupportChatbot isOpen={showChatbot} onClose={() => setShowChatbot(false)} />
-        </div>
+        </div >
     );
 };

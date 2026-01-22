@@ -466,133 +466,138 @@ export const Dashboard: React.FC = () => {
                         </button>
                     </div>
 
-                    {/* 데이터 관리 섹션 (Data Management) - Collapsible */}
+                    {/* 데이터 관리 섹션 (Data Management) */}
                     <div className="pt-6 border-t border-white/5 space-y-4">
-                        <button
-                            onClick={() => setIsDataManagementOpen(!isDataManagementOpen)}
-                            className="w-full flex items-center justify-between px-1 hover:bg-white/5 rounded-lg py-2 transition-colors"
-                        >
-                            <div className="flex items-center gap-2">
-                                <Settings size={14} className="text-[var(--color-primary)]" />
-                                <h3 className="text-xs font-bold text-white uppercase tracking-wider">데이터 관리</h3>
-                            </div>
-                            <ChevronDown size={14} className={`text-[var(--color-text-muted)] transition-transform duration-200 ${isDataManagementOpen ? 'rotate-180' : ''}`} />
-                        </button>
+                        <div className="flex items-center gap-2 px-1">
+                            <Settings size={14} className="text-[var(--color-primary)]" />
+                            <h3 className="text-xs font-bold text-white uppercase tracking-wider">데이터 관리</h3>
+                        </div>
 
-                        {isDataManagementOpen && (
-                            <div className="space-y-4 animate-in slide-in-from-top-2 duration-200">
-                                {/* 1. 데이터 최적화 (구조 개편) */}
-                                <button
-                                    onClick={handleMigrateProjects}
-                                    disabled={isMigrating}
-                                    className="w-full group flex flex-col items-start p-3 bg-[var(--color-primary)]/5 hover:bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/10 rounded-xl transition-all disabled:opacity-50"
-                                >
-                                    <div className="flex items-center gap-2 mb-1">
-                                        {isMigrating ? <Loader2 size={14} className="animate-spin text-white" /> : <Database size={14} className="text-white" />}
-                                        <span className="text-[11px] font-bold text-white uppercase">데이터 최적화 (구조 개편)</span>
-                                    </div>
-                                    <p className="text-[10px] text-gray-500 leading-tight text-left">구식 데이터 구조를 최신 저장소 방식으로 전환하여 전체적인 앱 성능을 극대화합니다.</p>
-                                    {migrationResult && (
-                                        <p className="text-[9px] text-green-500 mt-2 font-mono animate-pulse">
-                                            ✅ Optimized: {migrationResult.freed}MB Freed
-                                        </p>
-                                    )}
-                                </button>
-
-                                {/* 1-1. 로컬 파일 동기화 (PC DB) */}
-                                <div className="w-full p-3 bg-[var(--color-primary)]/5 border border-[var(--color-primary)]/10 rounded-xl space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2">
-                                            <FolderSync size={14} className={store.localFolder ? "text-[var(--color-primary)]" : "text-gray-400"} />
-                                            <span className="text-[11px] font-bold text-white uppercase">로컬 폴더 동기화 (PC 저장)</span>
-                                        </div>
-                                        {store.localFolder && (
-                                            <div className="flex items-center gap-2">
-                                                <button
-                                                    onClick={() => store.forceSyncLibrary()}
-                                                    disabled={store.isSyncingLibrary}
-                                                    className="text-[9px] px-2 py-0.5 bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30 rounded border border-[var(--color-primary)]/30 transition-all flex items-center gap-1 font-bold disabled:opacity-50"
-                                                    title="모든 프로젝트와 리서치 데이터를 로컬 폴더로 지금 즉시 백업합니다."
-                                                >
-                                                    {store.isSyncingLibrary ? <Loader2 size={8} className="animate-spin" /> : <RotateCcw size={8} />}
-                                                    전체 다시 동기화
-                                                </button>
-                                                <span className="text-[9px] px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded-full font-bold animate-pulse">Sync Active</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <p className="text-[10px] text-gray-500 leading-tight">선택한 PC 폴더에 프로젝트 데이터를 실시간 백업합니다.</p>
-
-                                    {store.localFolder ? (
-                                        <div className="space-y-2">
-                                            <div className="flex items-center gap-2 px-2 py-1 bg-black/30 rounded border border-white/5">
-                                                <HardDrive size={10} className="text-gray-400" />
-                                                <span className="text-[10px] text-gray-300 truncate font-mono">{store.localFolder.name}</span>
-                                            </div>
-                                            <button
-                                                onClick={() => store.disconnectLocalFolder()}
-                                                className="w-full py-1.5 text-[10px] font-bold text-red-400 hover:text-red-300 transition-colors"
-                                            >
-                                                연결 해제
-                                            </button>
-                                        </div>
-                                    ) : (
+                        {/* 1. 로컬 파일 동기화 (PC DB) - Always Visible */}
+                        <div className="w-full p-3 bg-[var(--color-primary)]/5 border border-[var(--color-primary)]/10 rounded-xl space-y-2">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <FolderSync size={14} className={store.localFolder ? "text-[var(--color-primary)]" : "text-gray-400"} />
+                                    <span className="text-[11px] font-bold text-white uppercase">로컬 폴더 동기화 (PC 저장)</span>
+                                </div>
+                                {store.localFolder && (
+                                    <div className="flex items-center gap-2">
                                         <button
-                                            onClick={() => store.connectLocalFolder()}
-                                            className="w-full flex items-center justify-center gap-2 p-2 bg-[var(--color-primary)]/20 hover:bg-[var(--color-primary)]/30 border border-[var(--color-primary)]/40 rounded-lg transition-all"
+                                            onClick={() => store.forceSyncLibrary()}
+                                            disabled={store.isSyncingLibrary}
+                                            className="text-[9px] px-2 py-0.5 bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30 rounded border border-[var(--color-primary)]/30 transition-all flex items-center gap-1 font-bold disabled:opacity-50"
+                                            title="모든 프로젝트와 리서치 데이터를 로컬 폴더로 지금 즉시 백업합니다."
                                         >
-                                            <FolderSync size={14} className="text-[var(--color-primary)]" />
-                                            <span className="text-[10px] font-bold text-[var(--color-primary)]">PC 폴더 연결하기</span>
+                                            {store.isSyncingLibrary ? <Loader2 size={8} className="animate-spin" /> : <RotateCcw size={8} />}
+                                            전체 다시 동기화
                                         </button>
-                                    )}
-                                </div>
-
-                                {/* 2. 저장소 통합 관리 (유지보수) */}
-                                <button
-                                    onClick={() => setShowStorageManager(true)}
-                                    className="w-full group flex flex-col items-start p-3 bg-[var(--color-primary)]/5 hover:bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/10 rounded-xl transition-all"
-                                >
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <HardDrive size={14} className="text-white" />
-                                        <span className="text-[11px] font-bold text-white uppercase">저장소 통합 관리 (유지보수)</span>
+                                        <span className="text-[9px] px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded-full font-bold animate-pulse">Sync Active</span>
                                     </div>
-                                    <p className="text-[10px] text-gray-500 leading-tight text-left">사용량 요약, 이미지 압축, 고아 파일 등 일상적인 유지보수 도구를 제공합니다.</p>
-                                </button>
-
-                                {/* 3. 복구 센터 (긴급 및 세션) */}
-                                <div className="w-full p-3 bg-[var(--color-primary)]/5 border border-[var(--color-primary)]/10 rounded-xl space-y-3">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <AlertTriangle size={14} className="text-white" />
-                                        <span className="text-[11px] font-bold text-white uppercase">데이터 복구 센터</span>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div className="space-y-2">
-                                            <button
-                                                onClick={() => window.dispatchEvent(new CustomEvent('openRescueModal'))}
-                                                className="w-full flex flex-col items-center justify-center p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all"
-                                                title="긴급 데이터 복구"
-                                            >
-                                                <AlertTriangle size={14} className="text-white mb-1" />
-                                                <span className="text-[10px] font-bold text-white text-center leading-tight">긴급 복구</span>
-                                            </button>
-                                            <p className="text-[9px] text-gray-500 leading-tight text-center">브라우저 심부의 데이터를 <br />직접 탐색 및 추출합니다.</p>
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <button
-                                                onClick={() => store.restoreData()}
-                                                className="w-full flex flex-col items-center justify-center p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all"
-                                                title="마지막 저장된 상태로 세션 복구"
-                                            >
-                                                <RotateCcw size={14} className="text-white mb-1" />
-                                                <span className="text-[10px] font-bold text-white text-center leading-tight">세션 복구</span>
-                                            </button>
-                                            <p className="text-[9px] text-gray-500 leading-tight text-center">마지막 저장 지점으로 <br />현재 세션을 복구합니다.</p>
-                                        </div>
-                                    </div>
-                                </div>
+                                )}
                             </div>
-                        )}
+                            <p className="text-[10px] text-gray-400 leading-tight">선택한 PC 폴더에 프로젝트 데이터를 실시간 백업합니다.</p>
+
+                            {store.localFolder ? (
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-2 px-2 py-1 bg-black/30 rounded border border-white/5">
+                                        <HardDrive size={10} className="text-gray-400" />
+                                        <span className="text-[10px] text-gray-300 truncate font-mono">{store.localFolder.name}</span>
+                                    </div>
+                                    <button
+                                        onClick={() => store.disconnectLocalFolder()}
+                                        className="w-full py-1 text-[10px] font-bold text-red-400/70 hover:text-red-300 transition-colors"
+                                    >
+                                        연결 해제
+                                    </button>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={() => store.connectLocalFolder()}
+                                    className="w-full flex items-center justify-center gap-2 p-2 bg-[var(--color-primary)]/20 hover:bg-[var(--color-primary)]/30 border border-[var(--color-primary)]/40 rounded-lg transition-all"
+                                >
+                                    <FolderSync size={14} className="text-[var(--color-primary)]" />
+                                    <span className="text-[10px] font-bold text-[var(--color-primary)]">PC 폴더 연결하기</span>
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Collapsible Area for Other Tools */}
+                        <div className="space-y-3">
+                            <button
+                                onClick={() => setIsDataManagementOpen(!isDataManagementOpen)}
+                                className="w-full flex items-center justify-between px-1 hover:bg-white/5 rounded-lg py-1.5 transition-colors group"
+                            >
+                                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-tight group-hover:text-gray-400">기타 관리 도구</span>
+                                <ChevronDown size={14} className={`text-gray-600 transition-transform duration-200 ${isDataManagementOpen ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {isDataManagementOpen && (
+                                <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                                    {/* 2. 데이터 최적화 (구조 개편) */}
+                                    <button
+                                        onClick={handleMigrateProjects}
+                                        disabled={isMigrating}
+                                        className="w-full group flex flex-col items-start p-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all disabled:opacity-50"
+                                    >
+                                        <div className="flex items-center gap-2 mb-1">
+                                            {isMigrating ? <Loader2 size={14} className="animate-spin text-white" /> : <Database size={14} className="text-white" />}
+                                            <span className="text-[11px] font-bold text-white uppercase">데이터 최적화 (구조 개편)</span>
+                                        </div>
+                                        <p className="text-[10px] text-gray-500 leading-tight text-left">구식 데이터 구조를 최신 저장소 방식으로 전환하여 앱 성능을 극대화합니다.</p>
+                                        {migrationResult && (
+                                            <p className="text-[9px] text-green-500 mt-2 font-mono animate-pulse">
+                                                ✅ Optimized: {migrationResult.freed}MB Freed
+                                            </p>
+                                        )}
+                                    </button>
+
+                                    {/* 3. 저장소 통합 관리 (유지보수) */}
+                                    <button
+                                        onClick={() => setShowStorageManager(true)}
+                                        className="w-full group flex flex-col items-start p-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all"
+                                    >
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <HardDrive size={14} className="text-white" />
+                                            <span className="text-[11px] font-bold text-white uppercase">저장소 통합 관리</span>
+                                        </div>
+                                        <p className="text-[10px] text-gray-500 leading-tight text-left">사용량 요약, 이미지 압축, 고아 파일 제거 등 유지보수 도구입니다.</p>
+                                    </button>
+
+                                    {/* 4. 복구 센터 (긴급 및 세션) */}
+                                    <div className="w-full p-3 bg-white/5 border border-white/10 rounded-xl space-y-3">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <AlertTriangle size={14} className="text-white" />
+                                            <span className="text-[11px] font-bold text-white uppercase">데이터 복구 센터</span>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div className="space-y-2">
+                                                <button
+                                                    onClick={() => window.dispatchEvent(new CustomEvent('openRescueModal'))}
+                                                    className="w-full flex flex-col items-center justify-center p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all"
+                                                    title="긴급 데이터 복구"
+                                                >
+                                                    <AlertTriangle size={14} className="text-white mb-1" />
+                                                    <span className="text-[10px] font-bold text-white text-center leading-tight">긴급 복구</span>
+                                                </button>
+                                                <p className="text-[9px] text-gray-500 leading-tight text-center">브라우저 심부의 데이터를 <br />직접 탐색 및 추출합니다.</p>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <button
+                                                    onClick={() => store.restoreData()}
+                                                    className="w-full flex flex-col items-center justify-center p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all"
+                                                    title="마지막 저장된 상태로 세션 복구"
+                                                >
+                                                    <RotateCcw size={14} className="text-white mb-1" />
+                                                    <span className="text-[10px] font-bold text-white text-center leading-tight">세션 복구</span>
+                                                </button>
+                                                <p className="text-[9px] text-gray-500 leading-tight text-center">마지막 저장 지점으로 <br />현재 세션을 복구합니다.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
 

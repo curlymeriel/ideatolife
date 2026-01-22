@@ -188,7 +188,8 @@ export const StrategyFormulation: React.FC = () => {
                 format: episode.format,
                 notes: episode.notes,
                 seriesTitle: series.title,
-                seriesDescription: series.description
+                seriesDescription: series.description,
+                characters: strategyResult?.characters || []
             }
         });
     };
@@ -196,31 +197,35 @@ export const StrategyFormulation: React.FC = () => {
     const handleSaveAllToPool = () => {
         if (!strategyResult) return;
         let count = 0;
-        strategyResult.recommendedEpisodes.forEach(episode => {
-            const exists = ideaPool.some(item =>
-                item.title === episode.ideaTitle && item.sourceId === strategyResult.id
-            );
-            if (!exists) {
-                addIdeaToPool({
-                    id: Math.random().toString(36).substring(2, 9),
-                    createdAt: Date.now(),
-                    title: episode.ideaTitle,
-                    description: episode.oneLiner,
-                    source: 'Phase3',
-                    sourceId: strategyResult.id,
-                    category: strategyResult.recommendedSeries[0]?.title || 'Strategy',
-                    status: 'pending',
-                    metadata: {
-                        targetAudience: strategyResult.recommendedSeries[0]?.expectedAudience || '',
-                        angle: episode.angle,
-                        format: episode.format,
-                        notes: episode.notes,
-                        seriesTitle: strategyResult.recommendedSeries[0]?.title || '',
-                        seriesDescription: strategyResult.recommendedSeries[0]?.description || ''
-                    }
-                });
-                count++;
-            }
+        // NEW: Iterate over each series, then its nested episodes
+        strategyResult.recommendedSeries.forEach(series => {
+            (series.episodes || []).forEach(episode => {
+                const exists = ideaPool.some(item =>
+                    item.title === episode.ideaTitle && item.sourceId === strategyResult.id
+                );
+                if (!exists) {
+                    addIdeaToPool({
+                        id: Math.random().toString(36).substring(2, 9),
+                        createdAt: Date.now(),
+                        title: episode.ideaTitle,
+                        description: episode.oneLiner,
+                        source: 'Phase3',
+                        sourceId: strategyResult.id,
+                        category: series.title, // Correct parent series
+                        status: 'pending',
+                        metadata: {
+                            targetAudience: series.expectedAudience,
+                            angle: episode.angle,
+                            format: episode.format,
+                            notes: episode.notes,
+                            seriesTitle: series.title,
+                            seriesDescription: series.description,
+                            characters: strategyResult.characters || []
+                        }
+                    });
+                    count++;
+                }
+            });
         });
         if (count > 0) alert(`${count}개의 아이디어가 아이디어 풀에 저장되었습니다.`);
         else alert('이미 모든 아이디어가 저장되어 있습니다.');
@@ -310,11 +315,13 @@ export const StrategyFormulation: React.FC = () => {
         setIsChatProcessing(true);
         console.log('[Chat] 4. Starting API call with message:', userMessage);
         try {
+            // TRIMMED CONTEXT: Only include essential summaries, not full data objects
             const context = {
-                trendSnapshot: selectedCompetitor ? trendSnapshots[selectedCompetitor.trendSnapshotId || ''] : null,
-                competitor: selectedCompetitor,
-                currentStrategy: strategyResult,
-                ideaPoolSnippet: ideaPool.slice(0, 5)
+                trendSummary: selectedCompetitor ? (trendSnapshots[selectedCompetitor.trendSnapshotId || '']?.queryContext || 'N/A') : null,
+                competitorSummary: selectedCompetitor?.summary || 'N/A',
+                competitorFocusKeywords: selectedCompetitor?.focusKeywords?.slice(0, 5) || [],
+                currentStrategyTitle: strategyResult?.executiveSummary?.substring(0, 200) || 'N/A',
+                ideaPoolCount: ideaPool.length
             };
             const systemPrompt = `당신은 'AI 전략기획팀장'입니다. 경쟁 분석 데이터를 바탕으로 유튜브 채널 성장 전략을 수립합니다. 현재 컨텍스트: ${JSON.stringify(context)}`;
             console.log('[Chat] 5. Calling generateText...');
@@ -413,12 +420,20 @@ export const StrategyFormulation: React.FC = () => {
         const { resetToDefault, saveProject } = useWorkflowStore.getState();
         resetToDefault();
         setProjectInfo({
-            id: newProjectId, apiKeys: currentApiKeys, seriesName: series.title, seriesStory: series.description,
-            episodeName: episode?.ideaTitle || 'New Episode', episodePlot: episode?.oneLiner || '',
-            lastModified: Date.now(), currentStep: 1,
+            id: newProjectId, apiKeys: currentApiKeys,
+            seriesName: series.title,
+            seriesStory: series.description,
+            episodeName: episode?.ideaTitle || 'New Episode',
+            episodePlot: episode?.oneLiner || '',
+            characters: strategyResult?.characters || [],
+            lastModified: Date.now(),
+            currentStep: 1,
             trendInsights: {
-                target: series.expectedAudience, vibe: episode?.angle || '',
-                references: series.benchmarkVideos || [], storytelling: episode?.notes || '', appliedAt: Date.now()
+                target: series.expectedAudience,
+                vibe: episode?.angle || '',
+                references: series.benchmarkVideos || [],
+                storytelling: episode?.notes || '',
+                appliedAt: Date.now()
             }
         });
         setScript([]);
@@ -622,23 +637,28 @@ export const StrategyFormulation: React.FC = () => {
 
                                 <section className="space-y-6">
                                     <h2 className="text-2xl font-bold text-white border-b border-white/10 pb-4">4. Episode Recommendations</h2>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        {strategyResult.recommendedEpisodes.map((ep, i) => (
-                                            <div key={i} className="bg-white/5 p-6 rounded-2xl border border-white/5">
-                                                <div className="text-[var(--color-primary)] font-black text-xs mb-2 uppercase tracking-tighter">Idea {i + 1} • {ep.format}</div>
-                                                <h3 className="text-lg font-bold text-white mb-2">{ep.ideaTitle}</h3>
-                                                <p className="text-sm text-gray-400 mb-4 line-clamp-2 italic">"{ep.oneLiner}"</p>
-                                                <div className="mt-4 flex justify-end">
-                                                    <button
-                                                        onClick={() => handlePromoteToProject(strategyResult.recommendedSeries[0], ep)}
-                                                        className="px-3 py-1.5 bg-[var(--color-primary)] text-black text-[10px] font-black rounded-lg flex items-center gap-2 hover:scale-105 transition-all"
-                                                    >
-                                                        <Rocket size={12} /> 제작 시작
-                                                    </button>
-                                                </div>
+                                    {strategyResult.recommendedSeries.map((series, sIdx) => (
+                                        <div key={series.id || sIdx} className="space-y-4">
+                                            <h3 className="text-lg font-bold text-indigo-400">{series.title}</h3>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                {(series.episodes || []).map((ep, i) => (
+                                                    <div key={ep.id || i} className="bg-white/5 p-6 rounded-2xl border border-white/5">
+                                                        <div className="text-[var(--color-primary)] font-black text-xs mb-2 uppercase tracking-tighter">Ep.{i + 1} • {ep.format}</div>
+                                                        <h4 className="text-lg font-bold text-white mb-2">{ep.ideaTitle}</h4>
+                                                        <p className="text-sm text-gray-400 mb-4 line-clamp-2 italic">"{ep.oneLiner}"</p>
+                                                        <div className="mt-4 flex justify-end">
+                                                            <button
+                                                                onClick={() => handlePromoteToProject(series, ep)}
+                                                                className="px-3 py-1.5 bg-[var(--color-primary)] text-black text-[10px] font-black rounded-lg flex items-center gap-2 hover:scale-105 transition-all"
+                                                            >
+                                                                <Rocket size={12} /> 제작 시작
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))}
                                             </div>
-                                        ))}
-                                    </div>
+                                        </div>
+                                    ))}
                                 </section>
 
                                 <section className="space-y-6">
@@ -825,42 +845,52 @@ export const StrategyFormulation: React.FC = () => {
                             </div>
                         )}
                         {activeTab === 'episodes' && (
-                            <div className="space-y-6 animate-in fade-in duration-300">
+                            <div className="space-y-8 animate-in fade-in duration-300">
                                 <div className="flex items-center justify-between mb-4">
                                     <h3 className="text-2xl font-bold text-white">Recommended Episodes</h3>
                                     <button onClick={handleSaveAllToPool} className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white rounded-lg text-xs font-bold border border-white/10 transition-all flex items-center gap-2">
                                         <BookmarkPlus size={14} /> 전체 아이디어 담기
                                     </button>
                                 </div>
-                                <div className="grid grid-cols-1 gap-4">
-                                    {strategyResult.recommendedEpisodes.map((episode, i) => (
-                                        <div key={i} className="bg-white/5 border border-white/10 p-6 rounded-2xl flex items-center justify-between group hover:bg-white/[0.07] transition-all">
-                                            <div className="space-y-1">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="px-2 py-0.5 bg-[var(--color-primary)]/10 text-[var(--color-primary)] text-[10px] font-bold rounded">Idea 0{i + 1}</span>
-                                                    <span className="text-gray-500 text-[10px] font-bold uppercase">{episode.format}</span>
-                                                </div>
-                                                <h4 className="text-lg font-bold text-white">{episode.ideaTitle}</h4>
-                                                <p className="text-sm text-gray-400">{episode.oneLiner}</p>
-                                            </div>
-                                            <div className="flex flex-col items-end gap-2">
-                                                <button
-                                                    onClick={() => handleSaveToPool(episode, strategyResult.recommendedSeries[0])}
-                                                    className="p-3 bg-white/5 text-gray-400 rounded-xl hover:bg-white/10 transition-all"
-                                                    title="아이디어 풀에 담기"
-                                                >
-                                                    <BookmarkPlus size={20} />
-                                                </button>
-                                                <button
-                                                    onClick={() => handlePromoteToProject(strategyResult.recommendedSeries[0], episode)}
-                                                    className="px-4 py-2 bg-[var(--color-primary)] text-black text-xs font-black rounded-xl hover:scale-105 transition-all flex items-center gap-2 shadow-lg shadow-[var(--color-primary)]/10"
-                                                >
-                                                    <Rocket size={16} /> 제작 시작
-                                                </button>
-                                            </div>
+                                {/* NEW: Grouped by Series */}
+                                {strategyResult.recommendedSeries.map((series, sIdx) => (
+                                    <div key={series.id || sIdx} className="space-y-4">
+                                        <div className="flex items-center gap-3 pb-2 border-b border-white/10">
+                                            <span className="px-3 py-1 bg-indigo-500/20 text-indigo-400 text-xs font-bold rounded-lg">Series {sIdx + 1}</span>
+                                            <h4 className="text-lg font-bold text-white">{series.title}</h4>
+                                            <span className="text-xs text-gray-500 italic truncate max-w-[300px]">{series.description}</span>
                                         </div>
-                                    ))}
-                                </div>
+                                        <div className="grid grid-cols-1 gap-4 pl-4 border-l-2 border-indigo-500/30">
+                                            {(series.episodes || []).map((episode, eIdx) => (
+                                                <div key={episode.id || eIdx} className="bg-white/5 border border-white/10 p-6 rounded-2xl flex items-center justify-between group hover:bg-white/[0.07] transition-all">
+                                                    <div className="space-y-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="px-2 py-0.5 bg-[var(--color-primary)]/10 text-[var(--color-primary)] text-[10px] font-bold rounded">Ep.0{eIdx + 1}</span>
+                                                            <span className="text-gray-500 text-[10px] font-bold uppercase">{episode.format}</span>
+                                                        </div>
+                                                        <h4 className="text-lg font-bold text-white">{episode.ideaTitle}</h4>
+                                                        <p className="text-sm text-gray-400">{episode.oneLiner}</p>
+                                                    </div>
+                                                    <div className="flex flex-col items-end gap-2">
+                                                        <button
+                                                            onClick={() => handleSaveToPool(episode, series)}
+                                                            className="p-3 bg-white/5 text-gray-400 rounded-xl hover:bg-white/10 transition-all"
+                                                            title="아이디어 풀에 담기"
+                                                        >
+                                                            <BookmarkPlus size={20} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handlePromoteToProject(series, episode)}
+                                                            className="px-4 py-2 bg-[var(--color-primary)] text-black text-xs font-black rounded-xl hover:scale-105 transition-all flex items-center gap-2 shadow-lg shadow-[var(--color-primary)]/10"
+                                                        >
+                                                            <Rocket size={16} /> 제작 시작
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         )}
 

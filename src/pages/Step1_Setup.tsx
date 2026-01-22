@@ -587,16 +587,44 @@ export const Step1_Setup: React.FC = () => {
             // Fallback: Detect Aspect Ratio from User Message if AI missed it
             if (!result.suggestedAspectRatio) {
                 const lowerMsg = inputMessage.toLowerCase();
-                if (lowerMsg.includes('vertical') || lowerMsg.includes('9:16') || lowerMsg.includes('shorts') || lowerMsg.includes('tiktok') || lowerMsg.includes('reels')) {
+
+                // Vertical (9:16) - Shorts, Reels, TikTok
+                if (lowerMsg.includes('vertical') || lowerMsg.includes('9:16') || lowerMsg.includes('shorts') || lowerMsg.includes('tiktok') || lowerMsg.includes('reels') || lowerMsg.includes('세로') || lowerMsg.includes('숏폼')) {
                     result.suggestedAspectRatio = '9:16';
                     console.log('[Step1] Fallback: Detected Vertical/9:16 intent');
-                } else if (lowerMsg.includes('square') || lowerMsg.includes('1:1') || lowerMsg.includes('instagram')) {
+                }
+                // Square (1:1) - Instagram Feed
+                else if (lowerMsg.includes('square') || lowerMsg.includes('1:1') || lowerMsg.includes('instagram') || lowerMsg.includes('정방형') || lowerMsg.includes('인스타')) {
                     result.suggestedAspectRatio = '1:1';
                     console.log('[Step1] Fallback: Detected Square/1:1 intent');
-                } else if (lowerMsg.includes('cinematic') || lowerMsg.includes('2.35:1') || lowerMsg.includes('wide')) {
+                }
+                // Cinematic (2.35:1) - Movies
+                else if (lowerMsg.includes('cinematic') || lowerMsg.includes('2.35:1') || lowerMsg.includes('wide') || lowerMsg.includes('movie') || lowerMsg.includes('영화') || lowerMsg.includes('시네마틱')) {
                     result.suggestedAspectRatio = '2.35:1';
                     console.log('[Step1] Fallback: Detected Cinematic/2.35:1 intent');
-                } else if (lowerMsg.includes('landscape') || lowerMsg.includes('16:9') || lowerMsg.includes('youtube')) {
+                }
+                // Ultrawide (21:9)
+                else if (lowerMsg.includes('21:9') || lowerMsg.includes('ultrawide')) {
+                    result.suggestedAspectRatio = '21:9';
+                    console.log('[Step1] Fallback: Detected Ultrawide/21:9 intent');
+                }
+                // Classic TV (4:3)
+                else if (lowerMsg.includes('4:3') || lowerMsg.includes('tv') || lowerMsg.includes('classic')) {
+                    result.suggestedAspectRatio = '4:3';
+                    console.log('[Step1] Fallback: Detected 4:3 intent');
+                }
+                // Vertical Classic (3:4)
+                else if (lowerMsg.includes('3:4')) {
+                    result.suggestedAspectRatio = '3:4';
+                    console.log('[Step1] Fallback: Detected 3:4 intent');
+                }
+                // Portrait (4:5) - Instagram Portrait
+                else if (lowerMsg.includes('4:5') || lowerMsg.includes('portrait')) {
+                    result.suggestedAspectRatio = '4:5';
+                    console.log('[Step1] Fallback: Detected Portrait/4:5 intent');
+                }
+                // Default Landscape (16:9) - YouTube
+                else if (lowerMsg.includes('landscape') || lowerMsg.includes('16:9') || lowerMsg.includes('youtube') || lowerMsg.includes('가로') || lowerMsg.includes('유튜브')) {
                     result.suggestedAspectRatio = '16:9';
                     console.log('[Step1] Fallback: Detected Landscape/16:9 intent');
                 }
@@ -1817,9 +1845,9 @@ export const Step1_Setup: React.FC = () => {
                                         </div>
 
                                         <div className="space-y-2">
-                                            {renderLabel("Aspect Ratio", !!localAspectRatio)}
+                                            {renderLabel("Aspect Ratio (Auto-detected from Chat)", !!localAspectRatio)}
                                             <div className="grid grid-cols-4 gap-2">
-                                                {(['16:9', '9:16', '1:1', '2.35:1'] as const).map((ratio) => (
+                                                {(['16:9', '9:16', '1:1', '2.35:1', '4:5', '21:9', '4:3', '3:4'] as const).map((ratio) => (
                                                     <button
                                                         key={ratio}
                                                         onClick={() => {

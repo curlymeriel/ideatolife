@@ -103,7 +103,7 @@ export interface ConsultationResult {
         seriesProps?: string[];
         episodeProps?: string[];
     };
-    suggestedAspectRatio?: '16:9' | '9:16' | '1:1' | '2.35:1';
+    suggestedAspectRatio?: '16:9' | '9:16' | '1:1' | '2.35:1' | '4:5' | '21:9' | '4:3' | '3:4';
     suggestedMasterStyle?: string;
 }
 
@@ -525,7 +525,8 @@ ${customInstructions || DEFAULT_SCRIPT_INSTRUCTIONS}
                     `${model.url}?key=${apiKey}`,
                     {
                         contents: [{ parts: [{ text: finalPrompt }] }]
-                    }
+                    },
+                    { timeout: 30000 } // 30 second timeout for faster failover
                 );
 
                 let generatedText = response.data.candidates[0].content.parts[0].text;
@@ -737,7 +738,8 @@ ${JSON.stringify(videos.map(v => ({ title: v.title, channel: v.channelName, view
                 `${model.url}?key=${apiKey}`,
                 {
                     contents: [{ parts: [{ text: prompt }] }]
-                }
+                },
+                { timeout: 30000 } // 30 second timeout
             );
 
             const text = response.data.candidates[0].content.parts[0].text;
@@ -781,19 +783,20 @@ export const generateStrategyInsight = async (
                     description: "복잡한 기술을 1분 내외의 강력한 후킹과 함께 전달하는 숏폼 시리즈",
                     targetPillar: "도파민 지식",
                     expectedAudience: "바쁜 현대인 및 쇼츠 중독자",
-                    benchmarkVideos: []
+                    benchmarkVideos: [],
+                    episodes: [
+                        {
+                            id: 'e1',
+                            ideaTitle: "언리얼 엔진으로 5분 만에 시네마틱 만들기",
+                            oneLiner: "누구나 할 수 있는 하이퀄리티 배경 제작법",
+                            angle: "초보자의 눈높이에서 가장 화려한 결과물 도출",
+                            format: "Vertical Shorts",
+                            notes: "배경 음악 선정이 매우 중요함"
+                        }
+                    ]
                 }
             ],
-            recommendedEpisodes: [
-                {
-                    id: 'e1',
-                    ideaTitle: "언리얼 엔진으로 5분 만에 시네마틱 만들기",
-                    oneLiner: "누구나 할 수 있는 하이퀄리티 배경 제작법",
-                    angle: "초보자의 눈높이에서 가장 화려한 결과물 도출",
-                    format: "Vertical Shorts",
-                    notes: "배경 음악 선정이 매우 중요함"
-                }
-            ],
+            // recommendedEpisodes removed
             characters: [
                 { name: "마스터 K", role: "메인 멘토", personality: "냉철하지만 따뜻한 조언가", visualGuide: "오피스룩, 따뜻한 조명, 스마트한 안경" }
             ],
@@ -828,8 +831,8 @@ ${chatContext}
     - Executive Summary: 전체적인 채널 운영 방향 및 핵심 차별화 전략
     - Key Opportunities & Risks: 시장 진입 시 활용할 기회와 주의할 리스크
     - Recommended Pillars: 채널을 지탱할 2-3가지 핵심 콘텐츠 기둥
-    - Recommended Series: 시리즈 기획 1-2가지(제목, 설명, 타겟 필러, 예상 시청자)
-    - Recommended Episodes: 즉시 제작 가능한 에피소드 아이디어 3-5가지
+    - Recommended Series: 시리즈 기획 1-2가지(제목, 설명, 타겟 필러, 예상 시청자, **그리고 해당 시리즈에 포함될 에피소드 3개 이상**)
+    - (Deleted: Recommended Episodes - 이제 Series 안에 포함됩니다)
     - Characters: 비중 있는 캐릭터/페르소나 정의 (이름, 역할, 성격, 비주얼 가이드 프롬프트 포함)
     - Tech Stack: 제작 단계별 권장 AI 도구 및 활용법 (기획, 이미지, 비디오, 오디오 등)
     - Marketing & KPI: 인터랙티브 요소, 바이럴 전략 및 주요 목표 지표(KPI)
@@ -850,19 +853,20 @@ ${chatContext}
                 "description": "...",
                 "targetPillar": "...",
                 "expectedAudience": "...",
-                "benchmarkVideos": []
+                "benchmarkVideos": [],
+                "episodes": [
+                    {
+                        "id": "랜덤ID",
+                        "ideaTitle": "에피소드 제목",
+                        "oneLiner": "한줄 요약",
+                        "angle": "기획 의도",
+                        "format": "형식",
+                        "notes": "비고"
+                    }
+                ]
             }
         ],
-        "recommendedEpisodes": [
-            {
-                "id": "랜덤ID",
-                "ideaTitle": "...",
-                "oneLiner": "...",
-                "angle": "...",
-                "format": "...",
-                "notes": "..."
-            }
-        ],
+        // recommendedEpisodes removed
         "characters": [
             { "name": "...", "role": "...", "personality": "...", "visualGuide": "PROMPT_HERE", "age": "..." }
         ],
@@ -1077,7 +1081,8 @@ export const consultStory = async (
                             temperature: 0.9,
                             response_mime_type: "application/json"
                         }
-                    }
+                    },
+                    { timeout: 30000 } // 30 second timeout
                 );
                 if (response) break; // Success!
             } catch (e: any) {
@@ -1703,28 +1708,49 @@ export const generateText = async (
 
     console.log('[generateText] Final prompt length:', finalPrompt.length);
 
-    for (const model of models) {
-        try {
-            console.log(`[generateText] Trying model: ${model.name}...`);
-            const response = await axios.post(
-                `${model.url}?key=${apiKey}`,
-                {
-                    contents: [{ parts: [{ text: finalPrompt }] }],
-                    generationConfig: {
-                        temperature: generationConfig?.temperature ?? 0.7,
-                        response_mime_type: responseMimeType || generationConfig?.response_mime_type,
-                        ...generationConfig
-                    }
-                },
-                { timeout: 120000 } // 120 second timeout for long inputs
-            );
+    // Retry helper with exponential backoff for 429 errors
+    const MAX_RETRIES = 3;
+    const tryWithRetry = async (modelName: string, modelUrl: string): Promise<string | null> => {
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                console.log(`[generateText] Trying ${modelName} (attempt ${attempt}/${MAX_RETRIES})...`);
+                const response = await axios.post(
+                    `${modelUrl}?key=${apiKey}`,
+                    {
+                        contents: [{ parts: [{ text: finalPrompt }] }],
+                        generationConfig: {
+                            temperature: generationConfig?.temperature ?? 0.7,
+                            response_mime_type: responseMimeType || generationConfig?.response_mime_type,
+                            ...generationConfig
+                        }
+                    },
+                    { timeout: 120000 } // 120 second timeout for long inputs
+                );
 
-            console.log(`[generateText] Success with ${model.name}!`);
-            return response.data.candidates[0].content.parts[0].text;
-        } catch (error: any) {
-            console.warn(`[generateText] ${model.name} failed:`, error.code || error.message);
-            lastError = error;
+                console.log(`[generateText] Success with ${modelName}!`);
+                return response.data.candidates[0].content.parts[0].text;
+            } catch (error: any) {
+                const status = error.response?.status;
+                lastError = error;
+
+                if (status === 429 && attempt < MAX_RETRIES) {
+                    // Rate limit - wait and retry with exponential backoff
+                    const waitTime = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
+                    console.warn(`[generateText] 429 Rate Limit on ${modelName}. Waiting ${waitTime / 1000}s before retry...`);
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
+                    continue; // Retry same model
+                } else {
+                    console.warn(`[generateText] ${modelName} failed:`, error.code || error.message);
+                    return null; // Move to next model
+                }
+            }
         }
+        return null;
+    };
+
+    for (const model of models) {
+        const result = await tryWithRetry(model.name, model.url);
+        if (result) return result;
     }
 
     console.error('[generateText] All models failed.');

@@ -60,15 +60,21 @@ export const IdeaPool: React.FC = () => {
         const { resetToDefault } = useWorkflowStore.getState();
         resetToDefault();
 
+        const hasSeriesInfo = !!(idea.metadata?.seriesTitle || (idea.source === 'Phase3' && idea.category));
+
         setProjectInfo({
             id: newProjectId,
             apiKeys: currentApiKeys,
-            // Promote series-level info from metadata, fallback to idea title for manual entries
-            seriesName: idea.metadata?.seriesTitle || idea.title,
-            seriesStory: idea.metadata?.seriesDescription || idea.description,
-            // Promote episode-level info from idea title/description
-            episodeName: idea.metadata?.seriesTitle ? idea.title : 'New Episode',
-            episodePlot: idea.metadata?.seriesTitle ? idea.description : '',
+            // Promote series-level info from metadata, fallback to category for Phase3 ideas, then idea title
+            seriesName: idea.metadata?.seriesTitle || (idea.source === 'Phase3' ? idea.category : '') || idea.title,
+            seriesStory: idea.metadata?.seriesDescription || '',
+
+            // If we have series info, promote the idea itself to the episode level.
+            // Otherwise, it was already used for the series level, so create a default "New Episode".
+            episodeName: hasSeriesInfo ? idea.title : 'New Episode',
+            episodePlot: hasSeriesInfo ? idea.description : '',
+
+            characters: idea.metadata?.characters || [],
             lastModified: Date.now(),
             currentStep: 1,
             trendInsights: {

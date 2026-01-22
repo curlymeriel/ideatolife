@@ -23,10 +23,20 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
 
     // Convert aspect ratio string to number
     const getAspectRatioValue = (ratio: string): number => {
-        if (ratio === '16:9') return 16 / 9;
-        if (ratio === '9:16') return 9 / 16;
-        if (ratio === '1:1') return 1;
+        if (!ratio) return 16 / 9;
+
+        // Handle "W:H" format (e.g., 16:9, 4:5, 21:9)
+        if (ratio.includes(':') && !ratio.includes('2.35')) {
+            const [wStr, hStr] = ratio.split(':');
+            const w = parseFloat(wStr);
+            const h = parseFloat(hStr);
+            if (!isNaN(w) && !isNaN(h) && h !== 0) {
+                return w / h;
+            }
+        }
+
         if (ratio === '2.35:1') return 2.35;
+
         return 16 / 9; // default
     };
 

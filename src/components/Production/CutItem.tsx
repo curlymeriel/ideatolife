@@ -308,6 +308,10 @@ export const CutItem = memo(({
             case '9:16': return 'aspect-[9/16]';
             case '1:1': return 'aspect-square';
             case '2.35:1': return 'aspect-[2.35/1]';
+            case '21:9': return 'aspect-[21/9]';
+            case '4:3': return 'aspect-[4/3]';
+            case '3:4': return 'aspect-[3/4]';
+            case '4:5': return 'aspect-[4/5]';
             default: return 'aspect-video'; // 16:9
         }
     };
@@ -474,10 +478,10 @@ export const CutItem = memo(({
                                 onClick={() => onGenerateAudio(cut.id, cut.dialogue)}
                                 disabled={audioLoading || !cut.dialogue || isAudioConfirmed}
                                 className={`flex items-center justify-center w-8 h-8 rounded-full transition-all border ${isAudioConfirmed
-                                        ? 'opacity-30 cursor-not-allowed border-white/5'
-                                        : audioLoading
-                                            ? 'bg-[var(--color-primary)]/20 animate-pulse border-[var(--color-primary)]/40'
-                                            : 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/20 border-[var(--color-primary)]/20'
+                                    ? 'opacity-30 cursor-not-allowed border-white/5'
+                                    : audioLoading
+                                        ? 'bg-[var(--color-primary)]/20 animate-pulse border-[var(--color-primary)]/40'
+                                        : 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/20 border-[var(--color-primary)]/20'
                                     }`}
                                 title={isAudioConfirmed ? 'Audio Locked' : hasRealAudio ? 'Regenerate Audio' : 'Generate Audio'}
                             >

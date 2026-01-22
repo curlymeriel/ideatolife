@@ -66,6 +66,17 @@ DELETION EXAMPLES:
 - User: "Remove all series props" → List all prop names in {"suggestedDeletions": {"seriesProps": ["prop1", "prop2"]}}
 - User: "캐릭터 A와 B 삭제해줘" → {"suggestedDeletions": {"characters": ["A", "B"]}}
 
+ASPECT RATIO RULE (CRITICAL):
+If the user requests a change in screen shape, size, or ratio (e.g., "Vertical", "Shorts", "Wide", "Cinematic", "세로", "가로", "영화", "정방형"), you MUST update "suggestedAspectRatio" in the JSON response.
+- Vertical/Shorts/TikTok/Reels/세로 -> "9:16"
+- Square/Instagram/정방형 -> "1:1"
+- Standard/YouTube/TV/가로 -> "16:9"
+- Cinematic/Movie/영화 -> "2.35:1"
+- Ultrawide -> "21:9"
+- Classic TV -> "4:3"
+- Vertical Classic -> "3:4"
+- Portrait -> "4:5"
+
 ALWAYS return valid JSON:
 {
     "reply": "Your conversational response...",
@@ -82,7 +93,7 @@ ALWAYS return valid JSON:
     "suggestedSeriesProps": [{"name": "", "description": "", "visualSummary": ""}],
     "suggestedEpisodeProps": [{"name": "", "description": "", "visualSummary": ""}],
     "suggestedDuration": 60,
-    "suggestedAspectRatio": "16:9", // '16:9' | '9:16' | '1:1' | '2.35:1'
+    "suggestedAspectRatio": "16:9", // '16:9' | '9:16' | '1:1' | '2.35:1' | '21:9' | '4:3' | '3:4' | '4:5'
     "suggestedMasterStyle": "Description of the overall visual style for the series (e.g., 'Ghibli watercolor style', 'Cyberpunk neon aesthetic', 'Realistic cinematic look')",
     "suggestedStorylineScenes": [{"sceneNumber": 1, "estimatedTime": "", "content": "", "directionNotes": ""}],
     "suggestedDeletions": {
