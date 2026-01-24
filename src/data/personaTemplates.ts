@@ -95,6 +95,8 @@ ALWAYS return valid JSON:
     "suggestedDuration": 60,
     "suggestedAspectRatio": "16:9", // '16:9' | '9:16' | '1:1' | '2.35:1' | '21:9' | '4:3' | '3:4' | '4:5'
     "suggestedMasterStyle": "Description of the overall visual style for the series (e.g., 'Ghibli watercolor style', 'Cyberpunk neon aesthetic', 'Realistic cinematic look')",
+    "suggestedCharacterModifier": "Prompt modifier for all characters (e.g., 'wearing futuristic armor', 'in pixar style')",
+    "suggestedBackgroundModifier": "Prompt modifier for all backgrounds (e.g., 'with fog and volumetric lighting', 'oil painting texture')",
     "suggestedStorylineScenes": [{"sceneNumber": 1, "estimatedTime": "", "content": "", "directionNotes": ""}],
     "suggestedDeletions": {
         "characters": ["character name to delete"],

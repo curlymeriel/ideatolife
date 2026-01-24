@@ -36,7 +36,7 @@ export const PrepPhasesGuide: React.FC = () => {
             title: "Phase 3: Strategy Formulation",
             subtitle: "전략 수립 & 브랜딩",
             icon: <Target size={24} className="text-green-400" />,
-            desc: "AI 전략기획팀장과 함께 SWOT 분석을 수행하고, 채널 브랜딩 및 맞춤형 콘텐츠 시리즈를 기획합니다.",
+            desc: "AI 전략팀장과 함께 SWOT 분석을 수행하고, 채널 브랜딩 및 맞춤형 콘텐츠 시리즈를 기획합니다.",
             points: [
                 "AI 기반 통합 전략 리포트 (기회/리스크/차별화)",
                 "채널 브랜딩 (네이밍, 로고, 배너) 자동 생성 및 시뮬레이션",

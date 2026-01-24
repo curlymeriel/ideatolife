@@ -71,12 +71,20 @@ export const generateImage = async (
                 }
             });
 
-            // Update text prompt
-            if (refImages.length === 1) {
-                parts[0].text = `Using the provided image as a strong visual reference, generate: ${_prompt}. Maintain the key features and style from the reference image.`;
-            } else {
-                parts[0].text = `Using the ${refImages.length} provided reference images, generate: ${_prompt}. Maintain consistency with all reference images - use their visual features, styles, and characteristics.`;
-            }
+            // Update text prompt for explicit indexing with much stronger instructions
+            const mappingGuide = refImages.map((_, i) => `IMAGE_${i + 1} = Reference #${i + 1}`).join(', ');
+
+            const mappingPreamble = `[STRICT VISUAL MAPPING GUIDE]:
+The following ${refImages.length} images are provided as the ABSOLUTE VISUAL SOURCE OF TRUTH for identities and styles:
+${mappingGuide}
+
+MANDATORY RULES:
+1. When the prompt mentions "Reference #N", you MUST use the exact visual identity, facial features, and specific characteristics of IMAGE_N. 
+2. DO NOT mix up identities (e.g., Reference #1's face MUST NOT be combined with Reference #2's features unless explicitly requested).
+3. If a Character Name is linked to a Reference number in the prompt, maintain perfect consistency with the provided image.
+
+`;
+            parts[0].text = mappingPreamble + `Task: Generate an image based on the following description, ensuring total visual fidelity to the references:\n\n${_prompt}`;
         }
 
         // Convert aspect ratio

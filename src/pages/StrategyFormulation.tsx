@@ -28,11 +28,14 @@ import {
     Wand2,
     Trophy,
     MessageSquare,
-    Maximize2
+    RefreshCw,
+    Maximize2,
+    Download
 } from 'lucide-react';
 import { generateStrategyInsight, generateText } from '../services/gemini';
 import type { CompetitorSnapshot, StrategyInsight } from '../store/types';
 import { ChannelArtModal } from '../components/ChannelArtModal';
+import { resolveUrl, saveToIdb } from '../utils/imageStorage';
 
 export const StrategyFormulation: React.FC = () => {
     const navigate = useNavigate();
@@ -85,13 +88,39 @@ export const StrategyFormulation: React.FC = () => {
     });
     const [isIdentityGenerating, setIsIdentityGenerating] = useState(false);
     const [showArtModal, setShowArtModal] = useState<'banner' | 'profile' | null>(null);
+    const [showExportMenu, setShowExportMenu] = useState(false);
+    const exportMenuRef = React.useRef<HTMLDivElement>(null);
 
     // Chat State
-    const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'model', text: string }>>([
-        { role: 'model', text: '안녕하세요! 전략기획팀장입니다. 분석된 경쟁사 데이터를 바탕으로 우리 채널의 차별화된 전략을 수립해 드릴까요?' }
+    const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'model', text: string, action?: 'update_report' }>>([
+        { role: 'model', text: '안녕하세요! AI 전략팀장입니다. 분석된 경쟁사 데이터를 바탕으로 우리 채널의 차별화된 전략을 수립해 드릴까요?' }
     ]);
     const [chatInput, setChatInput] = useState('');
     const [isChatProcessing, setIsChatProcessing] = useState(false);
+
+    // Resolved URLs for display (since idb:// cannot be used directly in img)
+    const [resolvedBannerUrl, setResolvedBannerUrl] = useState('');
+    const [resolvedProfileUrl, setResolvedProfileUrl] = useState('');
+
+    // Effect to resolve IDB URLs whenever channelIdentity changes
+    React.useEffect(() => {
+        const resolveImages = async () => {
+            if (channelIdentity.bannerUrl) {
+                const url = await resolveUrl(channelIdentity.bannerUrl);
+                setResolvedBannerUrl(url);
+            } else {
+                setResolvedBannerUrl('');
+            }
+
+            if (channelIdentity.profileUrl) {
+                const url = await resolveUrl(channelIdentity.profileUrl);
+                setResolvedProfileUrl(url);
+            } else {
+                setResolvedProfileUrl('');
+            }
+        };
+        resolveImages();
+    }, [channelIdentity.bannerUrl, channelIdentity.profileUrl]);
 
     // Restoration and URL Selection Effect
     React.useEffect(() => {
@@ -241,7 +270,8 @@ export const StrategyFormulation: React.FC = () => {
                 trendSnapshot || { queryContext: 'Unknown', keywords: [], description: '' },
                 selectedCompetitor,
                 geminiApiKey,
-                chatMessages.length > 1 ? chatMessages : undefined
+                chatMessages.length > 1 ? chatMessages : undefined,
+                mode === 'overwrite' && strategyResult ? strategyResult : undefined
             );
 
             // Create new ID if 'new' mode, else use existing
@@ -323,7 +353,7 @@ export const StrategyFormulation: React.FC = () => {
                 currentStrategyTitle: strategyResult?.executiveSummary?.substring(0, 200) || 'N/A',
                 ideaPoolCount: ideaPool.length
             };
-            const systemPrompt = `당신은 'AI 전략기획팀장'입니다. 경쟁 분석 데이터를 바탕으로 유튜브 채널 성장 전략을 수립합니다. 현재 컨텍스트: ${JSON.stringify(context)}`;
+            const systemPrompt = `당신은 'AI 전략팀장'입니다. 경쟁 분석 데이터를 바탕으로 유튜브 채널 성장 전략을 수립합니다. 현재 컨텍스트: ${JSON.stringify(context)}`;
             console.log('[Chat] 5. Calling generateText...');
             const response = await generateText(userMessage, geminiApiKey, undefined, undefined, systemPrompt);
             console.log('[Chat] 6. Response received:', response?.substring(0, 100));
@@ -333,7 +363,8 @@ export const StrategyFormulation: React.FC = () => {
             if (response.includes('보고서') || response.includes('전략') || response.includes('반영')) {
                 setChatMessages(prev => [...prev, {
                     role: 'model',
-                    text: '💡 논의된 내용을 바탕으로 오른쪽의 전략 보고서를 업데이트하시겠습니까?'
+                    text: '💡 논의된 내용을 바탕으로 오른쪽의 전략 보고서를 업데이트하시겠습니까?',
+                    action: 'update_report'
                 }]);
             }
         } catch (error: any) {
@@ -400,17 +431,96 @@ export const StrategyFormulation: React.FC = () => {
         setShowArtModal(type);
     };
 
-    const handleSaveArt = (url: string, artPrompt: string) => {
+    const handleSaveArt = async (url: string, artPrompt: string) => {
         const type = showArtModal;
-        if (!type) return;
+        if (!type || !strategyResult) return;
 
-        setChannelIdentity(prev => ({
-            ...prev,
-            [type === 'banner' ? 'bannerUrl' : 'profileUrl']: url,
+        let finalUrl = url;
+        // Persist external/base64 URLs to IDB
+        if (url && !url.startsWith('idb://')) {
+            try {
+                // Use a unique key with timestamp to force UI refresh when image changes
+                const storageKey = `strategy-${strategyResult?.id || 'new'}-${type}-${Date.now()}`;
+                finalUrl = await saveToIdb('assets', storageKey, url);
+            } catch (e) {
+                console.error('[StrategyFormulation] Failed to save art to IDB:', e);
+            }
+        }
+
+        const newIdentity = {
+            ...channelIdentity,
+            [type === 'banner' ? 'bannerUrl' : 'profileUrl']: finalUrl,
             [type === 'banner' ? 'bannerPrompt' : 'profilePrompt']: artPrompt
-        }));
-        setSaveStatus('idle');
+        };
+
+        setChannelIdentity(newIdentity);
+
+        // Auto-save the strategy immediately to persist the asset link
+        const updatedStrategy = { ...strategyResult, channelIdentity: newIdentity };
+        setStrategyResult(updatedStrategy);
+        saveStrategyInsight(updatedStrategy);
+        setSaveStatus('saved');
+
         setShowArtModal(null);
+    };
+
+    const handleDownloadArt = async (type: 'banner' | 'profile') => {
+        const url = type === 'banner' ? channelIdentity.bannerUrl : channelIdentity.profileUrl;
+        if (!url) return;
+
+        try {
+            let resolved = await resolveUrl(url);
+            let blobUrl = '';
+
+            if (resolved.startsWith('http')) {
+                try {
+                    const resp = await fetch(resolved, { mode: 'cors' });
+                    const blob = await resp.blob();
+                    blobUrl = URL.createObjectURL(blob);
+                    resolved = blobUrl;
+                } catch (e) {
+                    console.warn("Fetch failed, falling back to direct URL:", e);
+                }
+            }
+
+            const img = new window.Image();
+            img.crossOrigin = "anonymous";
+            img.src = resolved;
+
+            await new Promise((res, rej) => {
+                const timeout = setTimeout(() => rej(new Error("로드 시간 초과")), 10000);
+                img.onload = () => { clearTimeout(timeout); res(null); };
+                img.onerror = () => { clearTimeout(timeout); rej(new Error("로드 실패")); };
+            });
+
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0);
+
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        const bUrl = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = bUrl;
+                        link.download = `Channel_${type === 'banner' ? 'Banner' : 'Profile'}_Confirmed.jpg`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        setTimeout(() => URL.revokeObjectURL(bUrl), 60000);
+                    }
+                }, 'image/jpeg', 0.95);
+            }
+
+            // Revocation is handled in a timeout inside toBlob for safety
+        } catch (e) {
+            console.error("Download failed:", e);
+            alert("다운로드에 실패했습니다.");
+        }
     };
 
     const handlePromoteToProject = async (series: any, episode?: any) => {
@@ -418,14 +528,45 @@ export const StrategyFormulation: React.FC = () => {
         const newProjectId = `project-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
         const currentApiKeys = useWorkflowStore.getState().apiKeys;
         const { resetToDefault, saveProject } = useWorkflowStore.getState();
+
+        // Prepare correct character mapping
+        const mappedCharacters = (strategyResult?.characters || []).map(c => ({
+            id: `char-${Math.random().toString(36).substring(2, 9)}`,
+            name: c.name,
+            role: c.role,
+            description: c.personality, // Map personality -> description
+            visualSummary: c.visualGuide, // Map visualGuide -> visualSummary
+            age: c.age ? String(c.age) as any : undefined
+        }));
+
+        const mStyle = {
+            description: strategyResult?.masterStyle || strategyResult?.executiveSummary || '',
+            referenceImage: null
+        };
+
+        // Pre-initialize asset definitions for Step 2 consistency
+        const assetDefinitions: Record<string, any> = {};
+        mappedCharacters.forEach(c => {
+            assetDefinitions[c.id] = {
+                id: c.id,
+                type: 'character',
+                name: c.name,
+                description: `[Master Visual Style: ${mStyle.description}]\n\n${c.visualSummary}`,
+                lastUpdated: Date.now()
+            };
+        });
+
         resetToDefault();
         setProjectInfo({
-            id: newProjectId, apiKeys: currentApiKeys,
+            id: newProjectId,
+            apiKeys: currentApiKeys,
             seriesName: series.title,
             seriesStory: series.description,
             episodeName: episode?.ideaTitle || 'New Episode',
             episodePlot: episode?.oneLiner || '',
-            characters: strategyResult?.characters || [],
+            characters: mappedCharacters,
+            masterStyle: mStyle,
+            assetDefinitions: assetDefinitions,
             lastModified: Date.now(),
             currentStep: 1,
             trendInsights: {
@@ -558,31 +699,62 @@ export const StrategyFormulation: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-2 shrink-0 ml-4">
                         {/* Export Menu */}
-                        <div className="relative group">
-                            <button className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white rounded-lg flex items-center gap-2 text-[10px] border border-white/10 transition-all font-bold h-8">
+                        <div className="relative" ref={exportMenuRef}>
+                            <button
+                                onClick={() => setShowExportMenu(!showExportMenu)}
+                                className={`px-4 py-1.5 rounded-lg flex items-center gap-2 text-[10px] border transition-all font-bold h-8 ${showExportMenu ? 'bg-[var(--color-primary)] text-black border-[var(--color-primary)]' : 'bg-white/5 hover:bg-white/10 text-white border-white/10'}`}
+                            >
                                 <Save size={12} />
-                                내보내기
+                                내보내기 Report
+                                <ChevronRight size={10} className={`transition-transform ${showExportMenu ? 'rotate-90' : ''}`} />
                             </button>
-                            <div className="hidden group-hover:block absolute right-0 top-full mt-1 w-40 bg-[#1A1A1A] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden">
-                                <button
-                                    onClick={() => ResearchReporter.exportToDocx(strategyResult!)}
-                                    className="w-full text-left px-3 py-2 hover:bg-white/5 text-[10px] text-gray-300 hover:text-white flex items-center gap-2"
-                                >
-                                    Word (.docx)
-                                </button>
-                                <button
-                                    onClick={() => ResearchReporter.exportToPptx(strategyResult!)}
-                                    className="w-full text-left px-3 py-2 hover:bg-white/5 text-[10px] text-gray-300 hover:text-white flex items-center gap-2"
-                                >
-                                    PowerPoint (.pptx)
-                                </button>
-                                <button
-                                    onClick={() => ResearchReporter.exportToPdf(strategyResult!)}
-                                    className="w-full text-left px-3 py-2 hover:bg-white/5 text-[10px] text-gray-300 hover:text-white flex items-center gap-2"
-                                >
-                                    PDF (.pdf)
-                                </button>
-                            </div>
+
+                            {showExportMenu && (
+                                <div className="absolute right-0 top-full mt-2 w-48 bg-[#1A1A1A] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                    <div className="p-2 border-b border-white/5 bg-white/5 text-[9px] text-gray-500 font-black uppercase tracking-widest px-4">
+                                        Select Format
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            ResearchReporter.exportToDocx(strategyResult!);
+                                            setShowExportMenu(false);
+                                        }}
+                                        className="w-full text-left px-4 py-3 hover:bg-[var(--color-primary)]/10 text-xs text-gray-300 hover:text-[var(--color-primary)] flex items-center gap-3 transition-colors border-b border-white/5"
+                                    >
+                                        <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-400">W</div>
+                                        <div>
+                                            <div className="font-bold">Microsoft Word</div>
+                                            <div className="text-[9px] opacity-60">.docx format</div>
+                                        </div>
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            ResearchReporter.exportToPptx(strategyResult!);
+                                            setShowExportMenu(false);
+                                        }}
+                                        className="w-full text-left px-4 py-3 hover:bg-[var(--color-primary)]/10 text-xs text-gray-300 hover:text-[var(--color-primary)] flex items-center gap-3 transition-colors border-b border-white/5"
+                                    >
+                                        <div className="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center text-orange-400">P</div>
+                                        <div>
+                                            <div className="font-bold">PowerPoint</div>
+                                            <div className="text-[9px] opacity-60">.pptx presentation</div>
+                                        </div>
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            ResearchReporter.exportToPdf(strategyResult!);
+                                            setShowExportMenu(false);
+                                        }}
+                                        className="w-full text-left px-4 py-3 hover:bg-[var(--color-primary)]/10 text-xs text-gray-300 hover:text-[var(--color-primary)] flex items-center gap-3 transition-colors"
+                                    >
+                                        <div className="w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center text-red-400">PDF</div>
+                                        <div>
+                                            <div className="font-bold">PDF Document</div>
+                                            <div className="text-[9px] opacity-60">Stable formatting</div>
+                                        </div>
+                                    </button>
+                                </div>
+                            )}
                         </div>
 
                         <button onClick={handleSaveStrategy} disabled={saveStatus !== 'idle'} className={`px-4 py-1.5 rounded-lg flex items-center gap-2 text-[10px] font-bold transition-all h-8 ${saveStatus === 'saved' ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-[var(--color-primary)] text-black hover:opacity-90'}`}>
@@ -1015,22 +1187,28 @@ export const StrategyFormulation: React.FC = () => {
                                     <div className="space-y-10 text-white">
                                         <div className="space-y-6">
                                             <div className="aspect-[21/9] lg:aspect-[4/1] bg-white/5 border border-white/10 rounded-[32px] overflow-hidden relative w-full group shadow-2xl">
-                                                {channelIdentity.bannerUrl ? <img src={channelIdentity.bannerUrl} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center opacity-10"><ImageIcon size={48} /></div>}
-                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                                    <button onClick={() => setShowArtModal('banner')} className="p-4 bg-white/20 hover:bg-white/30 rounded-full backdrop-blur-md text-white transition-all transform scale-150">
+                                                {resolvedBannerUrl ? <img src={resolvedBannerUrl} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center opacity-10"><ImageIcon size={48} /></div>}
+                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-6 z-10">
+                                                    <button onClick={(e) => { e.stopPropagation(); setShowArtModal('banner'); }} className="p-4 bg-white/20 hover:bg-white/30 rounded-full backdrop-blur-md text-white transition-all transform hover:scale-110" title="스튜디오 열기">
                                                         <Maximize2 size={24} />
                                                     </button>
+                                                    <button onClick={(e) => { e.stopPropagation(); handleDownloadArt('banner'); }} className="p-4 bg-white/20 hover:bg-[var(--color-primary)] hover:text-black rounded-full backdrop-blur-md text-white transition-all transform hover:scale-110" title="이미지 다운로드">
+                                                        <Download size={24} />
+                                                    </button>
                                                 </div>
-                                                <div className="absolute bottom-6 left-6 flex items-center gap-6">
-                                                    <div className="w-24 h-24 md:w-32 md:h-32 rounded-full border-4 border-black bg-gray-800 overflow-hidden relative group/p shadow-2xl">
-                                                        {channelIdentity.profileUrl ? <img src={channelIdentity.profileUrl} className="w-full h-full object-cover" /> : <User className="w-full h-full p-6 text-gray-600" />}
-                                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/p:opacity-100 transition-opacity flex items-center justify-center">
-                                                            <button onClick={(e) => { e.stopPropagation(); setShowArtModal('profile'); }} className="p-3 bg-white/20 rounded-full text-white">
-                                                                <Maximize2 size={20} />
+                                                <div className="absolute bottom-6 left-6 flex items-center gap-6 z-20 pointer-events-none">
+                                                    <div className="w-24 h-24 md:w-32 md:h-32 rounded-full border-4 border-black bg-gray-800 overflow-hidden relative group/p shadow-2xl pointer-events-auto">
+                                                        {resolvedProfileUrl ? <img src={resolvedProfileUrl} className="w-full h-full object-cover" /> : <User className="w-full h-full p-6 text-gray-600" />}
+                                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/p:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+                                                            <button onClick={(e) => { e.stopPropagation(); setShowArtModal('profile'); }} className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white" title="스튜디오 열기">
+                                                                <Maximize2 size={16} />
+                                                            </button>
+                                                            <button onClick={(e) => { e.stopPropagation(); handleDownloadArt('profile'); }} className="p-2 bg-white/20 hover:bg-[var(--color-primary)] hover:text-black rounded-full text-white" title="이미지 다운로드">
+                                                                <Download size={16} />
                                                             </button>
                                                         </div>
                                                     </div>
-                                                    <div className="font-black text-2xl md:text-4xl drop-shadow-[0_4px_8px_rgba(0,0,0,0.9)] text-white tracking-tight">{channelIdentity.channelName || 'Name'}</div>
+                                                    <div className="font-black text-2xl md:text-4xl drop-shadow-[0_4px_8px_rgba(0,0,0,0.9)] text-white tracking-tight pointer-events-auto">{channelIdentity.channelName || 'Name'}</div>
                                                 </div>
                                             </div>
                                             <div className="flex gap-4">
@@ -1215,7 +1393,7 @@ export const StrategyFormulation: React.FC = () => {
                     <div className="p-4 border-b border-white/5 flex items-center justify-between">
                         <div className="flex items-center gap-3">
                             <Bot size={24} className="text-[var(--color-primary)]" />
-                            <h3 className="font-bold text-sm">AI 전략기획팀장</h3>
+                            <h3 className="font-bold text-sm">AI 전략팀장</h3>
                         </div>
                         <button onClick={() => setChatMessages([])}><RotateCw size={14} className="text-gray-500" /></button>
                     </div>
@@ -1224,6 +1402,16 @@ export const StrategyFormulation: React.FC = () => {
                             <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                 <div className={`max-w-[85%] p-3 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-[var(--color-primary)] text-black' : 'bg-white/10 text-gray-200'}`}>
                                     <p className="whitespace-pre-wrap">{msg.text}</p>
+                                    {msg.action === 'update_report' && (
+                                        <button
+                                            onClick={() => handleGenerateStrategy('overwrite')}
+                                            disabled={isGenerating}
+                                            className="mt-3 w-full py-2 bg-[var(--color-primary)] text-black font-bold rounded-xl hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                                        >
+                                            {isGenerating ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                                            전략 보고서 업데이트 실행
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         ))}

@@ -500,20 +500,20 @@ export const Step1_Setup: React.FC = () => {
 
         try {
             const context = {
-                seriesName,
-                episodeName,
-                episodeNumber,
-                seriesStory,
-                characters,
-                seriesLocations,
-                seriesProps,
-                episodePlot,
-                episodeCharacters,
-                episodeLocations,
-                episodeProps,
-                targetDuration,
-                aspectRatio: store.aspectRatio,
-                masterStyle: store.masterStyle?.description || ''
+                seriesName: isEditing ? localSeriesName : seriesName,
+                episodeName: isEditing ? localEpisodeName : episodeName,
+                episodeNumber: isEditing ? localEpisodeNumber : episodeNumber,
+                seriesStory: isEditing ? localSeriesStory : seriesStory,
+                characters: isEditing ? localCharacters : characters,
+                seriesLocations: isEditing ? localSeriesLocations : seriesLocations,
+                seriesProps: isEditing ? localSeriesProps : seriesProps,
+                episodePlot: isEditing ? localEpisodePlot : episodePlot,
+                episodeCharacters: isEditing ? localEpisodeCharacters : episodeCharacters,
+                episodeLocations: isEditing ? localEpisodeLocations : episodeLocations,
+                episodeProps: isEditing ? localEpisodeProps : episodeProps,
+                targetDuration: isEditing ? localTargetDuration : targetDuration,
+                aspectRatio: isEditing ? localAspectRatio : store.aspectRatio,
+                masterStyle: isEditing ? localMasterStyleDescription : (store.masterStyle?.description || '')
             };
 
             const result = await consultStory(updatedHistory, context, apiKeys.gemini, customInstructions);
@@ -636,15 +636,24 @@ export const Step1_Setup: React.FC = () => {
             // Auto-populate fields if suggestions exist (including deletions)
             if (result.suggestedSeriesName || result.suggestedEpisodeName || result.suggestedDuration || result.suggestedEpisodeNumber || result.suggestedSeriesStory || result.suggestedMainCharacters || result.suggestedEpisodePlot || result.suggestedEpisodeCharacters || result.suggestedCharacters || result.suggestedSeriesProps || result.suggestedEpisodeProps || result.suggestedDeletions || result.suggestedAspectRatio || result.suggestedMasterStyle) {
                 const updates: Partial<Parameters<typeof setProjectInfo>[0]> = {
-                    seriesName: result.suggestedSeriesName || seriesName,
-                    episodeName: result.suggestedEpisodeName || episodeName,
-                    episodeNumber: result.suggestedEpisodeNumber || episodeNumber,
-                    seriesStory: result.suggestedSeriesStory || seriesStory,
+                    seriesName: result.suggestedSeriesName || (isEditing ? localSeriesName : seriesName),
+                    episodeName: result.suggestedEpisodeName || (isEditing ? localEpisodeName : episodeName),
+                    episodeNumber: result.suggestedEpisodeNumber || (isEditing ? localEpisodeNumber : episodeNumber),
+                    seriesStory: result.suggestedSeriesStory || (isEditing ? localSeriesStory : seriesStory),
                     mainCharacters: result.suggestedMainCharacters || mainCharacters,
-                    episodePlot: result.suggestedEpisodePlot || episodePlot,
-                    targetDuration: result.suggestedDuration || targetDuration,
-                    aspectRatio: result.suggestedAspectRatio || store.aspectRatio // Ensure aspect ratio is updated in store
+                    episodePlot: result.suggestedEpisodePlot || (isEditing ? localEpisodePlot : episodePlot),
+                    targetDuration: result.suggestedDuration || (isEditing ? localTargetDuration : targetDuration),
+                    aspectRatio: result.suggestedAspectRatio || (isEditing ? localAspectRatio : store.aspectRatio)
                 };
+
+                // Sync Local States for immediate UI feedback
+                if (result.suggestedSeriesName) setLocalSeriesName(result.suggestedSeriesName);
+                if (result.suggestedEpisodeName) setLocalEpisodeName(result.suggestedEpisodeName);
+                if (result.suggestedEpisodeNumber) setLocalEpisodeNumber(result.suggestedEpisodeNumber);
+                if (result.suggestedSeriesStory) setLocalSeriesStory(result.suggestedSeriesStory);
+                if (result.suggestedEpisodePlot) setLocalEpisodePlot(result.suggestedEpisodePlot);
+                if (result.suggestedDuration) setLocalTargetDuration(result.suggestedDuration);
+                if (result.suggestedAspectRatio) setLocalAspectRatio(result.suggestedAspectRatio);
 
                 // Handle Aspect Ratio Suggestion (Local update for immediate feedback)
                 if (result.suggestedAspectRatio) {
@@ -655,13 +664,16 @@ export const Step1_Setup: React.FC = () => {
                 }
 
                 // Handle Master Visual Style Suggestion
-                if (result.suggestedMasterStyle) {
-                    console.log('[Step1] Applying AI suggested master style:', result.suggestedMasterStyle);
-                    setLocalMasterStyleDescription(result.suggestedMasterStyle);
+                if (result.suggestedMasterStyle || result.suggestedCharacterModifier || result.suggestedBackgroundModifier) {
+                    console.log('[Step1] Applying AI suggested style updates');
+                    if (result.suggestedMasterStyle) setLocalMasterStyleDescription(result.suggestedMasterStyle);
+
                     // Also update the store's masterStyle immediately
                     updates.masterStyle = {
                         ...(store.masterStyle || {}),
-                        description: result.suggestedMasterStyle
+                        description: result.suggestedMasterStyle || store.masterStyle?.description || '',
+                        characterModifier: result.suggestedCharacterModifier || store.masterStyle?.characterModifier || '',
+                        backgroundModifier: result.suggestedBackgroundModifier || store.masterStyle?.backgroundModifier || ''
                     };
                 }
 
@@ -696,6 +708,7 @@ export const Step1_Setup: React.FC = () => {
                         }
                     });
                     updates.characters = mergedCharacters;
+                    setLocalCharacters(mergedCharacters);
                 }
 
                 // Handle episode character array from AI - MERGE STRATEGY
@@ -726,6 +739,7 @@ export const Step1_Setup: React.FC = () => {
                         }
                     });
                     updates.episodeCharacters = mergedEpCharacters;
+                    setLocalEpisodeCharacters(mergedEpCharacters);
                 }
 
                 // Handle series locations from AI (allow empty arrays for deletion)
@@ -752,6 +766,7 @@ export const Step1_Setup: React.FC = () => {
                         }
                     });
                     updates.seriesLocations = mergedLocs;
+                    setLocalSeriesLocations(mergedLocs);
                 }
 
                 // Handle episode locations from AI (allow empty arrays for deletion)
@@ -778,6 +793,7 @@ export const Step1_Setup: React.FC = () => {
                         }
                     });
                     updates.episodeLocations = mergedLocs;
+                    setLocalEpisodeLocations(mergedLocs);
                 }
 
                 // Handle series props from AI (allow empty arrays for deletion)
@@ -804,6 +820,7 @@ export const Step1_Setup: React.FC = () => {
                         }
                     });
                     updates.seriesProps = mergedProps;
+                    setLocalSeriesProps(mergedProps);
                 }
 
                 // Handle episode props from AI (allow empty arrays for deletion)
@@ -830,6 +847,7 @@ export const Step1_Setup: React.FC = () => {
                         }
                     });
                     updates.episodeProps = mergedProps;
+                    setLocalEpisodeProps(mergedProps);
                 }
 
                 // Handle storyline scenes from AI
@@ -842,6 +860,7 @@ export const Step1_Setup: React.FC = () => {
                         directionNotes: scene.directionNotes || ''
                     }));
                     updates.storylineTable = newScenes;
+                    setLocalStorylineTable(newScenes);
                 }
 
                 // Handle deletions from AI
@@ -1068,7 +1087,7 @@ export const Step1_Setup: React.FC = () => {
                     <div className="flex items-center justify-between p-4 bg-gradient-to-r from-[var(--color-primary)]/10 to-transparent border-b border-[var(--color-border)] flex-shrink-0">
                         <div className="flex items-center gap-3">
                             <Sparkles className="text-[var(--color-primary)]" size={28} />
-                            <h2 className="text-2xl font-bold text-white">AI Story Consultant</h2>
+                            <h2 className="text-2xl font-bold text-white">AI 스토리팀장</h2>
                         </div>
                         {chatHistory.length > 0 && (
                             <div className="flex items-center gap-2">

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { deepMerge } from '../utils/objectUtils';
 
 export interface ScriptCut {
     id: number;
@@ -105,6 +106,8 @@ export interface ConsultationResult {
     };
     suggestedAspectRatio?: '16:9' | '9:16' | '1:1' | '2.35:1' | '4:5' | '21:9' | '4:3' | '3:4';
     suggestedMasterStyle?: string;
+    suggestedCharacterModifier?: string;
+    suggestedBackgroundModifier?: string;
 }
 
 export interface ProjectContext {
@@ -121,6 +124,7 @@ export interface ProjectContext {
     episodeProps: any[]; // NEW
     targetDuration: number;
     aspectRatio: string;
+    masterStyle?: string;
 }
 
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
@@ -762,7 +766,8 @@ export const generateStrategyInsight = async (
     trendSnapshot: any,
     competitorSnapshot: any,
     apiKey: string,
-    chatHistory?: Array<{ role: 'user' | 'model', text: string }> // NEW: context from discussion
+    chatHistory?: Array<{ role: 'user' | 'model', text: string }>, // NEW: context from discussion
+    existingStrategy?: StrategyInsight // NEW: base for updates
 ): Promise<StrategyInsight> => {
     if (!apiKey) {
         // Mock success response
@@ -815,19 +820,32 @@ export const generateStrategyInsight = async (
         ? `\n\n**[CRITICAL] User's Strategic Direction (from Chat):**\n${chatHistory.map(m => `${m.role === 'user' ? 'User' : 'AI'}: ${m.text}`).join('\n')}\n\nIMPORTANT: The above discussion contains the user's latest creative vision and strategic requirements. Prioritize these ideas and requirements over the generic analysis. Construct a COHESIVE and FRESH strategy report that fully integrates these new concepts.`
         : '';
 
+    const existingStrategyContext = existingStrategy
+        ? `\n\n**[EXISTING STRATEGY TO UPDATE]:**\n${JSON.stringify(existingStrategy, null, 2)}\n\n**INSTRUCTION FOR UPDATE:**\n1. Use the above 'EXISTING STRATEGY' as your base draft.\n2. INTELLIGENTLY MODIFY ONLY the parts that need to change based on the 'User's Strategic Direction (from Chat)'.\n3. **[CRITICAL] UPDATE RULES for BRANDING:**\n   - If the user suggests a new "Channel Name", you MUST update 'channelIdentity.channelName' AND 'channelIdentity.handle' to match.\n   - If the user suggests a new Tone or Target, update 'channelIdentity.toneOfVoice' and 'channelIdentity.targetAudience'.\n4. PRESERVE strictly the parts that the user did not ask to change (e.g. if user only asked to change the Channel Name, keep the recommendedSeries and pillars exactly as they are).\n5. You are patching/improving the report, not rewriting it from scratch unless requested.`
+        : `\n\n**INSTRUCTION:** Create a completely new strategy from scratch based on the market data.`;
+
+
+
+    // ... existing code ...
+
     const prompt = `
 당신은 최고의 YouTube 콘텐츠 전략가입니다. 다음 '시장 데이터', '경쟁자 분석 데이터', 그리고 '사용자의 특별 기획 방향(채팅)'을 기반으로 채널의 필승 전략을 수립하세요.
 
 ${chatContext}
+
+${existingStrategyContext}
+
+**[ABSOLUTE CONSISTENCY RULE]:**
+If the "User's Strategic Direction (from Chat)" implies a change (e.g. AI proposed a new name and user reached agreement), **YOU MUST REFLECT THIS IN THE JSON OUTPUT**.
+- Do not just talk about it in the chat -> APPLY IT to the JSON.
+- If the chat says "Let's rename to X", the JSON 'channelIdentity.channelName' MUST be "X".
 
 1. 기초 리서치 데이터:
     - 시장 컨텍스트: ${trendSnapshot.queryContext}
     - 타겟 페르소나 기초: ${competitorSnapshot.analysis?.targetAudience || '정보 없음'}
     - 경쟁자 후킹/공백 패턴: ${competitorSnapshot.analysis?.contentGapOpportunities?.join(', ') || '정보 없음'}
 
-지시사항: 기초 리서치 데이터를 토대로 하되, 위에 제공된 '사용자의 특별 기획 방향(채팅)'을 핵심 원동력으로 삼아 아예 새로운 버전의 전략을 수립하십시오. 기존의 뻔한 분석이 아닌, 사용자가 제안한 참신한 아이디어가 전략 전체(Executive Summary부터 Episode까지)에 녹아들어야 합니다.
-
-위 데이터를 통합하여 다음 형식의 '전략 인사이트'를 생성하세요(한국어로 응답):
+지시사항: 위 데이터를 통합하여 다음 형식의 '전략 인사이트'를 생성하세요(한국어로 응답):
     - Executive Summary: 전체적인 채널 운영 방향 및 핵심 차별화 전략
     - Key Opportunities & Risks: 시장 진입 시 활용할 기회와 주의할 리스크
     - Recommended Pillars: 채널을 지탱할 2-3가지 핵심 콘텐츠 기둥
@@ -925,10 +943,16 @@ ${chatContext}
             const text = response.data.candidates[0].content.parts[0].text;
             const result = JSON.parse(text);
 
+            // SAFE DEEP MERGE STRATEGY
+            // Use existing strategy as base, and overwrite with new result.
+            // This ensures that nested fields (like channelIdentity.bannerUrl) are preserved if not provided in result.
+            const base = existingStrategy || {};
+            const merged = existingStrategy ? deepMerge(base, result) : result;
+
             // Add ID and timestamps if missing
             return {
-                ...result,
-                id: result.id || Math.random().toString(36).substring(2, 9),
+                ...merged,
+                id: existingStrategy?.id || result.id || Math.random().toString(36).substring(2, 9),
                 createdAt: Date.now(),
                 trendSnapshotId: trendSnapshot.id,
                 competitorSnapshotId: competitorSnapshot.id
@@ -1684,12 +1708,14 @@ export const generateText = async (
     prompt: string,
     apiKey: string,
     responseMimeType?: string,
-    generationConfig?: any,
-    systemInstruction?: string
+    images?: { mimeType: string; data: string }[],
+    systemInstruction?: string,
+    generationConfig?: any
 ): Promise<string> => {
     if (!apiKey) return "API Key is missing.";
 
     console.log('[generateText] Starting with prompt length:', prompt.length);
+    if (images?.length) console.log(`[generateText] With ${images.length} images`);
 
     // Prioritize stable models for reliability with long inputs
     const models = [
@@ -1702,11 +1728,25 @@ export const generateText = async (
     let lastError: any = null;
 
     // Combine system instruction if provided
+    // Note: Gemini API supports system_instruction field but prepending to user prompt is often more robust across models
     const finalPrompt = systemInstruction
         ? `${systemInstruction}\n\nUser Query: ${prompt}`
         : prompt;
 
     console.log('[generateText] Final prompt length:', finalPrompt.length);
+
+    // Prepare content parts (Text + Images)
+    const parts: any[] = [{ text: finalPrompt }];
+    if (images && images.length > 0) {
+        images.forEach(img => {
+            parts.push({
+                inlineData: {
+                    mimeType: img.mimeType,
+                    data: img.data
+                }
+            });
+        });
+    }
 
     // Retry helper with exponential backoff for 429 errors
     const MAX_RETRIES = 3;
@@ -1717,7 +1757,7 @@ export const generateText = async (
                 const response = await axios.post(
                     `${modelUrl}?key=${apiKey}`,
                     {
-                        contents: [{ parts: [{ text: finalPrompt }] }],
+                        contents: [{ parts: parts }],
                         generationConfig: {
                             temperature: generationConfig?.temperature ?? 0.7,
                             response_mime_type: responseMimeType || generationConfig?.response_mime_type,

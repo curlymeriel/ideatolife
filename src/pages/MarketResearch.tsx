@@ -124,7 +124,7 @@ export const MarketResearch: React.FC = () => {
         {
             id: 'welcome',
             role: 'assistant',
-            content: `안녕하세요! 👋 AI 시장조사팀장입니다.
+            content: `안녕하세요! 👋 AI 리서치팀장입니다.
 
 **사용 방법:**
 
@@ -462,7 +462,7 @@ ${AVAILABLE_FUNCTIONS.map(f => `- ${f.name}: ${f.description}`).join('\n')}
                     <div>
                         <h2 className="text-lg font-bold text-white flex items-center gap-2">
                             <MessageSquare className="text-[var(--color-primary)]" size={20} />
-                            AI 시장조사팀장
+                            AI 리서치팀장
                             <span className="ml-2 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/10 text-[10px] text-green-500 border border-green-500/20 font-medium">
                                 <CheckCircle2 size={10} /> Auto-saved to Browser
                             </span>
@@ -781,7 +781,11 @@ ${AVAILABLE_FUNCTIONS.map(f => `- ${f.name}: ${f.description}`).join('\n')}
                             API 로그
                             {showApiLogs ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                         </button>
-                        <button className="px-3 py-1.5 text-xs bg-white/5 text-gray-400 rounded-lg hover:bg-white/10 flex items-center gap-1">
+                        <button
+                            onClick={() => exportResearchData()}
+                            className="px-3 py-1.5 text-xs bg-white/5 text-gray-400 rounded-lg hover:bg-white/10 flex items-center gap-1"
+                            title="리서치 데이터 백업 (JSON)"
+                        >
                             <Download size={14} />
                             다운로드
                         </button>

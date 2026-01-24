@@ -41,7 +41,7 @@ interface MultiProjectActions {
     resetToDefault: () => void;
 
     // Prep Phase Data Management
-    exportResearchData: () => void;
+    exportResearchData: () => Promise<void>;
     importResearchData: (jsonString: string) => Promise<void>;
 
     // Local Sync
@@ -823,14 +823,14 @@ export const useWorkflowStore = create<WorkflowStore>()(
             },
             updateIdeaStatus: (id, status) => {
                 set((state: any) => ({
-                    ideaPool: state.ideaPool.map(i => i.id === id ? { ...i, status } : i)
+                    ideaPool: state.ideaPool.map((i: any) => i.id === id ? { ...i, status } : i)
                 }));
                 const { localFolder } = get();
                 if (localFolder?.handle) syncIntelligenceLayerToPC(get(), localFolder.handle);
             },
             deleteIdeaFromPool: (id) => {
                 set((state: any) => ({
-                    ideaPool: state.ideaPool.filter(i => i.id !== id)
+                    ideaPool: state.ideaPool.filter((i: any) => i.id !== id)
                 }));
                 const { localFolder } = get();
                 if (localFolder?.handle) syncIntelligenceLayerToPC(get(), localFolder.handle);
@@ -1049,14 +1049,32 @@ export const useWorkflowStore = create<WorkflowStore>()(
             // ====================
             // Global Data Management (Phase 1-4)
             // ====================
-            exportResearchData: () => {
+            exportResearchData: async () => {
                 const state = get() as any;
+                const insights = { ...state.strategyInsights };
+
+                // Resolve Channel Art to Base64 for backup portability
+                const strategyIds = Object.keys(insights);
+                for (const id of strategyIds) {
+                    const insight = insights[id];
+                    if (insight.channelIdentity) {
+                        const identity = { ...insight.channelIdentity };
+                        if (identity.bannerUrl && identity.bannerUrl.startsWith('idb://')) {
+                            identity.bannerUrl = await resolveUrl(identity.bannerUrl);
+                        }
+                        if (identity.profileUrl && identity.profileUrl.startsWith('idb://')) {
+                            identity.profileUrl = await resolveUrl(identity.profileUrl);
+                        }
+                        insights[id] = { ...insight, channelIdentity: identity };
+                    }
+                }
+
                 const researchData = {
-                    version: 1,
+                    version: 2, // Increment version for asset support
                     exportedAt: Date.now(),
                     trendSnapshots: state.trendSnapshots,
                     competitorSnapshots: state.competitorSnapshots,
-                    strategyInsights: state.strategyInsights,
+                    strategyInsights: insights,
                     ideaPool: state.ideaPool
                 };
 
@@ -1078,17 +1096,32 @@ export const useWorkflowStore = create<WorkflowStore>()(
                         throw new Error('Invalid research data format');
                     }
 
+                    const insights = { ...data.strategyInsights };
+                    const strategyIds = Object.keys(insights);
+
+                    // Restore Base64 assets to IndexedDB
+                    for (const id of strategyIds) {
+                        const insight = insights[id];
+                        if (insight.channelIdentity) {
+                            const identity = { ...insight.channelIdentity };
+
+                            if (identity.bannerUrl && identity.bannerUrl.startsWith('data:image')) {
+                                identity.bannerUrl = await saveToIdb('assets', `identity-${id}-banner`, identity.bannerUrl);
+                            }
+                            if (identity.profileUrl && identity.profileUrl.startsWith('data:image')) {
+                                identity.profileUrl = await saveToIdb('assets', `identity-${id}-profile`, identity.profileUrl);
+                            }
+                            insights[id] = { ...insight, channelIdentity: identity };
+                        }
+                    }
+
                     set((state: any) => ({
                         trendSnapshots: { ...state.trendSnapshots, ...data.trendSnapshots },
                         competitorSnapshots: { ...state.competitorSnapshots, ...data.competitorSnapshots },
-                        strategyInsights: { ...state.strategyInsights, ...data.strategyInsights },
+                        strategyInsights: { ...state.strategyInsights, ...insights },
                         ideaPool: [...state.ideaPool, ...(data.ideaPool || [])]
                     }));
 
-                    // Persist to indexedDB for "idea-lab-storage"
-                    // Trigger a dummy state update or explicitly force persist if needed.
-                    // Since 'storage' middleware handles all 'set' calls, this should persist.
-                    // However, we can also force a 'storage-update' broadcast
                     syncChannel.postMessage({ type: 'STORAGE_UPDATED' });
 
                     alert(`Research data imported successfully.\nSnapshots: ${Object.keys(data.trendSnapshots || {}).length}\nStrategies: ${Object.keys(data.strategyInsights || {}).length}`);
