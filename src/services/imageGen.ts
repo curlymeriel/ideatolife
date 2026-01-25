@@ -71,20 +71,19 @@ export const generateImage = async (
                 }
             });
 
-            // Update text prompt for explicit indexing with much stronger instructions
-            const mappingGuide = refImages.map((_, i) => `IMAGE_${i + 1} = Reference #${i + 1}`).join(', ');
+            // NEW: Simplified and highly authoritative mapping
+            const anchorLines = refImages.map((_, i) => `- IMAGE_${i + 1} is "Reference #${i + 1}"`).join('\n');
+            const mappingPreamble = `### MANDATORY VISUAL ANCHORS (PREVIOUS SESSIONS)
+${anchorLines}
 
-            const mappingPreamble = `[STRICT VISUAL MAPPING GUIDE]:
-The following ${refImages.length} images are provided as the ABSOLUTE VISUAL SOURCE OF TRUTH for identities and styles:
-${mappingGuide}
+MANDATORY INSTRUCTIONS:
+1. Every time the prompt mentions "Reference #N", you MUST perfectly replicate the facial features, hair, body, and specific visual identity shown in IMAGE_N.
+2. The identities in these images are the ABSOLUTE VISUAL TRUTH. Ignore any text descriptions that contradict the provided images.
+3. Maintain 100% consistency with the visual references for characters and locations.
 
-MANDATORY RULES:
-1. When the prompt mentions "Reference #N", you MUST use the exact visual identity, facial features, and specific characteristics of IMAGE_N. 
-2. DO NOT mix up identities (e.g., Reference #1's face MUST NOT be combined with Reference #2's features unless explicitly requested).
-3. If a Character Name is linked to a Reference number in the prompt, maintain perfect consistency with the provided image.
-
+### SCENE TO GENERATE:
 `;
-            parts[0].text = mappingPreamble + `Task: Generate an image based on the following description, ensuring total visual fidelity to the references:\n\n${_prompt}`;
+            parts[0].text = mappingPreamble + _prompt;
         }
 
         // Convert aspect ratio
@@ -229,47 +228,22 @@ export const editImageWithChat = async (
             }
         }
 
-        // 3. Construct Payload
+        // 3. Construct Payload using INTERLEAVED TEXT-IMAGE structure
+        // This ensures the AI clearly identifies each image by its preceding label
         const requestParts: any[] = [];
 
-        // Dynamic Prompt Building
-        let promptText = `# LOCALIZED IMAGE INPAINTING TASK\n`;
-        promptText += `You are an expert image editor. You must modify a specific region of an image while preserving everything else.\n\n`;
-        promptText += `## IMAGE INDEXING\n`;
-        promptText += `- IMAGE_0: THE BASE IMAGE (Original content to be modified)\n`;
+        // System instruction first
+        let systemText = `# IMAGE EDITING TASK\n`;
+        systemText += `You are an expert image editor. Your ONLY job is to modify the TARGET IMAGE based on the instruction.\n\n`;
+        systemText += `## CRITICAL RULES\n`;
+        systemText += `1. **MODIFY ONLY THE TARGET**: The image immediately following "### TARGET IMAGE" is the ONLY image you should edit.\n`;
+        systemText += `2. **REFERENCE IMAGES ARE READ-ONLY**: Images labeled as "### REFERENCE" are for visual guidance ONLY. Never modify or return them.\n`;
+        systemText += `3. **OUTPUT**: Return a modified version of the TARGET IMAGE.\n\n`;
+        systemText += `## USER INSTRUCTION\n${instruction}\n`;
+        requestParts.push({ text: systemText });
 
-        let currentIdx = 1;
-        if (maskData) {
-            promptText += `- IMAGE_${currentIdx}: THE INPAINTING MASK (White = AREA TO MODIFY. Black = AREA TO PRESERVE PIXEL-PERFECTLY)\n`;
-            currentIdx++;
-        }
-
-        const hasRefs = referenceImages && referenceImages.length > 0;
-        if (hasRefs) {
-            promptText += `- IMAGE_${currentIdx} to IMAGE_${currentIdx + (referenceImages?.length || 0) - 1}: REFERENCE IMAGES (Style and content guides for the edit)\n`;
-        }
-
-        promptText += `\n## USER INSTRUCTION\n${instruction}\n`;
-        promptText += `\n## CRITICAL EXECUTION RULES\n`;
-
-        if (maskData) {
-            promptText += `1. **STRICT CONFINEMENT**: You MUST ONLY modify the pixels where IMAGE_1 is WHITE. The modification should occur ONLY within the target box region.\n`;
-            promptText += `2. **PIXEL PRESERVATION**: Every pixel where IMAGE_1 is BLACK MUST be 100% identical to IMAGE_0. DO NOT restyle the character, the face, or the background outside the mask.\n`;
-            promptText += `3. **NATURAL BORDER BLENDING**: You are allowed to blend naturally *only* at the immediate 5-10 pixel boundary between white and black areas (e.g., for fire/smoke effects) to ensure a seamless look.\n`;
-            promptText += `4. **LOCALIZED STYLE**: If the user asks for a 'Manga style', apply it ONLY within the mask. DO NOT convert the whole image to manga.\n`;
-        } else {
-            promptText += `- Apply the user instruction to the entire image IMAGE_0 as appropriate.\n`;
-        }
-
-        if (hasRefs) {
-            promptText += `- Use the REFERENCE IMAGES for visual inspiration ONLY WITHIN the target area.\n`;
-        }
-
-        promptText += `\nOutput the final integrated image.`;
-
-        requestParts.push({ text: promptText });
-
-        // Add Main Image (IMAGE_0)
+        // TARGET IMAGE (with explicit label immediately before)
+        requestParts.push({ text: `\n### TARGET IMAGE (This is the image you MUST edit and return):\n` });
         requestParts.push({
             inlineData: {
                 mimeType: mimeType,
@@ -277,8 +251,9 @@ export const editImageWithChat = async (
             }
         });
 
-        // Add Mask Image (IMAGE_1 if it exists)
+        // MASK IMAGE (if exists)
         if (maskData) {
+            requestParts.push({ text: `\n### INPAINTING MASK (White = edit area, Black = preserve):\n` });
             requestParts.push({
                 inlineData: {
                     mimeType: maskMimeType,
@@ -287,11 +262,12 @@ export const editImageWithChat = async (
             });
         }
 
-        // Add Reference Images (IMAGE_2+)
+        // REFERENCE IMAGES (each with explicit label)
         if (referenceImages && referenceImages.length > 0) {
-            referenceImages.forEach((ref) => {
+            referenceImages.forEach((ref, i) => {
                 const matches = ref.match(/^data:(.+);base64,(.+)$/);
                 if (matches && matches.length === 3) {
+                    requestParts.push({ text: `\n### REFERENCE #${i + 1} (Visual guide only - DO NOT EDIT THIS):\n` });
                     requestParts.push({
                         inlineData: {
                             mimeType: getNormalizedMime(matches[1]),
@@ -301,6 +277,9 @@ export const editImageWithChat = async (
                 }
             });
         }
+
+        // Final reminder
+        requestParts.push({ text: `\n### FINAL INSTRUCTION\nNow apply the user instruction to the TARGET IMAGE and output ONLY the modified TARGET IMAGE.` });
 
         // Use Gemini for image editing
         const response = await fetch(

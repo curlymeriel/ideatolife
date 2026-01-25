@@ -1,7 +1,7 @@
 import React from 'react';
 import { useWorkflowStore, type ProjectData, type ProjectMetadata } from '../store/workflowStore';
 import { useNavigate } from 'react-router-dom';
-import { Image, FileText, Music, ArrowRight, BarChart3, Plus, Download, Trash2, Database, Loader2, Copy, Check, HardDrive, AlertTriangle, RotateCcw, Settings, ChevronDown, FolderSync } from 'lucide-react';
+import { Image, FileText, Music, ArrowRight, BarChart3, Plus, Download, Trash2, Database, Loader2, Copy, Check, HardDrive, AlertTriangle, RotateCcw, Settings, ChevronDown, FolderSync, ShieldAlert } from 'lucide-react';
 
 import { UnifiedStorageManager } from '../components/UnifiedStorageManager';
 import { migrateAllProjects } from '../utils/migration';
@@ -477,21 +477,27 @@ export const Dashboard: React.FC = () => {
                         <div className="w-full p-3 bg-[var(--color-primary)]/5 border border-[var(--color-primary)]/10 rounded-xl space-y-2">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
-                                    <FolderSync size={14} className={store.localFolder ? "text-[var(--color-primary)]" : "text-gray-400"} />
+                                    <FolderSync size={14} className={store.localFolder ? (store.localFolderPermission === 'granted' ? "text-[var(--color-primary)]" : "text-yellow-400") : "text-gray-400"} />
                                     <span className="text-[11px] font-bold text-white uppercase">로컬 폴더 동기화 (PC 저장)</span>
                                 </div>
                                 {store.localFolder && (
                                     <div className="flex items-center gap-2">
-                                        <button
-                                            onClick={() => store.forceSyncLibrary()}
-                                            disabled={store.isSyncingLibrary}
-                                            className="text-[9px] px-2 py-0.5 bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30 rounded border border-[var(--color-primary)]/30 transition-all flex items-center gap-1 font-bold disabled:opacity-50"
-                                            title="모든 프로젝트와 리서치 데이터를 로컬 폴더로 지금 즉시 백업합니다."
-                                        >
-                                            {store.isSyncingLibrary ? <Loader2 size={8} className="animate-spin" /> : <RotateCcw size={8} />}
-                                            전체 다시 동기화
-                                        </button>
-                                        <span className="text-[9px] px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded-full font-bold animate-pulse">Sync Active</span>
+                                        {store.localFolderPermission === 'granted' ? (
+                                            <>
+                                                <button
+                                                    onClick={() => store.forceSyncLibrary()}
+                                                    disabled={store.isSyncingLibrary}
+                                                    className="text-[9px] px-2 py-0.5 bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30 rounded border border-[var(--color-primary)]/30 transition-all flex items-center gap-1 font-bold disabled:opacity-50"
+                                                    title="모든 프로젝트와 리서치 데이터를 로컬 폴더로 지금 즉시 백업합니다."
+                                                >
+                                                    {store.isSyncingLibrary ? <Loader2 size={8} className="animate-spin" /> : <RotateCcw size={8} />}
+                                                    전체 다시 동기화
+                                                </button>
+                                                <span className="text-[9px] px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded-full font-bold animate-pulse">Sync Active</span>
+                                            </>
+                                        ) : (
+                                            <span className="text-[9px] px-1.5 py-0.5 bg-yellow-500/20 text-yellow-500 rounded-full font-bold animate-pulse">Permission Required</span>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -500,15 +506,25 @@ export const Dashboard: React.FC = () => {
                             {store.localFolder ? (
                                 <div className="space-y-2">
                                     <div className="flex items-center gap-2 px-2 py-1 bg-black/30 rounded border border-white/5">
-                                        <HardDrive size={10} className="text-gray-400" />
-                                        <span className="text-[10px] text-gray-300 truncate font-mono">{store.localFolder.name}</span>
+                                        <HardDrive size={10} className={store.localFolderPermission === 'granted' ? "text-gray-400" : "text-yellow-500"} />
+                                        <span className={`text-[10px] truncate font-mono ${store.localFolderPermission === 'granted' ? "text-gray-300" : "text-yellow-500"}`}>{store.localFolder.name}</span>
                                     </div>
-                                    <button
-                                        onClick={() => store.disconnectLocalFolder()}
-                                        className="w-full py-1 text-[10px] font-bold text-red-400/70 hover:text-red-300 transition-colors"
-                                    >
-                                        연결 해제
-                                    </button>
+                                    {store.localFolderPermission !== 'granted' ? (
+                                        <button
+                                            onClick={() => store.requestLocalFolderPermission()}
+                                            className="w-full py-2 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-500 border border-yellow-500/30 rounded flex items-center justify-center gap-1 text-[10px] font-bold transition-all"
+                                        >
+                                            <ShieldAlert size={12} />
+                                            권한 승인 및 연결 활성화
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={() => store.disconnectLocalFolder()}
+                                            className="w-full py-1 text-[10px] font-bold text-red-400/70 hover:text-red-300 transition-colors"
+                                        >
+                                            연결 해제
+                                        </button>
+                                    )}
                                 </div>
                             ) : (
                                 <button

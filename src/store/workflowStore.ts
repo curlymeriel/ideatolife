@@ -10,7 +10,7 @@ import { createProjectSlice, type ProjectSlice } from './projectSlice';
 import { createIntelligenceSlice, type IntelligenceSlice } from './intelligenceSlice';
 import { createUISlice, type UISlice } from './uiSlice';
 import { saveToIdb, generateAudioKey, generateCutImageKey, generateAssetImageKey, resolveUrl, loadFromIdb, parseIdbUrl } from '../utils/imageStorage';
-import { selectLocalFolder, saveFileToHandle, readFilesFromDirectory, type LocalFolderHandle } from '../utils/localFileSystem';
+import { selectLocalFolder, saveFileToHandle, readFilesFromDirectory, verifyPermission, requestPermission, type LocalFolderHandle } from '../utils/localFileSystem';
 
 // ====================
 // Multi-Project Actions
@@ -46,8 +46,10 @@ interface MultiProjectActions {
 
     // Local Sync
     localFolder: LocalFolderHandle | null;
+    localFolderPermission: 'prompt' | 'granted' | 'denied';
     isSyncingLibrary: boolean;
     connectLocalFolder: () => Promise<void>;
+    requestLocalFolderPermission: () => Promise<boolean>;
     disconnectLocalFolder: () => void;
     forceSyncLibrary: () => Promise<void>;
 }
@@ -669,22 +671,26 @@ export const useWorkflowStore = create<WorkflowStore>()(
             id: 'default-project',
             lastModified: Date.now(),
             localFolder: null,
+            localFolderPermission: 'prompt',
             isSyncingLibrary: false,
 
             connectLocalFolder: async () => {
                 const folder = await selectLocalFolder();
                 if (folder) {
-                    set({ localFolder: folder });
+                    set({ localFolder: folder, localFolderPermission: 'granted' });
                     // CRITICAL: Save handle to IDB because persist middleware can't serialize it to JSON
                     await idbSet('local-folder-handle', folder);
-
                     // NEW: SYNC & RESTORE
-                    // 1. First, restore any projects/assets from the folder to browser DB
                     await restoreFromLocalFolder(folder.handle);
-
-                    // 2. Then, trigger a FULL backup to ensure PC folder has everything in browser DB
                     await syncAllToPC(get(), folder.handle);
                 }
+            },
+            requestLocalFolderPermission: async () => {
+                const { localFolder } = get();
+                if (!localFolder?.handle) return false;
+                const granted = await requestPermission(localFolder.handle, 'readwrite');
+                set({ localFolderPermission: granted ? 'granted' : 'denied' });
+                return granted;
             },
             disconnectLocalFolder: async () => {
                 set({ localFolder: null });
@@ -716,6 +722,9 @@ export const useWorkflowStore = create<WorkflowStore>()(
             },
             setChatHistory: (history) => {
                 set({ chatHistory: history });
+            },
+            setProductionChatHistory: (history) => {
+                set({ productionChatHistory: history });
             },
             setThumbnail: (url) => {
                 set({ thumbnailUrl: url });
@@ -932,6 +941,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
                     aspectRatio: state.aspectRatio,
                     apiKeys: state.apiKeys,
                     chatHistory: state.chatHistory,
+                    productionChatHistory: state.productionChatHistory,
                     masterStyle: state.masterStyle?.referenceImage
                         ? state.masterStyle
                         : { ...state.masterStyle, referenceImage: existingData?.masterStyle?.referenceImage || state.masterStyle?.referenceImage },
@@ -949,8 +959,8 @@ export const useWorkflowStore = create<WorkflowStore>()(
 
                 await saveProjectToDisk(projectData);
 
-                // LOCAL SYNC: Save to PC if folder is connected
-                if (state.localFolder?.handle) {
+                // LOCAL SYNC: Save to PC if folder is connected and permitted
+                if (state.localFolder?.handle && state.localFolderPermission === 'granted') {
                     try {
                         const fileName = `project-${projectId}.json`;
                         await saveFileToHandle(
@@ -1999,10 +2009,18 @@ export const useWorkflowStore = create<WorkflowStore>()(
                     }
 
                     // MANUAL REHYDRATION: localFolder handle (cannot be JSON stringified)
-                    idbGet('local-folder-handle').then(handle => {
+                    idbGet('local-folder-handle').then(async handle => {
                         if (handle) {
                             console.log("[LocalSync] Restored folder handle from IDB:", (handle as any).name);
-                            useWorkflowStore.setState({ localFolder: handle as any });
+                            const h = handle as any;
+                            // Check permission silently
+                            const granted = await verifyPermission(h.handle, 'readwrite');
+                            useWorkflowStore.setState({
+                                localFolder: h,
+                                localFolderPermission: granted ? 'granted' : 'prompt'
+                            });
+                            if (granted) console.log("[LocalSync] Permission verified (granted)");
+                            else console.log("[LocalSync] Permission required (prompt)");
                         }
                     });
                 }

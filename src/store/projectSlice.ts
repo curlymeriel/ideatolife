@@ -25,6 +25,7 @@ export interface ProjectSlice extends Omit<ProjectData, 'id' | 'lastModified'> {
     setImageModel: (model: ImageModel) => void;
     setAssets: (assets: Record<string, Asset[]>) => void;
     updateAsset: (cutId: number, asset: Partial<Asset>) => void;
+    setProductionChatHistory: (history: ChatMessage[]) => void;
     cleanupOrphanedAssets: () => void;
 }
 
@@ -51,6 +52,7 @@ const sampleProjectDefaults = {
         elevenLabsModelId: 'eleven_monolingual_v1',
     },
     chatHistory: [],
+    productionChatHistory: [],
     thumbnailUrl: null,
     thumbnailSettings: {
         mode: 'framing' as const,
@@ -123,6 +125,8 @@ export const createProjectSlice: StateCreator<ProjectSlice> = (set) => ({
             [cutId]: { ...state.assets[cutId], ...asset }
         }
     })),
+
+    setProductionChatHistory: (history) => set({ productionChatHistory: history }),
 
     cleanupOrphanedAssets: () => set((state) => {
         const validIds = new Set<string>();

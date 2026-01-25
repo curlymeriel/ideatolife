@@ -76,6 +76,32 @@ export async function readFilesFromDirectory(
 }
 
 /**
+ * Verify if the handle has the required permissions
+ */
+export async function verifyPermission(handle: FileSystemHandle, mode: 'read' | 'readwrite' = 'readwrite'): Promise<boolean> {
+    if (!handle) return false;
+    // @ts-ignore - queryPermission is part of the FileSystemHandle spec
+    const status = await handle.queryPermission({ mode });
+    if (status === 'granted') return true;
+    return false;
+}
+
+/**
+ * Request permissions for a handle (Must be called from a user gesture)
+ */
+export async function requestPermission(handle: FileSystemHandle, mode: 'read' | 'readwrite' = 'readwrite'): Promise<boolean> {
+    if (!handle) return false;
+    try {
+        // @ts-ignore - requestPermission is part of the FileSystemHandle spec
+        const status = await handle.requestPermission({ mode });
+        return status === 'granted';
+    } catch (error) {
+        console.error("Failed to request permission:", error);
+        return false;
+    }
+}
+
+/**
  * Broadcast sync status
  */
 export function notifySync(fileName: string) {

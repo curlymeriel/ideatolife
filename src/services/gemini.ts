@@ -108,6 +108,7 @@ export interface ConsultationResult {
     suggestedMasterStyle?: string;
     suggestedCharacterModifier?: string;
     suggestedBackgroundModifier?: string;
+    modifiedScript?: ScriptCut[]; // NEW: For Assistant Director to suggest script changes
 }
 
 export interface ProjectContext {
@@ -1203,6 +1204,121 @@ export const consultStory = async (
     }
 };
 
+export const consultAssistantDirector = async (
+    history: ChatMessage[],
+    context: ProjectContext & { currentScript: ScriptCut[] },
+    apiKey: string,
+    customInstruction?: string
+): Promise<ConsultationResult> => {
+    console.log("[Gemini Service] consultAssistantDirector called.");
+    if (!apiKey) {
+        return {
+            reply: "API 키가 없어 모의 응답을 반환합니다. 1번 컷의 대사를 수정했습니다.",
+            modifiedScript: [
+                {
+                    ...context.currentScript[0],
+                    dialogue: "감독님, 이 대사로 수정해봤습니다. 마음에 드시나요?"
+                }
+            ]
+        };
+    }
+
+    try {
+        const { PERSONA_TEMPLATES } = await import('../data/personaTemplates');
+        let systemInstruction = customInstruction || PERSONA_TEMPLATES.assistant_director.instruction;
+
+        // Clean script for prompt to save tokens and clear focus
+        const compactScript = context.currentScript.map(c => ({
+            id: c.id,
+            speaker: c.speaker,
+            dialogue: c.dialogue,
+            visualPrompt: c.visualPrompt,
+            duration: c.estimatedDuration,
+            linkedAssets: (c as any).linkedAssets || [],
+            isLocked: c.isAudioConfirmed || c.isImageConfirmed
+        }));
+
+        // Hydrate template variables
+        systemInstruction = systemInstruction
+            .replace('{{seriesName}}', context.seriesName || '')
+            .replace('{{seriesStory}}', context.seriesStory || '')
+            .replace('{{characters}}', JSON.stringify(context.characters))
+            .replace('{{seriesLocations}}', JSON.stringify(context.seriesLocations))
+            .replace('{{seriesProps}}', JSON.stringify(context.seriesProps))
+            .replace('{{episodeName}}', context.episodeName || '')
+            .replace('{{episodeNumber}}', String(context.episodeNumber))
+            .replace('{{episodePlot}}', context.episodePlot || '')
+            .replace('{{episodeCharacters}}', JSON.stringify(context.episodeCharacters))
+            .replace('{{episodeLocations}}', JSON.stringify(context.episodeLocations))
+            .replace('{{episodeProps}}', JSON.stringify(context.episodeProps))
+            .replace('{{targetDuration}}', String(context.targetDuration))
+            .replace('{{aspectRatio}}', context.aspectRatio)
+            .replace('{{masterStyle}}', (context as any).masterStyle || '')
+            .replace('{{currentScript}}', JSON.stringify(compactScript, null, 2));
+
+        const { resolveUrl } = await import('../utils/imageStorage');
+
+        const contents = await Promise.all(history.map(async (msg) => {
+            const parts: any[] = [];
+            let textContent = msg.content;
+            if (msg.fileContent && msg.fileName) {
+                textContent += `\n\n[Attached file: ${msg.fileName}]\n\`\`\`\n${msg.fileContent}\n\`\`\``;
+            }
+            parts.push({ text: textContent });
+
+            if (msg.image) {
+                let imageData = msg.image;
+                if (msg.image.startsWith('idb://')) {
+                    imageData = await resolveUrl(msg.image) || '';
+                }
+                if (imageData && imageData.startsWith('data:')) {
+                    const cleanBase64 = imageData.split(',')[1] || imageData;
+                    parts.push({
+                        inline_data: {
+                            mime_type: "image/jpeg",
+                            data: cleanBase64
+                        }
+                    });
+                }
+            }
+            return {
+                role: msg.role === 'user' ? 'user' : 'model',
+                parts: parts
+            };
+        }));
+
+        const response = await axios.post(
+            `${GEMINI_2_5_FLASH_URL}?key=${apiKey}`,
+            {
+                contents: [
+                    {
+                        role: 'user',
+                        parts: [{ text: systemInstruction }]
+                    },
+                    ...contents
+                ],
+                generationConfig: {
+                    temperature: 0.7,
+                    response_mime_type: "application/json"
+                }
+            },
+            { timeout: 60000 }
+        );
+
+        const generatedText = response.data.candidates[0].content.parts[0].text;
+        const parsed = JSON.parse(generatedText);
+
+        return {
+            reply: parsed.reply,
+            modifiedScript: parsed.modifiedScript
+        };
+
+    } catch (error) {
+        console.error("Assistant Director Error:", error);
+        throw error;
+    }
+};
+
 export const enhancePrompt = async (
     basePrompt: string,
     type: 'character' | 'location' | 'style',
@@ -1755,7 +1871,7 @@ export const generateText = async (
     prompt: string,
     apiKey: string,
     responseMimeType?: string,
-    images?: { mimeType: string; data: string }[],
+    images?: any,
     systemInstruction?: string,
     generationConfig?: any
 ): Promise<string> => {
@@ -1784,8 +1900,27 @@ export const generateText = async (
 
     // Prepare content parts (Text + Images)
     const parts: any[] = [{ text: finalPrompt }];
-    if (images && images.length > 0) {
-        images.forEach(img => {
+
+    // Normalize images: can be string, string[], or {mimeType, data}[]
+    let normalizedImages: { mimeType: string; data: string }[] = [];
+    if (images) {
+        if (typeof images === 'string') {
+            const matches = images.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
+            if (matches) normalizedImages.push({ mimeType: matches[1], data: matches[2] });
+        } else if (Array.isArray(images)) {
+            images.forEach(img => {
+                if (typeof img === 'string') {
+                    const matches = img.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
+                    if (matches) normalizedImages.push({ mimeType: matches[1], data: matches[2] });
+                } else if (img && img.mimeType && img.data) {
+                    normalizedImages.push(img);
+                }
+            });
+        }
+    }
+
+    if (normalizedImages.length > 0) {
+        normalizedImages.forEach(img => {
             parts.push({
                 inlineData: {
                     mimeType: img.mimeType,

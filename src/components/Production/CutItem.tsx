@@ -108,6 +108,7 @@ export interface CutItemProps {
     onOpenSfxModal?: (cutId: number) => void;
     onRemoveSfx?: (cutId: number) => void;
     apiKey?: string;
+    masterStyle?: string;
 }
 
 export const CutItem = memo(({
@@ -141,7 +142,8 @@ export const CutItem = memo(({
     onInsert,
     onOpenSfxModal,
     onRemoveSfx,
-    apiKey
+    apiKey,
+    masterStyle
 }: CutItemProps) => {
     // Local state for debounced inputs
     const [localDialogue, setLocalDialogue] = useState(cut.dialogue || '');
@@ -939,6 +941,7 @@ export const CutItem = memo(({
                     manualAssetObjs={manualAssetObjs}
                     initialSpeaker={cut.speaker}
                     initialDialogue={cut.dialogue}
+                    masterStyle={masterStyle}
                     onSave={(result) => {
                         onUpdateCut(cut.id, {
                             visualPrompt: result.visualPrompt,

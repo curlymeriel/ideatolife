@@ -1,5 +1,6 @@
 ﻿import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useWorkflowStore } from '../store/workflowStore';
+import { useShallow } from 'zustand/react/shallow';
 import { generateScript, DEFAULT_SCRIPT_INSTRUCTIONS, DEFAULT_VIDEO_PROMPT_INSTRUCTIONS } from '../services/gemini';
 import type { ScriptCut } from '../services/gemini';
 import { generateImage } from '../services/imageGen';
@@ -7,22 +8,54 @@ import { generateSpeech, type VoiceConfig } from '../services/tts';
 import { generateGeminiSpeech, getDefaultGeminiVoice, isGeminiTtsVoice, GEMINI_TTS_VOICES } from '../services/geminiTts';
 
 import { useNavigate } from 'react-router-dom';
-import { Wand2, Loader2, ArrowRight, Lock, Unlock, Settings, Mic, Image, Sparkles, Sliders } from 'lucide-react';
+import { Wand2, Loader2, ArrowRight, Lock, Unlock, Settings, Mic, Image, Sparkles, Sliders, Bot, X, Send } from 'lucide-react';
 import { CutItem } from '../components/Production/CutItem';
 import { SfxSearchModal } from '../components/Production/SfxSearchModal';
 import { AiInstructionHelper } from '../components/Production/AiInstructionHelper';
+import { ChatMessageItem } from '../components/ChatMessageItem';
+import { AssistantDirectorChat } from '../components/AssistantDirectorChat';
+import { consultAssistantDirector, type ChatMessage as AiChatMessage } from '../services/gemini';
 import { getMatchedAssets } from '../utils/assetUtils';
 import { linkCutsToStoryline } from '../utils/storylineUtils';
 import { saveToIdb, generateCutImageKey, generateAudioKey, resolveUrl } from '../utils/imageStorage';
 
 export const Step3_Production: React.FC = () => {
+    const projectData = useWorkflowStore(useShallow(state => ({
+        id: state.id,
+        seriesName: state.seriesName,
+        episodeName: state.episodeName,
+        targetDuration: state.targetDuration,
+        styleAnchor: state.styleAnchor,
+        apiKeys: state.apiKeys,
+        script: state.script,
+        ttsModel: state.ttsModel,
+        imageModel: state.imageModel,
+        assetDefinitions: state.assetDefinitions,
+        episodePlot: state.episodePlot,
+        characters: state.characters,
+        episodeCharacters: state.episodeCharacters,
+        seriesLocations: state.seriesLocations,
+        episodeLocations: state.episodeLocations,
+        masterStyle: state.masterStyle,
+        aspectRatio: state.aspectRatio,
+        storylineTable: state.storylineTable,
+        productionChatHistory: state.productionChatHistory,
+        nextStep: state.nextStep,
+    })));
+
     const {
-        id: projectId,  // For IndexedDB storage keys
+        id: projectId,
         seriesName, episodeName, targetDuration, styleAnchor, apiKeys,
-        script, setScript, ttsModel, setTtsModel, imageModel, setImageModel, nextStep, assetDefinitions,
+        script, ttsModel, imageModel, assetDefinitions,
         episodePlot, characters, episodeCharacters, seriesLocations, episodeLocations, masterStyle, aspectRatio,
-        storylineTable, setProjectInfo
-    } = useWorkflowStore();
+        storylineTable, productionChatHistory, nextStep
+    } = projectData;
+
+    const setScript = useWorkflowStore(state => state.setScript);
+    const setTtsModel = useWorkflowStore(state => state.setTtsModel);
+    const setImageModel = useWorkflowStore(state => state.setImageModel);
+    const setProjectInfo = useWorkflowStore(state => state.setProjectInfo);
+    const setProductionChatHistory = useWorkflowStore(state => state.setProductionChatHistory);
     const navigate = useNavigate();
 
     const [loading, setLoading] = useState(false);
@@ -61,6 +94,10 @@ export const Step3_Production: React.FC = () => {
     // State for video prompt instructions
     const [videoPromptInstructions, setVideoPromptInstructions] = useState(DEFAULT_VIDEO_PROMPT_INSTRUCTIONS);
     const [isVideoInstructionsModalOpen, setIsVideoInstructionsModalOpen] = useState(false);
+
+    // Assistant Director Chat States
+    const [isChatOpen, setIsChatOpen] = useState(false);
+
 
     // Calculate progress - requires BOTH actual content AND confirmation
     const confirmedCount = localScript.filter(c => {
@@ -357,9 +394,8 @@ export const Step3_Production: React.FC = () => {
         try {
             console.log(`[Image ${cutId}] Visual Prompt:`, prompt);
 
-            const characterImages: string[] = [];
-            const locationImages: string[] = [];
-            const propImages: string[] = [];
+            interface AssetRef { name: string; url: string; type: string; }
+            const assetsWithImages: AssetRef[] = [];
             const matchedAssets: string[] = [];
 
             const currentScript = localScriptRef.current;
@@ -367,89 +403,67 @@ export const Step3_Production: React.FC = () => {
             const manualAssetIds = currentCut?.referenceAssetIds || [];
             const referenceCutIds = currentCut?.referenceCutIds || [];
 
-            // 1. Add Previous Cut Images
+            // 1. Add Previous Cut Images (as background/location refs)
             referenceCutIds.forEach(refId => {
                 const refCut = currentScript.find(c => c.id === refId);
                 if (refCut?.finalImageUrl) {
-                    locationImages.push(refCut.finalImageUrl);
+                    assetsWithImages.push({ name: `Prev Cut #${refId}`, url: refCut.finalImageUrl, type: 'location' });
                     console.log(`[Image ${cutId}] 📸 Added PREVIOUS CUT #${refId} as reference`);
                 }
             });
 
-            // 2. FORCE ADD MANUAL ASSETS (User Selection Priority)
-            // Bypasses auto-match logic to ensure user selections are ALWAYS included
+            // 2. FORCE ADD MANUAL ASSETS
             manualAssetIds.forEach(assetId => {
                 const asset = assetDefinitions?.[assetId];
                 if (asset) {
-                    console.log(`[Image ${cutId}] 👆 Force-adding manual asset: "${asset.name}"`);
                     if (!matchedAssets.includes(asset.name)) matchedAssets.push(asset.name);
-
-                    // Image priority: master -> draft -> reference
                     const imageToUse = asset.masterImage || asset.draftImage || asset.referenceImage;
                     if (imageToUse) {
-                        if (asset.type === 'character') characterImages.push(imageToUse);
-                        else if (asset.type === 'location') locationImages.push(imageToUse);
-                        else if (asset.type === 'prop') propImages.push(imageToUse);
+                        assetsWithImages.push({ name: asset.name, url: imageToUse, type: asset.type });
+                        console.log(`[Image ${cutId}] 👆 Force-adding manual asset: "${asset.name}"`);
                     }
                 }
             });
 
-            // 3. Auto-match from prompt (bypassing manual IDs in helper to avoid double processing)
+            // 3. Auto-match from prompt
             const deduplicatedMatches = getMatchedAssets(prompt, [], assetDefinitions, cutId);
-
             deduplicatedMatches.forEach(({ asset }) => {
-                // Skip if already added via manual list
                 if (matchedAssets.includes(asset.name)) return;
-
-                console.log(`[Image ${cutId}] 🤖 Auto-matched asset: "${asset.name}"`);
                 matchedAssets.push(asset.name);
-
-                // FIX: Use masterImage (if selected) -> draftImage (if generated) -> referenceImage (if uploaded)
                 const imageToUse = asset.masterImage || asset.draftImage || asset.referenceImage;
-
                 if (imageToUse) {
-                    if (asset.type === 'character') {
-                        characterImages.push(imageToUse);
-                        console.log(`[Image ${cutId}]   - Added CHARACTER: "${asset.name}"`);
-                    } else if (asset.type === 'location') {
-                        locationImages.push(imageToUse);
-                        console.log(`[Image ${cutId}]   - Added LOCATION: "${asset.name}"`);
-                    } else if (asset.type === 'prop') {
-                        propImages.push(imageToUse);
-                        console.log(`[Image ${cutId}]   - Added PROP: "${asset.name}"`);
-                    }
+                    assetsWithImages.push({ name: asset.name, url: imageToUse, type: asset.type });
+                    console.log(`[Image ${cutId}] 🤖 Auto-matched asset: "${asset.name}"`);
                 }
             });
 
-            // CRITICAL FIX: Explicitly match Speaker to Asset (to ensure "Orange Uniform" survives)
+            // 4. Speaker Auto-Match
             const speakerName = currentCut?.speaker;
             if (speakerName && speakerName !== 'Narrator' && speakerName !== 'SILENT') {
                 const speakerAsset = Object.values(assetDefinitions || {}).find((a: any) =>
                     a.type === 'character' && a.name.toLowerCase() === speakerName.toLowerCase()
                 );
-                if (speakerAsset) {
-                    // Only add if not already matched
-                    if (!matchedAssets.includes(speakerAsset.name)) {
-                        console.log(`[Image ${cutId}] 🗣️ Speaker Auto-Match (Priority): "${speakerAsset.name}"`);
-                        matchedAssets.push(speakerAsset.name);
-
-                        // Also add reference image if available
-                        const imageToUse = speakerAsset.masterImage || speakerAsset.draftImage || speakerAsset.referenceImage;
-                        if (imageToUse) characterImages.push(imageToUse);
+                if (speakerAsset && !matchedAssets.includes(speakerAsset.name)) {
+                    matchedAssets.push(speakerAsset.name);
+                    const imageToUse = speakerAsset.masterImage || speakerAsset.draftImage || speakerAsset.referenceImage;
+                    if (imageToUse) {
+                        assetsWithImages.push({ name: speakerAsset.name, url: imageToUse, type: 'character' });
                     }
                 }
             }
 
+            // Combine into limited set of 4 images
             const allReferenceImages: string[] = [];
             if (currentCut?.userReferenceImage) {
                 allReferenceImages.push(currentCut.userReferenceImage);
-                console.log(`[Image ${cutId}] 🎨 Added USER SKETCH/REFERENCE image`);
             }
-            allReferenceImages.push(...characterImages, ...locationImages, ...propImages);
 
-            // Slice to reasonable limit (4 images) to avoid payload issues
-            const limitedReferenceImages = allReferenceImages.slice(0, 4);
+            // Limit assets to ensure we don't exceed 4 total images (including user ref)
+            const remainingSlot = 4 - allReferenceImages.length;
+            const limitedAssets = assetsWithImages.slice(0, remainingSlot);
+            limitedAssets.forEach(a => allReferenceImages.push(a.url));
 
+            // Build Details with Explicit Reference Indexing
             let characterDetails = '';
             let locationDetails = '';
             let propDetails = '';
@@ -457,13 +471,16 @@ export const Step3_Production: React.FC = () => {
             matchedAssets.forEach(assetName => {
                 const asset = Object.values(assetDefinitions || {}).find((a: any) => a.name === assetName);
                 if (asset && asset.description) {
+                    // Find if this asset has an image in the limited set
+                    const imgIdx = allReferenceImages.indexOf(assetsWithImages.find(a => a.name === assetName)?.url || '');
+                    const refNote = imgIdx !== -1 ? ` (Reference #${imgIdx + 1})` : '';
+
                     if (asset.type === 'character') {
-                        // ENFORCE VISUAL TRUTH: Prepend "Fixed Visual Reference:"
-                        characterDetails += `\n- ${asset.name}: ${asset.description}`;
+                        characterDetails += `\n- ${asset.name}${refNote}: ${asset.description}`;
                     } else if (asset.type === 'location') {
-                        locationDetails += `\n- ${asset.name}: ${asset.description}`;
+                        locationDetails += `\n- ${asset.name}${refNote}: ${asset.description}`;
                     } else if (asset.type === 'prop') {
-                        propDetails += `\n- ${asset.name}: ${asset.description}`;
+                        propDetails += `\n- ${asset.name}${refNote}: ${asset.description}`;
                     }
                 }
             });
@@ -482,32 +499,19 @@ export const Step3_Production: React.FC = () => {
             let stylePrompt = '';
             if (masterStyle?.description) {
                 stylePrompt += `\n\n[Master Visual Style]\n${masterStyle.description}`;
-
-                // Determine if this cut has character assets or location assets
-                const hasCharacterAssets = matchedAssets.some(assetName => {
-                    const asset = Object.values(assetDefinitions || {}).find((a: any) => a.name === assetName);
-                    return asset && asset.type === 'character';
-                });
-
-                // Apply appropriate modifier
+                const hasCharacterAssets = limitedAssets.some(a => a.type === 'character');
                 if (hasCharacterAssets && masterStyle.characterModifier) {
                     stylePrompt += `\n${masterStyle.characterModifier}`;
                 } else if (!hasCharacterAssets && masterStyle.backgroundModifier) {
-                    // If no character assets, assume it's a background/location shot
                     stylePrompt += `\n${masterStyle.backgroundModifier}`;
                 }
             }
-            // NOTE: styleAnchor.prompts removed from image prompt
-            // Reason: Raw JSON like {"font":"Inter, sans-serif"} was being rendered as text in images
-            // masterStyle.description already provides sufficient style context
 
-            // REORDERED PROMPT STRUCTURE: Asset Details First -> Style -> Scene Action
-            // This ensures the "Who" and "What" (Orange Uniform) are established before the "Action"
             const finalPrompt = assetDetails + stylePrompt + `\n\n[Scene Action]\n${prompt}`;
 
             // FIX: Resolve IDB URLs to Base64 before sending to Gemini
             const resolvedReferenceImages = await Promise.all(
-                limitedReferenceImages.map(url => resolveUrl(url))
+                allReferenceImages.map(url => resolveUrl(url))
             );
 
             const result = await generateImage(
@@ -756,6 +760,7 @@ export const Step3_Production: React.FC = () => {
             setAudioLoading(prev => ({ ...prev, [cutId]: false }));
         }
     }, [apiKeys.googleCloud, apiKeys.gemini, characters, episodeCharacters, ttsModel]);
+
 
     // ESC key handler for AI Instructions modals
     useEffect(() => {
@@ -1692,6 +1697,7 @@ export const Step3_Production: React.FC = () => {
                                     aspectRatio={aspectRatio || '16:9'}
                                     speakerList={speakerList}
                                     ttsModel={ttsModel}
+                                    masterStyle={masterStyle?.description || ''}
                                     onToggleAudioConfirm={toggleAudioConfirm}
 
                                     onToggleImageConfirm={toggleImageConfirm}
@@ -1887,6 +1893,28 @@ export const Step3_Production: React.FC = () => {
                     )
                 }
             </div>
+
+            {/* AI Assistant Director Chat Sidebar */}
+            <AssistantDirectorChat
+                isOpen={isChatOpen}
+                onClose={() => setIsChatOpen(false)}
+                localScript={localScript}
+                setLocalScript={setLocalScript}
+                saveToStore={saveToStore}
+            />
+
+            {/* Chat Trigger Button (Floating) */}
+            <button
+                onClick={() => setIsChatOpen(true)}
+                className={`fixed bottom-8 right-8 w-20 h-20 rounded-full bg-orange-500 text-white shadow-2xl flex flex-col items-center justify-center hover:scale-110 active:scale-95 transition-all z-50 group ${isChatOpen ? 'hidden' : ''}`}
+            >
+                <div className="absolute -top-12 right-0 bg-black/80 backdrop-blur px-3 py-1.5 rounded-lg text-[11px] font-bold text-orange-400 border border-orange-500/30 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                    AI 조감독에게 코칭받기 ✨
+                </div>
+                <Bot size={32} />
+                <span className="text-[11px] font-bold mt-1 font-noto">조감독</span>
+                <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 border-2 border-[#121212] rounded-full" />
+            </button>
         </>
     );
 };

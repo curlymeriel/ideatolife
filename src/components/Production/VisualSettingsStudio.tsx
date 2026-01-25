@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import ReactDOM from 'react-dom';
 import {
     X, Wand2, Loader2, ImageIcon, Plus, Send,
-    Sparkles, RotateCcw, Film, Image, Trash2, Check, Layers
+    Sparkles, RotateCcw, Film, Image, Trash2, Check, Layers, Bot
 } from 'lucide-react';
 import { ImageCropModal } from '../ImageCropModal';
 import { InteractiveImageViewer } from '../InteractiveImageViewer';
@@ -50,6 +50,7 @@ export interface VisualSettingsStudioProps {
     manualAssetObjs?: any[];
     initialSpeaker?: string;
     initialDialogue?: string;
+    masterStyle?: string;
     onSave: (result: VisualSettingsResult) => void;
 }
 
@@ -92,6 +93,7 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
     manualAssetObjs = [],
     initialSpeaker = 'Narrator',
     initialDialogue = '',
+    masterStyle = '',
     onSave,
 }) => {
     // ========================================================================
@@ -181,33 +183,59 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
         }
     }, [initialVisualPrompt]);
 
-    const analyzeReferences = async () => {
-        if (taggedReferences.length === 0) return '';
-        const results = await Promise.all(taggedReferences.map(async (ref, idx) => {
-            const refIndex = idx + 1;
-            const instructions: string[] = [];
+    const getUnifiedReferences = async () => {
+        const currentCut = (existingCuts || []).find(c => c.id === cutId);
+        if (!currentCut) return [];
 
-            ref.categories.forEach(cat => {
-                if (cat.startsWith('character-')) instructions.push(`facial features and identity of character "${cat.replace('character-', '')}"`);
-                else if (cat.startsWith('location-')) instructions.push(`environmental details and architecture of location "${cat.replace('location-', '')}"`);
-                else if (cat === 'style') instructions.push("artistic rendering style and medium");
-                else if (cat === 'costume') instructions.push("clothing and accessories design");
-                else if (cat === 'color') instructions.push("lighting and color grading");
-                else if (cat === 'composition') instructions.push("camera angle and framing");
-            });
+        const manualAssetIds = currentCut.referenceAssetIds || [];
+        const referenceCutIds = currentCut.referenceCutIds || [];
 
-            const mappingHeader = `[Reference #${refIndex}]${ref.name ? ` (${ref.name})` : ''}`;
-            const analysisPrompt = `Analyze this image for: ${instructions.join(', ') || 'visual characteristics'}. Output ONLY short descriptive English phrases.`;
+        interface SyncRef { id: string; name: string; url: string; type: string; categories: string[] }
+        const syncRefs: SyncRef[] = [];
 
-            try {
-                let imgData: any = null;
-                if (ref.url.startsWith('data:')) {
-                    const matches = ref.url.match(/^data:(.+);base64,(.+)$/);
-                    if (matches) imgData = [{ mimeType: matches[1], data: matches[2] }];
+        if (currentCut.userReferenceImage) {
+            syncRefs.push({ id: 'user-ref', name: 'User Reference', url: currentCut.userReferenceImage, type: 'user', categories: ['style'] });
+        }
+
+        referenceCutIds.forEach(refId => {
+            const refCut = existingCuts.find(c => c.id === refId);
+            if (refCut?.finalImageUrl) {
+                syncRefs.push({ id: `cut-${refId}`, name: `Prev Cut #${refId}`, url: refCut.finalImageUrl, type: 'location', categories: ['composition', 'style'] });
+            }
+        });
+
+        manualAssetIds.forEach(assetId => {
+            const asset = assetDefinitions?.[assetId];
+            if (asset) {
+                const imageToUse = asset.masterImage || asset.draftImage || asset.referenceImage;
+                if (imageToUse) {
+                    syncRefs.push({ id: assetId, name: asset.name, url: imageToUse, type: asset.type, categories: [asset.type === 'character' ? 'face' : 'style'] });
                 }
-                const text = await generateText(analysisPrompt, apiKey, undefined, imgData);
-                return `${mappingHeader}\nTags: ${ref.categories.join(', ')}\nAnalysis: ${text}`;
-            } catch { return null; }
+            }
+        });
+
+        autoMatchedAssets.forEach((asset: any) => {
+            if (syncRefs.some(r => r.name === asset.name)) return;
+            const imageToUse = asset.masterImage || asset.draftImage || asset.referenceImage;
+            if (imageToUse) {
+                syncRefs.push({ id: asset.id, name: asset.name, url: imageToUse, type: asset.type, categories: [asset.type === 'character' ? 'face' : 'style'] });
+            }
+        });
+
+        return syncRefs.slice(0, 4);
+    };
+
+    const analyzeReferences = async () => {
+        const refs = await getUnifiedReferences();
+        if (refs.length === 0) return null;
+
+        const results = await Promise.all(refs.map(async (ref, idx) => {
+            const refIndex = idx + 1;
+            const imgData = await resolveUrl(ref.url);
+            const mappingHeader = `Reference #${refIndex} (Asset Name: "${ref.name}") [Type: ${ref.type}]`;
+            const analysisPrompt = `Describe the VISUAL FEATURES (face, hair, costume, lighting) of this image. If this is a character, focus on their unique facial features so we can maintain identity. Return ONLY the description.`;
+            const text = await generateText(analysisPrompt, apiKey, undefined, imgData);
+            return `${mappingHeader}\nDetailed Analysis: ${text}`;
         }));
         return results.filter(Boolean).join('\n\n');
     };
@@ -265,10 +293,13 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
         try {
             const { generateImage } = await import('../../services/imageGen');
             const { cleanPromptForGeneration } = await import('../../utils/promptUtils');
-            const refAnalysis = await analyzeReferences();
-            const finalPrompt = refAnalysis ? `${refAnalysis}\n\n${visualPrompt}` : visualPrompt;
+            // IMPROVEMENT: Do NOT prepend refAnalysis (text description of references) to the final prompt.
+            // The literal images are being sent, so prepending a text "summary" often HALLUCINATES or 
+            // DRIFTS away from the visual truth. The (Reference #N) tags in the prompt are enough.
+            const finalPrompt = visualPrompt;
             const cleaned = cleanPromptForGeneration(finalPrompt);
-            const refImages = await Promise.all(taggedReferences.map(r => isIdbUrl(r.url) ? resolveUrl(r.url) : r.url));
+            const unifiedRefs = await getUnifiedReferences();
+            const refImages = await Promise.all(unifiedRefs.map(r => r.url.startsWith('idb://') ? resolveUrl(r.url) : r.url));
             const model = aiModel === 'PRO' ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image';
             const result = await generateImage(cleaned, apiKey, refImages.filter(Boolean) as string[], aspectRatio, model, draftCount);
             const resolved = await Promise.all(result.urls.map(u => resolveUrl(u)));
@@ -287,15 +318,43 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
         try {
             if (chatIntent === 'image' && selectedDraft) {
                 const { editImageWithChat } = await import('../../services/imageGen');
-                const result = await editImageWithChat(selectedDraft, chatInput, apiKey, currentMask);
+                const unifiedRefs = await getUnifiedReferences();
+                const refImages = await Promise.all(unifiedRefs.map(r => r.url.startsWith('idb://') ? resolveUrl(r.url) : r.url));
+
+                // Add reference mapping instruction to the user's chat input for the editor
+                const mappingMeta = unifiedRefs.map((r, i) => `[Visual Reference #${i + 1}]: ${r.name} (${r.type})`).join('\n');
+                const enhancedInstruction = `### EDIT TARGET\nModify the Primary Draft (IMAGE_0) based on the instruction below. \n\n### VISUAL CONTEXT MAPPING\n${mappingMeta}\n\n### USER INSTRUCTION\n${chatInput}`;
+
+                const result = await editImageWithChat(selectedDraft, enhancedInstruction, apiKey, currentMask, refImages.filter(Boolean) as string[]);
                 if (result.image) {
                     setDraftHistory(prev => [...prev, result.image!]);
                     setSelectedDraft(result.image);
                 }
                 setChatMessages(prev => [...prev, { id: `msg-${Date.now()}`, role: 'assistant', content: result.explanation || '이미지가 수정되었습니다.', image: result.image, timestamp: Date.now() }]);
             } else {
-                const systemPrompt = "You are a visual director. Help the user refine their image generation prompt. Output a JSON with two fields: 'suggested_prompt' (the improved English prompt) and 'explanation' (a concise 1-2 sentence summary of what was changed and why, written in KOREAN).";
-                const userQuery = `Current Prompt: ${visualPrompt}\nUser Request: ${chatInput}\nProvide the refined prompt and Korean explanation.`;
+                const refContext = await analyzeReferences();
+                const systemPrompt = `You are a visual director. Help the user refine their image generation prompt by integrating visual analysis from references.
+                
+                **CRITICAL CONSTRAINTS:**
+                1. **STRICT IDENTITY LOCKING (Mandatory)**: 
+                   - For every character or location mention that has a corresponding entry in the [Reference Analysis] below, you MUST append " (Reference #N)" to the name in your 'suggested_prompt'.
+                   - Example: "강이수 (홈룩) (Reference #1) is sitting on a luxury sofa..."
+                2. **DESCRIPTION PRUNING**: DO NOT re-describe the character's facial features, hair, or basic outfit if they have a reference image. The reference image is the ABSOLUTE VISUAL TRUTH. 
+                   - Focus your expansion on the lighting, composition, cinematic camera movement, and environment. 
+                   - This prevents the generator from drifting away from the reference identity due to redundant text descriptions.
+                3. **EDITORIAL AUTHORITY**: You have full authority to remove existing prompt elements that contradict the references or create redundancies.
+                4. **MASTER STYLE ADHERENCE**: The overall project style is: "${masterStyle}".
+                5. **ASSET CONSISTENCY**: Use the EXACT asset names for characters and locations.
+                6. **8K EXPANSION**: Expand the final result into a highly detailed, premium 8k English prompt.
+                
+                [Project Visual Anchor]
+                Master Style: ${masterStyle}
+                
+                ${refContext ? `[Reference Analysis]\n${refContext}` : ''}
+
+                Output a JSON with two fields: 'suggested_prompt' (the improved English prompt) and 'explanation' (a concise 1-2 sentence summary of what was changed and why, written in KOREAN).`;
+
+                const userQuery = `Current Prompt: ${visualPrompt}\nUser Request: ${chatInput}\n\nProvide the refined prompt that integrates the User Request while strictly maintaining the Master Style and Asset Consistency.`;
 
                 const res = await generateText(userQuery, apiKey, undefined, undefined, systemPrompt);
 
@@ -664,8 +723,8 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                                 </div>
                             </div>
 
-                            <div className="flex-1 flex flex-col relative bg-black overflow-hidden">
-                                <div className="flex-1 relative">
+                            <div className="flex-1 flex flex-row relative bg-black overflow-hidden">
+                                <div className="flex-1 relative border-r border-white/5">
                                     {selectedDraft ? (
                                         <InteractiveImageViewer src={selectedDraft} onMaskChange={setCurrentMask} onCrop={handleCropSelected} onClose={() => setSelectedDraft(null)} className="w-full h-full" />
                                     ) : (
@@ -673,41 +732,48 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                                     )}
                                 </div>
 
-                                {/* AI Editor Panel (Bottom Center) - Floating or Docked */}
-                                <div className="h-44 border-t border-white/5 bg-[#0a0a0a] flex flex-col mx-auto w-full max-w-4xl rounded-t-3xl shadow-[0_-20px_50px_rgba(0,0,0,0.5)] z-20">
-                                    <div className="flex items-center justify-between px-6 py-2 border-b border-white/5 bg-white/[0.02] rounded-t-3xl">
+                                {/* AI Editor Panel (Right Side Sidebar) */}
+                                <div className="w-[450px] h-full bg-[#0a0a0a] flex flex-col shadow-[-20px_0_50px_rgba(0,0,0,0.5)] z-20">
+                                    <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-white/[0.02]">
                                         <div className="flex items-center gap-2">
                                             <Sparkles size={16} className="text-[var(--color-primary)]" />
                                             <span className="text-sm font-black text-white tracking-widest uppercase">AI 편집장</span>
                                         </div>
                                         <div className="flex bg-black/40 p-1 rounded-xl border border-white/5 gap-1">
-                                            <button onClick={() => setChatIntent('image')} className={`px-4 py-1 rounded-lg text-[9px] font-black transition-all flex items-center gap-1.5 ${chatIntent === 'image' ? 'bg-[var(--color-primary)] text-black' : 'text-gray-500'}`}><Image size={10} /> 이미지 부분 수정</button>
-                                            <button onClick={() => setChatIntent('prompt')} className={`px-4 py-1 rounded-lg text-[9px] font-black transition-all flex items-center gap-1.5 ${chatIntent === 'prompt' ? 'bg-[var(--color-primary)] text-black' : 'text-gray-500'}`}><Plus size={10} /> 프롬프트 정제</button>
+                                            <button onClick={() => setChatIntent('image')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black transition-all flex items-center gap-1.5 ${chatIntent === 'image' ? 'bg-[var(--color-primary)] text-black' : 'text-gray-500'}`}><Image size={10} /> 이미지 수정</button>
+                                            <button onClick={() => setChatIntent('prompt')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black transition-all flex items-center gap-1.5 ${chatIntent === 'prompt' ? 'bg-[var(--color-primary)] text-black' : 'text-gray-500'}`}><Plus size={10} /> 프롬프트</button>
                                         </div>
                                     </div>
-                                    <div ref={chatContainerRef} className="flex-1 px-6 py-3 overflow-y-auto space-y-3 custom-scrollbar text-center">
+                                    <div ref={chatContainerRef} className="flex-1 px-6 py-6 overflow-y-auto space-y-4 custom-scrollbar">
                                         {chatMessages.length === 0 ? (
-                                            <div className="text-gray-700 text-[10px] font-bold uppercase tracking-widest py-8">결과물에 대한 지시사항을 입력하세요</div>
+                                            <div className="h-full flex flex-col items-center justify-center text-center px-4">
+                                                <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mb-4 opacity-20">
+                                                    <Bot size={32} className="text-gray-400" />
+                                                </div>
+                                                <p className="text-gray-600 text-[11px] font-bold uppercase tracking-widest leading-relaxed">
+                                                    선택된 드래프트 이미지에 대한<br />수정 지시사항을 입력하세요
+                                                </p>
+                                            </div>
                                         ) : (
                                             chatMessages.map(msg => (
                                                 <div key={msg.id} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                                                    <div className={`max-w-[85%] px-4 py-2 rounded-2xl text-[11px] leading-relaxed relative group ${msg.role === 'user' ? 'bg-[var(--color-primary)] text-black font-bold' : 'bg-white/5 text-gray-300 border border-white/10'}`}>
+                                                    <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-[11px] leading-relaxed relative group ${msg.role === 'user' ? 'bg-[var(--color-primary)] text-black font-bold' : 'bg-white/5 text-gray-300 border border-white/10'}`}>
                                                         {msg.content}
                                                         {msg.image && <img src={msg.image} className="mt-2 rounded-lg max-w-full border border-white/10" />}
 
                                                         {msg.suggestedPrompt && (
                                                             <div className="mt-3 pt-3 border-t border-white/10 space-y-2 text-left">
-                                                                <div className="bg-black/20 p-2 rounded text-[9px] text-gray-400 italic line-clamp-3 select-all">
+                                                                <div className="bg-black/20 p-2 rounded text-[9px] text-gray-400 italic line-clamp-4 select-all">
                                                                     {msg.suggestedPrompt}
                                                                 </div>
                                                                 <button
                                                                     onClick={() => {
                                                                         setVisualPrompt(msg.suggestedPrompt!);
                                                                     }}
-                                                                    className="w-full py-1.5 bg-[var(--color-primary)]/20 text-[var(--color-primary)] rounded-lg text-[10px] font-black hover:bg-[var(--color-primary)]/30 transition-all flex items-center justify-center gap-1.5"
+                                                                    className="w-full py-2 bg-[var(--color-primary)]/20 text-[var(--color-primary)] rounded-lg text-[10px] font-black hover:bg-[var(--color-primary)]/30 transition-all flex items-center justify-center gap-1.5"
                                                                 >
                                                                     <Check size={12} strokeWidth={3} />
-                                                                    프롬프트에 적용
+                                                                    프롬프트 적용
                                                                 </button>
                                                             </div>
                                                         )}
@@ -718,9 +784,20 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                                         )}
                                         {isChatLoading && <div className="flex justify-start"><div className="bg-white/5 px-4 py-2 rounded-2xl animate-pulse"><Loader2 size={12} className="animate-spin text-gray-400" /></div></div>}
                                     </div>
-                                    <div className="px-6 py-4 flex items-center gap-3">
-                                        <input onKeyDown={e => e.key === 'Enter' && handleChatSend()} value={chatInput} onChange={e => setChatInput(e.target.value)} type="text" placeholder={chatIntent === 'image' ? "마스킹 영역이나 이미지 전체에 대한 수정 지시..." : "현재 프롬프트 개선을 위한 요청 입력..."} className="flex-1 bg-white/[0.03] border border-white/10 rounded-2xl px-5 py-3 text-xs text-white outline-none focus:border-[var(--color-primary)] transition-all" />
-                                        <button onClick={handleChatSend} disabled={isChatLoading || !chatInput.trim()} className="p-3 bg-[var(--color-primary)] text-black rounded-2xl hover:scale-110 active:scale-95 transition-all shadow-xl disabled:opacity-30"><Send size={20} /></button>
+                                    <div className="p-6 border-t border-white/5 bg-black/20">
+                                        <div className="flex items-center gap-3">
+                                            <input
+                                                onKeyDown={e => e.key === 'Enter' && handleChatSend()}
+                                                value={chatInput}
+                                                onChange={e => setChatInput(e.target.value)}
+                                                type="text"
+                                                placeholder={chatIntent === 'image' ? "수정 지시..." : "프롬프트 개선 요청..."}
+                                                className="flex-1 bg-white/[0.03] border border-white/10 rounded-2xl px-5 py-3 text-xs text-white outline-none focus:border-[var(--color-primary)] transition-all"
+                                            />
+                                            <button onClick={handleChatSend} disabled={isChatLoading || !chatInput.trim()} className="p-3 bg-[var(--color-primary)] text-black rounded-2xl hover:scale-110 active:scale-95 transition-all shadow-xl disabled:opacity-30">
+                                                <Send size={20} />
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

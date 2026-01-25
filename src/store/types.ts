@@ -264,6 +264,7 @@ export interface ProjectData {
     aspectRatio: AspectRatio;
     apiKeys: ApiKeys;
     chatHistory: ChatMessage[];
+    productionChatHistory?: ChatMessage[]; // NEW: For Step 3 Assistant Director
 
     // Step 2: Style & Asset Definition
     masterStyle: MasterStyle;
