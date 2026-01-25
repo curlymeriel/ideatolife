@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Wand2, Download, Check, Loader2, ImageIcon, Maximize2, Sparkles, Send, Tag, Plus, Trash2, MessageSquare, Image, ChevronDown } from 'lucide-react';
+import { X, Wand2, Download, Check, Loader2, ImageIcon, Maximize2, Sparkles, Send, Plus, Trash2, MessageSquare, Image, ChevronDown } from 'lucide-react';
 import { generateImage, editImageWithChat } from '../services/imageGen';
 import { generateText } from '../services/gemini';
 import { resolveUrl } from '../utils/imageStorage';

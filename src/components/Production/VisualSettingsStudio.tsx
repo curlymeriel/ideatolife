@@ -2,10 +2,11 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import ReactDOM from 'react-dom';
 import {
     X, Wand2, Loader2, ImageIcon, Plus, Send,
-    Sparkles, RotateCcw, Film, Image, Trash2, Check
+    Sparkles, RotateCcw, Film, Image, Trash2, Check, Layers
 } from 'lucide-react';
 import { ImageCropModal } from '../ImageCropModal';
 import { InteractiveImageViewer } from '../InteractiveImageViewer';
+import { CompositionEditor } from './CompositionEditor';
 import { resolveUrl, isIdbUrl } from '../../utils/imageStorage';
 import { generateText } from '../../services/gemini';
 import type { ScriptCut } from '../../services/gemini';
@@ -28,6 +29,7 @@ interface ChatMessage {
     role: 'user' | 'assistant';
     content: string;
     image?: string;
+    suggestedPrompt?: string;
     timestamp: number;
 }
 
@@ -124,6 +126,9 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
     const draftFileInputRef = useRef<HTMLInputElement>(null);
     const wasOpenRef = useRef(false);
     const [resolvedCandidates, setResolvedCandidates] = useState<Array<{ id: number, url: string, index: number }>>([]);
+
+    // Tab state for switching between visual settings and composition editor
+    const [activeTab, setActiveTab] = useState<'visual' | 'composition'>('visual');
 
     // ========================================================================
     // MEMOS
@@ -287,13 +292,52 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                     setDraftHistory(prev => [...prev, result.image!]);
                     setSelectedDraft(result.image);
                 }
-                setChatMessages(prev => [...prev, { id: `msg-${Date.now()}`, role: 'assistant', content: result.explanation || 'Modified.', image: result.image, timestamp: Date.now() }]);
+                setChatMessages(prev => [...prev, { id: `msg-${Date.now()}`, role: 'assistant', content: result.explanation || '이미지가 수정되었습니다.', image: result.image, timestamp: Date.now() }]);
             } else {
-                const res = await generateText(`Current: ${visualPrompt}\nEdit: ${chatInput}\nOutput only SUGGESTED_PROMPT: [prompt]`, apiKey);
-                const match = res?.match(/SUGGESTED_PROMPT:\s*(.+)/s);
-                if (match) setVisualPrompt(match[1].trim());
+                const systemPrompt = "You are a visual director. Help the user refine their image generation prompt. Output a JSON with two fields: 'suggested_prompt' (the improved English prompt) and 'explanation' (a concise 1-2 sentence summary of what was changed and why, written in KOREAN).";
+                const userQuery = `Current Prompt: ${visualPrompt}\nUser Request: ${chatInput}\nProvide the refined prompt and Korean explanation.`;
+
+                const res = await generateText(userQuery, apiKey, undefined, undefined, systemPrompt);
+
+                try {
+                    // Try to parse JSON if AI follows instructions
+                    const jsonMatch = res?.match(/\{[\s\S]*\}/);
+                    if (jsonMatch) {
+                        const parsed = JSON.parse(jsonMatch[0]);
+                        setChatMessages(prev => [...prev, {
+                            id: `msg-${Date.now()}`,
+                            role: 'assistant',
+                            content: parsed.explanation || '프롬프트를 다음과 같이 개선해보았습니다.',
+                            suggestedPrompt: parsed.suggested_prompt,
+                            timestamp: Date.now()
+                        }]);
+                    } else {
+                        // Fallback: search for SUGGESTED_PROMPT tag or use raw text
+                        const match = res?.match(/SUGGESTED_PROMPT:\s*(.+?)(?:\n|$)/s);
+                        if (match) {
+                            setChatMessages(prev => [...prev, {
+                                id: `msg-${Date.now()}`,
+                                role: 'assistant',
+                                content: '프롬프트 수정안을 제시합니다.',
+                                suggestedPrompt: match[1].trim(),
+                                timestamp: Date.now()
+                            }]);
+                        } else {
+                            setChatMessages(prev => [...prev, { id: `msg-${Date.now()}`, role: 'assistant', content: res || '수정되었습니다.', timestamp: Date.now() }]);
+                        }
+                    }
+                } catch (e) {
+                    setChatMessages(prev => [...prev, { id: `msg-${Date.now()}`, role: 'assistant', content: '응답을 처리하는 중 오류가 발생했습니다.', timestamp: Date.now() }]);
+                }
             }
-        } catch { /* error */ } finally { setIsChatLoading(false); }
+        } catch (error) {
+            setChatMessages(prev => [...prev, { id: `msg-${Date.now()}`, role: 'assistant', content: '요청을 처리하는 중 오류가 발생했습니다.', timestamp: Date.now() }]);
+        } finally {
+            setIsChatLoading(false);
+            setTimeout(() => {
+                chatContainerRef.current?.scrollTo({ top: chatContainerRef.current.scrollHeight, behavior: 'smooth' });
+            }, 100);
+        }
     };
 
     const handleCropSelected = () => { if (selectedDraft) { setImageToCrop(selectedDraft); setShowCropModal(true); } };
@@ -427,8 +471,32 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                     </div>
                 </div>
 
-                {/* NEW: SPEAKER & DIALOGUE CENTER SECTION */}
-                <div className="flex-1 flex flex-col items-center justify-center max-w-2xl px-4 overflow-hidden border-x border-white/5">
+                {/* TAB SWITCHER */}
+                <div className="flex items-center gap-1 p-1 bg-white/5 rounded-2xl border border-white/10">
+                    <button
+                        onClick={() => setActiveTab('visual')}
+                        className={`px-5 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all ${activeTab === 'visual'
+                            ? 'bg-[var(--color-primary)] text-black shadow-lg'
+                            : 'text-gray-400 hover:text-white hover:bg-white/5'
+                            }`}
+                    >
+                        <Sparkles size={14} />
+                        비주얼 설정
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('composition')}
+                        className={`px-5 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all ${activeTab === 'composition'
+                            ? 'bg-purple-500 text-white shadow-lg'
+                            : 'text-gray-400 hover:text-white hover:bg-white/5'
+                            }`}
+                    >
+                        <Layers size={14} />
+                        구도 수정
+                    </button>
+                </div>
+
+                {/* SPEAKER & DIALOGUE CENTER SECTION */}
+                <div className="flex-1 flex flex-col items-center justify-center max-w-md px-4 overflow-hidden border-x border-white/5">
                     <div className="flex items-center gap-2 mb-1">
                         <span className="text-[10px] font-black text-[var(--color-primary)] uppercase tracking-widest bg-[var(--color-primary)]/10 px-2 py-0.5 rounded">SPEAKER</span>
                         <span className="text-sm font-bold text-white truncate">{initialSpeaker}</span>
@@ -447,182 +515,218 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
             </div>
 
             <div className="flex-1 flex overflow-hidden">
-                {/* LEFT PANEL: References & Tooling */}
-                <div className="w-[420px] border-r border-white/5 flex flex-col bg-black/20 shrink-0">
-                    <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
-                        {/* Reference Assets */}
-                        <section className="space-y-4">
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                                    <Image size={14} /> Reference Assets
-                                </h3>
-                                <button onClick={() => fileInputRef.current?.click()} className="p-1 px-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-[10px] font-bold text-gray-400 transition-all flex items-center gap-2">
-                                    <Plus size={12} /> ADD
-                                    <input ref={fileInputRef} type="file" onChange={(e) => { handleAddReference(e); (e.target as any).value = null; }} className="hidden" />
-                                </button>
-                            </div>
+                {/* COMPOSITION EDITOR TAB */}
+                {activeTab === 'composition' ? (
+                    <CompositionEditor
+                        imageUrl={selectedDraft}
+                        prompt={visualPrompt}
+                        aspectRatio={aspectRatio}
+                        apiKey={apiKey}
+                        onApply={(newImageUrl) => {
+                            setDraftHistory(prev => [...prev, newImageUrl]);
+                            setSelectedDraft(newImageUrl);
+                            setActiveTab('visual');
+                        }}
+                        onClose={() => setActiveTab('visual')}
+                    />
+                ) : (
+                    <>
+                        {/* LEFT PANEL: References & Tooling */}
+                        <div className="w-[420px] border-r border-white/5 flex flex-col bg-black/20 shrink-0">
+                            <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
+                                {/* Reference Assets */}
+                                <section className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                                            <Image size={14} /> Reference Assets
+                                        </h3>
+                                        <button onClick={() => fileInputRef.current?.click()} className="p-1 px-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-[10px] font-bold text-gray-400 transition-all flex items-center gap-2">
+                                            <Plus size={12} /> ADD
+                                            <input ref={fileInputRef} type="file" onChange={(e) => { handleAddReference(e); (e.target as any).value = null; }} className="hidden" />
+                                        </button>
+                                    </div>
 
-                            <div className="grid grid-cols-1 gap-4">
-                                {taggedReferences.map((ref, idx) => (
-                                    <div key={ref.id} className="relative group/ref bg-white/[0.03] border border-white/10 rounded-2xl overflow-hidden p-3 transition-all hover:border-white/20">
-                                        <div className="flex gap-4">
-                                            <div className="w-24 h-24 shrink-0 relative rounded-xl overflow-hidden border border-white/10">
-                                                <div className="absolute top-1 left-1 z-10 px-1.5 py-0.5 bg-black/80 backdrop-blur-md rounded text-[9px] font-black text-[var(--color-primary)]">#{idx + 1}</div>
-                                                <img src={ref.url} className="w-full h-full object-cover" />
-                                                <button onClick={() => handleRemoveRef(ref.id)} className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-md opacity-0 group-hover/ref:opacity-100 transition-all"><Trash2 size={12} /></button>
-                                            </div>
-                                            <div className="flex-1 space-y-2">
-                                                <div className="text-[10px] font-black text-gray-500 border-b border-white/5 pb-1 uppercase tracking-tighter truncate">{ref.name || 'External Asset'}</div>
-                                                <div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto pr-1">
-                                                    {referenceCategories.map(cat => (
-                                                        <button key={cat.value} onClick={() => handleToggleRefCategory(ref.id, cat.value)}
-                                                            className={`px-2 py-0.5 rounded text-[9px] font-bold border transition-all ${ref.categories.includes(cat.value) ? 'bg-[var(--color-primary)] text-black border-[var(--color-primary)] shadow-lg' : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'}`}>
-                                                            {cat.label}
-                                                        </button>
-                                                    ))}
+                                    <div className="grid grid-cols-1 gap-4">
+                                        {taggedReferences.map((ref, idx) => (
+                                            <div key={ref.id} className="relative group/ref bg-white/[0.03] border border-white/10 rounded-2xl overflow-hidden p-3 transition-all hover:border-white/20">
+                                                <div className="flex gap-4">
+                                                    <div className="w-24 h-24 shrink-0 relative rounded-xl overflow-hidden border border-white/10">
+                                                        <div className="absolute top-1 left-1 z-10 px-1.5 py-0.5 bg-black/80 backdrop-blur-md rounded text-[9px] font-black text-[var(--color-primary)]">#{idx + 1}</div>
+                                                        <img src={ref.url} className="w-full h-full object-cover" />
+                                                        <button onClick={() => handleRemoveRef(ref.id)} className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-md opacity-0 group-hover/ref:opacity-100 transition-all"><Trash2 size={12} /></button>
+                                                    </div>
+                                                    <div className="flex-1 space-y-2">
+                                                        <div className="text-[10px] font-black text-gray-500 border-b border-white/5 pb-1 uppercase tracking-tighter truncate">{ref.name || 'External Asset'}</div>
+                                                        <div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto pr-1">
+                                                            {referenceCategories.map(cat => (
+                                                                <button key={cat.value} onClick={() => handleToggleRefCategory(ref.id, cat.value)}
+                                                                    className={`px-2 py-0.5 rounded text-[9px] font-bold border transition-all ${ref.categories.includes(cat.value) ? 'bg-[var(--color-primary)] text-black border-[var(--color-primary)] shadow-lg' : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'}`}>
+                                                                    {cat.label}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
+                                        ))}
+                                        {taggedReferences.length === 0 && <div className="py-10 border border-dashed border-white/10 rounded-2xl flex flex-col items-center justify-center text-gray-600"><ImageIcon size={32} className="mb-2 opacity-10" /><p className="text-[10px] font-bold">참조 이미지가 없습니다.</p></div>}
+                                    </div>
+                                </section>
+
+                                {/* Candidate Assets */}
+                                {resolvedCandidates.length > 0 && (
+                                    <section className="space-y-4 pt-4 border-t border-white/5">
+                                        <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">Candidates from other cuts</h3>
+                                        <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                                            {resolvedCandidates.map((c: any) => (
+                                                <button key={c.id} onClick={() => handleAddCandidate(c.url)} className="w-16 h-16 shrink-0 rounded-lg overflow-hidden border border-white/10 hover:border-[var(--color-primary)] transition-all relative group">
+                                                    <img src={c.url} className="w-full h-full object-cover" />
+                                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center"><Plus size={16} className="text-white" /></div>
+                                                    <div className="absolute bottom-0 left-0 right-0 py-0.5 bg-black/60 text-[8px] font-bold text-white text-center">CUT {c.index}</div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </section>
+                                )}
+
+                                {/* Prompt & Translation */}
+                                <section className="space-y-4 pt-4 border-t border-white/5">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2"><Sparkles size={16} className="text-[var(--color-primary)]" /> Image Prompt</h3>
+                                        <div className="flex gap-2">
+                                            <button onClick={handleAIExpand} disabled={isExpanding} className="text-[10px] font-black text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-3 py-1.5 rounded-xl hover:bg-[var(--color-primary)]/20 transition-all flex items-center gap-2 shadow-lg">
+                                                {isExpanding ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} AI 레퍼런스 확장
+                                            </button>
+                                            <button onClick={handleResetToOriginal} className="text-[10px] font-bold text-gray-400 hover:text-white transition-all"><RotateCcw size={14} /></button>
                                         </div>
                                     </div>
-                                ))}
-                                {taggedReferences.length === 0 && <div className="py-10 border border-dashed border-white/10 rounded-2xl flex flex-col items-center justify-center text-gray-600"><ImageIcon size={32} className="mb-2 opacity-10" /><p className="text-[10px] font-bold">참조 이미지가 없습니다.</p></div>}
+                                    <textarea value={visualPrompt} onChange={e => setVisualPrompt(e.target.value)} placeholder="Visual prompt..." className="w-full h-40 bg-white/[0.03] border border-white/10 rounded-2xl p-4 text-sm text-gray-200 outline-none focus:border-[var(--color-primary)] transition-all leading-relaxed custom-scrollbar" />
+                                    <div className="bg-black/40 border border-white/5 rounded-xl p-4 relative">
+                                        <span className="absolute top-2 right-3 text-[9px] font-black text-gray-600 tracking-tighter">KOREAN TRANSLATION</span>
+                                        <p className="text-[11px] text-gray-400 italic leading-relaxed pt-2">{visualPromptKR || (isTranslating ? '번역 중...' : '자동 번역 대기...')}</p>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-purple-400 uppercase tracking-widest flex items-center gap-2"><Film size={14} /> Motion Direction</label>
+                                        <textarea value={videoPrompt} onChange={e => setVideoPrompt(e.target.value)} placeholder="Camera panning, movement..." className="w-full h-20 bg-purple-500/5 border border-purple-500/10 rounded-xl p-3 text-[11px] text-gray-400 outline-none focus:border-purple-500/30 transition-all resize-none" />
+                                    </div>
+                                </section>
                             </div>
-                        </section>
 
-                        {/* Candidate Assets */}
-                        {resolvedCandidates.length > 0 && (
-                            <section className="space-y-4 pt-4 border-t border-white/5">
-                                <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">Candidates from other cuts</h3>
-                                <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
-                                    {resolvedCandidates.map((c: any) => (
-                                        <button key={c.id} onClick={() => handleAddCandidate(c.url)} className="w-16 h-16 shrink-0 rounded-lg overflow-hidden border border-white/10 hover:border-[var(--color-primary)] transition-all relative group">
-                                            <img src={c.url} className="w-full h-full object-cover" />
-                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center"><Plus size={16} className="text-white" /></div>
-                                            <div className="absolute bottom-0 left-0 right-0 py-0.5 bg-black/60 text-[8px] font-bold text-white text-center">CUT {c.index}</div>
-                                        </button>
+                            {/* Left Bottom: Generator */}
+                            <div className="p-6 border-t border-white/5 bg-white/[0.01]">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="flex gap-1.5 p-1 bg-white/5 rounded-xl border border-white/5">
+                                        {['PRO', 'STD'].map(m => (
+                                            <button key={m} onClick={() => setAiModel(m as any)} className={`px-4 py-1.5 rounded-lg text-[10px] font-black transition-all ${aiModel === m ? 'bg-white/20 text-white shadow-lg scale-105' : 'text-gray-500 hover:text-gray-300'}`}>{m}</button>
+                                        ))}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 p-1 bg-white/5 rounded-xl border border-white/5">
+                                        {[1, 2, 3, 4].map(n => (
+                                            <button key={n} onClick={() => setDraftCount(n)} className={`w-8 h-7 rounded-lg text-[10px] font-black flex items-center justify-center transition-all ${draftCount === n ? 'bg-white/20 text-white shadow-lg scale-105' : 'text-gray-500 hover:text-gray-300'}`}>{n}</button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <button onClick={handleGenerate} disabled={isGenerating || !visualPrompt} className={`w-full py-4 rounded-2xl font-black text-base flex items-center justify-center gap-3 transition-all ${isGenerating ? 'bg-white/5 text-gray-500' : 'bg-gradient-to-r from-[var(--color-primary)] to-[#ff8c00] text-black shadow-2xl hover:brightness-110 active:scale-[0.98]'}`}>
+                                    {isGenerating ? <Loader2 size={24} className="animate-spin" /> : <Sparkles size={24} />}
+                                    {isGenerating ? 'GENERATING DRAFTS...' : 'GENERATE IMAGES'}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* CENTER AREA: Fullscreen Image Display & Draft Side-rail */}
+                        <div className="flex-1 flex overflow-hidden relative">
+                            {/* Draft Thumbnails Sidebar (Left of Preview) */}
+                            <div className="w-40 border-r border-white/5 bg-black/40 flex flex-col p-3 shrink-0 overflow-y-auto custom-scrollbar">
+                                <div className="flex items-center justify-between mb-3 px-1">
+                                    <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest leading-none">Drafts ({draftHistory.length})</span>
+                                    {draftHistory.length > 0 && (
+                                        <button onClick={handleClearHistory} className="text-[9px] font-bold text-red-500/70 hover:text-red-500 uppercase leading-none">Clear</button>
+                                    )}
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2 pb-2">
+                                    <button onClick={() => draftFileInputRef.current?.click()} className="aspect-square rounded-lg border border-dashed border-white/20 hover:border-white/40 flex items-center justify-center text-gray-500 hover:text-white transition-all relative group/add">
+                                        <Plus size={18} />
+                                        <input ref={draftFileInputRef} type="file" onChange={handleAddDraftManually} className="hidden" />
+                                        <div className="absolute inset-0 bg-white/5 opacity-0 group-hover/add:opacity-100 rounded-lg transition-opacity" />
+                                    </button>
+
+                                    {draftHistory.map((url, i) => (
+                                        <div key={i} className="relative group/draft">
+                                            <button onClick={() => setSelectedDraft(url)} className={`w-full aspect-square rounded-lg overflow-hidden border-2 transition-all ${selectedDraft === url ? 'border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/20 shadow-lg scale-[1.05]' : 'border-white/5 hover:border-white/20'}`}>
+                                                <img src={url} className="w-full h-full object-cover" />
+                                            </button>
+                                            <button onClick={() => handleAddDraftAsReference(url)} className="absolute -top-1 -right-1 p-1 bg-[var(--color-primary)] text-black rounded-full opacity-0 group-hover/draft:opacity-100 hover:scale-110 transition-all shadow-xl z-20">
+                                                <Plus size={10} strokeWidth={4} />
+                                            </button>
+                                        </div>
                                     ))}
                                 </div>
-                            </section>
-                        )}
+                            </div>
 
-                        {/* Prompt & Translation */}
-                        <section className="space-y-4 pt-4 border-t border-white/5">
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2"><Sparkles size={16} className="text-[var(--color-primary)]" /> Image Prompt</h3>
-                                <div className="flex gap-2">
-                                    <button onClick={handleAIExpand} disabled={isExpanding} className="text-[10px] font-black text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-3 py-1.5 rounded-xl hover:bg-[var(--color-primary)]/20 transition-all flex items-center gap-2 shadow-lg">
-                                        {isExpanding ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} AI 레퍼런스 확장
-                                    </button>
-                                    <button onClick={handleResetToOriginal} className="text-[10px] font-bold text-gray-400 hover:text-white transition-all"><RotateCcw size={14} /></button>
+                            <div className="flex-1 flex flex-col relative bg-black overflow-hidden">
+                                <div className="flex-1 relative">
+                                    {selectedDraft ? (
+                                        <InteractiveImageViewer src={selectedDraft} onMaskChange={setCurrentMask} onCrop={handleCropSelected} onClose={() => setSelectedDraft(null)} className="w-full h-full" />
+                                    ) : (
+                                        <div className="absolute inset-0 flex items-center justify-center opacity-20"><ImageIcon size={120} /></div>
+                                    )}
                                 </div>
-                            </div>
-                            <textarea value={visualPrompt} onChange={e => setVisualPrompt(e.target.value)} placeholder="Visual prompt..." className="w-full h-40 bg-white/[0.03] border border-white/10 rounded-2xl p-4 text-sm text-gray-200 outline-none focus:border-[var(--color-primary)] transition-all leading-relaxed custom-scrollbar" />
-                            <div className="bg-black/40 border border-white/5 rounded-xl p-4 relative">
-                                <span className="absolute top-2 right-3 text-[9px] font-black text-gray-600 tracking-tighter">KOREAN TRANSLATION</span>
-                                <p className="text-[11px] text-gray-400 italic leading-relaxed pt-2">{visualPromptKR || (isTranslating ? '번역 중...' : '자동 번역 대기...')}</p>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-purple-400 uppercase tracking-widest flex items-center gap-2"><Film size={14} /> Motion Direction</label>
-                                <textarea value={videoPrompt} onChange={e => setVideoPrompt(e.target.value)} placeholder="Camera panning, movement..." className="w-full h-20 bg-purple-500/5 border border-purple-500/10 rounded-xl p-3 text-[11px] text-gray-400 outline-none focus:border-purple-500/30 transition-all resize-none" />
-                            </div>
-                        </section>
-                    </div>
 
-                    {/* Left Bottom: Generator */}
-                    <div className="p-6 border-t border-white/5 bg-white/[0.01]">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="flex gap-1.5 p-1 bg-white/5 rounded-xl border border-white/5">
-                                {['PRO', 'STD'].map(m => (
-                                    <button key={m} onClick={() => setAiModel(m as any)} className={`px-4 py-1.5 rounded-lg text-[10px] font-black transition-all ${aiModel === m ? 'bg-white/20 text-white shadow-lg scale-105' : 'text-gray-500 hover:text-gray-300'}`}>{m}</button>
-                                ))}
-                            </div>
-                            <div className="flex items-center gap-1.5 p-1 bg-white/5 rounded-xl border border-white/5">
-                                {[1, 2, 3, 4].map(n => (
-                                    <button key={n} onClick={() => setDraftCount(n)} className={`w-8 h-7 rounded-lg text-[10px] font-black flex items-center justify-center transition-all ${draftCount === n ? 'bg-white/20 text-white shadow-lg scale-105' : 'text-gray-500 hover:text-gray-300'}`}>{n}</button>
-                                ))}
-                            </div>
-                        </div>
-                        <button onClick={handleGenerate} disabled={isGenerating || !visualPrompt} className={`w-full py-4 rounded-2xl font-black text-base flex items-center justify-center gap-3 transition-all ${isGenerating ? 'bg-white/5 text-gray-500' : 'bg-gradient-to-r from-[var(--color-primary)] to-[#ff8c00] text-black shadow-2xl hover:brightness-110 active:scale-[0.98]'}`}>
-                            {isGenerating ? <Loader2 size={24} className="animate-spin" /> : <Sparkles size={24} />}
-                            {isGenerating ? 'GENERATING DRAFTS...' : 'GENERATE IMAGES'}
-                        </button>
-                    </div>
-                </div>
-
-                {/* CENTER AREA: Fullscreen Image Display & Draft Side-rail */}
-                <div className="flex-1 flex overflow-hidden relative">
-                    {/* Draft Thumbnails Sidebar (Left of Preview) */}
-                    <div className="w-40 border-r border-white/5 bg-black/40 flex flex-col p-3 shrink-0 overflow-y-auto custom-scrollbar">
-                        <div className="flex items-center justify-between mb-3 px-1">
-                            <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest leading-none">Drafts ({draftHistory.length})</span>
-                            {draftHistory.length > 0 && (
-                                <button onClick={handleClearHistory} className="text-[9px] font-bold text-red-500/70 hover:text-red-500 uppercase leading-none">Clear</button>
-                            )}
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2 pb-2">
-                            <button onClick={() => draftFileInputRef.current?.click()} className="aspect-square rounded-lg border border-dashed border-white/20 hover:border-white/40 flex items-center justify-center text-gray-500 hover:text-white transition-all relative group/add">
-                                <Plus size={18} />
-                                <input ref={draftFileInputRef} type="file" onChange={handleAddDraftManually} className="hidden" />
-                                <div className="absolute inset-0 bg-white/5 opacity-0 group-hover/add:opacity-100 rounded-lg transition-opacity" />
-                            </button>
-
-                            {draftHistory.map((url, i) => (
-                                <div key={i} className="relative group/draft">
-                                    <button onClick={() => setSelectedDraft(url)} className={`w-full aspect-square rounded-lg overflow-hidden border-2 transition-all ${selectedDraft === url ? 'border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/20 shadow-lg scale-[1.05]' : 'border-white/5 hover:border-white/20'}`}>
-                                        <img src={url} className="w-full h-full object-cover" />
-                                    </button>
-                                    <button onClick={() => handleAddDraftAsReference(url)} className="absolute -top-1 -right-1 p-1 bg-[var(--color-primary)] text-black rounded-full opacity-0 group-hover/draft:opacity-100 hover:scale-110 transition-all shadow-xl z-20">
-                                        <Plus size={10} strokeWidth={4} />
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="flex-1 flex flex-col relative bg-black overflow-hidden">
-                        <div className="flex-1 relative">
-                            {selectedDraft ? (
-                                <InteractiveImageViewer src={selectedDraft} onMaskChange={setCurrentMask} onCrop={handleCropSelected} onClose={() => setSelectedDraft(null)} className="w-full h-full" />
-                            ) : (
-                                <div className="absolute inset-0 flex items-center justify-center opacity-20"><ImageIcon size={120} /></div>
-                            )}
-                        </div>
-
-                        {/* AI Editor Panel (Bottom Center) - Floating or Docked */}
-                        <div className="h-44 border-t border-white/5 bg-[#0a0a0a] flex flex-col mx-auto w-full max-w-4xl rounded-t-3xl shadow-[0_-20px_50px_rgba(0,0,0,0.5)] z-20">
-                            <div className="flex items-center justify-between px-6 py-2 border-b border-white/5 bg-white/[0.02] rounded-t-3xl">
-                                <div className="flex items-center gap-2">
-                                    <Sparkles size={16} className="text-[var(--color-primary)]" />
-                                    <span className="text-sm font-black text-white tracking-widest uppercase">AI 편집장</span>
-                                </div>
-                                <div className="flex bg-black/40 p-1 rounded-xl border border-white/5 gap-1">
-                                    <button onClick={() => setChatIntent('image')} className={`px-4 py-1 rounded-lg text-[9px] font-black transition-all flex items-center gap-1.5 ${chatIntent === 'image' ? 'bg-[var(--color-primary)] text-black' : 'text-gray-500'}`}><Image size={10} /> 이미지 부분 수정</button>
-                                    <button onClick={() => setChatIntent('prompt')} className={`px-4 py-1 rounded-lg text-[9px] font-black transition-all flex items-center gap-1.5 ${chatIntent === 'prompt' ? 'bg-[var(--color-primary)] text-black' : 'text-gray-500'}`}><Plus size={10} /> 프롬프트 정제</button>
-                                </div>
-                            </div>
-                            <div ref={chatContainerRef} className="flex-1 px-6 py-3 overflow-y-auto space-y-3 custom-scrollbar text-center">
-                                {chatMessages.length === 0 ? (
-                                    <div className="text-gray-700 text-[10px] font-bold uppercase tracking-widest py-8">결과물에 대한 지시사항을 입력하세요</div>
-                                ) : (
-                                    chatMessages.map(msg => (
-                                        <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                            <div className={`max-w-[70%] px-4 py-2 rounded-2xl text-[11px] leading-relaxed ${msg.role === 'user' ? 'bg-[var(--color-primary)] text-black font-bold' : 'bg-white/5 text-gray-300 border border-white/10'}`}>
-                                                {msg.content}
-                                                {msg.image && <img src={msg.image} className="mt-2 rounded-lg max-w-full border border-white/10" />}
-                                            </div>
+                                {/* AI Editor Panel (Bottom Center) - Floating or Docked */}
+                                <div className="h-44 border-t border-white/5 bg-[#0a0a0a] flex flex-col mx-auto w-full max-w-4xl rounded-t-3xl shadow-[0_-20px_50px_rgba(0,0,0,0.5)] z-20">
+                                    <div className="flex items-center justify-between px-6 py-2 border-b border-white/5 bg-white/[0.02] rounded-t-3xl">
+                                        <div className="flex items-center gap-2">
+                                            <Sparkles size={16} className="text-[var(--color-primary)]" />
+                                            <span className="text-sm font-black text-white tracking-widest uppercase">AI 편집장</span>
                                         </div>
-                                    ))
-                                )}
-                                {isChatLoading && <div className="flex justify-start"><div className="bg-white/5 px-4 py-2 rounded-2xl animate-pulse"><Loader2 size={12} className="animate-spin text-gray-400" /></div></div>}
-                            </div>
-                            <div className="px-6 py-4 flex items-center gap-3">
-                                <input onKeyDown={e => e.key === 'Enter' && handleChatSend()} value={chatInput} onChange={e => setChatInput(e.target.value)} type="text" placeholder={chatIntent === 'image' ? "마스킹 영역이나 이미지 전체에 대한 수정 지시..." : "현재 프롬프트 개선을 위한 요청 입력..."} className="flex-1 bg-white/[0.03] border border-white/10 rounded-2xl px-5 py-3 text-xs text-white outline-none focus:border-[var(--color-primary)] transition-all" />
-                                <button onClick={handleChatSend} disabled={isChatLoading || !chatInput.trim()} className="p-3 bg-[var(--color-primary)] text-black rounded-2xl hover:scale-110 active:scale-95 transition-all shadow-xl disabled:opacity-30"><Send size={20} /></button>
+                                        <div className="flex bg-black/40 p-1 rounded-xl border border-white/5 gap-1">
+                                            <button onClick={() => setChatIntent('image')} className={`px-4 py-1 rounded-lg text-[9px] font-black transition-all flex items-center gap-1.5 ${chatIntent === 'image' ? 'bg-[var(--color-primary)] text-black' : 'text-gray-500'}`}><Image size={10} /> 이미지 부분 수정</button>
+                                            <button onClick={() => setChatIntent('prompt')} className={`px-4 py-1 rounded-lg text-[9px] font-black transition-all flex items-center gap-1.5 ${chatIntent === 'prompt' ? 'bg-[var(--color-primary)] text-black' : 'text-gray-500'}`}><Plus size={10} /> 프롬프트 정제</button>
+                                        </div>
+                                    </div>
+                                    <div ref={chatContainerRef} className="flex-1 px-6 py-3 overflow-y-auto space-y-3 custom-scrollbar text-center">
+                                        {chatMessages.length === 0 ? (
+                                            <div className="text-gray-700 text-[10px] font-bold uppercase tracking-widest py-8">결과물에 대한 지시사항을 입력하세요</div>
+                                        ) : (
+                                            chatMessages.map(msg => (
+                                                <div key={msg.id} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                                                    <div className={`max-w-[85%] px-4 py-2 rounded-2xl text-[11px] leading-relaxed relative group ${msg.role === 'user' ? 'bg-[var(--color-primary)] text-black font-bold' : 'bg-white/5 text-gray-300 border border-white/10'}`}>
+                                                        {msg.content}
+                                                        {msg.image && <img src={msg.image} className="mt-2 rounded-lg max-w-full border border-white/10" />}
+
+                                                        {msg.suggestedPrompt && (
+                                                            <div className="mt-3 pt-3 border-t border-white/10 space-y-2 text-left">
+                                                                <div className="bg-black/20 p-2 rounded text-[9px] text-gray-400 italic line-clamp-3 select-all">
+                                                                    {msg.suggestedPrompt}
+                                                                </div>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setVisualPrompt(msg.suggestedPrompt!);
+                                                                    }}
+                                                                    className="w-full py-1.5 bg-[var(--color-primary)]/20 text-[var(--color-primary)] rounded-lg text-[10px] font-black hover:bg-[var(--color-primary)]/30 transition-all flex items-center justify-center gap-1.5"
+                                                                >
+                                                                    <Check size={12} strokeWidth={3} />
+                                                                    프롬프트에 적용
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <span className="text-[8px] text-gray-700 mt-1 px-2">{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                </div>
+                                            ))
+                                        )}
+                                        {isChatLoading && <div className="flex justify-start"><div className="bg-white/5 px-4 py-2 rounded-2xl animate-pulse"><Loader2 size={12} className="animate-spin text-gray-400" /></div></div>}
+                                    </div>
+                                    <div className="px-6 py-4 flex items-center gap-3">
+                                        <input onKeyDown={e => e.key === 'Enter' && handleChatSend()} value={chatInput} onChange={e => setChatInput(e.target.value)} type="text" placeholder={chatIntent === 'image' ? "마스킹 영역이나 이미지 전체에 대한 수정 지시..." : "현재 프롬프트 개선을 위한 요청 입력..."} className="flex-1 bg-white/[0.03] border border-white/10 rounded-2xl px-5 py-3 text-xs text-white outline-none focus:border-[var(--color-primary)] transition-all" />
+                                        <button onClick={handleChatSend} disabled={isChatLoading || !chatInput.trim()} className="p-3 bg-[var(--color-primary)] text-black rounded-2xl hover:scale-110 active:scale-95 transition-all shadow-xl disabled:opacity-30"><Send size={20} /></button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </div>
+                    </>
+                )}
             </div>
 
             {showCropModal && imageToCrop && <ImageCropModal imageSrc={imageToCrop} aspectRatio={aspectRatio} onConfirm={handleCropConfirm} onCancel={() => setShowCropModal(false)} />}

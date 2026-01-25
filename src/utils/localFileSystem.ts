@@ -14,7 +14,8 @@ export interface LocalFolderHandle {
  */
 export async function selectLocalFolder(): Promise<LocalFolderHandle | null> {
     try {
-        const handle = await window.showDirectoryPicker({
+        // File System Access API - experimental, type assertion needed
+        const handle = await (window as any).showDirectoryPicker({
             mode: 'readwrite'
         });
         return {
