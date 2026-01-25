@@ -456,13 +456,22 @@ export const Step2_Style: React.FC = () => {
                             {isSeriesOpen && (
                                 <div className="bg-[var(--color-bg)]/50">
                                     {safeCharacters?.map((char: any) => (
-                                        <div key={char.id} className="group/item relative">
+                                        <div key={`series-char-${char.id}`} className="group/item relative px-2 py-0.5">
                                             <button onClick={() => { setSelectedAssetId(char.id); setSelectedAssetType('character'); setSelectedAssetName(char.name); }}
-                                                className={`w-full flex items-center justify-between p-3 pl-6 border-l-2 transition-all ${selectedAssetId === char.id ? 'bg-[var(--color-primary)]/10 border-l-[var(--color-primary)] border-r-4 border-r-[var(--color-primary)] text-white' : 'border-l-transparent border-r-4 border-r-transparent text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-                                                <div className="flex items-center gap-2"><User size={14} /><span className="font-medium">{char.name}</span></div>
+                                                className={`w-full flex items-center justify-between p-3 pl-4 rounded-xl transition-all ${selectedAssetId === char.id ? 'bg-[var(--color-primary)]/10 text-white ring-1 ring-[var(--color-primary)]/30' : 'bg-transparent text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+                                                <div className="flex items-center gap-2">
+                                                    <div className={`p-1.5 rounded-lg ${selectedAssetId === char.id ? 'bg-[var(--color-primary)] text-black' : 'bg-white/5 text-gray-500'}`}>
+                                                        <User size={14} />
+                                                    </div>
+                                                    <span className="font-medium truncate max-w-[120px]">{char.name}</span>
+                                                </div>
                                                 <div className="flex items-center gap-2">
                                                     {isDefined(char.id) ? <CheckCircle size={16} className="text-green-500" /> : <div className="w-4 h-4 rounded-full border border-gray-600" />}
                                                 </div>
+                                                {/* Selected Indicator Dot */}
+                                                {selectedAssetId === char.id && (
+                                                    <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-[var(--color-primary)] rounded-full shadow-[0_0_10px_var(--color-primary)]" />
+                                                )}
                                             </button>
                                             <button
                                                 onClick={(e) => {
@@ -473,7 +482,7 @@ export const Step2_Style: React.FC = () => {
                                                         if (selectedAssetId === char.id) setSelectedAssetId('master_style');
                                                     }
                                                 }}
-                                                className="absolute right-12 top-1/2 -translate-y-1/2 p-1.5 text-gray-600 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-all"
+                                                className="absolute right-14 top-1/2 -translate-y-1/2 p-1.5 text-gray-600 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-all z-20"
                                                 title="레지스트리에서 삭제"
                                             >
                                                 <Trash2 size={14} />
@@ -481,13 +490,22 @@ export const Step2_Style: React.FC = () => {
                                         </div>
                                     ))}
                                     {safeSeriesLocations?.map((loc: any) => (
-                                        <div key={loc.id} className="group/item relative">
+                                        <div key={`series-loc-${loc.id}`} className="group/item relative px-2 py-0.5">
                                             <button onClick={() => { setSelectedAssetId(loc.id); setSelectedAssetType('location'); setSelectedAssetName(loc.name); }}
-                                                className={`w-full flex items-center justify-between p-3 pl-6 border-l-2 transition-all ${selectedAssetId === loc.id ? 'bg-[var(--color-primary)]/10 border-l-[var(--color-primary)] border-r-4 border-r-[var(--color-primary)] text-white' : 'border-l-transparent border-r-4 border-r-transparent text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-                                                <div className="flex items-center gap-2 text-left"><MapPin size={14} /><span className="font-medium">{loc.name}</span></div>
+                                                className={`w-full flex items-center justify-between p-3 pl-4 rounded-xl transition-all ${selectedAssetId === loc.id ? 'bg-[var(--color-primary)]/10 text-white ring-1 ring-[var(--color-primary)]/30' : 'border-l-transparent border-r-4 border-r-transparent text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+                                                <div className="flex items-center gap-2 text-left">
+                                                    <div className={`p-1.5 rounded-lg ${selectedAssetId === loc.id ? 'bg-[var(--color-primary)] text-black' : 'bg-white/5 text-gray-500'}`}>
+                                                        <MapPin size={14} />
+                                                    </div>
+                                                    <span className="font-medium truncate max-w-[120px]">{loc.name}</span>
+                                                </div>
                                                 <div className="flex items-center gap-2">
                                                     {isDefined(loc.id) ? <CheckCircle size={16} className="text-green-500" /> : <div className="w-4 h-4 rounded-full border border-gray-600" />}
                                                 </div>
+                                                {/* Selected Indicator Dot */}
+                                                {selectedAssetId === loc.id && (
+                                                    <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-[var(--color-primary)] rounded-full shadow-[0_0_10px_var(--color-primary)]" />
+                                                )}
                                             </button>
                                             <button
                                                 onClick={(e) => {
@@ -498,7 +516,7 @@ export const Step2_Style: React.FC = () => {
                                                         if (selectedAssetId === loc.id) setSelectedAssetId('master_style');
                                                     }
                                                 }}
-                                                className="absolute right-12 top-1/2 -translate-y-1/2 p-1.5 text-gray-600 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-all"
+                                                className="absolute right-14 top-1/2 -translate-y-1/2 p-1.5 text-gray-600 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-all z-20"
                                                 title="레지스트리에서 삭제"
                                             >
                                                 <Trash2 size={14} />
@@ -506,13 +524,22 @@ export const Step2_Style: React.FC = () => {
                                         </div>
                                     ))}
                                     {safeSeriesProps?.map((prop: any) => (
-                                        <div key={prop.id} className="group/item relative">
+                                        <div key={`series-prop-${prop.id}`} className="group/item relative px-2 py-0.5">
                                             <button onClick={() => { setSelectedAssetId(prop.id); setSelectedAssetType('prop'); setSelectedAssetName(prop.name); }}
-                                                className={`w-full flex items-center justify-between p-3 pl-6 border-l-2 transition-all ${selectedAssetId === prop.id ? 'bg-[var(--color-primary)]/10 border-l-[var(--color-primary)] border-r-4 border-r-[var(--color-primary)] text-white' : 'border-l-transparent border-r-4 border-r-transparent text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-                                                <div className="flex items-center gap-2 text-left"><Package size={14} /><span className="font-medium">{prop.name}</span></div>
+                                                className={`w-full flex items-center justify-between p-3 pl-4 rounded-xl transition-all ${selectedAssetId === prop.id ? 'bg-[var(--color-primary)]/10 text-white ring-1 ring-[var(--color-primary)]/30' : 'border-l-transparent border-r-4 border-r-transparent text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+                                                <div className="flex items-center gap-2 text-left">
+                                                    <div className={`p-1.5 rounded-lg ${selectedAssetId === prop.id ? 'bg-[var(--color-primary)] text-black' : 'bg-white/5 text-gray-500'}`}>
+                                                        <Package size={14} />
+                                                    </div>
+                                                    <span className="font-medium truncate max-w-[120px]">{prop.name}</span>
+                                                </div>
                                                 <div className="flex items-center gap-2">
                                                     {isDefined(prop.id) ? <CheckCircle size={16} className="text-green-500" /> : <div className="w-4 h-4 rounded-full border border-gray-600" />}
                                                 </div>
+                                                {/* Selected Indicator Dot */}
+                                                {selectedAssetId === prop.id && (
+                                                    <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-[var(--color-primary)] rounded-full shadow-[0_0_10px_var(--color-primary)]" />
+                                                )}
                                             </button>
                                             <button
                                                 onClick={(e) => {
@@ -523,7 +550,7 @@ export const Step2_Style: React.FC = () => {
                                                         if (selectedAssetId === prop.id) setSelectedAssetId('master_style');
                                                     }
                                                 }}
-                                                className="absolute right-12 top-1/2 -translate-y-1/2 p-1.5 text-gray-600 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-all"
+                                                className="absolute right-14 top-1/2 -translate-y-1/2 p-1.5 text-gray-600 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-all z-20"
                                                 title="레지스트리에서 삭제"
                                             >
                                                 <Trash2 size={14} />
@@ -541,13 +568,22 @@ export const Step2_Style: React.FC = () => {
                             {isEpisodeOpen && (
                                 <div className="bg-[var(--color-bg)]/50">
                                     {safeEpisodeCharacters?.map((char: any) => (
-                                        <div key={char.id} className="group/item relative">
-                                            <button key={char.id} onClick={() => { setSelectedAssetId(char.id); setSelectedAssetType('character'); setSelectedAssetName(char.name); }}
-                                                className={`w-full flex items-center justify-between p-3 pl-6 border-l-2 transition-all ${selectedAssetId === char.id ? 'bg-[var(--color-primary)]/10 border-l-[var(--color-primary)] border-r-4 border-r-[var(--color-primary)] text-white' : 'border-l-transparent border-r-4 border-r-transparent text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-                                                <div className="flex items-center gap-2"><User size={14} /><span className="font-medium">{char.name}</span></div>
+                                        <div key={`ep-char-${char.id}`} className="group/item relative px-2 py-0.5">
+                                            <button onClick={() => { setSelectedAssetId(char.id); setSelectedAssetType('character'); setSelectedAssetName(char.name); }}
+                                                className={`w-full flex items-center justify-between p-3 pl-4 rounded-xl transition-all ${selectedAssetId === char.id ? 'bg-[var(--color-primary)]/10 text-white ring-1 ring-[var(--color-primary)]/30' : 'border-l-transparent border-r-4 border-r-transparent text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+                                                <div className="flex items-center gap-2">
+                                                    <div className={`p-1.5 rounded-lg ${selectedAssetId === char.id ? 'bg-[var(--color-primary)] text-black' : 'bg-white/5 text-gray-500'}`}>
+                                                        <User size={14} />
+                                                    </div>
+                                                    <span className="font-medium truncate max-w-[120px]">{char.name}</span>
+                                                </div>
                                                 <div className="flex items-center gap-2">
                                                     {isDefined(char.id) ? <CheckCircle size={16} className="text-green-500" /> : <div className="w-4 h-4 rounded-full border border-gray-600" />}
                                                 </div>
+                                                {/* Selected Indicator Dot */}
+                                                {selectedAssetId === char.id && (
+                                                    <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-[var(--color-primary)] rounded-full shadow-[0_0_10px_var(--color-primary)]" />
+                                                )}
                                             </button>
                                             <button
                                                 onClick={(e) => {
@@ -558,7 +594,7 @@ export const Step2_Style: React.FC = () => {
                                                         if (selectedAssetId === char.id) setSelectedAssetId('master_style');
                                                     }
                                                 }}
-                                                className="absolute right-12 top-1/2 -translate-y-1/2 p-1.5 text-gray-600 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-all"
+                                                className="absolute right-14 top-1/2 -translate-y-1/2 p-1.5 text-gray-600 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-all z-20"
                                                 title="레지스트리에서 삭제"
                                             >
                                                 <Trash2 size={14} />
@@ -566,13 +602,22 @@ export const Step2_Style: React.FC = () => {
                                         </div>
                                     ))}
                                     {safeEpisodeLocations?.map((loc: any) => (
-                                        <div key={loc.id} className="group/item relative">
-                                            <button key={loc.id} onClick={() => { setSelectedAssetId(loc.id); setSelectedAssetType('location'); setSelectedAssetName(loc.name); }}
-                                                className={`w-full flex items-center justify-between p-3 pl-6 border-l-2 transition-all ${selectedAssetId === loc.id ? 'bg-[var(--color-primary)]/10 border-l-[var(--color-primary)] border-r-4 border-r-[var(--color-primary)] text-white' : 'border-l-transparent border-r-4 border-r-transparent text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-                                                <div className="flex items-center gap-2 text-left"><MapPin size={14} /><span className="font-medium">{loc.name}</span></div>
+                                        <div key={`ep-loc-${loc.id}`} className="group/item relative px-2 py-0.5">
+                                            <button onClick={() => { setSelectedAssetId(loc.id); setSelectedAssetType('location'); setSelectedAssetName(loc.name); }}
+                                                className={`w-full flex items-center justify-between p-3 pl-4 rounded-xl transition-all ${selectedAssetId === loc.id ? 'bg-[var(--color-primary)]/10 text-white ring-1 ring-[var(--color-primary)]/30' : 'border-l-transparent border-r-4 border-r-transparent text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+                                                <div className="flex items-center gap-2 text-left">
+                                                    <div className={`p-1.5 rounded-lg ${selectedAssetId === loc.id ? 'bg-[var(--color-primary)] text-black' : 'bg-white/5 text-gray-500'}`}>
+                                                        <MapPin size={14} />
+                                                    </div>
+                                                    <span className="font-medium truncate max-w-[120px]">{loc.name}</span>
+                                                </div>
                                                 <div className="flex items-center gap-2">
                                                     {isDefined(loc.id) ? <CheckCircle size={16} className="text-green-500" /> : <div className="w-4 h-4 rounded-full border border-gray-600" />}
                                                 </div>
+                                                {/* Selected Indicator Dot */}
+                                                {selectedAssetId === loc.id && (
+                                                    <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-[var(--color-primary)] rounded-full shadow-[0_0_10px_var(--color-primary)]" />
+                                                )}
                                             </button>
                                             <button
                                                 onClick={(e) => {
@@ -583,7 +628,7 @@ export const Step2_Style: React.FC = () => {
                                                         if (selectedAssetId === loc.id) setSelectedAssetId('master_style');
                                                     }
                                                 }}
-                                                className="absolute right-12 top-1/2 -translate-y-1/2 p-1.5 text-gray-600 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-all"
+                                                className="absolute right-14 top-1/2 -translate-y-1/2 p-1.5 text-gray-600 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-all z-20"
                                                 title="레지스트리에서 삭제"
                                             >
                                                 <Trash2 size={14} />
@@ -591,13 +636,22 @@ export const Step2_Style: React.FC = () => {
                                         </div>
                                     ))}
                                     {safeEpisodeProps?.map((prop: any) => (
-                                        <div key={prop.id} className="group/item relative">
-                                            <button key={prop.id} onClick={() => { setSelectedAssetId(prop.id); setSelectedAssetType('prop'); setSelectedAssetName(prop.name); }}
-                                                className={`w-full flex items-center justify-between p-3 pl-6 border-l-2 transition-all ${selectedAssetId === prop.id ? 'bg-[var(--color-primary)]/10 border-l-[var(--color-primary)] border-r-4 border-r-[var(--color-primary)] text-white' : 'border-l-transparent border-r-4 border-r-transparent text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-                                                <div className="flex items-center gap-2 text-left"><Package size={14} /><span className="font-medium">{prop.name}</span></div>
+                                        <div key={`ep-prop-${prop.id}`} className="group/item relative px-2 py-0.5">
+                                            <button onClick={() => { setSelectedAssetId(prop.id); setSelectedAssetType('prop'); setSelectedAssetName(prop.name); }}
+                                                className={`w-full flex items-center justify-between p-3 pl-4 rounded-xl transition-all ${selectedAssetId === prop.id ? 'bg-[var(--color-primary)]/10 text-white ring-1 ring-[var(--color-primary)]/30' : 'border-l-transparent border-r-4 border-r-transparent text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+                                                <div className="flex items-center gap-2 text-left">
+                                                    <div className={`p-1.5 rounded-lg ${selectedAssetId === prop.id ? 'bg-[var(--color-primary)] text-black' : 'bg-white/5 text-gray-500'}`}>
+                                                        <Package size={14} />
+                                                    </div>
+                                                    <span className="font-medium truncate max-w-[120px]">{prop.name}</span>
+                                                </div>
                                                 <div className="flex items-center gap-2">
                                                     {isDefined(prop.id) ? <CheckCircle size={16} className="text-green-500" /> : <div className="w-4 h-4 rounded-full border border-gray-600" />}
                                                 </div>
+                                                {/* Selected Indicator Dot */}
+                                                {selectedAssetId === prop.id && (
+                                                    <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-[var(--color-primary)] rounded-full shadow-[0_0_10px_var(--color-primary)]" />
+                                                )}
                                             </button>
                                             <button
                                                 onClick={(e) => {
@@ -608,7 +662,7 @@ export const Step2_Style: React.FC = () => {
                                                         if (selectedAssetId === prop.id) setSelectedAssetId('master_style');
                                                     }
                                                 }}
-                                                className="absolute right-12 top-1/2 -translate-y-1/2 p-1.5 text-gray-600 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-all"
+                                                className="absolute right-14 top-1/2 -translate-y-1/2 p-1.5 text-gray-600 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-all z-20"
                                                 title="레지스트리에서 삭제"
                                             >
                                                 <Trash2 size={14} />

@@ -5,7 +5,7 @@ import type { ScriptCut, ChatMessage } from '../services/gemini';
 // ====================
 
 export type TtsModel = 'standard' | 'wavenet' | 'neural2' | 'chirp3-hd' | 'gemini-tts';
-export type ImageModel = 'gemini-1.5-flash' | 'gemini-2.0-flash-exp' | 'gemini-2.0-flash' | 'gemini-2.5-flash' | 'gemini-2.5-pro' | 'gemini-3.0-pro';
+export type ImageModel = 'gemini-1.5-flash' | 'gemini-2.0-flash-exp' | 'gemini-2.0-flash' | 'gemini-2.5-flash' | 'gemini-2.5-flash-image' | 'gemini-2.5-pro' | 'gemini-3.0-pro' | 'gemini-3-pro-image-preview' | 'gemini-3-flash-preview';
 export type AspectRatio = '16:9' | '9:16' | '1:1' | '2.35:1' | '4:5' | '21:9' | '4:3' | '3:4';
 
 export interface ApiKeys {
@@ -347,6 +347,7 @@ export interface StrategyInsight {
     trendSnapshotId?: string;
     competitorSnapshotId?: string;
     executiveSummary: string;
+    masterStyle?: string; // NEW: Recommended visual style for the channel
     keyOpportunities: string[];
     keyRisks: string[];
     recommendedPillars: { pillarName: string; reason: string }[];

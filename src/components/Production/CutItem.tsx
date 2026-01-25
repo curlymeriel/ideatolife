@@ -1,9 +1,11 @@
 import { memo, useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { Mic, Loader2, Play, Square, ImageIcon as Image, X, Plus, HelpCircle, Waves, Volume2, Settings, Trash2, Sparkles, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react';
+import Draggable from 'react-draggable';
+import { Mic, Loader2, Play, Square, ImageIcon as Image, X, Plus, HelpCircle, Waves, Volume2, Settings, Trash2, Sparkles, ChevronDown, ChevronUp, RotateCcw, Languages, Maximize2 } from 'lucide-react';
 import type { ScriptCut } from '../../services/gemini';
 import { getMatchedAssets } from '../../utils/assetUtils';
 import { resolveUrl, isIdbUrl } from '../../utils/imageStorage';
 import type { AspectRatio } from '../../store/types';
+import { VisualSettingsStudio } from './VisualSettingsStudio';
 
 // Comprehensive Visual prompt helper terms (영문약어: 한글설명)
 const VISUAL_TERMS = {
@@ -105,6 +107,7 @@ export interface CutItemProps {
     onInsert: (id: number) => void;
     onOpenSfxModal?: (cutId: number) => void;
     onRemoveSfx?: (cutId: number) => void;
+    apiKey?: string;
 }
 
 export const CutItem = memo(({
@@ -130,13 +133,15 @@ export const CutItem = memo(({
     onAddAsset,
     onRemoveAsset,
     onAddReference,
+    onRemoveReference,
     onToggleAssetSelector,
     onSave,
     onDelete,
     onMove,
     onInsert,
     onOpenSfxModal,
-    onRemoveSfx
+    onRemoveSfx,
+    apiKey
 }: CutItemProps) => {
     // Local state for debounced inputs
     const [localDialogue, setLocalDialogue] = useState(cut.dialogue || '');
@@ -145,6 +150,7 @@ export const CutItem = memo(({
     const isFocusedRef = useRef(false);
     const isActingDirectionFocusedRef = useRef(false);
     const isVisualPromptFocusedRef = useRef(false);
+    const visualPanelRef = useRef<HTMLDivElement>(null);
 
     // Resolved URLs for IndexedDB
     const [resolvedImageUrl, setResolvedImageUrl] = useState<string | undefined>(undefined);
@@ -156,6 +162,10 @@ export const CutItem = memo(({
     const [showTermHelper, setShowTermHelper] = useState(false);
     const [isAudioManualExpand, setIsAudioManualExpand] = useState(false);
     const [isVisualManualExpand, setIsVisualManualExpand] = useState(false);
+    // Image preview starts collapsed when no image exists
+    const [isImagePreviewExpanded, setIsImagePreviewExpanded] = useState(!!cut.finalImageUrl);
+    // Visual Settings Studio fullscreen modal
+    const [showVisualStudio, setShowVisualStudio] = useState(false);
 
     // Track image loading state to detect completion
     const prevImageLoadingRef = useRef(imageLoading);
@@ -163,6 +173,7 @@ export const CutItem = memo(({
         // When loading finishes (true -> false) and we actually have an image
         if (prevImageLoadingRef.current && !imageLoading && cut.finalImageUrl) {
             setIsVisualManualExpand(true);
+            setIsImagePreviewExpanded(true); // Auto-expand preview when image is generated
         }
         prevImageLoadingRef.current = imageLoading;
     }, [imageLoading, cut.finalImageUrl]);
@@ -181,7 +192,6 @@ export const CutItem = memo(({
     }, [isImageConfirmed]);
 
     const isAudioVisible = isAudioManualExpand;
-    const isVisualVisible = isVisualManualExpand;
 
     // Sync local state with cut changes (but not while editing)
     useEffect(() => {
@@ -262,19 +272,36 @@ export const CutItem = memo(({
         onUpdateCut(cut.id, { videoPrompt: basePrompt + motionSuffix });
     }, [cut.id, cut.visualPrompt, onUpdateCut]);
 
+    // Auto-translate visual prompt (KR -> EN)
+    const handleAutoTranslate = useCallback(() => {
+        // TODO: Implement actual translation logic using Gemini service
+        // For now, this is a placeholder to restore the UI element
+        console.log('[CutItem] Auto-translate triggered');
+        const current = localVisualPrompt;
+        if (!current) return;
+        // Mock behavior or call a parent handler if available
+        // onTranslate?.(cut.id, current);
+    }, [cut.id, localVisualPrompt]);
+
     // Asset matching
     const manualAssets = cut.referenceAssetIds || [];
     const allMatchedResults = useMemo(() =>
         getMatchedAssets(cut.visualPrompt || '', manualAssets, assetDefinitions, cut.id),
         [cut.visualPrompt, manualAssets, assetDefinitions, cut.id]);
 
-    // Extract actual asset objects - getMatchedAssets returns { asset, isManual }[]
-    const autoMatchedAssets = allMatchedResults
-        .filter((match: any) => !match.isManual)
-        .map((match: any) => match.asset);
-    const manualAssetObjs = assetDefinitions
-        ? manualAssets.map(id => assetDefinitions[id]).filter(Boolean)
-        : [];
+    // Extract actual asset objects
+    // 1. Manual always comes directly from the ID list
+    const manualAssetObjs = useMemo(() => {
+        if (!assetDefinitions) return [];
+        return manualAssets.map(id => assetDefinitions[id]).filter(Boolean);
+    }, [manualAssets, assetDefinitions]);
+
+    // 2. Auto matches come from the helper, but we filter out ones that are already manually added
+    const autoMatchedAssets = useMemo(() => {
+        return allMatchedResults
+            .map((match: any) => match.asset)
+            .filter((asset: any) => !manualAssets.includes(asset.id));
+    }, [allMatchedResults, manualAssets]);
 
     // Unique assets for selector
     const uniqueAssets = useMemo(() => {
@@ -387,41 +414,262 @@ export const CutItem = memo(({
                 </div>
             </div>
 
-            {/* 2. IMAGE PREVIEW: Large Layout */}
-            <div className={`relative w-full ${getAspectRatioClass(aspectRatio)} bg-black/40 overflow-hidden border-b border-white/10 flex items-center justify-center group/img`}>
+            {/* 2. IMAGE PREVIEW: Collapsible - Default collapsed when no image */}
+            {hasImage || isImagePreviewExpanded ? (
+                <div className={`relative w-full ${getAspectRatioClass(aspectRatio)} bg-black/40 border-b border-white/10 flex items-center justify-center group/img`}>
 
 
-                {hasImage ? (
-                    <img src={resolvedImageUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
-                ) : (
-                    <div className="flex flex-col items-center gap-3 text-gray-600">
-                        <Image size={48} className="opacity-20" />
+                    {hasImage ? (
+                        <img src={resolvedImageUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
+                    ) : (
+                        <div className="flex flex-col items-center gap-3 text-gray-600">
+                            <Image size={48} className="opacity-20" />
+                            <button
+                                onClick={() => onGenerateImage(cut.id, cut.visualPrompt)}
+                                disabled={imageLoading || isImageConfirmed}
+                                className="px-4 py-2 bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 rounded-lg text-xs font-bold hover:bg-[var(--color-primary)]/20 transition-all"
+                            >
+                                {imageLoading ? <Loader2 size={14} className="animate-spin" /> : 'Generate Image'}
+                            </button>
+                            <button
+                                onClick={() => setIsImagePreviewExpanded(false)}
+                                className="text-[10px] text-gray-500 hover:text-gray-400 transition-colors"
+                            >
+                                Collapse
+                            </button>
+                        </div>
+                    )}
+                    {/* Overlay duration */}
+                    <div className="absolute bottom-2 right-2 bg-black/60 backdrop-blur-md px-2 py-1 rounded text-[10px] font-bold text-white border border-white/10 uppercase tracking-tighter z-10">
+                        {displayTotalDuration}s
+                    </div>
+
+                    {/* NEW: Visual Settings Toggle (Top-Right) */}
+                    <div className="absolute top-2 right-2 z-30 opacity-0 group-hover/img:opacity-100 transition-opacity flex gap-1">
                         <button
-                            onClick={() => onGenerateImage(cut.id, cut.visualPrompt)}
-                            disabled={imageLoading || isImageConfirmed}
-                            className="px-4 py-2 bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 rounded-lg text-xs font-bold hover:bg-[var(--color-primary)]/20 transition-all"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setShowVisualStudio(true);
+                            }}
+                            className="p-1.5 rounded-full backdrop-blur-md border transition-all bg-[var(--color-primary)] text-black border-[var(--color-primary)] hover:scale-110"
+                            title="Open Visual Studio"
                         >
-                            {imageLoading ? <Loader2 size={14} className="animate-spin" /> : 'Generate Image'}
+                            <Maximize2 size={14} />
+                        </button>
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setIsVisualManualExpand(!isVisualManualExpand);
+                            }}
+                            className={`p-1.5 rounded-full backdrop-blur-md border transition-all ${isVisualManualExpand ? 'bg-[var(--color-primary)] text-black border-[var(--color-primary)]' : 'bg-black/40 text-white border-white/10 hover:bg-white/10'}`}
+                            title="Quick Settings"
+                        >
+                            <Settings size={14} />
                         </button>
                     </div>
-                )}
-                {/* Overlay duration */}
-                <div className="absolute bottom-2 right-2 bg-black/60 backdrop-blur-md px-2 py-1 rounded text-[10px] font-bold text-white border border-white/10 uppercase tracking-tighter">
-                    {displayTotalDuration}s
+
+                    {/* Floating Image Regen Button (visible on hover) */}
+                    {hasImage && !isImageConfirmed && (
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center gap-2 z-20 pointer-events-none">
+                            <button
+                                onClick={() => onRegenerateImage(cut.id)}
+                                disabled={imageLoading}
+                                className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-md border border-white/20 transition-all pointer-events-auto"
+                            >
+                                {imageLoading ? <Loader2 size={18} className="animate-spin" /> : <RotateCcw size={18} />}
+                            </button>
+                        </div>
+                    )}
+                    {/* Floating Visual Settings Panel - MOVED HERE */}
+                    {isVisualManualExpand && (
+                        /* @ts-ignore */
+                        <Draggable nodeRef={visualPanelRef} bounds="parent" handle=".drag-handle" defaultPosition={{ x: 10, y: 10 }}>
+                            <div ref={visualPanelRef} className="absolute z-40 w-[90%] max-w-[400px] bg-black/80 backdrop-blur-md rounded-xl border border-white/20 shadow-2xl overflow-hidden flex flex-col">
+                                {/* Header / Drag Handle */}
+                                <div className="drag-handle bg-white/10 px-3 py-2 cursor-move flex items-center justify-between border-b border-white/10">
+                                    <div className="flex items-center gap-2">
+                                        <Image size={12} className="text-[var(--color-primary)]" />
+                                        <span className="text-[10px] font-bold text-white uppercase tracking-widest">Visual Settings</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button onClick={() => setIsVisualManualExpand(false)} className="text-gray-400 hover:text-white">
+                                            <ChevronDown size={14} />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Content */}
+                                <div className="p-3 space-y-3 max-h-[300px] overflow-y-auto custom-scrollbar">
+                                    {/* Row 1: Prompt + Generate Button */}
+                                    <div className="flex gap-2 items-start">
+                                        <div className="flex-1 space-y-1">
+                                            <div className="flex items-center justify-between">
+                                                <label className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">Visual Prompt</label>
+                                                <button
+                                                    onClick={() => setShowTermHelper(!showTermHelper)}
+                                                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold border ${showTermHelper ? 'bg-[var(--color-primary)] text-black border-[var(--color-primary)]' : 'bg-white/5 text-gray-500 border-white/5 hover:text-white'}`}
+                                                >
+                                                    <HelpCircle size={8} /> Terms
+                                                </button>
+                                                <button
+                                                    onClick={handleAutoTranslate}
+                                                    className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold border bg-white/5 text-gray-500 border-white/5 hover:text-white"
+                                                    title="Auto Translate (KR->EN)"
+                                                >
+                                                    <Languages size={8} /> Auto
+                                                </button>
+                                            </div>
+                                            <textarea
+                                                className={`w-full bg-black/50 border border-white/10 rounded-lg px-2 py-1.5 text-gray-300 text-[11px] min-h-[50px] focus:border-[var(--color-primary)] outline-none resize-none ${isImageConfirmed ? 'opacity-50' : ''}`}
+                                                value={localVisualPrompt}
+                                                disabled={isImageConfirmed}
+                                                onChange={(e) => handleVisualPromptChange(e.target.value)}
+                                                onFocus={() => { isVisualPromptFocusedRef.current = true; }}
+                                                onBlur={() => { isVisualPromptFocusedRef.current = false; onSave(); }}
+                                                placeholder="Scene description..."
+                                            />
+                                            {cut.visualPromptKR && (
+                                                <div className="bg-white/5 border border-white/5 rounded px-2 py-1.5 mt-1">
+                                                    <div className="flex items-center gap-1 mb-0.5">
+                                                        <Languages size={10} className="text-gray-500" />
+                                                        <span className="text-[9px] font-bold text-gray-500 uppercase">KR Translation</span>
+                                                    </div>
+                                                    <p className="text-[10px] text-gray-300 whitespace-pre-wrap">{cut.visualPromptKR}</p>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Generate Button - Right Side */}
+                                        <div className="pt-4">
+                                            <button
+                                                onClick={() => hasImage ? onRegenerateImage(cut.id) : onGenerateImage(cut.id, cut.visualPrompt)}
+                                                disabled={imageLoading || isImageConfirmed}
+                                                className={`flex flex-col items-center justify-center w-12 h-12 rounded-xl transition-all border ${imageLoading ? 'bg-[var(--color-primary)]/20 animate-pulse border-[var(--color-primary)]/40' :
+                                                    isImageConfirmed ? 'opacity-30 cursor-not-allowed border-white/5' :
+                                                        'bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/20 border-[var(--color-primary)]/20'
+                                                    }`}
+                                                title={hasImage ? "Regenerate Image" : "Generate Image"}
+                                            >
+                                                {imageLoading ? <Loader2 size={18} className="animate-spin" /> :
+                                                    hasImage ? <RotateCcw size={18} /> :
+                                                        <Sparkles size={18} />}
+                                                <span className="text-[8px] font-bold mt-1">{hasImage ? 'RETRY' : 'GEN'}</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Helper Popup */}
+                                    {showTermHelper && (
+                                        <div className="bg-[#1a1a1a] border border-[var(--color-primary)]/30 rounded-lg p-2 grid grid-cols-2 gap-1 max-h-[150px] overflow-y-auto">
+                                            {Object.values(VISUAL_TERMS).flat(1).slice(0, 10).map(item => (
+                                                <button
+                                                    key={item.term}
+                                                    onClick={() => {
+                                                        const newPrompt = cut.visualPrompt ? `${cut.visualPrompt.trim()}, ${item.term}` : item.term;
+                                                        onUpdateCut(cut.id, { visualPrompt: newPrompt });
+                                                        setLocalVisualPrompt(newPrompt);
+                                                    }}
+                                                    className="text-[8px] text-left px-1.5 py-1 bg-white/5 hover:bg-[var(--color-primary)]/20 rounded text-gray-400 hover:text-white truncate"
+                                                    title={item.desc}
+                                                >
+                                                    {item.term}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* Reference Assets */}
+                                    <div className="space-y-1">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">Refs</label>
+                                            <button
+                                                onClick={() => onToggleAssetSelector(cut.id)}
+                                                className="text-[9px] text-[var(--color-primary)] hover:underline flex items-center gap-1"
+                                            >
+                                                <Plus size={8} /> Add
+                                            </button>
+                                        </div>
+                                        <div className="flex flex-wrap gap-1 items-center max-h-[60px] overflow-y-auto">
+                                            {autoMatchedAssets.map((asset: any) => (
+                                                <div key={asset.id} className="px-1.5 py-0.5 rounded bg-white/5 text-[8px] text-gray-500 border border-white/10 truncate max-w-[80px]">{asset.name}</div>
+                                            ))}
+                                            {manualAssetObjs.map((asset: any) => (
+                                                <div key={asset.id} className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[var(--color-primary)]/20 text-[8px] text-[var(--color-primary)] border border-[var(--color-primary)]/30">
+                                                    <span className="truncate max-w-[80px]">{asset.name}</span>
+                                                    <X size={8} className="cursor-pointer hover:text-red-400" onClick={() => onRemoveAsset(cut.id, asset.id)} />
+                                                </div>
+                                            ))}
+                                            {cut.referenceCutIds?.map((refId: number) => (
+                                                <div key={`ref-${refId}`} className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-500/20 text-[8px] text-purple-300 border border-purple-500/30">
+                                                    <span>Cut #{refId}</span>
+                                                    {onRemoveReference && <X size={8} className="cursor-pointer hover:text-red-400" onClick={() => onRemoveReference(cut.id, refId)} />}
+                                                </div>
+                                            ))}
+                                        </div>
+                                        {/* Dropdown */}
+                                        {showAssetSelector && (
+                                            <div className="absolute left-2 right-2 bottom-2 bg-[#222] rounded-lg border border-white/20 p-2 z-50 max-h-[150px] overflow-y-auto grid grid-cols-2 gap-1 shadow-2xl">
+                                                {uniqueAssets.map((asset: any) => (
+                                                    <button key={asset.id} onClick={() => onAddAsset(cut.id, asset.id)} className="text-left px-2 py-1 text-[9px] text-gray-300 hover:bg-white/10 rounded truncate flex items-center gap-2">
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] shrink-0" />
+                                                        {asset.name}
+                                                    </button>
+                                                ))}
+                                                {index > 0 && (
+                                                    <div className="col-span-2 mt-1 pt-1 border-t border-white/5">
+                                                        <div className="px-2 py-1 text-[8px] text-gray-500 font-bold uppercase">Previous Cuts</div>
+                                                        <div className="space-y-1">
+                                                            {localScript.slice(0, index).filter(c => c.finalImageUrl).map(prevCut => (
+                                                                <CutReferenceItem
+                                                                    key={prevCut.id}
+                                                                    cut={prevCut}
+                                                                    onSelect={(id) => {
+                                                                        if (onAddReference) onAddReference(cut.id, id);
+                                                                    }}
+                                                                />
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Motion Prompt */}
+                                    <div className="space-y-1">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-[9px] text-purple-400/70 uppercase font-bold tracking-wider">Motion</label>
+                                            <button onClick={handleAutoGenerateVideoPrompt} className="text-[8px] font-bold text-purple-400/80 hover:text-purple-400">AUTO</button>
+                                        </div>
+                                        <textarea
+                                            className="w-full bg-black/50 border border-purple-500/10 rounded-lg px-2 py-1 text-gray-400 text-[9px] min-h-[30px] focus:border-purple-500 outline-none resize-none"
+                                            value={cut.videoPrompt || ''}
+                                            disabled={isImageConfirmed}
+                                            onChange={(e) => onUpdateCut(cut.id, { videoPrompt: e.target.value })}
+                                            onBlur={onSave}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </Draggable>
+                    )}
                 </div>
-                {/* Floating Image Regen Button (visible on hover) */}
-                {hasImage && !isImageConfirmed && (
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                        <button
-                            onClick={() => onRegenerateImage(cut.id)}
-                            disabled={imageLoading}
-                            className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-md border border-white/20 transition-all"
-                        >
-                            {imageLoading ? <Loader2 size={18} className="animate-spin" /> : <RotateCcw size={18} />}
-                        </button>
+            ) : (
+                /* Collapsed Image Preview - Click to expand */
+                <button
+                    onClick={() => setIsImagePreviewExpanded(true)}
+                    className="w-full flex items-center justify-between px-4 py-2 bg-black/20 border-b border-white/10 hover:bg-black/30 transition-colors group/expand"
+                >
+                    <div className="flex items-center gap-2 text-gray-500 group-hover/expand:text-gray-400">
+                        <Image size={14} />
+                        <span className="text-[10px] font-bold uppercase tracking-widest">Image Preview</span>
                     </div>
-                )}
-            </div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-gray-600">{displayTotalDuration}s</span>
+                        <ChevronDown size={14} className="text-gray-600" />
+                    </div>
+                </button>
+            )}
 
             {/* 3. SPEAKER & SCRIPT AREA */}
             <div className="p-4 space-y-4">
@@ -653,165 +901,59 @@ export const CutItem = memo(({
                         </div>
                     )}
 
-                    {/* Visual Details Toggle */}
-                    <button
-                        onClick={() => setIsVisualManualExpand(!isVisualManualExpand)}
-                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all ${isVisualManualExpand ? 'bg-white/10' : 'hover:bg-white/5'}`}
-                    >
-                        <div className="flex items-center gap-2">
-                            <Image size={12} className="text-gray-400" />
-                            <span className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">Visual Settings</span>
-                        </div>
-                        <ChevronDown size={14} className={`text-gray-500 transition-transform ${isVisualManualExpand ? 'rotate-180' : ''}`} />
-                    </button>
-
-                    {isVisualVisible && (
-                        <div className="px-2 pb-4 space-y-5 animate-in slide-in-from-top-1 duration-200">
-                            {/* Visual Prompt Section */}
-                            <div className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <label className="text-[10px] text-gray-500 uppercase font-bold block ml-1 tracking-wider">📷 Visual Prompt</label>
-                                    <button
-                                        onClick={() => setShowTermHelper(!showTermHelper)}
-                                        className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold transition-all border ${showTermHelper ? 'bg-[var(--color-primary)] text-black border-[var(--color-primary)]' : 'bg-white/5 text-gray-500 border-white/5 hover:text-white'}`}
-                                    >
-                                        <HelpCircle size={10} /> Helper
-                                    </button>
-                                </div>
-
-                                <div className="relative">
-                                    <textarea
-                                        className={`w-full bg-[rgba(0,0,0,0.3)] border border-white/10 rounded-lg px-3 py-2 text-gray-300 text-[11px] min-h-[60px] focus:border-[var(--color-primary)] outline-none resize-none transition-all ${isImageConfirmed ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                        value={localVisualPrompt}
-                                        disabled={isImageConfirmed}
-                                        onChange={(e) => handleVisualPromptChange(e.target.value)}
-                                        onFocus={() => { isVisualPromptFocusedRef.current = true; }}
-                                        onBlur={() => {
-                                            isVisualPromptFocusedRef.current = false;
-                                            onSave();
-                                        }}
-                                        placeholder="Visual description (English)..."
-                                    />
-                                    {showTermHelper && (
-                                        <div className="absolute bottom-full right-0 mb-2 w-[280px] max-h-[220px] bg-[#1a1a1a] border border-[var(--color-primary)]/30 rounded-lg shadow-2xl z-[100] overflow-y-auto p-2">
-                                            <div className="flex items-center justify-between mb-2 pb-1 border-b border-white/10">
-                                                <span className="text-[9px] text-[var(--color-primary)] font-bold uppercase">Term Helper</span>
-                                                <button onClick={() => setShowTermHelper(false)}><X size={10} /></button>
-                                            </div>
-                                            {/* Simplified term list */}
-                                            <div className="flex flex-wrap gap-1">
-                                                {Object.values(VISUAL_TERMS).flat(1).slice(0, 15).map(item => (
-                                                    <button
-                                                        key={item.term}
-                                                        onClick={() => {
-                                                            const newPrompt = cut.visualPrompt ? `${cut.visualPrompt.trim()}, ${item.term}` : item.term;
-                                                            onUpdateCut(cut.id, { visualPrompt: newPrompt });
-                                                            setLocalVisualPrompt(newPrompt);
-                                                        }}
-                                                        className="text-[9px] px-1.5 py-0.5 bg-white/5 hover:bg-[var(--color-primary)]/20 rounded text-gray-400 hover:text-white border border-white/5"
-                                                    >
-                                                        {item.term}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                                {cut.visualPromptKR && (
-                                    <div className="text-[10px] text-gray-500 italic px-1">
-                                        {cut.visualPromptKR}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Reference Assets Row */}
-                            <div className="space-y-2">
-                                <label className="text-[10px] text-gray-500 uppercase font-bold block ml-1 tracking-wider">Referenced Assets</label>
-                                <div className="flex flex-wrap gap-1 items-center">
-                                    {autoMatchedAssets.map((asset: any) => (
-                                        <div key={asset.id} className="px-2 py-0.5 rounded bg-white/5 text-[9px] text-gray-500 border border-white/10">{asset.name}</div>
-                                    ))}
-                                    {manualAssetObjs.map((asset: any) => (
-                                        <div key={asset.id} className="flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--color-primary)]/20 text-[9px] text-[var(--color-primary)] border border-[var(--color-primary)]/30">
-                                            {asset.name}
-                                            <X size={8} className="cursor-pointer hover:text-red-400" onClick={() => onRemoveAsset(cut.id, asset.id)} />
-                                        </div>
-                                    ))}
-                                    <button
-                                        onClick={() => onToggleAssetSelector(cut.id)}
-                                        className="p-1 px-2 rounded bg-white/5 text-[9px] text-gray-500 border border-dashed border-white/10 hover:border-[var(--color-primary)]/50 transition-colors"
-                                    >
-                                        + Add Asset
-                                    </button>
-                                </div>
-
-                                {showAssetSelector && (
-                                    <div className="bg-black/40 rounded-lg p-2 border border-white/10 max-h-[120px] overflow-y-auto grid grid-cols-2 gap-1 animate-in fade-in duration-200">
-                                        {uniqueAssets.map((asset: any) => (
-                                            <button key={asset.id} onClick={() => onAddAsset(cut.id, asset.id)} className="w-full text-left px-2 py-1 text-[10px] text-gray-400 hover:bg-white/10 rounded truncate flex items-center gap-2">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] shrink-0" />
-                                                <span>{asset.name}</span>
-                                            </button>
-                                        ))}
-                                        {index > 0 && (
-                                            <div className="col-span-2 mt-1 pt-1 border-t border-white/5">
-                                                <div className="px-2 py-1 text-[8px] text-gray-500 font-bold uppercase">Previous Cuts</div>
-                                                <div className="space-y-1">
-                                                    {localScript.slice(0, index).filter(c => c.finalImageUrl).map(prevCut => (
-                                                        <CutReferenceItem
-                                                            key={prevCut.id}
-                                                            cut={prevCut}
-                                                            onSelect={(id) => {
-                                                                if (onAddReference) onAddReference(cut.id, id);
-                                                            }}
-                                                        />
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Video Motion Prompt */}
-                            <div className="space-y-2 pt-2 border-t border-white/5">
-                                <div className="flex items-center justify-between">
-                                    <label className="text-[10px] text-purple-400/70 uppercase font-bold block ml-1 tracking-wider">🎬 Motion Prompt</label>
-                                    <button onClick={handleAutoGenerateVideoPrompt} className="text-[9px] font-bold text-purple-400/80 hover:text-purple-400">✨ Auto-Generate</button>
-                                </div>
-                                <textarea
-                                    className={`w-full bg-[rgba(0,0,0,0.3)] border border-purple-500/10 rounded-lg px-3 py-2 text-gray-400 text-[10px] min-h-[40px] focus:border-purple-500 outline-none resize-none ${isImageConfirmed ? 'opacity-70' : ''}`}
-                                    value={cut.videoPrompt || ''}
-                                    disabled={isImageConfirmed}
-                                    onChange={(e) => onUpdateCut(cut.id, { videoPrompt: e.target.value })}
-                                    onBlur={onSave}
-                                    placeholder="Camera movement, actions..."
-                                />
-                            </div>
-                        </div>
-                    )}
+                    {/* Visual Settings Toggle Button REMOVED (Moved to Image Preview) */}
                 </div>
             </div>
 
-            {
-                hasRealAudio && resolvedAudioUrl && (
-                    <audio
-                        key={resolvedAudioUrl}
-                        id={`audio-${cut.id}`}
-                        src={resolvedAudioUrl || undefined}
-                        preload="auto"
-                        onLoadedMetadata={(e) => {
-                            console.log(`[CutItem ${cut.id}] 🎵 Audio metadata loaded: duration=${e.currentTarget.duration}s`);
-                            setActualAudioDuration(e.currentTarget.duration);
-                        }}
-                        onCanPlayThrough={() => console.log(`[CutItem ${cut.id}] ✅ Audio can play through`)}
-                        onError={(e) => console.error(`[CutItem ${cut.id}] ❌ Audio element error:`, e.currentTarget.error)}
-                    />
-                )
-            }
-        </div >
+            {hasRealAudio && resolvedAudioUrl && (
+                <audio
+                    key={resolvedAudioUrl}
+                    id={`audio-${cut.id}`}
+                    src={resolvedAudioUrl || undefined}
+                    preload="auto"
+                    onLoadedMetadata={(e) => {
+                        console.log(`[CutItem ${cut.id}] 🎵 Audio metadata loaded: duration=${e.currentTarget.duration}s`);
+                        setActualAudioDuration(e.currentTarget.duration);
+                    }}
+                    onCanPlayThrough={() => console.log(`[CutItem ${cut.id}] ✅ Audio can play through`)}
+                    onError={(e) => console.error(`[CutItem ${cut.id}] ❌ Audio element error:`, e.currentTarget.error)}
+                />
+            )}
+
+            {/* Visual Settings Studio Fullscreen Modal */}
+            {apiKey && (
+                <VisualSettingsStudio
+                    isOpen={showVisualStudio}
+                    onClose={() => setShowVisualStudio(false)}
+                    cutId={cut.id}
+                    cutIndex={index}
+                    initialVisualPrompt={cut.visualPrompt || ''}
+                    initialVisualPromptKR={cut.visualPromptKR}
+                    initialFinalImageUrl={cut.finalImageUrl}
+                    initialVideoPrompt={cut.videoPrompt}
+                    aspectRatio={aspectRatio}
+                    apiKey={apiKey}
+                    assetDefinitions={assetDefinitions}
+                    existingCuts={localScript}
+                    autoMatchedAssets={allMatchedResults.map((m: any) => m.asset).filter(Boolean)}
+                    manualAssetObjs={manualAssetObjs}
+                    initialSpeaker={cut.speaker}
+                    initialDialogue={cut.dialogue}
+                    onSave={(result) => {
+                        onUpdateCut(cut.id, {
+                            visualPrompt: result.visualPrompt,
+                            visualPromptKR: result.visualPromptKR,
+                            videoPrompt: result.videoPrompt,
+                            finalImageUrl: result.finalImageUrl || undefined,
+                        });
+                        onSave();
+                    }}
+                />
+            )}
+        </div>
     );
 });
+
 // Mini component for previous cut reference
 const CutReferenceItem = ({ cut, onSelect }: { cut: ScriptCut, onSelect: (id: number) => void }) => {
     const [imgUrl, setImgUrl] = useState('');

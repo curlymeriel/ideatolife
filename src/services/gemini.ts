@@ -127,13 +127,13 @@ export interface ProjectContext {
     masterStyle?: string;
 }
 
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
-const GEMINI_2_5_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 const GEMINI_3_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent';
-const GEMINI_3_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent'; // Requested by user
-const GEMINI_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent';
-const GEMINI_2_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent';
+const GEMINI_3_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent';
+const GEMINI_2_5_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+const GEMINI_2_0_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent';
+const GEMINI_1_5_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent';
 const GEMINI_1_5_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+const GEMINI_API_URL = GEMINI_2_5_FLASH_URL;
 
 import type { StrategicAnalysis, StrategyInsight, YouTubeTrendVideo, ChannelAnalysis, TrendAnalysisInsights } from '../store/types';
 
@@ -220,8 +220,16 @@ export const DEFAULT_SCRIPT_INSTRUCTIONS = `
         **ASSET NAME PRIORITY (CRITICAL FOR IMAGE CONSISTENCY):**
         - **ALWAYS use the EXACT asset names** from "Available Characters" and "Available Locations" lists.
         - **DO NOT TRANSLATE or ROMANIZE** the names. Keep them exactly as provided.
-        - ❌ BAD: "Close up of Cheolsu" (when asset name is "철수")
-        - ✅ GOOD: "Close up of 철수" (Mixed English/Korean is expected and required)
+        - **DO NOT MODIFY THE FORMAT** of asset names in ANY way:
+          • NO adding/removing parentheses: ❌ "강이수 (홈룩)" when name is "강이수 홈룩"
+          • NO reordering words: ❌ "홈룩 강이수" when name is "강이수 홈룩"
+          • NO adding/removing spaces: ❌ "강이수홈룩" when name is "강이수 홈룩"
+          • NO abbreviations: ❌ "강이수" when referring to "강이수 홈룩" or "강이수 오피스룩"
+        - **COPY-PASTE THE EXACT NAME** from the character list. Character-by-character match is REQUIRED.
+        - ❌ BAD: "Close up of 강이수 (홈룩)" (when asset name is "강이수 홈룩")
+        - ❌ BAD: "Close up of Gangisu Homelook" (romanization forbidden)
+        - ✅ GOOD: "Close up of 강이수 홈룩" (EXACT match)
+        - ✅ GOOD: "Medium shot of 퓨처 (Future), smirking" (EXACT match with original name)
         - DO NOT use pronouns (his, her, the, that) to refer to assets.
         - ❌ BAD: "his sanctuary", "the hero's workshop", "she enters the room"
         - ✅ GOOD: "Max Fisher's Sanctuary", "Kael standing in The Ancient Workshop", "Dr. Aris enters Rain-Soaked Street"
@@ -326,7 +334,8 @@ export const generateScript = async (
     storylineTable?: StorylineScene[],  // Use storyline as structure
     assetDefinitions?: Record<string, any>,  // NEW: Step 2 asset definitions
     customInstructions?: string, // NEW: Allow overriding instructions
-    existingScript?: ScriptCut[] // NEW: Pass existing script for context-aware regeneration
+    existingScript?: ScriptCut[], // NEW: Pass existing script for context-aware regeneration
+    preferredModel?: string // NEW: Optional preferred model name
 ): Promise<ScriptCut[]> => {
     if (!apiKey) {
         // Mock response
@@ -512,13 +521,28 @@ ${lockedCutsContext}
 ${customInstructions || DEFAULT_SCRIPT_INSTRUCTIONS}
 `;
 
-        const models = [
-            { name: 'Gemini 3 Pro (Preview)', url: GEMINI_3_PRO_URL }, // Priority 1: High Intelligence
-            { name: 'Gemini 3 Flash (Preview)', url: GEMINI_3_FLASH_URL }, // Priority 2: Fast Intelligence
-            { name: 'Gemini 2.5 Flash', url: GEMINI_API_URL }, // Priority 3: Balanced
-            { name: 'Gemini 1.5 Flash', url: GEMINI_1_5_FLASH_URL }, // Priority 4: Stable fallback
-            { name: 'Gemini 1.5 Pro', url: GEMINI_PRO_URL } // Priority 5: Last resort high quality
-        ];
+        const models = [];
+
+        // 1. If preferredModel is provided, try it first
+        if (preferredModel) {
+            let modelUrl = GEMINI_2_5_FLASH_URL;
+            if (preferredModel.includes('3-pro')) modelUrl = GEMINI_3_PRO_URL;
+            else if (preferredModel.includes('3-flash')) modelUrl = GEMINI_3_FLASH_URL;
+            else if (preferredModel.includes('2.5')) modelUrl = GEMINI_2_5_FLASH_URL;
+            else if (preferredModel.includes('2.0')) modelUrl = GEMINI_2_0_FLASH_URL;
+            else if (preferredModel.includes('pro')) modelUrl = GEMINI_1_5_PRO_URL;
+
+            models.push({ name: preferredModel, url: modelUrl });
+        }
+
+        // 2. Add fallbacks (2026 priority - stable models first)
+        models.push(
+            { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },  // Most stable
+            { name: 'Gemini 2.0 Flash', url: GEMINI_2_0_FLASH_URL },
+            { name: 'Gemini 3 Flash', url: GEMINI_3_FLASH_URL },
+            { name: 'Gemini 3 Pro', url: GEMINI_3_PRO_URL },
+            { name: 'Gemini 1.5 Flash', url: GEMINI_1_5_FLASH_URL }  // Replaced deprecated 1.5 Pro
+        );
 
         let lastError: any = null;
 
@@ -530,7 +554,7 @@ ${customInstructions || DEFAULT_SCRIPT_INSTRUCTIONS}
                     {
                         contents: [{ parts: [{ text: finalPrompt }] }]
                     },
-                    { timeout: 30000 } // 30 second timeout for faster failover
+                    { timeout: 120000 } // 120 second timeout for complex script generation
                 );
 
                 let generatedText = response.data.candidates[0].content.parts[0].text;
@@ -578,13 +602,24 @@ ${customInstructions || DEFAULT_SCRIPT_INSTRUCTIONS}
                     let rawSpeaker = cut.speaker || cut.character || cut.name || 'Narrator';
                     let speaker = 'Narrator'; // Default fallback
 
-                    // 1. Try exact match
-                    const exactMatch = validSpeakerNames.find(s => s === rawSpeaker);
+                    // Pre-process: Strip common suffixes like (Voice), (V.O.), etc.
+                    const cleanedRawSpeaker = rawSpeaker
+                        .replace(/\s*\(Voice\)/gi, '')
+                        .replace(/\s*\(V\.?O\.?\)/gi, '')
+                        .replace(/\s*\(내레이션\)/gi, '')
+                        .replace(/\s*\(나레이션\)/gi, '')
+                        .trim();
+
+                    // 1. Try exact match (case-sensitive)
+                    const exactMatch = validSpeakerNames.find(s => s === rawSpeaker || s === cleanedRawSpeaker);
                     if (exactMatch) {
                         speaker = exactMatch;
                     } else {
-                        // 2. Try case-insensitive fuzzy match
-                        const fuzzyMatch = validSpeakerNames.find(s => s.toLowerCase() === rawSpeaker.toLowerCase());
+                        // 2. Try case-insensitive exact match
+                        const fuzzyMatch = validSpeakerNames.find(s =>
+                            s.toLowerCase() === rawSpeaker.toLowerCase() ||
+                            s.toLowerCase() === cleanedRawSpeaker.toLowerCase()
+                        );
                         if (fuzzyMatch) {
                             speaker = fuzzyMatch;
                         } else {
@@ -594,14 +629,25 @@ ${customInstructions || DEFAULT_SCRIPT_INSTRUCTIONS}
                             } else if (rawSpeaker.toUpperCase().includes('NARRA')) {
                                 speaker = 'Narrator';
                             } else {
-                                // 4. If no match, try to find the character name WITHIN the raw speaker string
-                                const partialMatch = validSpeakerNames.find(s => rawSpeaker.toLowerCase().includes(s.toLowerCase()));
+                                // 4. BIDIRECTIONAL PARTIAL MATCH:
+                                //    - Check if raw speaker CONTAINS a valid character name
+                                //    - OR if a valid character name CONTAINS the raw speaker
+                                const partialMatch = validSpeakerNames.find(s => {
+                                    if (s === 'Narrator' || s === 'SILENT') return false; // Skip special names
+                                    const sLower = s.toLowerCase();
+                                    const rawLower = cleanedRawSpeaker.toLowerCase();
+                                    // Bidirectional: rawSpeaker contains validName OR validName contains rawSpeaker
+                                    return rawLower.includes(sLower) || sLower.includes(rawLower);
+                                });
+
                                 if (partialMatch) {
+                                    console.log(`[Gemini] Partial match: "${rawSpeaker}" -> "${partialMatch}"`);
                                     speaker = partialMatch;
                                 } else {
-                                    // Final fallback: if there are characters, use the first one, otherwise Narrator
-                                    speaker = validSpeakerNames.length > 2 ? validSpeakerNames[2] : 'Narrator';
-                                    console.warn(`[Gemini] Could not resolve speaker "${rawSpeaker}".Falling back to "${speaker}"`);
+                                    // 5. SAFE FALLBACK: Keep the raw speaker name instead of randomly assigning.
+                                    //    This allows manual correction in the UI if the AI hallucinated a new character.
+                                    speaker = cleanedRawSpeaker || rawSpeaker;
+                                    console.warn(`[Gemini] No match found for speaker "${rawSpeaker}". Keeping original name for manual review.`);
                                 }
                             }
                         }
@@ -727,10 +773,9 @@ ${JSON.stringify(videos.map(v => ({ title: v.title, channel: v.channelName, view
 
     // Fallback model list for Competitor Analysis
     const models = [
-        { name: 'Gemini 3 Pro (Preview)', url: GEMINI_3_PRO_URL },     // Priority 1
-        { name: 'Gemini 3 Flash (Preview)', url: GEMINI_3_FLASH_URL }, // Priority 2
-        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },       // Priority 3
-        { name: 'Gemini 1.5 Flash', url: GEMINI_1_5_FLASH_URL }        // Priority 4
+        { name: 'Gemini 2.0 Flash', url: GEMINI_2_0_FLASH_URL },
+        { name: 'Gemini 1.5 Pro', url: GEMINI_1_5_PRO_URL },
+        { name: 'Gemini 1.5 Flash', url: GEMINI_1_5_FLASH_URL }
     ];
 
     let lastError: any = null;
@@ -847,6 +892,7 @@ If the "User's Strategic Direction (from Chat)" implies a change (e.g. AI propos
 
 지시사항: 위 데이터를 통합하여 다음 형식의 '전략 인사이트'를 생성하세요(한국어로 응답):
     - Executive Summary: 전체적인 채널 운영 방향 및 핵심 차별화 전략
+    - Master Style: 채널의 전반적인 비주얼 톤앤매너 및 통일된 상징적 스타일 가이드 (Step 2에서 이미지 생성의 기준이 됨)
     - Key Opportunities & Risks: 시장 진입 시 활용할 기회와 주의할 리스크
     - Recommended Pillars: 채널을 지탱할 2-3가지 핵심 콘텐츠 기둥
     - Recommended Series: 시리즈 기획 1-2가지(제목, 설명, 타겟 필러, 예상 시청자, **그리고 해당 시리즈에 포함될 에피소드 3개 이상**)
@@ -859,6 +905,7 @@ If the "User's Strategic Direction (from Chat)" implies a change (e.g. AI propos
 응답은 JSON 형식으로만 해주세요(Markdown 블록 없이, types.ts의 StrategyInsight 구조와 일치해야 함):
     {
         "executiveSummary": "...",
+        "masterStyle": "채널의 전반적인 비주얼 스타일 가이드 프롬프트",
         "keyOpportunities": ["...", "..."],
         "keyRisks": ["...", "..."],
         "recommendedPillars": [
@@ -918,7 +965,7 @@ If the "User's Strategic Direction (from Chat)" implies a change (e.g. AI propos
     // Prioritize stable models for reliability
     const models = [
         { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },       // Priority 1
-        { name: 'Gemini 2.0 Flash', url: GEMINI_2_URL },              // Priority 2
+        { name: 'Gemini 2.0 Flash', url: GEMINI_2_0_FLASH_URL },              // Priority 2
         { name: 'Gemini 3 Flash (Preview)', url: GEMINI_3_FLASH_URL }, // Priority 3
         { name: 'Gemini 3 Pro (Preview)', url: GEMINI_3_PRO_URL },     // Priority 4
     ];
@@ -1081,8 +1128,8 @@ export const consultStory = async (
         const modelsToTry = [
             { name: 'Gemini 3.0 Pro', url: `${GEMINI_3_PRO_URL}?key=${apiKey}` },
             { name: 'Gemini 2.5 Flash', url: `${GEMINI_2_5_FLASH_URL}?key=${apiKey}` },
-            { name: 'Gemini 2.0 Flash Exp', url: `${GEMINI_2_URL}?key=${apiKey}` },
-            { name: 'Gemini 1.5 Pro', url: `${GEMINI_PRO_URL}?key=${apiKey}` }
+            { name: 'Gemini 2.0 Flash Exp', url: `${GEMINI_2_0_FLASH_URL}?key=${apiKey}` },
+            { name: 'Gemini 1.5 Pro', url: `${GEMINI_1_5_PRO_URL}?key=${apiKey}` }
         ];
 
         let lastError: any = null;
@@ -1254,7 +1301,7 @@ export const analyzeImage = async (
         { name: 'Gemini 3 Flash Preview', url: GEMINI_3_FLASH_URL },
         { name: 'Gemini 2.5 Flash', url: GEMINI_API_URL },
         { name: 'Gemini 1.5 Flash', url: GEMINI_1_5_FLASH_URL }, // Stable Fallback
-        { name: 'Gemini 1.5 Pro', url: GEMINI_PRO_URL } // High Quality Fallback
+        { name: 'Gemini 1.5 Pro', url: GEMINI_1_5_PRO_URL } // High Quality Fallback
     ];
 
     // Dynamic MIME type extraction
@@ -1720,7 +1767,7 @@ export const generateText = async (
     // Prioritize stable models for reliability with long inputs
     const models = [
         { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },       // Priority 1: Most stable
-        { name: 'Gemini 2.0 Flash', url: GEMINI_2_URL },              // Priority 2: Fast fallback
+        { name: 'Gemini 2.0 Flash', url: GEMINI_2_0_FLASH_URL },              // Priority 2: Fast fallback
         { name: 'Gemini 3 Flash (Preview)', url: GEMINI_3_FLASH_URL }, // Priority 3: Latest
         { name: 'Gemini 3 Pro (Preview)', url: GEMINI_3_PRO_URL },     // Priority 4: Powerful but slow
     ];

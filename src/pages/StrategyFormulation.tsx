@@ -529,8 +529,17 @@ export const StrategyFormulation: React.FC = () => {
         const currentApiKeys = useWorkflowStore.getState().apiKeys;
         const { resetToDefault, saveProject } = useWorkflowStore.getState();
 
-        // Prepare correct character mapping
-        const mappedCharacters = (strategyResult?.characters || []).map(c => ({
+        // Prepare correct character mapping with UNIQUE names
+        const rawChars = strategyResult?.characters || [];
+        const uniqueCharsMap = new Map();
+        rawChars.forEach(c => {
+            if (!uniqueCharsMap.has(c.name)) {
+                uniqueCharsMap.set(c.name, c);
+            }
+        });
+        const uniqueChars = Array.from(uniqueCharsMap.values());
+
+        const mappedCharacters = uniqueChars.map(c => ({
             id: `char-${Math.random().toString(36).substring(2, 9)}`,
             name: c.name,
             role: c.role,

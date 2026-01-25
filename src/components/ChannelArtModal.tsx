@@ -615,7 +615,7 @@ ${referenceContext ? `[참조 이미지 정보]\n${referenceContext}` : ''}
                                     <div className="flex-1 space-y-1.5">
                                         <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest pl-1 block">Drafts</span>
                                         <div className="flex bg-white/5 p-1 rounded-xl border border-white/5 gap-0.5">
-                                            {[1, 2, 4].map(count => (
+                                            {[1, 2, 3, 4].map(count => (
                                                 <button
                                                     key={count}
                                                     onClick={() => setDraftCount(count)}
