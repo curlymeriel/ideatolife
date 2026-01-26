@@ -8,13 +8,13 @@ import { generateSpeech, type VoiceConfig } from '../services/tts';
 import { generateGeminiSpeech, getDefaultGeminiVoice, isGeminiTtsVoice, GEMINI_TTS_VOICES } from '../services/geminiTts';
 
 import { useNavigate } from 'react-router-dom';
-import { Wand2, Loader2, ArrowRight, Lock, Unlock, Settings, Mic, Image, Sparkles, Sliders, Bot, X, Send } from 'lucide-react';
+import { Wand2, Loader2, ArrowRight, Lock, Unlock, Settings, Mic, Image, Sparkles, Sliders, Bot } from 'lucide-react';
 import { CutItem } from '../components/Production/CutItem';
 import { SfxSearchModal } from '../components/Production/SfxSearchModal';
 import { AiInstructionHelper } from '../components/Production/AiInstructionHelper';
-import { ChatMessageItem } from '../components/ChatMessageItem';
+
 import { AssistantDirectorChat } from '../components/AssistantDirectorChat';
-import { consultAssistantDirector, type ChatMessage as AiChatMessage } from '../services/gemini';
+
 import { getMatchedAssets } from '../utils/assetUtils';
 import { linkCutsToStoryline } from '../utils/storylineUtils';
 import { saveToIdb, generateCutImageKey, generateAudioKey, resolveUrl } from '../utils/imageStorage';
@@ -39,7 +39,6 @@ export const Step3_Production: React.FC = () => {
         masterStyle: state.masterStyle,
         aspectRatio: state.aspectRatio,
         storylineTable: state.storylineTable,
-        productionChatHistory: state.productionChatHistory,
         nextStep: state.nextStep,
     })));
 
@@ -48,14 +47,14 @@ export const Step3_Production: React.FC = () => {
         seriesName, episodeName, targetDuration, styleAnchor, apiKeys,
         script, ttsModel, imageModel, assetDefinitions,
         episodePlot, characters, episodeCharacters, seriesLocations, episodeLocations, masterStyle, aspectRatio,
-        storylineTable, productionChatHistory, nextStep
+        storylineTable, nextStep
     } = projectData;
 
     const setScript = useWorkflowStore(state => state.setScript);
     const setTtsModel = useWorkflowStore(state => state.setTtsModel);
     const setImageModel = useWorkflowStore(state => state.setImageModel);
     const setProjectInfo = useWorkflowStore(state => state.setProjectInfo);
-    const setProductionChatHistory = useWorkflowStore(state => state.setProductionChatHistory);
+
     const navigate = useNavigate();
 
     const [loading, setLoading] = useState(false);
