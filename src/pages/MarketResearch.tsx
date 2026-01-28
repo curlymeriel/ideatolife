@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 
 import type { YouTubeTrendVideo, TrendSnapshot, ChannelAnalysis } from '../store/types';
+import { fetchTrendingVideos, fetchVideosByCategory, searchVideos, extractTopTopics, searchChannels } from '../services/youtube';
 import { TrendChart } from '../components/Trend/TrendChart';
 import { TrendVideoCard } from '../components/Trend/TrendVideoCard';
 import { generateText } from '../services/gemini';
