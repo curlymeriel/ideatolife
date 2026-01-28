@@ -132,7 +132,7 @@ const GEMINI_3_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/model
 const GEMINI_3_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent';
 const GEMINI_2_5_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent';
 const GEMINI_2_5_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
-const GEMINI_2_0_FLASH_URL = 'https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent';
+const GEMINI_2_0_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 const GEMINI_API_URL = GEMINI_3_FLASH_URL;
 
 import type { StrategicAnalysis, StrategyInsight, YouTubeTrendVideo, ChannelAnalysis, TrendAnalysisInsights } from '../store/types';
@@ -803,42 +803,21 @@ ${JSON.stringify(videos.map(v => ({ title: v.title, channel: v.channelName, view
 }
 `;
 
-    // Fallback model list for Competitor Analysis
-    const models = [
-        { name: 'Gemini 3 Pro', url: GEMINI_3_PRO_URL },
-        { name: 'Gemini 3 Flash', url: GEMINI_3_FLASH_URL },
-        { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
-        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },
-        { name: 'Gemini 2.0 Flash', url: GEMINI_2_0_FLASH_URL }
-    ];
-
-    let lastError: any = null;
-
-    for (const model of models) {
-        try {
-            console.log(`[Gemini] Competitor Analysis with model: ${model.name}`);
-            const response = await axios.post(
-                `${model.url}?key=${apiKey}`,
-                {
-                    contents: [{ parts: [{ text: prompt }] }]
-                },
-                { timeout: 30000 } // 30 second timeout
-            );
-
-            const text = response.data.candidates[0].content.parts[0].text;
-            const cleanJson = text.replace(/```json\n ?|\n ? ```/g, '').trim();
-            return JSON.parse(cleanJson);
-
-        } catch (error: any) {
-            console.warn(`[Gemini] Model ${model.name} failed:`, error.message);
-            lastError = error;
-            // Continue to next model
-        }
+    try {
+        const text = await generateText(
+            prompt,
+            apiKey,
+            "application/json",
+            undefined, // no images
+            undefined, // no system instruction (it's in prompt)
+            { temperature: 0.7 }
+        );
+        const cleanJson = text.replace(/```json\n?|\n?```/g, '').trim();
+        return JSON.parse(cleanJson);
+    } catch (error: any) {
+        console.error('[Gemini] Competitor Analysis failed:', error);
+        throw error;
     }
-
-    // If all failed
-    console.error('[Gemini] All Strategic Analysis models failed:', lastError);
-    throw lastError;
 };
 
 export const generateStrategyInsight = async (
@@ -996,60 +975,38 @@ If the "User's Strategic Direction (from Chat)" implies a change (e.g. AI propos
     }
     `;
 
-    // Prioritize latest models for 2026
-    const models = [
-        { name: 'Gemini 3 Pro', url: GEMINI_3_PRO_URL },
-        { name: 'Gemini 3 Flash', url: GEMINI_3_FLASH_URL },
-        { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
-        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },
-        { name: 'Gemini 2.0 Flash', url: GEMINI_2_0_FLASH_URL }
-    ];
+    try {
+        const generatedText = await generateText(
+            prompt,
+            apiKey,
+            "application/json",
+            undefined, // no images
+            undefined, // no separate system instruction
+            {
+                temperature: 0.7,
+                response_mime_type: "application/json"
+            }
+        );
 
-    let lastError: any = null;
+        let parsed = JSON.parse(generatedText.replace(/```json\n?|\n?```/g, ''));
 
-    for (const model of models) {
-        try {
-            console.log(`[Gemini] Strategy Generation with model: ${model.name}`);
-            const response = await axios.post(
-                `${model.url}?key=${apiKey}`,
-                {
-                    contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: {
-                        temperature: 0.7,
-                        response_mime_type: "application/json"
-                    }
-                },
-                { timeout: 120000 } // 120 second timeout
-            );
-
-            const text = response.data.candidates[0].content.parts[0].text;
-            const result = JSON.parse(text);
-
-            // SAFE DEEP MERGE STRATEGY
-            // Use existing strategy as base, and overwrite with new result.
-            // This ensures that nested fields (like channelIdentity.bannerUrl) are preserved if not provided in result.
-            const base = existingStrategy || {};
-            const merged = existingStrategy ? deepMerge(base, result) : result;
-
-            // Add ID and timestamps if missing
-            return {
-                ...merged,
-                id: existingStrategy?.id || result.id || Math.random().toString(36).substring(2, 9),
-                createdAt: Date.now(),
-                trendSnapshotId: trendSnapshot.id,
-                competitorSnapshotId: competitorSnapshot.id
-            };
-
-        } catch (error: any) {
-            console.warn(`[Gemini] Model ${model.name} failed:`, error.message);
-            lastError = error;
-            // Continue to next model
+        // Intelligent Update: Deep Merge existing strategy if provided
+        if (existingStrategy) {
+            console.log("[Gemini] Merging with existing strategy...");
+            parsed = deepMerge(existingStrategy, parsed);
         }
-    }
 
-    // If all failed
-    console.error('[Gemini] All Strategy Generation models failed:', lastError);
-    throw lastError;
+        return {
+            ...parsed,
+            id: existingStrategy?.id || Date.now().toString(),
+            createdAt: existingStrategy?.createdAt || Date.now(),
+            trendSnapshotId: trendSnapshot.id,
+            competitorSnapshotId: competitorSnapshot.id
+        };
+    } catch (error: any) {
+        console.error('[Gemini] Strategy Generation failed:', error);
+        throw error;
+    }
 };
 
 import { DEFAULT_CONSULTANT_INSTRUCTION } from '../data/personaTemplates';
@@ -1828,18 +1785,17 @@ ${videos.slice(0, 10).map(v => `- "${v.title}"`).join('\n')}` : 'Extract main ke
 Respond in Korean. Be specific and actionable. Return ONLY raw JSON.`;
 
     try {
-        const response = await axios.post(
-            `${GEMINI_2_5_FLASH_URL}?key=${apiKey}`,
+        const generatedText = await generateText(
+            prompt,
+            apiKey,
+            "application/json",
+            undefined, // no images
+            undefined, // no separate system instruction
             {
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: {
-                    temperature: 0.7,
-                    response_mime_type: "application/json"
-                }
+                temperature: 0.7,
+                response_mime_type: "application/json"
             }
         );
-
-        const generatedText = response.data.candidates[0].content.parts[0].text;
         const parsed = JSON.parse(generatedText);
 
         return {
@@ -1901,17 +1857,14 @@ ${channel.recentVideos.slice(0, 5).map((v, i) =>
 Write in Korean. Be specific and actionable. Format with headers and bullet points.`;
 
     try {
-        const response = await axios.post(
-            `${GEMINI_2_5_FLASH_URL}?key=${apiKey}`,
-            {
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: {
-                    temperature: 0.8
-                }
-            }
+        return await generateText(
+            prompt,
+            apiKey,
+            undefined, // no specific mime type
+            undefined, // no images
+            undefined, // no separate system instruction
+            { temperature: 0.8 }
         );
-
-        return response.data.candidates[0].content.parts[0].text;
     } catch (error: any) {
         console.error('[Gemini] Channel analysis failed:', error);
         return `채널 분석 실패: ${error.message || 'Unknown error'}`;
@@ -1919,19 +1872,17 @@ Write in Korean. Be specific and actionable. Format with headers and bullet poin
 };
 
 export const generateText = async (
-    prompt: string,
+    prompt: string | null,
     apiKey: string,
     responseMimeType?: string,
     images?: any,
     systemInstruction?: string,
-    generationConfig?: any
+    generationConfig?: any,
+    history?: any[]
 ): Promise<string> => {
     if (!apiKey) return "API Key is missing.";
 
-    console.log('[generateText] Starting with prompt length:', prompt.length);
-    if (images?.length) console.log(`[generateText] With ${images.length} images`);
-
-    // Prioritize stable models for reliability with long inputs
+    // Prioritize stable models
     const models = [
         { name: 'Gemini 3 Pro', url: GEMINI_3_PRO_URL },
         { name: 'Gemini 3 Flash', url: GEMINI_3_FLASH_URL },
@@ -1942,92 +1893,78 @@ export const generateText = async (
 
     let lastError: any = null;
 
-    // Combine system instruction if provided
-    // Note: Gemini API supports system_instruction field but prepending to user prompt is often more robust across models
-    const finalPrompt = systemInstruction
-        ? `${systemInstruction}\n\nUser Query: ${prompt}`
-        : prompt;
-
-    console.log('[generateText] Final prompt length:', finalPrompt.length);
-
-    // Prepare content parts (Text + Images)
-    const parts: any[] = [{ text: finalPrompt }];
-
-    // Normalize images: can be string, string[], or {mimeType, data}[]
-    let normalizedImages: { mimeType: string; data: string }[] = [];
-    if (images) {
-        if (typeof images === 'string') {
-            const matches = images.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
-            if (matches) normalizedImages.push({ mimeType: matches[1], data: matches[2] });
-        } else if (Array.isArray(images)) {
-            images.forEach(img => {
-                if (typeof img === 'string') {
-                    const matches = img.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
-                    if (matches) normalizedImages.push({ mimeType: matches[1], data: matches[2] });
-                } else if (img && img.mimeType && img.data) {
-                    normalizedImages.push(img);
-                }
-            });
+    // Prepare contents
+    let contents: any[] = [];
+    if (history && history.length > 0) {
+        contents = [...history];
+        if (prompt) {
+            contents.push({ role: 'user', parts: [{ text: prompt }] });
         }
-    }
+    } else {
+        const parts: any[] = [{ text: prompt || "" }];
 
-    if (normalizedImages.length > 0) {
+        // Normalize images
+        let normalizedImages: { mimeType: string; data: string }[] = [];
+        if (images) {
+            if (typeof images === 'string') {
+                const matches = images.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
+                if (matches) normalizedImages.push({ mimeType: matches[1], data: matches[2] });
+            } else if (Array.isArray(images)) {
+                images.forEach(img => {
+                    if (typeof img === 'string') {
+                        const matches = img.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
+                        if (matches) normalizedImages.push({ mimeType: matches[1], data: matches[2] });
+                    } else if (img && img.mimeType && img.data) {
+                        normalizedImages.push(img);
+                    }
+                });
+            }
+        }
         normalizedImages.forEach(img => {
-            parts.push({
-                inlineData: {
-                    mimeType: img.mimeType,
-                    data: img.data
-                }
-            });
+            parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
         });
+        contents = [{ role: 'user', parts }];
     }
 
-    // Retry helper with exponential backoff for 429 errors
     const MAX_RETRIES = 3;
-    const tryWithRetry = async (modelName: string, modelUrl: string): Promise<string | null> => {
+    const tryWithModel = async (modelName: string, modelUrl: string): Promise<string | null> => {
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
-                console.log(`[generateText] Trying ${modelName} (attempt ${attempt}/${MAX_RETRIES})...`);
                 const response = await axios.post(
                     `${modelUrl}?key=${apiKey}`,
                     {
-                        contents: [{ parts: parts }],
+                        contents,
+                        system_instruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
                         generationConfig: {
                             temperature: generationConfig?.temperature ?? 0.7,
                             response_mime_type: responseMimeType || generationConfig?.response_mime_type,
                             ...generationConfig
                         }
                     },
-                    { timeout: 120000 } // 120 second timeout for long inputs
+                    { timeout: 120000 }
                 );
-
-                console.log(`[generateText] Success with ${modelName}!`);
                 return response.data.candidates[0].content.parts[0].text;
             } catch (error: any) {
-                const status = error.response?.status;
                 lastError = error;
-
+                const status = error.response?.status;
                 if (status === 429 && attempt < MAX_RETRIES) {
-                    // Rate limit - wait and retry with exponential backoff
-                    const waitTime = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
-                    console.warn(`[generateText] 429 Rate Limit on ${modelName}. Waiting ${waitTime / 1000}s before retry...`);
-                    await new Promise(resolve => setTimeout(resolve, waitTime));
-                    continue; // Retry same model
-                } else {
-                    console.warn(`[generateText] ${modelName} failed:`, error.code || error.message);
-                    return null; // Move to next model
+                    const waitTime = Math.pow(2, attempt) * 1000;
+                    console.warn(`[Gemini] 429 Rate Limit on ${modelName}. Retrying in ${waitTime / 1000}s...`);
+                    await new Promise(r => setTimeout(r, waitTime));
+                    continue;
                 }
+                console.warn(`[Gemini] ${modelName} failed:`, error.message);
+                return null;
             }
         }
         return null;
     };
 
     for (const model of models) {
-        const result = await tryWithRetry(model.name, model.url);
+        const result = await tryWithModel(model.name, model.url);
         if (result) return result;
     }
 
-    console.error('[generateText] All models failed.');
-    throw lastError || new Error("All models failed to generate text");
+    throw lastError || new Error("All models failed");
 };
 

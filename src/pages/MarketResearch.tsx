@@ -16,9 +16,9 @@ import {
 } from 'lucide-react';
 
 import type { YouTubeTrendVideo, TrendSnapshot, ChannelAnalysis } from '../store/types';
-import { fetchTrendingVideos, fetchVideosByCategory, searchVideos, extractTopTopics, searchChannels } from '../services/youtube';
 import { TrendChart } from '../components/Trend/TrendChart';
 import { TrendVideoCard } from '../components/Trend/TrendVideoCard';
+import { generateText } from '../services/gemini';
 
 // Chat message type
 interface ChatMessage {
@@ -340,31 +340,15 @@ ${AVAILABLE_FUNCTIONS.map(f => `- ${f.name}: ${f.description}`).join('\n')}
 - "먹방 검색해줘" → [FUNCTION_CALL: searchVideos({"query": "먹방", "regionCode": "KR"})]
 - "보여줘" (만약 현재 설정이 JP, Music이라면) → [FUNCTION_CALL: fetchVideosByCategory({"regionCode": "JP", "categoryId": "10"})]`;
 
-            const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${geminiApiKey}`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [
-                            { role: 'user', parts: [{ text: systemPrompt }] },
-                            ...conversationHistory,
-                            { role: 'user', parts: [{ text: inputValue }] }
-                        ],
-                        generationConfig: {
-                            temperature: 0.7,
-                            maxOutputTokens: 2048
-                        }
-                    })
-                }
+            const aiResponse = await generateText(
+                inputValue,
+                geminiApiKey,
+                undefined, // responseMimeType
+                undefined, // images
+                systemPrompt,
+                { temperature: 0.7, maxOutputTokens: 2048 },
+                conversationHistory
             );
-
-            if (!response.ok) {
-                throw new Error('Gemini API 호출 실패');
-            }
-
-            const data = await response.json();
-            const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
             // Check for function call in response
             const functionCallMatch = aiResponse.match(/\[FUNCTION_CALL:\s*(\w+)\(({[^}]+})\)\]/);
