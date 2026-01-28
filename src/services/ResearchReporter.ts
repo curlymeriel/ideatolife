@@ -104,9 +104,9 @@ export class ResearchReporter {
                                 spacing: { after: 100 },
                             })
                         ] : []),
-                        new Paragraph({ children: [new TextRun({ text: "Slogan: ", bold: true }), new TextRun({ text: (strategy.channelIdentity as any)?.slogan || 'None', italics: true })] }),
-                        new Paragraph({ text: `Mission: ${(strategy.channelIdentity as any)?.mission || 'None'}` }),
-                        new Paragraph({ text: `Tone of Voice: ${(strategy.channelIdentity as any)?.toneOfVoice || 'None'}`, spacing: { after: 200 } }),
+                        new Paragraph({ children: [new TextRun({ text: "Slogan: ", bold: true }), new TextRun({ text: strategy.channelIdentity?.slogan || 'None', italics: true })] }),
+                        new Paragraph({ text: `Mission: ${strategy.channelIdentity?.mission || 'None'}` }),
+                        new Paragraph({ text: `Tone of Voice: ${strategy.channelIdentity?.toneOfVoice || 'None'}`, spacing: { after: 200 } }),
 
                         new Paragraph({ text: "4. Recommended Series", heading: HeadingLevel.HEADING_2 }),
                         ...(strategy.recommendedSeries || []).map(series => [
@@ -221,10 +221,10 @@ export class ResearchReporter {
             idSlide.background = { color: '000000' };
             idSlide.addText("7. Brand Identity & Strategy", { x: 0.5, y: 0.5, w: '90%', h: 0.5, fontSize: 24, bold: true, color: 'FFD700' });
             idSlide.addText(`Name: ${strategy.channelIdentity?.channelName || 'Unset'}`, { x: 0.5, y: 1.2, w: '90%', h: 0.4, fontSize: 18, color: 'FFFFFF', bold: true });
-            idSlide.addText(`Slogan: ${(strategy.channelIdentity as any)?.slogan || 'None'}`, { x: 0.5, y: 1.6, w: '90%', h: 0.4, fontSize: 16, color: 'FFD700', italic: true });
-            idSlide.addText(`Values: ${(strategy.channelIdentity as any)?.coreValues?.join(', ') || 'None'}`, { x: 0.5, y: 2.1, w: '90%', h: 0.4, fontSize: 12, color: 'CCCCCC' });
-            idSlide.addText(`Mission: ${(strategy.channelIdentity as any)?.mission || 'None'}`, { x: 0.5, y: 2.6, w: '90%', h: 0.6, fontSize: 12, color: 'CCCCCC' });
-            idSlide.addText(`Tone: ${(strategy.channelIdentity as any)?.toneOfVoice || 'None'}`, { x: 0.5, y: 3.3, w: '90%', h: 0.4, fontSize: 12, color: 'CCCCCC', italic: true });
+            idSlide.addText(`Slogan: ${strategy.channelIdentity?.slogan || 'None'}`, { x: 0.5, y: 1.6, w: '90%', h: 0.4, fontSize: 16, color: 'FFD700', italic: true });
+            idSlide.addText(`Values: ${strategy.channelIdentity?.coreValues?.join(', ') || 'None'}`, { x: 0.5, y: 2.1, w: '90%', h: 0.4, fontSize: 12, color: 'CCCCCC' });
+            idSlide.addText(`Mission: ${strategy.channelIdentity?.mission || 'None'}`, { x: 0.5, y: 2.6, w: '90%', h: 0.6, fontSize: 12, color: 'CCCCCC' });
+            idSlide.addText(`Tone: ${strategy.channelIdentity?.toneOfVoice || 'None'}`, { x: 0.5, y: 3.3, w: '90%', h: 0.4, fontSize: 12, color: 'CCCCCC', italic: true });
             idSlide.addText(`SEO/Tags: ${strategy.channelIdentity?.seoTags?.join(', ') || 'None'}`, { x: 0.5, y: 3.8, w: '90%', h: 0.6, fontSize: 10, color: '666666' });
 
             const output = await pptx.write({ outputType: 'blob' });
@@ -325,8 +325,8 @@ ${(strategy.techStack || []).map(s => `- **${s.phase}**: ${s.tool} (${s.usage})`
 
 ## 6. Brand Identity
 - **Name**: ${strategy.channelIdentity?.channelName || 'N/A'}
-- **Slogan**: ${(strategy.channelIdentity as any)?.slogan || 'N/A'}
-- **Core Values**: ${(strategy.channelIdentity as any)?.coreValues?.join(', ') || 'N/A'}
+- **Slogan**: ${strategy.channelIdentity?.slogan || 'N/A'}
+- **Core Values**: ${strategy.channelIdentity?.coreValues?.join(', ') || 'N/A'}
 - **Bio**: ${strategy.channelIdentity?.bio || 'N/A'}
 - **Keywords**: ${strategy.channelIdentity?.seoTags?.join(', ') || 'N/A'}
         `.trim();

@@ -341,7 +341,7 @@ ${AVAILABLE_FUNCTIONS.map(f => `- ${f.name}: ${f.description}`).join('\n')}
 - "보여줘" (만약 현재 설정이 JP, Music이라면) → [FUNCTION_CALL: fetchVideosByCategory({"regionCode": "JP", "categoryId": "10"})]`;
 
             const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`,
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${geminiApiKey}`,
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -867,18 +867,20 @@ ${AVAILABLE_FUNCTIONS.map(f => `- ${f.name}: ${f.description}`).join('\n')}
                                 {/* Chart (Hide for Channel Tab) */}
                                 {analysisTab !== 'channel' && topicsByType[analysisTab] && (
                                     <>
-                                        <TrendChart
-                                            topics={topicsByType[analysisTab]}
-                                            selectedTopicId={selectedTopic?.id}
-                                            onTopicClick={(topic) => {
-                                                setSelectedTopic(topic);
-                                                if (topic.relatedVideos && topic.relatedVideos.length > 0) {
-                                                    setDisplayedVideos(topic.relatedVideos);
-                                                } else {
-                                                    setDisplayedVideos(currentVideos);
-                                                }
-                                            }}
-                                        />
+                                        <div className="min-w-0">
+                                            <TrendChart
+                                                topics={topicsByType[analysisTab]}
+                                                selectedTopicId={selectedTopic?.id}
+                                                onTopicClick={(topic) => {
+                                                    setSelectedTopic(topic);
+                                                    if (topic.relatedVideos && topic.relatedVideos.length > 0) {
+                                                        setDisplayedVideos(topic.relatedVideos);
+                                                    } else {
+                                                        setDisplayedVideos(currentVideos);
+                                                    }
+                                                }}
+                                            />
+                                        </div>
                                         {selectedTopic && (
                                             <button
                                                 onClick={() => {

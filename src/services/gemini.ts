@@ -130,11 +130,10 @@ export interface ProjectContext {
 
 const GEMINI_3_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent';
 const GEMINI_3_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent';
+const GEMINI_2_5_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent';
 const GEMINI_2_5_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
-const GEMINI_2_0_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent';
-const GEMINI_1_5_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent';
-const GEMINI_1_5_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
-const GEMINI_API_URL = GEMINI_2_5_FLASH_URL;
+const GEMINI_2_0_FLASH_URL = 'https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent';
+const GEMINI_API_URL = GEMINI_3_FLASH_URL;
 
 import type { StrategicAnalysis, StrategyInsight, YouTubeTrendVideo, ChannelAnalysis, TrendAnalysisInsights } from '../store/types';
 
@@ -531,18 +530,18 @@ ${customInstructions || DEFAULT_SCRIPT_INSTRUCTIONS}
             else if (preferredModel.includes('3-flash')) modelUrl = GEMINI_3_FLASH_URL;
             else if (preferredModel.includes('2.5')) modelUrl = GEMINI_2_5_FLASH_URL;
             else if (preferredModel.includes('2.0')) modelUrl = GEMINI_2_0_FLASH_URL;
-            else if (preferredModel.includes('pro')) modelUrl = GEMINI_1_5_PRO_URL;
+            else if (preferredModel.includes('pro')) modelUrl = GEMINI_3_PRO_URL;
 
             models.push({ name: preferredModel, url: modelUrl });
         }
 
-        // 2. Add fallbacks (2026 priority - stable models first)
+        // 2. Add fallbacks (2026 priority - latest models first)
         models.push(
-            { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },  // Most stable
-            { name: 'Gemini 2.0 Flash', url: GEMINI_2_0_FLASH_URL },
-            { name: 'Gemini 3 Flash', url: GEMINI_3_FLASH_URL },
             { name: 'Gemini 3 Pro', url: GEMINI_3_PRO_URL },
-            { name: 'Gemini 1.5 Flash', url: GEMINI_1_5_FLASH_URL }  // Replaced deprecated 1.5 Pro
+            { name: 'Gemini 3 Flash', url: GEMINI_3_FLASH_URL },
+            { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
+            { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },
+            { name: 'Gemini 2.0 Flash', url: GEMINI_2_0_FLASH_URL }
         );
 
         let lastError: any = null;
@@ -575,27 +574,59 @@ ${customInstructions || DEFAULT_SCRIPT_INSTRUCTIONS}
 
                 // Normalize and ensure IDs are numbers
                 return validScript.map((cut: any, index: number) => {
-                    // LOCKED CUT OVERRIDE logic
+                    // GRANULAR LOCKED CUT OVERRIDE logic
                     let lockedOriginal = null;
                     if (existingScript) {
+                        // AI is instructed to respect established cut IDs. 
+                        // We find if this cut ID was previously locked in any way.
                         lockedOriginal = existingScript.find(c => c.id === cut.id && (c.isConfirmed || c.isAudioConfirmed || c.isImageConfirmed));
                     }
 
                     if (lockedOriginal) {
-                        console.log(`[Gemini] Restoring LOCKED cut #${lockedOriginal.id} content verbatim.`);
+                        const isAudioLocked = !!(lockedOriginal.isAudioConfirmed || lockedOriginal.isConfirmed);
+                        const isImageLocked = !!(lockedOriginal.isImageConfirmed || lockedOriginal.isConfirmed);
+
+                        console.log(`[Gemini] Applying granular merge for cut #${lockedOriginal.id} (Audio Locked: ${isAudioLocked}, Image Locked: ${isImageLocked})`);
+
                         return {
                             ...cut,
                             id: lockedOriginal.id,
-                            speaker: lockedOriginal.speaker,
-                            dialogue: lockedOriginal.dialogue,
-                            visualPrompt: lockedOriginal.visualPrompt,
-                            videoPrompt: lockedOriginal.videoPrompt,
-                            audioUrl: lockedOriginal.audioUrl,
-                            finalImageUrl: lockedOriginal.finalImageUrl,
+                            // Preserve Audio properties if locked
+                            ...(isAudioLocked ? {
+                                speaker: lockedOriginal.speaker,
+                                dialogue: lockedOriginal.dialogue,
+                                emotion: lockedOriginal.emotion,
+                                emotionIntensity: lockedOriginal.emotionIntensity,
+                                language: lockedOriginal.language,
+                                voiceGender: lockedOriginal.voiceGender,
+                                voiceAge: lockedOriginal.voiceAge,
+                                voiceSpeed: lockedOriginal.voiceSpeed,
+                                voiceRate: lockedOriginal.voiceRate,
+                                voiceVolume: lockedOriginal.voiceVolume,
+                                voiceId: lockedOriginal.voiceId,
+                                actingDirection: lockedOriginal.actingDirection,
+                                audioPadding: lockedOriginal.audioPadding,
+                                audioUrl: lockedOriginal.audioUrl,
+                                sfxUrl: lockedOriginal.sfxUrl,
+                                sfxName: lockedOriginal.sfxName,
+                                sfxDescription: lockedOriginal.sfxDescription,
+                                sfxVolume: lockedOriginal.sfxVolume,
+                                isAudioConfirmed: true,
+                            } : {}),
+                            // Preserve Visual properties if locked
+                            ...(isImageLocked ? {
+                                visualPrompt: lockedOriginal.visualPrompt,
+                                visualPromptKR: lockedOriginal.visualPromptKR,
+                                finalImageUrl: lockedOriginal.finalImageUrl,
+                                videoPrompt: lockedOriginal.videoPrompt,
+                                referenceAssetIds: lockedOriginal.referenceAssetIds,
+                                referenceCutIds: lockedOriginal.referenceCutIds,
+                                userReferenceImage: lockedOriginal.userReferenceImage,
+                                isImageConfirmed: true,
+                            } : {}),
+                            // Preserve general confirmation flag if it was fully locked
                             isConfirmed: lockedOriginal.isConfirmed,
-                            isAudioConfirmed: lockedOriginal.isAudioConfirmed,
-                            isImageConfirmed: lockedOriginal.isImageConfirmed,
-                            estimatedDuration: lockedOriginal.estimatedDuration || cut.estimatedDuration
+                            estimatedDuration: (isAudioLocked || isImageLocked) ? lockedOriginal.estimatedDuration : Number(cut.estimatedDuration)
                         };
                     }
 
@@ -774,9 +805,11 @@ ${JSON.stringify(videos.map(v => ({ title: v.title, channel: v.channelName, view
 
     // Fallback model list for Competitor Analysis
     const models = [
-        { name: 'Gemini 2.0 Flash', url: GEMINI_2_0_FLASH_URL },
-        { name: 'Gemini 1.5 Pro', url: GEMINI_1_5_PRO_URL },
-        { name: 'Gemini 1.5 Flash', url: GEMINI_1_5_FLASH_URL }
+        { name: 'Gemini 3 Pro', url: GEMINI_3_PRO_URL },
+        { name: 'Gemini 3 Flash', url: GEMINI_3_FLASH_URL },
+        { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
+        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },
+        { name: 'Gemini 2.0 Flash', url: GEMINI_2_0_FLASH_URL }
     ];
 
     let lastError: any = null;
@@ -963,12 +996,13 @@ If the "User's Strategic Direction (from Chat)" implies a change (e.g. AI propos
     }
     `;
 
-    // Prioritize stable models for reliability
+    // Prioritize latest models for 2026
     const models = [
-        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },       // Priority 1
-        { name: 'Gemini 2.0 Flash', url: GEMINI_2_0_FLASH_URL },              // Priority 2
-        { name: 'Gemini 3 Flash (Preview)', url: GEMINI_3_FLASH_URL }, // Priority 3
-        { name: 'Gemini 3 Pro (Preview)', url: GEMINI_3_PRO_URL },     // Priority 4
+        { name: 'Gemini 3 Pro', url: GEMINI_3_PRO_URL },
+        { name: 'Gemini 3 Flash', url: GEMINI_3_FLASH_URL },
+        { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
+        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },
+        { name: 'Gemini 2.0 Flash', url: GEMINI_2_0_FLASH_URL }
     ];
 
     let lastError: any = null;
@@ -1127,10 +1161,11 @@ export const consultStory = async (
         }));
 
         const modelsToTry = [
-            { name: 'Gemini 3.0 Pro', url: `${GEMINI_3_PRO_URL}?key=${apiKey}` },
+            { name: 'Gemini 3 Pro', url: `${GEMINI_3_PRO_URL}?key=${apiKey}` },
+            { name: 'Gemini 3 Flash', url: `${GEMINI_3_FLASH_URL}?key=${apiKey}` },
+            { name: 'Gemini 2.5 Pro', url: `${GEMINI_2_5_PRO_URL}?key=${apiKey}` },
             { name: 'Gemini 2.5 Flash', url: `${GEMINI_2_5_FLASH_URL}?key=${apiKey}` },
-            { name: 'Gemini 2.0 Flash Exp', url: `${GEMINI_2_0_FLASH_URL}?key=${apiKey}` },
-            { name: 'Gemini 1.5 Pro', url: `${GEMINI_1_5_PRO_URL}?key=${apiKey}` }
+            { name: 'Gemini 2.0 Flash', url: `${GEMINI_2_0_FLASH_URL}?key=${apiKey}` }
         ];
 
         let lastError: any = null;
@@ -1288,7 +1323,7 @@ export const consultAssistantDirector = async (
         }));
 
         const response = await axios.post(
-            `${GEMINI_2_5_FLASH_URL}?key=${apiKey}`,
+            `${GEMINI_3_FLASH_URL}?key=${apiKey}`,
             {
                 contents: [
                     {
@@ -1392,18 +1427,33 @@ Gritty and used. Guns and gadgets show signs of wear, oil stains, and scratched 
 `}
 `;
 
-    try {
-        const response = await axios.post(
-            `${GEMINI_API_URL}?key=${apiKey}`,
-            {
-                contents: [{ parts: [{ text: prompt }] }]
-            }
-        );
-        return response.data.candidates[0].content.parts[0].text.trim();
-    } catch (error) {
-        console.error("Prompt Enhancement Failed:", error);
-        return basePrompt;
+    const models = [
+        { name: 'Gemini 3 Pro', url: GEMINI_3_PRO_URL },
+        { name: 'Gemini 3 Flash', url: GEMINI_3_FLASH_URL },
+        { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
+        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },
+        { name: 'Gemini 2.0 Flash', url: GEMINI_2_0_FLASH_URL }
+    ];
+
+    let lastError: any = null;
+
+    for (const model of models) {
+        try {
+            const response = await axios.post(
+                `${model.url}?key=${apiKey}`,
+                {
+                    contents: [{ parts: [{ text: prompt }] }]
+                }
+            );
+            return response.data.candidates[0].content.parts[0].text.trim();
+        } catch (error: any) {
+            console.warn(`[Gemini] Enhancement failed with ${model.name}:`, error.message);
+            lastError = error;
+        }
     }
+
+    console.error("All Enhancement Models Failed:", lastError);
+    return basePrompt;
 };
 
 export const analyzeImage = async (
@@ -1413,11 +1463,11 @@ export const analyzeImage = async (
     if (!apiKey) return "Analyzed image description...";
 
     const models = [
-        { name: 'Gemini 3 Pro', url: GEMINI_3_PRO_URL }, // User Priority
-        { name: 'Gemini 3 Flash Preview', url: GEMINI_3_FLASH_URL },
-        { name: 'Gemini 2.5 Flash', url: GEMINI_API_URL },
-        { name: 'Gemini 1.5 Flash', url: GEMINI_1_5_FLASH_URL }, // Stable Fallback
-        { name: 'Gemini 1.5 Pro', url: GEMINI_1_5_PRO_URL } // High Quality Fallback
+        { name: 'Gemini 3 Pro', url: GEMINI_3_PRO_URL },
+        { name: 'Gemini 3 Flash', url: GEMINI_3_FLASH_URL },
+        { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
+        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },
+        { name: 'Gemini 2.0 Flash', url: GEMINI_2_0_FLASH_URL }
     ];
 
     // Dynamic MIME type extraction
@@ -1474,10 +1524,11 @@ export const generateVisualPrompt = async (
     if (!apiKey) return "Please provide an API key.";
 
     const models = [
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-pro:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent'
+        GEMINI_3_PRO_URL,
+        GEMINI_3_FLASH_URL,
+        GEMINI_2_5_PRO_URL,
+        GEMINI_2_5_FLASH_URL,
+        GEMINI_2_0_FLASH_URL
     ];
 
     const parts: any[] = [
@@ -1882,10 +1933,11 @@ export const generateText = async (
 
     // Prioritize stable models for reliability with long inputs
     const models = [
-        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },       // Priority 1: Most stable
-        { name: 'Gemini 2.0 Flash', url: GEMINI_2_0_FLASH_URL },              // Priority 2: Fast fallback
-        { name: 'Gemini 3 Flash (Preview)', url: GEMINI_3_FLASH_URL }, // Priority 3: Latest
-        { name: 'Gemini 3 Pro (Preview)', url: GEMINI_3_PRO_URL },     // Priority 4: Powerful but slow
+        { name: 'Gemini 3 Pro', url: GEMINI_3_PRO_URL },
+        { name: 'Gemini 3 Flash', url: GEMINI_3_FLASH_URL },
+        { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
+        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },
+        { name: 'Gemini 2.0 Flash', url: GEMINI_2_0_FLASH_URL }
     ];
 
     let lastError: any = null;
