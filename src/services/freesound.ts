@@ -127,8 +127,7 @@ export async function suggestSfxKeywords(
     }
 
     try {
-        const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
-
+        const { generateText } = await import('./gemini');
         const prompt = `Based on this scene description, suggest 3-5 sound effect search keywords that would work well as background audio or SFX. Return ONLY a JSON array of simple English keywords, no explanations.
 
 Scene: "${sceneDescription}"
@@ -137,18 +136,14 @@ Example output: ["rain heavy", "thunder distant", "wind howling"]
 
 Keywords:`;
 
-        const response = await axios.post(
-            `${GEMINI_API_URL}?key=${geminiApiKey}`,
-            {
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: {
-                    temperature: 0.7,
-                    response_mime_type: "application/json"
-                }
-            }
+        const text = await generateText(
+            prompt,
+            geminiApiKey,
+            "application/json",
+            undefined, // images
+            undefined, // system
+            { temperature: 0.7, response_mime_type: "application/json" }
         );
-
-        const text = response.data.candidates[0].content.parts[0].text.trim();
 
         const match = text.match(/\[.*\]/s);
         if (match) {

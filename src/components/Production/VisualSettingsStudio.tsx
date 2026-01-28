@@ -156,18 +156,14 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
         if (!visualPrompt || visualPrompt.trim().length < 2) return;
         setIsTranslating(true);
         try {
-            const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: `Translate this English text to Korean. Only output the Korean translation:\n\n${visualPrompt}` }] }]
-                    })
-                }
+            const translation = await generateText(
+                `Translate this English text to Korean. Only output the Korean translation:\n\n${visualPrompt}`,
+                apiKey,
+                undefined, // mime
+                undefined, // images
+                undefined, // system
+                { temperature: 0.1 }
             );
-            const data = await response.json();
-            const translation = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
             if (translation) setVisualPromptKR(translation.trim());
         } catch (error) {
             console.error('Translation failed:', error);

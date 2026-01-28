@@ -1,11 +1,17 @@
 # AI Operational Principles for Project "IdeaToLife"
 
 ## 1. Environment & Shell (Windows PowerShell)
-- **Identify Environment**: This is a Windows system using PowerShell.
+- **Identify Environment**: This is a Windows system using PowerShell (Korean Locale).
+- **Encoding Precedence**: 
+    - The system default encoding (CP949/EUC-KR) may cause garbled output.
+    - ALWAYS run `chcp 65001` at the start of a terminal session or before any command that generates text output to ensure UTF-8 encoding.
 - **Strict Command Usage**: 
     - NEVER use `grep`, `find`, or `rm -rf` directly in `run_command`. 
     - Use `grep_search` and `find_by_name` tools for all searching operations.
-    - Use built-in PowerShell equivalents only if tools are insufficient (e.g., `Get-ChildItem`, `Remove-Item`).
+    - Use built-in PowerShell equivalents ONLY if specialized tools are insufficient.
+- **PowerShell Path Handling**: 
+    - When using `Get-ChildItem` (dir), `Remove-Item` (del), etc., ALWAYS use the `-LiteralPath` parameter and wrap paths in double quotes to prevent errors with special characters or spaces.
+    - Example: `Get-ChildItem -LiteralPath "C:\Path\To\File"`
 - **Path Handling**: Always use absolute paths. Avoid using relative paths like `./` or `../` in tool calls unless specified otherwise.
 
 ## 2. Tool-First Policy

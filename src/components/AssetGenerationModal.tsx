@@ -188,20 +188,15 @@ export const AssetGenerationModal: React.FC<AssetGenerationModalProps> = ({
 
         setIsTranslating(true);
         try {
-            const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{
-                            parts: [{ text: `Translate this English text to Korean. Only output the Korean translation, nothing else:\n\n${description}` }]
-                        }]
-                    })
-                }
+            const { generateText } = await import('../services/gemini');
+            const translation = await generateText(
+                `Translate this English text to Korean. Only output the Korean translation, nothing else:\n\n${description}`,
+                apiKey,
+                undefined, // mime
+                undefined, // images
+                undefined, // system
+                { temperature: 0.1 }
             );
-            const data = await response.json();
-            const translation = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
             if (translation) {
                 setKoreanTranslation(translation.trim());
             }
@@ -286,24 +281,15 @@ export const AssetGenerationModal: React.FC<AssetGenerationModalProps> = ({
                 const instruction = categoryInstructions[ref.category] || 'Describe the key visual elements in detail.';
 
                 try {
-                    const response = await fetch(
-                        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-                        {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                contents: [{
-                                    parts: [
-                                        { text: `Analyze this reference image for AI image generation. ${instruction} Output ONLY the descriptive text for this category, nothing else. Write in English.` },
-                                        { inlineData: { mimeType: matches[1], data: matches[2] } }
-                                    ]
-                                }]
-                            })
-                        }
+                    const { generateText } = await import('../services/gemini');
+                    const analysisResult = await generateText(
+                        `Analyze this reference image for AI image generation. ${instruction} Output ONLY the descriptive text for this category, nothing else. Write in English.`,
+                        apiKey,
+                        undefined,
+                        [{ mimeType: matches[1], data: matches[2] }],
+                        undefined,
+                        { temperature: 0.7 }
                     );
-
-                    const data = await response.json();
-                    const analysisResult = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
                     if (analysisResult) {
                         // Collect all analyses per category as array
@@ -503,15 +489,16 @@ export const AssetGenerationModal: React.FC<AssetGenerationModalProps> = ({
                 setChatMessages(prev => [...prev, assistantMessage]);
             } else {
                 // PROMPT REFINEMENT MODE
-                const response = await fetch(
-                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            systemInstruction: {
-                                parts: [{
-                                    text: `You are a visual prompt engineer for AI image generation. 
+                const { generateText } = await import('../services/gemini');
+                const reply = await generateText(
+                    chatInput,
+                    apiKey,
+                    undefined,
+                    taggedReferences.map(ref => ({
+                        mimeType: "image/jpeg",
+                        data: ref.url.split(',')[1] || ""
+                    })),
+                    `You are a visual prompt engineer for AI image generation. 
 Help the user refine, clean up, and deduplicate their English prompt. 
 They may write in Korean.
 
@@ -527,26 +514,9 @@ Your goal:
 
 Output Format:
 SUGGESTED_PROMPT: [your improved English prompt]
-설명: [Concise Korean summary of what you cleaned up/changed]`
-                                }]
-                            },
-                            contents: [{
-                                parts: [
-                                    { text: chatInput },
-                                    ...taggedReferences.map(ref => ({
-                                        inline_data: {
-                                            mime_type: "image/jpeg",
-                                            data: ref.url.split(',')[1] || ""
-                                        }
-                                    }))
-                                ]
-                            }]
-                        })
-                    }
+설명: [Concise Korean summary of what you cleaned up/changed]`,
+                    { temperature: 0.7 }
                 );
-
-                const data = await response.json();
-                const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I could not process that.';
 
                 const assistantMessage: ChatMessage = {
                     id: `msg-${Date.now()}`,

@@ -99,11 +99,11 @@ export const AssistantDirectorChat: React.FC<AssistantDirectorChatProps> = memo(
 
                     const assetsWithImages = matchedAssets
                         .map((a: any) => ({ name: a.name, url: a.masterImage || a.draftImage || a.referenceImage, type: a.type }))
-                        .filter(a => !!a.url);
+                        .filter((a: any) => !!a.url);
 
                     const remainingSlot = 4 - refUrls.length;
                     const limitedAssets = assetsWithImages.slice(0, remainingSlot);
-                    limitedAssets.forEach(a => refUrls.push(a.url));
+                    limitedAssets.forEach((a: any) => refUrls.push(a.url));
 
                     const linkedAssetsMeta = matchedAssets.map((asset: any) => {
                         const assetImageUrl = asset.masterImage || asset.draftImage || asset.referenceImage;
