@@ -550,23 +550,29 @@ async function syncAllToPC(state: any, directoryHandle: FileSystemDirectoryHandl
     // 1. Sync Intelligence Layer
     await syncIntelligenceLayerToPC(state, directoryHandle);
 
-    // 2. Sync all saved projects
-    const savedProjects = state.savedProjects || {};
-    const projectIds = Object.keys(savedProjects);
-    console.log(`[LocalSync] Projects in savedProjects metadata: ${projectIds.length}`, projectIds);
+    // 2. Scan IndexedDB for ALL project-* keys (not just savedProjects metadata)
+    //    This ensures orphaned projects are also synced!
+    const allIdbKeys = await idbKeys();
+    const projectKeys = (allIdbKeys as string[]).filter(
+        (key: string) => typeof key === 'string' && key.startsWith('project-')
+    );
+
+    console.log(`[LocalSync] Found ${projectKeys.length} projects in IndexedDB (including orphaned):`, projectKeys);
 
     let syncedCount = 0;
     let skippedCount = 0;
 
-    for (const projectId of projectIds) {
+    for (const idbKey of projectKeys) {
         try {
-            // Load full project data from IDB
-            const projectData = await idbGet(`project-${projectId}`);
+            const projectData = await idbGet(idbKey);
             if (!projectData) {
-                console.warn(`[LocalSync] SKIP: Project ${projectId} exists in metadata but NOT in IDB!`);
+                console.warn(`[LocalSync] SKIP: Key ${idbKey} exists but data is empty/null!`);
                 skippedCount++;
                 continue;
             }
+
+            // Extract projectId from key (format: "project-{id}")
+            const projectId = idbKey.replace('project-', '');
 
             // Sync JSON
             const fileName = `project-${projectId}.json`;
@@ -582,7 +588,7 @@ async function syncAllToPC(state: any, directoryHandle: FileSystemDirectoryHandl
             await syncProjectAssetsToPC(projectData, directoryHandle);
 
         } catch (e) {
-            console.error(`[LocalSync] Failed to sync project ${projectId} in full sync:`, e);
+            console.error(`[LocalSync] Failed to sync project ${idbKey} in full sync:`, e);
         }
     }
 
