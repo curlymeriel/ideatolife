@@ -676,6 +676,14 @@ async function restoreFromLocalFolder(directoryHandle: FileSystemDirectoryHandle
         const assetFiles = files.filter(f => f.path[0] === 'assets');
         console.log(`[LocalSync] Found ${assetFiles.length} potential asset files.`);
 
+        // Debug: Log first 10 asset keys for diagnosis
+        const first10 = assetFiles.slice(0, 10).map(f => {
+            const type = f.path[1];
+            const key = f.name.split('.')[0];
+            return `${type}/${key}`;
+        });
+        console.log(`[LocalSync] Sample asset keys being restored:`, first10);
+
         for (const aFile of assetFiles) {
             try {
                 // path is ['assets', 'images', 'fileName.jpg']
