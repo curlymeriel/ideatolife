@@ -553,12 +553,20 @@ async function syncAllToPC(state: any, directoryHandle: FileSystemDirectoryHandl
     // 2. Sync all saved projects
     const savedProjects = state.savedProjects || {};
     const projectIds = Object.keys(savedProjects);
+    console.log(`[LocalSync] Projects in savedProjects metadata: ${projectIds.length}`, projectIds);
+
+    let syncedCount = 0;
+    let skippedCount = 0;
 
     for (const projectId of projectIds) {
         try {
             // Load full project data from IDB
             const projectData = await idbGet(`project-${projectId}`);
-            if (!projectData) continue;
+            if (!projectData) {
+                console.warn(`[LocalSync] SKIP: Project ${projectId} exists in metadata but NOT in IDB!`);
+                skippedCount++;
+                continue;
+            }
 
             // Sync JSON
             const fileName = `project-${projectId}.json`;
@@ -567,6 +575,8 @@ async function syncAllToPC(state: any, directoryHandle: FileSystemDirectoryHandl
                 ['projects', fileName],
                 JSON.stringify(projectData, null, 2)
             );
+            console.log(`[LocalSync] Synced project: ${projectId} -> ${fileName}`);
+            syncedCount++;
 
             // Sync Assets
             await syncProjectAssetsToPC(projectData, directoryHandle);
@@ -576,7 +586,7 @@ async function syncAllToPC(state: any, directoryHandle: FileSystemDirectoryHandl
         }
     }
 
-    console.log("[LocalSync] Full library sync complete.");
+    console.log(`[LocalSync] Full library sync complete. Synced: ${syncedCount}, Skipped: ${skippedCount}`);
 }
 
 /**
