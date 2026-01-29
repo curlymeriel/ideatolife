@@ -48,7 +48,7 @@ interface MultiProjectActions {
     localFolder: LocalFolderHandle | null;
     localFolderPermission: 'prompt' | 'granted' | 'denied';
     isSyncingLibrary: boolean;
-    connectLocalFolder: (profileName: string) => Promise<void>;
+    connectLocalFolder: (profileName: string, isDirect?: boolean) => Promise<void>;
     requestLocalFolderPermission: () => Promise<boolean>;
     disconnectLocalFolder: () => void;
     forceSyncLibrary: () => Promise<void>;
@@ -674,15 +674,25 @@ export const useWorkflowStore = create<WorkflowStore>()(
             localFolderPermission: 'prompt',
             isSyncingLibrary: false,
 
-            connectLocalFolder: async (profileName: string) => {
+            connectLocalFolder: async (profileName: string, isDirect: boolean = false) => {
                 const folder = await selectLocalFolder();
                 if (folder) {
-                    // Create/Get Subfolder for Profile
-                    const subHandle = await getSubFolder(folder.handle, profileName);
+                    let subHandle: FileSystemDirectoryHandle;
+                    let displayName: string;
+
+                    if (isDirect) {
+                        // Use root folder directly
+                        subHandle = folder.handle;
+                        displayName = `Direct: ${folder.name}`;
+                    } else {
+                        // Create/Get Subfolder for Profile
+                        subHandle = await getSubFolder(folder.handle, profileName);
+                        displayName = `${folder.name}/${profileName}`;
+                    }
 
                     const profileFolder: LocalFolderHandle = {
                         handle: subHandle,
-                        name: `${folder.name}/${profileName}`
+                        name: displayName
                     };
 
                     set({ localFolder: profileFolder, localFolderPermission: 'granted' });

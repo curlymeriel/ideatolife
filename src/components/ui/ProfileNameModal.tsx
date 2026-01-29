@@ -4,11 +4,12 @@ import { FolderInput, X } from 'lucide-react';
 interface ProfileNameModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onConfirm: (name: string) => void;
+    onConfirm: (name: string, isDirect: boolean) => void;
 }
 
 export const ProfileNameModal: React.FC<ProfileNameModalProps> = ({ isOpen, onClose, onConfirm }) => {
     const [name, setName] = useState('');
+    const [isDirect, setIsDirect] = useState(false);
     const [error, setError] = useState('');
 
     if (!isOpen) return null;
@@ -16,19 +17,24 @@ export const ProfileNameModal: React.FC<ProfileNameModalProps> = ({ isOpen, onCl
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
 
-        const trimmed = name.trim();
-        if (!trimmed) {
-            setError('Profile name cannot be empty');
-            return;
+        if (!isDirect) {
+            const trimmed = name.trim();
+            if (!trimmed) {
+                setError('Profile name cannot be empty');
+                return;
+            }
+
+            // Simple sanitization for folder name safety
+            if (/[<>:"/\\|?*]/.test(trimmed)) {
+                setError('Name contains invalid characters');
+                return;
+            }
+            onConfirm(trimmed, false);
+        } else {
+            // Direct connection: name is ignored
+            onConfirm("", true);
         }
 
-        // Simple sanitization for folder name safety
-        if (/[<>:"/\\|?*]/.test(trimmed)) {
-            setError('Name contains invalid characters');
-            return;
-        }
-
-        onConfirm(trimmed);
         setName('');
         setError('');
     };
@@ -67,9 +73,10 @@ export const ProfileNameModal: React.FC<ProfileNameModalProps> = ({ isOpen, onCl
                                     setName(e.target.value);
                                     if (error) setError('');
                                 }}
+                                disabled={isDirect}
                                 placeholder="e.g. Personal"
-                                className="w-full bg-gray-950 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
-                                autoFocus
+                                className={`w-full bg-gray-950 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all ${isDirect ? 'opacity-30 cursor-not-allowed' : ''}`}
+                                autoFocus={!isDirect}
                             />
                         </div>
 
@@ -78,6 +85,28 @@ export const ProfileNameModal: React.FC<ProfileNameModalProps> = ({ isOpen, onCl
                                 {error}
                             </p>
                         )}
+                    </div>
+
+                    {/* Direct Connection Toggle */}
+                    <div className="flex items-start gap-3 p-3 bg-gray-800/50 rounded-lg border border-gray-700/50">
+                        <div className="pt-0.5">
+                            <input
+                                type="checkbox"
+                                id="direct-mode"
+                                checked={isDirect}
+                                onChange={(e) => {
+                                    setIsDirect(e.target.checked);
+                                    if (e.target.checked) setError('');
+                                }}
+                                className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500/50 cursor-pointer"
+                            />
+                        </div>
+                        <label htmlFor="direct-mode" className="text-sm cursor-pointer select-none">
+                            <span className="block font-medium text-gray-300">Advanced: Direct Connection</span>
+                            <span className="block text-xs text-gray-500 mt-0.5 leading-relaxed">
+                                Connect the selected folder directly without creating a named subfolder. Use this if you have already selected the specific folder you want to use.
+                            </span>
+                        </label>
                     </div>
 
                     {/* Footer */}
@@ -91,10 +120,10 @@ export const ProfileNameModal: React.FC<ProfileNameModalProps> = ({ isOpen, onCl
                         </button>
                         <button
                             type="submit"
-                            disabled={!name.trim()}
+                            disabled={!isDirect && !name.trim()}
                             className="px-6 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg shadow-lg shadow-blue-900/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all transform active:scale-95"
                         >
-                            Confirm & Connect
+                            {isDirect ? 'Connect Folder Directly' : 'Create & Connect'}
                         </button>
                     </div>
                 </form>

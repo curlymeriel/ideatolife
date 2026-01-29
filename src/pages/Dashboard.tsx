@@ -57,10 +57,10 @@ export const Dashboard: React.FC = () => {
         }
     };
 
-    const handleConnectLocalFolder = async (profileName: string) => {
+    const handleConnectLocalFolder = async (profileName: string, isDirect: boolean) => {
         setShowProfileModal(false);
         try {
-            await store.connectLocalFolder(profileName);
+            await store.connectLocalFolder(profileName, isDirect);
         } catch (e) {
             console.error("Failed to connect folder:", e);
             alert("Failed to connect local folder.");
