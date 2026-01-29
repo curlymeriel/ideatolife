@@ -613,17 +613,50 @@ async function restoreFromLocalFolder(directoryHandle: FileSystemDirectoryHandle
         const projectFiles = files.filter(f => f.path[0] === 'projects' && f.name.endsWith('.json'));
         console.log(`[LocalSync] Found ${projectFiles.length} project files.`);
 
+        const restoredProjects: Record<string, ProjectMetadata> = {};
+
         for (const pFile of projectFiles) {
             try {
                 const text = await pFile.file.text();
                 const projectData = JSON.parse(text);
                 if (projectData.id) {
                     await idbSet(`project-${projectData.id}`, projectData);
+
+                    // Construct metadata
+                    restoredProjects[projectData.id] = {
+                        id: projectData.id,
+                        seriesName: projectData.seriesName,
+                        episodeName: projectData.episodeName,
+                        episodeNumber: projectData.episodeNumber,
+                        lastModified: projectData.lastModified || Date.now(),
+                        thumbnailUrl: projectData.thumbnailUrl,
+                        currentStep: projectData.currentStep,
+                        scriptLength: projectData.script?.length || 0,
+                        assetsTotal: projectData.script?.length || 0, // Approx
+                        assetsDefined: 0, // Calc if needed
+                        cachedProgress: {
+                            workflowPercent: 0,
+                            scriptConfirmed: 0,
+                            scriptLength: projectData.script?.length || 0,
+                            assetsDefined: 0,
+                            assetsTotal: projectData.script?.length || 0,
+                            completedStepsCount: projectData.currentStep
+                        }
+                    };
+
                     console.log(`[LocalSync] Restored project metadata: ${projectData.id}`);
                 }
             } catch (e) {
                 console.error(`[LocalSync] Failed to parse project file ${pFile.name}:`, e);
             }
+        }
+
+        // 1.5 Update Store Metadata (Critical for UI)
+        if (Object.keys(restoredProjects).length > 0) {
+            useWorkflowStore.setState((state: any) => ({
+                savedProjects: { ...state.savedProjects, ...restoredProjects }
+            }));
+            console.log(`[LocalSync] Merged ${Object.keys(restoredProjects).length} projects into Dashboard.`);
         }
 
         // 2. Process Assets
