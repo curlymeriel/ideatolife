@@ -641,15 +641,12 @@ async function restoreFromLocalFolder(directoryHandle: FileSystemDirectoryHandle
                     // Construct metadata
                     restoredProjects[projectData.id] = {
                         id: projectData.id,
-                        seriesName: projectData.seriesName,
-                        episodeName: projectData.episodeName,
-                        episodeNumber: projectData.episodeNumber,
+                        seriesName: projectData.seriesName || 'Untitled Series',
+                        episodeName: projectData.episodeName || 'Untitled',
+                        episodeNumber: projectData.episodeNumber || 1,
                         lastModified: projectData.lastModified || Date.now(),
-                        thumbnailUrl: projectData.thumbnailUrl,
+                        thumbnailUrl: projectData.thumbnailUrl || null,
                         currentStep: projectData.currentStep,
-                        scriptLength: projectData.script?.length || 0,
-                        assetsTotal: projectData.script?.length || 0, // Approx
-                        assetsDefined: 0, // Calc if needed
                         cachedProgress: {
                             workflowPercent: 0,
                             scriptConfirmed: 0,
