@@ -30,6 +30,16 @@ export async function selectLocalFolder(): Promise<LocalFolderHandle | null> {
 }
 
 /**
+ * Get a subfolder handle from a directory handle
+ */
+export async function getSubFolder(
+    directoryHandle: FileSystemDirectoryHandle,
+    folderName: string
+): Promise<FileSystemDirectoryHandle> {
+    return await directoryHandle.getDirectoryHandle(folderName, { create: true });
+}
+
+/**
  * Save a file to the specified directory handle
  */
 export async function saveFileToHandle(
@@ -50,6 +60,61 @@ export async function saveFileToHandle(
 
     await writable.write(content);
     await writable.close();
+}
+
+/**
+ * Delete a file from the specified directory handle
+ */
+export async function deleteFileFromHandle(
+    directoryHandle: FileSystemDirectoryHandle,
+    path: string[]
+): Promise<void> {
+    let currentDir = directoryHandle;
+
+    // Traverse folders
+    for (let i = 0; i < path.length - 1; i++) {
+        try {
+            currentDir = await currentDir.getDirectoryHandle(path[i]);
+        } catch {
+            // If path doesn't exist, file doesn't exist
+            return;
+        }
+    }
+
+    const fileName = path[path.length - 1];
+    try {
+        await currentDir.removeEntry(fileName);
+        console.log(`[LocalSync] Deleted file: ${fileName}`);
+    } catch (e: any) {
+        if (e.name !== 'NotFoundError') throw e;
+    }
+}
+
+/**
+ * Delete a directory from the specified directory handle
+ */
+export async function deleteDirectoryFromHandle(
+    directoryHandle: FileSystemDirectoryHandle,
+    path: string[]
+): Promise<void> {
+    let currentDir = directoryHandle;
+
+    // Traverse folders to parent of target
+    for (let i = 0; i < path.length - 1; i++) {
+        try {
+            currentDir = await currentDir.getDirectoryHandle(path[i]);
+        } catch {
+            return;
+        }
+    }
+
+    const dirName = path[path.length - 1];
+    try {
+        await currentDir.removeEntry(dirName, { recursive: true });
+        console.log(`[LocalSync] Deleted directory: ${dirName}`);
+    } catch (e: any) {
+        if (e.name !== 'NotFoundError') throw e;
+    }
 }
 
 /**

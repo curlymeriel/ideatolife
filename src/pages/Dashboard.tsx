@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Image, FileText, Music, ArrowRight, BarChart3, Plus, Download, Trash2, Database, Loader2, Copy, Check, HardDrive, AlertTriangle, RotateCcw, Settings, ChevronDown, FolderSync, ShieldAlert } from 'lucide-react';
 
 import { UnifiedStorageManager } from '../components/UnifiedStorageManager';
+import { ProfileNameModal } from '../components/ui/ProfileNameModal';
 import { migrateAllProjects } from '../utils/migration';
 
 import { debugListKeys, resolveUrl } from '../utils/imageStorage';
@@ -19,6 +20,7 @@ export const Dashboard: React.FC = () => {
     const isLoadingProjects = !isHydrated;
     const navigate = useNavigate();
     const [showStorageManager, setShowStorageManager] = React.useState(false);
+    const [showProfileModal, setShowProfileModal] = React.useState(false);
     // RescueModal is now handled globally in MainLayout via 'openRescueModal' event
     // Removed projectsData state - we now use savedProjects metadata exclusively
 
@@ -52,6 +54,16 @@ export const Dashboard: React.FC = () => {
         } catch (e) {
             console.error("Create project failed:", e);
             setIsOpeningProject(false);
+        }
+    };
+
+    const handleConnectLocalFolder = async (profileName: string) => {
+        setShowProfileModal(false);
+        try {
+            await store.connectLocalFolder(profileName);
+        } catch (e) {
+            console.error("Failed to connect folder:", e);
+            alert("Failed to connect local folder.");
         }
     };
 
@@ -439,6 +451,12 @@ export const Dashboard: React.FC = () => {
                     <UnifiedStorageManager onClose={() => setShowStorageManager(false)} />
                 )}
 
+                <ProfileNameModal
+                    isOpen={showProfileModal}
+                    onClose={() => setShowProfileModal(false)}
+                    onConfirm={handleConnectLocalFolder}
+                />
+
                 {/* Left Sidebar */}
                 <div className="col-span-12 lg:col-span-3 space-y-8">
                     <div className="py-6">
@@ -510,13 +528,22 @@ export const Dashboard: React.FC = () => {
                                         <span className={`text-[10px] truncate font-mono ${store.localFolderPermission === 'granted' ? "text-gray-300" : "text-yellow-500"}`}>{store.localFolder.name}</span>
                                     </div>
                                     {store.localFolderPermission !== 'granted' ? (
-                                        <button
-                                            onClick={() => store.requestLocalFolderPermission()}
-                                            className="w-full py-2 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-500 border border-yellow-500/30 rounded flex items-center justify-center gap-1 text-[10px] font-bold transition-all"
-                                        >
-                                            <ShieldAlert size={12} />
-                                            권한 승인 및 연결 활성화
-                                        </button>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => store.requestLocalFolderPermission()}
+                                                className="flex-1 py-2 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-500 border border-yellow-500/30 rounded flex items-center justify-center gap-1 text-[10px] font-bold transition-all"
+                                            >
+                                                <ShieldAlert size={12} />
+                                                권한 승인
+                                            </button>
+                                            <button
+                                                onClick={() => store.disconnectLocalFolder()}
+                                                className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded text-[10px] font-bold transition-all"
+                                                title="연결 해제"
+                                            >
+                                                <Trash2 size={12} />
+                                            </button>
+                                        </div>
                                     ) : (
                                         <button
                                             onClick={() => store.disconnectLocalFolder()}
@@ -528,7 +555,7 @@ export const Dashboard: React.FC = () => {
                                 </div>
                             ) : (
                                 <button
-                                    onClick={() => store.connectLocalFolder()}
+                                    onClick={() => setShowProfileModal(true)}
                                     className="w-full flex items-center justify-center gap-2 p-2 bg-[var(--color-primary)]/20 hover:bg-[var(--color-primary)]/30 border border-[var(--color-primary)]/40 rounded-lg transition-all"
                                 >
                                     <FolderSync size={14} className="text-[var(--color-primary)]" />

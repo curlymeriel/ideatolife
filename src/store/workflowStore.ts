@@ -10,7 +10,7 @@ import { createProjectSlice, type ProjectSlice } from './projectSlice';
 import { createIntelligenceSlice, type IntelligenceSlice } from './intelligenceSlice';
 import { createUISlice, type UISlice } from './uiSlice';
 import { saveToIdb, generateAudioKey, generateCutImageKey, generateAssetImageKey, resolveUrl, loadFromIdb, parseIdbUrl } from '../utils/imageStorage';
-import { selectLocalFolder, saveFileToHandle, readFilesFromDirectory, verifyPermission, requestPermission, type LocalFolderHandle } from '../utils/localFileSystem';
+import { selectLocalFolder, saveFileToHandle, readFilesFromDirectory, verifyPermission, requestPermission, getSubFolder, deleteFileFromHandle, deleteDirectoryFromHandle, type LocalFolderHandle } from '../utils/localFileSystem';
 
 // ====================
 // Multi-Project Actions
@@ -48,7 +48,7 @@ interface MultiProjectActions {
     localFolder: LocalFolderHandle | null;
     localFolderPermission: 'prompt' | 'granted' | 'denied';
     isSyncingLibrary: boolean;
-    connectLocalFolder: () => Promise<void>;
+    connectLocalFolder: (profileName: string) => Promise<void>;
     requestLocalFolderPermission: () => Promise<boolean>;
     disconnectLocalFolder: () => void;
     forceSyncLibrary: () => Promise<void>;
@@ -674,15 +674,26 @@ export const useWorkflowStore = create<WorkflowStore>()(
             localFolderPermission: 'prompt',
             isSyncingLibrary: false,
 
-            connectLocalFolder: async () => {
+            connectLocalFolder: async (profileName: string) => {
                 const folder = await selectLocalFolder();
                 if (folder) {
-                    set({ localFolder: folder, localFolderPermission: 'granted' });
+                    // Create/Get Subfolder for Profile
+                    const subHandle = await getSubFolder(folder.handle, profileName);
+
+                    const profileFolder: LocalFolderHandle = {
+                        handle: subHandle,
+                        name: `${folder.name}/${profileName}`
+                    };
+
+                    set({ localFolder: profileFolder, localFolderPermission: 'granted' });
+
                     // CRITICAL: Save handle to IDB because persist middleware can't serialize it to JSON
-                    await idbSet('local-folder-handle', folder);
+                    // We save the sub-handle as the main handle for the app to use transparently
+                    await idbSet('local-folder-handle', profileFolder);
+
                     // NEW: SYNC & RESTORE
-                    await restoreFromLocalFolder(folder.handle);
-                    await syncAllToPC(get(), folder.handle);
+                    await restoreFromLocalFolder(subHandle);
+                    await syncAllToPC(get(), subHandle);
                 }
             },
             requestLocalFolderPermission: async () => {
@@ -1259,6 +1270,17 @@ export const useWorkflowStore = create<WorkflowStore>()(
                 // Remove from IndexedDB
                 await deleteProjectFromDisk(id);
 
+                // LOCAL SYNC: Delete from PC if connected
+                if (state.localFolder?.handle && state.localFolderPermission === 'granted') {
+                    try {
+                        await deleteFileFromHandle(state.localFolder.handle, ['projects', `project-${id}.json`]);
+                        await deleteDirectoryFromHandle(state.localFolder.handle, ['assets', `project-${id}`]);
+                        console.log(`[LocalSync] Deleted project files for ${id} from PC.`);
+                    } catch (e) {
+                        console.warn(`[LocalSync] Failed to delete local files for ${id}:`, e);
+                    }
+                }
+
                 // CRITICAL: If we just deleted the ACTIVE project, we must reset the in-memory state.
                 // Otherwise, the heavy data (script, assets) remains in the store and gets 
                 // persisted to 'idea-lab-storage', effectively keeping the project alive in a "zombie" state.
@@ -1427,6 +1449,18 @@ export const useWorkflowStore = create<WorkflowStore>()(
                 // Remove from IndexedDB
                 for (const id of projectIdsToDelete) {
                     await deleteProjectFromDisk(id);
+
+                    // LOCAL SYNC: Delete from PC if connected
+                    const appState = get() as any;
+                    if (appState.localFolder?.handle && appState.localFolderPermission === 'granted') {
+                        try {
+                            await deleteFileFromHandle(appState.localFolder.handle, ['projects', `project-${id}.json`]);
+                            await deleteDirectoryFromHandle(appState.localFolder.handle, ['assets', `project-${id}`]);
+                            console.log(`[LocalSync] Deleted project files for ${id} from PC.`);
+                        } catch (e) {
+                            console.warn(`[LocalSync] Failed to delete local files for ${id}:`, e);
+                        }
+                    }
                 }
 
                 // CRITICAL: If the ACTIVE project belongs to the deleted series, we must reset the in-memory state.
