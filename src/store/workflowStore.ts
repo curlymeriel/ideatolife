@@ -679,7 +679,8 @@ async function restoreFromLocalFolder(directoryHandle: FileSystemDirectoryHandle
         // Debug: Log first 10 asset keys for diagnosis
         const first10 = assetFiles.slice(0, 10).map(f => {
             const type = f.path[1];
-            const key = f.name.split('.')[0];
+            // Use full filename as key (project data may reference with extension)
+            const key = f.name;
             return `${type}/${key}`;
         });
         console.log(`[LocalSync] Sample asset keys being restored:`, first10);
@@ -690,12 +691,15 @@ async function restoreFromLocalFolder(directoryHandle: FileSystemDirectoryHandle
                 const type = aFile.path[1] as any;
                 if (!['images', 'assets', 'audio', 'video'].includes(type)) continue;
 
-                // key is fileName without extension
-                const key = aFile.name.split('.')[0];
+                // IMPORTANT: Use full filename as key to match project references
+                // Project data references assets like: idb://images/somekey.jpg
+                // So we must restore with key = "somekey.jpg" not "somekey"
+                const keyWithExt = aFile.name;
+                const keyWithoutExt = aFile.name.split('.')[0];
 
-                // Save to IDB if not already there (or overwrite to ensure sync)
-                await saveToIdb(type, key, aFile.file);
-                // No need to log every asset, can be hundreds
+                // Save BOTH versions to ensure compatibility with old and new references
+                await saveToIdb(type, keyWithExt, aFile.file);
+                await saveToIdb(type, keyWithoutExt, aFile.file);
             } catch (e) {
                 console.error(`[LocalSync] Failed to restore asset ${aFile.name}:`, e);
             }
