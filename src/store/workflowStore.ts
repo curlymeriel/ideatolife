@@ -508,7 +508,12 @@ async function syncProjectAssetsToPC(projectData: ProjectData, directoryHandle: 
 
             // Clean up key for filename
             const safeKey = parsed.key.replace(/[/\\?%*:|"<>]/g, '-');
-            const fileName = `${safeKey}${ext}`;
+
+            // Fix: Check if extension is already present to avoid dumping double extensions (e.g. .jpg.jpg)
+            let fileName = safeKey;
+            if (!safeKey.toLowerCase().endsWith(ext)) {
+                fileName = `${safeKey}${ext}`;
+            }
 
             await saveFileToHandle(directoryHandle, ['assets', parsed.type, fileName], binaryData);
         } catch (e) {
@@ -700,6 +705,18 @@ async function restoreFromLocalFolder(directoryHandle: FileSystemDirectoryHandle
                 // Save BOTH versions to ensure compatibility with old and new references
                 await saveToIdb(type, keyWithExt, aFile.file);
                 await saveToIdb(type, keyWithoutExt, aFile.file);
+
+                // Handle Double Extension Case (e.g. .jpg.jpg) from previous bug
+                if (keyWithExt.endsWith('.jpg.jpg')) {
+                    const fixedKey = keyWithExt.slice(0, -4); // remove last .jpg
+                    await saveToIdb(type, fixedKey, aFile.file);
+                } else if (keyWithExt.endsWith('.mp3.mp3')) {
+                    const fixedKey = keyWithExt.slice(0, -4);
+                    await saveToIdb(type, fixedKey, aFile.file);
+                } else if (keyWithExt.endsWith('.wav.wav')) {
+                    const fixedKey = keyWithExt.slice(0, -4);
+                    await saveToIdb(type, fixedKey, aFile.file);
+                }
             } catch (e) {
                 console.error(`[LocalSync] Failed to restore asset ${aFile.name}:`, e);
             }
