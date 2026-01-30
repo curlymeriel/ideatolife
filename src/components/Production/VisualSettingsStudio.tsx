@@ -122,6 +122,7 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
 
     const [showCropModal, setShowCropModal] = useState(false);
     const [imageToCrop, setImageToCrop] = useState<string | null>(null);
+    const [uploadImageToCrop, setUploadImageToCrop] = useState<string | null>(null); // NEW: For cropping uploaded refs
     const [currentMask, setCurrentMask] = useState<string | null>(null);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -143,6 +144,18 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
             .map((a: any) => ({
                 value: `${a.type}-${a.name}`,
                 label: `${a.type === 'character' ? '인물' : '장소'}: ${a.name}`
+            }));
+    }, [assetDefinitions]);
+
+    const projectAssetCandidates = useMemo(() => {
+        if (!assetDefinitions) return [];
+        return Object.values(assetDefinitions)
+            .filter((a: any) => (a.type === 'character' || a.type === 'location' || a.type === 'prop') && (a.masterImage || a.draftImage || a.referenceImage))
+            .map((a: any) => ({
+                id: a.id,
+                name: a.name,
+                type: a.type,
+                url: a.masterImage || a.draftImage || a.referenceImage
             }));
     }, [assetDefinitions]);
 
@@ -258,15 +271,21 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
         const reader = new FileReader();
         reader.onloadend = () => {
             const base64 = reader.result as string;
-            setTaggedReferences(prev => [...prev, {
-                id: `ref-${Date.now()}`,
-                url: base64,
-                categories: ['style'],
-                isAuto: false
-            }]);
+            // Open Crop Modal instead of adding immediately
+            setUploadImageToCrop(base64);
         };
         reader.readAsDataURL(file);
         e.target.value = '';
+    };
+
+    const handleUploadCropConfirm = (croppedImg: string) => {
+        setTaggedReferences(prev => [...prev, {
+            id: `ref-${Date.now()}`,
+            url: croppedImg,
+            categories: ['style'],
+            isAuto: false
+        }]);
+        setUploadImageToCrop(null);
     };
 
     const handleAddCandidate = async (url: string) => {
@@ -628,7 +647,23 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                                     </div>
                                 </section>
 
-                                {/* Candidate Assets */}
+                                {/* Project Assets Candidates (Key Visuals) */}
+                                {projectAssetCandidates.length > 0 && (
+                                    <section className="space-y-4 pt-4 border-t border-white/5">
+                                        <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">Key Visuals</h3>
+                                        <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                                            {projectAssetCandidates.map((c: any) => (
+                                                <button key={c.id} onClick={() => handleAddCandidate(c.url)} className="w-16 h-16 shrink-0 rounded-lg overflow-hidden border border-white/10 hover:border-[var(--color-primary)] transition-all relative group">
+                                                    <img src={c.url} className="w-full h-full object-cover" />
+                                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center"><Plus size={16} className="text-white" /></div>
+                                                    <div className="absolute bottom-0 left-0 right-0 py-0.5 bg-black/60 text-[8px] font-bold text-white text-center truncate px-1">{c.name}</div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </section>
+                                )}
+
+                                {/* Candidate Assets from other cuts */}
                                 {resolvedCandidates.length > 0 && (
                                     <section className="space-y-4 pt-4 border-t border-white/5">
                                         <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">Candidates from other cuts</h3>
@@ -802,8 +837,33 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                 )}
             </div>
 
-            {showCropModal && imageToCrop && <ImageCropModal imageSrc={imageToCrop} aspectRatio={aspectRatio} onConfirm={handleCropConfirm} onCancel={() => setShowCropModal(false)} />}
-        </div>,
-        document.body
+            {/* Upload Crop Modal */}
+            {uploadImageToCrop && (
+                <ImageCropModal
+                    imageSrc={uploadImageToCrop}
+                    aspectRatio={aspectRatio} // Crop to current aspect ratio? Or free? Let's use current aspect ratio for consistency, or maybe '1:1' if it's just a ref? 
+                    // Actually, for reference, free crop or 1:1 is usually better, but let's stick to aspect ratio for now or maybe allow user to change?
+                    // The user asked "allow cropping", usually implies freedom.
+                    // But ImageCropModal takes a fixed aspectRatio prop.
+                    // Let's pass '1:1' for now as generic reference, or maybe allow free?
+                    // ImageCropModal implementation defaults to 16:9 if invalid.
+                    // Let's pass '1:1' as default for references since they are typically square-ish in UI.
+                    // No, let's use the SCENE aspect ratio because often we want to crop a reference LAYOUT that matches the scene.
+                    onConfirm={handleUploadCropConfirm}
+                    onCancel={() => setUploadImageToCrop(null)}
+                />
+            )}
+
+            {/* Generated Draft Crop Modal */}
+            {showCropModal && imageToCrop && (
+                <ImageCropModal
+                    imageSrc={imageToCrop}
+                    aspectRatio={aspectRatio}
+                    onConfirm={handleCropConfirm}
+                    onCancel={() => setShowCropModal(false)}
+                />
+            )}
+        </div>
+        , document.body
     );
 };
