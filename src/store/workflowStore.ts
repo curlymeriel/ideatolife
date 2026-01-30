@@ -717,6 +717,21 @@ async function restoreFromLocalFolder(directoryHandle: FileSystemDirectoryHandle
                     const fixedKey = keyWithExt.slice(0, -4);
                     await saveToIdb(type, fixedKey, aFile.file);
                 }
+
+                // Handle Missing Extension Case (e.g. file is "foo", project expects "foo.jpg")
+                if (!keyWithExt.includes('.')) {
+                    // Assume it's an image or audio based on type folder
+                    let suffix = '';
+                    if (type === 'images' || type === 'assets') suffix = '.jpg';
+                    else if (type === 'audio') suffix = '.mp3'; // or .wav, hard to guess, but most likely mp3/wav
+                    else if (type === 'video') suffix = '.mp4';
+
+                    if (suffix) {
+                        await saveToIdb(type, `${keyWithExt}${suffix}`, aFile.file);
+                        // Also try .wav for audio just in case
+                        if (type === 'audio') await saveToIdb(type, `${keyWithExt}.wav`, aFile.file);
+                    }
+                }
             } catch (e) {
                 console.error(`[LocalSync] Failed to restore asset ${aFile.name}:`, e);
             }
