@@ -761,6 +761,10 @@ export const useWorkflowStore = create<WorkflowStore>()(
 
                     // NEW: SYNC & RESTORE
                     await restoreFromLocalFolder(subHandle);
+
+                    // Wait a bit to ensure IDB transactions settle
+                    await new Promise(resolve => setTimeout(resolve, 500));
+
                     await syncAllToPC(get(), subHandle);
                 }
             },
