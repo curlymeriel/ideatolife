@@ -600,7 +600,7 @@ async function syncAllToPC(state: any, directoryHandle: FileSystemDirectoryHandl
  */
 async function restoreFromLocalFolder(directoryHandle: FileSystemDirectoryHandle) {
     try {
-        console.log("[LocalSync] Starting restore scan...");
+        console.log("[LocalSync] Starting restore scan... (VERSION: FIX v2 - EXTENSION PRESERVED)");
         const files = await readFilesFromDirectory(directoryHandle);
 
         // 0. Process Global Research
