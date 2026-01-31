@@ -229,10 +229,9 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
         const refs = await getUnifiedReferences();
         if (refs.length === 0) return null;
 
-        const results = await Promise.all(refs.map(async (ref, idx) => {
-            const refIndex = idx + 1;
+        const results = await Promise.all(refs.map(async (ref) => {
             const imgData = await resolveUrl(ref.url);
-            const mappingHeader = `Reference #${refIndex} (Asset Name: "${ref.name}") [Type: ${ref.type}]`;
+            const mappingHeader = `Reference Asset: "${ref.name}" [Type: ${ref.type}]`;
             const analysisPrompt = `Describe the VISUAL FEATURES (face, hair, costume, lighting) of this image. If this is a character, focus on their unique facial features so we can maintain identity. Return ONLY the description.`;
             const text = await generateText(analysisPrompt, apiKey, undefined, imgData);
             return `${mappingHeader}\nDetailed Analysis: ${text}`;
@@ -244,8 +243,8 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
         setIsExpanding(true);
         try {
             const refContext = await analyzeReferences();
-            const systemPrompt = "You are a visual director. Enhance the user's prompt by integrating visual analysis from references marked as 'Reference #X'. Stay concise and premium.";
-            const fullPrompt = `User Prompt: ${visualPrompt}\nMotion/Video Direction: ${videoPrompt}\n\n${refContext ? `[Reference Analysis]\n${refContext}` : ''}\n\n[Instructions]\n1. Incorporate specific details from numbered references (e.g., "match the lighting from Reference #1").\n2. Maintain consistent identity for named characters.\n3. Expand into a detailed 8k English prompt.`;
+            const systemPrompt = "You are a visual director. Enhance the user's prompt by integrating visual analysis from references. Use the format '(Ref: {Asset Name})' to link specific assets. Stay concise and premium.";
+            const fullPrompt = `User Prompt: ${visualPrompt}\nMotion/Video Direction: ${videoPrompt}\n\n${refContext ? `[Reference Analysis]\n${refContext}` : ''}\n\n[Instructions]\n1. Incorporate specific details from named references (e.g., "match the lighting from (Ref: My Asset)").\n2. Maintain consistent identity by appending "(Ref: {Asset Name})" after character names.\n3. Expand into a detailed 8k English prompt.`;
 
             const result = await generateText(fullPrompt, apiKey, undefined, undefined, systemPrompt);
             if (result) setVisualPrompt(result.trim());
@@ -290,15 +289,78 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
         try {
             const { generateImage } = await import('../../services/imageGen');
             const { cleanPromptForGeneration } = await import('../../utils/promptUtils');
-            // IMPROVEMENT: Do NOT prepend refAnalysis (text description of references) to the final prompt.
-            // The literal images are being sent, so prepending a text "summary" often HALLUCINATES or 
-            // DRIFTS away from the visual truth. The (Reference #N) tags in the prompt are enough.
-            const finalPrompt = visualPrompt;
-            const cleaned = cleanPromptForGeneration(finalPrompt);
+
+            // 1. Resolve Unified References (All potential refs)
             const unifiedRefs = await getUnifiedReferences();
-            const refImages = await Promise.all(unifiedRefs.map(r => r.url.startsWith('idb://') ? resolveUrl(r.url) : r.url));
+
+            // 2. Parse Prompt for (Ref: Name) tags
+            // regex matches (Ref: Name) or (Reference #N) fallback
+            const refTagRegex = /\(Ref:\s*(.+?)\)/g;
+            const matches = [...visualPrompt.matchAll(refTagRegex)];
+
+            // 3. Build Ordered List of used references for the API
+            const usedRefImages: string[] = [];
+            let finalPrompt = visualPrompt;
+
+            // Map Name -> Index for replacement
+            const nameToIndex = new Map<string, number>();
+
+            // Helper to add ref and get index (1-based)
+            const getOrAddRefIndex = async (name: string): Promise<number | null> => {
+                if (nameToIndex.has(name)) return nameToIndex.get(name)!;
+
+                // Find matching asset
+                const refObj =
+                    unifiedRefs.find(r => r.name === name) ||
+                    unifiedRefs.find(r => r.name.includes(name)); // Weak match fallback
+
+                if (refObj) {
+                    let url = refObj.url;
+                    if (url.startsWith('idb://')) url = await resolveUrl(url) || url;
+
+                    usedRefImages.push(url);
+                    const newIdx = usedRefImages.length;
+                    nameToIndex.set(name, newIdx);
+                    return newIdx;
+                }
+                return null;
+            };
+
+            // Process all matches and replace in prompt
+            // work from last to first to avoid offset issues, or just replace strings
+            // actually string replacement is safe if names are unique enough
+            for (const match of matches) {
+                const fullTag = match[0]; // (Ref: Name)
+                const refName = match[1];
+                const cleanName = refName.trim();
+
+                const idx = await getOrAddRefIndex(cleanName);
+                if (idx) {
+                    // Replace (Ref: Name) with (Reference #Idx) for the backend
+                    finalPrompt = finalPrompt.replace(fullTag, `(Reference #${idx})`);
+                }
+            }
+
+            // If no explicit tags found, fall back to sending ALL attached references (legacy behavior logic) 
+            // but ONLY if the prompt doesn't look like it's trying to use specific refs.
+            // Actually, safe default: if list is empty but we have taggedReferences, just send them all?
+            // No, "Smart" mode implies specificity. But if user manually added refs and didn't tag them?
+            // Let's keep the user's manual refs in the list if they aren't tagged.
+            // Wait, if I manually add a ref, I want it used.
+            // Let's APPEND any unused taggedReferences to the end of the list, 
+            // just in case they are needed for style but not explicitly named.
+            const unusedRefs = unifiedRefs.filter(r => !nameToIndex.has(r.name));
+            for (const r of unusedRefs) {
+                let url = r.url;
+                if (url.startsWith('idb://')) url = await resolveUrl(url) || url;
+                usedRefImages.push(url);
+                // We don't need to tag them in prompt, just pass them to model
+            }
+
+            const cleaned = cleanPromptForGeneration(finalPrompt);
             const model = aiModel === 'PRO' ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image';
-            const result = await generateImage(cleaned, apiKey, refImages.filter(Boolean) as string[], aspectRatio, model, draftCount);
+
+            const result = await generateImage(cleaned, apiKey, usedRefImages, aspectRatio, model, draftCount);
             const resolved = await Promise.all(result.urls.map(u => resolveUrl(u)));
             const newDrafts = resolved.map((u, i) => u || result.urls[i]);
             setDraftHistory(prev => [...prev, ...newDrafts]);
@@ -334,8 +396,8 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                 
                 **CRITICAL CONSTRAINTS:**
                 1. **STRICT IDENTITY LOCKING (Mandatory)**: 
-                   - For every character or location mention that has a corresponding entry in the [Reference Analysis] below, you MUST append " (Reference #N)" to the name in your 'suggested_prompt'.
-                   - Example: "강이수 (홈룩) (Reference #1) is sitting on a luxury sofa..."
+                   - For every character or location mention that has a corresponding entry in the [Reference Analysis] below, you MUST append " (Ref: {Asset Name})" to the name in your 'suggested_prompt'.
+                   - Example: "강이수 (홈룩) (Ref: 강이수 홈룩) is sitting on a luxury sofa..."
                 2. **DESCRIPTION PRUNING**: DO NOT re-describe the character's facial features, hair, or basic outfit if they have a reference image. The reference image is the ABSOLUTE VISUAL TRUTH. 
                    - Focus your expansion on the lighting, composition, cinematic camera movement, and environment. 
                    - This prevents the generator from drifting away from the reference identity due to redundant text descriptions.
@@ -477,53 +539,7 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
         }
     }, [isOpen, initialVisualPrompt, initialVisualPromptKR, initialFinalImageUrl, initialVideoPrompt, assetDefinitions, autoMatchedAssets, manualAssetObjs]);
 
-    // PREV REFS SYNC: Track initial refs once loaded
-    useEffect(() => {
-        if (isOpen && taggedReferences.length > 0 && prevRefsRef.current.length === 0) {
-            prevRefsRef.current = taggedReferences;
-        }
-    }, [isOpen, taggedReferences]);
-
-    // SYNC PROMPT TAGS: Automatically update (Reference #N) tags when refs change
-    useEffect(() => {
-        const prevRefs = prevRefsRef.current;
-        const currentRefs = taggedReferences;
-
-        // Skip if no change or initial load
-        if (prevRefs === currentRefs || prevRefs.length === 0) return;
-
-        // Build Index Map: oldIndex (1-based) -> newIndex (1-based)
-        const indexMap = new Map<number, number>();
-        prevRefs.forEach((ref, idx) => {
-            const oldIndex = idx + 1;
-            const newIndex = currentRefs.findIndex(r => r.id === ref.id) + 1;
-            if (newIndex > 0 && oldIndex !== newIndex) {
-                indexMap.set(oldIndex, newIndex);
-            }
-        });
-
-        if (indexMap.size > 0) {
-            console.log('[AutoSync] Remapping tags:', Object.fromEntries(indexMap));
-
-            const updateText = (text: string) => {
-                if (!text) return text;
-                // Replace (Reference #X) with placeholders first to avoid collision (e.g. 1->2, 2->1)
-                let temp = text;
-                indexMap.forEach((newIdx, oldIdx) => {
-                    const regex = new RegExp(`\\(Reference #${oldIdx}\\)`, 'g');
-                    temp = temp.replace(regex, `__REF_PLACEHOLDER_${newIdx}__`);
-                });
-                // Replace placeholders with final tags
-                return temp.replace(/__REF_PLACEHOLDER_(\d+)__/g, '(Reference #$1)');
-            };
-
-            setVisualPrompt(prev => updateText(prev));
-            setVisualPromptKR(prev => updateText(prev));
-        }
-
-        // Update ref for next change
-        prevRefsRef.current = currentRefs;
-    }, [taggedReferences]);
+    // AUTO-SYNC REMOVED: Name-based logic replaces index syncing.
 
     useEffect(() => {
         setCurrentMask(null);
