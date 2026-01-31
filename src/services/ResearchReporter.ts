@@ -67,9 +67,9 @@ export class ResearchReporter {
                                 new Paragraph({
                                     children: [
                                         new TextRun({ text: "Page " }),
-                                        PageNumber.CURRENT,
+                                        new TextRun({ children: [PageNumber.CURRENT] }),
                                         new TextRun({ text: " of " }),
-                                        PageNumber.TOTAL_PAGES
+                                        new TextRun({ children: [PageNumber.TOTAL_PAGES] })
                                     ],
                                     alignment: AlignmentType.CENTER
                                 })
@@ -501,19 +501,20 @@ export class ResearchReporter {
                 techSlide.addText('Production AI Toolkit', { x: 1.33, y: 0.83, w: 11.51, h: 0.66, fontFace: 'Noto Sans KR', fontSize: 39, color: COLORS.TEXT_MAIN, bold: true });
 
                 // Tech Table Rows
-                const rows = [['PHASE', 'TOOL', 'USAGE']];
+                const rows: any[][] = [['PHASE', 'TOOL', 'USAGE']];
                 strategy.techStack.forEach(item => rows.push([item.phase, item.tool, item.usage]));
-                techSlide.addTable(rows, {
+                const tableOpts: any = {
                     x: 1.33, y: 1.8, w: 10.6,
                     fontFace: 'Noto Sans KR', fontSize: 12, color: COLORS.TEXT_MAIN,
-                    border: { color: 'FFFFFF', alpha: 10, pt: 1 },
+                    border: { color: 'FFFFFF', pt: 1 },
                     fill: { color: '1A1D21' },
                     headerRow: true,
                     headerRowProps: { fill: { color: '1A1D21' }, color: COLORS.ACCENT, bold: true },
                     valign: 'middle',
                     align: 'left',
                     colW: [2.0, 3.0, 5.6]
-                });
+                };
+                techSlide.addTable(rows, tableOpts);
             }
 
             // MARKETING & KPI (CHAPTER 05)
