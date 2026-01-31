@@ -123,7 +123,7 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
 
     const [showCropModal, setShowCropModal] = useState(false);
     const [imageToCrop, setImageToCrop] = useState<string | null>(null);
-    const [uploadImageToCrop, setUploadImageToCrop] = useState<string | null>(null); // NEW: For cropping uploaded refs
+    const [cropTarget, setCropTarget] = useState<{ url: string; name?: string; type?: string; id?: string } | null>(null);
     const [currentMask, setCurrentMask] = useState<string | null>(null);
 
     const draftFileInputRef = useRef<HTMLInputElement>(null);
@@ -255,20 +255,24 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
         }
     };
 
-    const handleSelectReference = (imgUrl: string) => {
+    const handleSelectReference = (asset: { url: string; name?: string; type?: string; id?: string }) => {
         // Close selector and open cropper
         setShowRefSelector(false);
-        setUploadImageToCrop(imgUrl);
+        setCropTarget(asset);
     };
 
     const handleUploadCropConfirm = (croppedImg: string) => {
-        setTaggedReferences(prev => [...prev, {
-            id: `ref-${Date.now()}`,
+        // Use the metadata from the selected asset, or fallback to defaults
+        const newRef: TaggedReference = {
+            id: cropTarget?.id || `ref-${Date.now()}`,
             url: croppedImg,
-            categories: ['style'],
+            name: cropTarget?.name || 'External Asset',
+            categories: cropTarget?.type ? [cropTarget.type === 'character' ? 'face' : 'style'] : ['style'],
             isAuto: false
-        }]);
-        setUploadImageToCrop(null);
+        };
+
+        setTaggedReferences(prev => [...prev, newRef]);
+        setCropTarget(null);
     };
 
     const handleToggleRefCategory = (refId: string, cat: string) => {
@@ -812,19 +816,12 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
             </div>
 
             {/* Upload Crop Modal */}
-            {uploadImageToCrop && (
+            {cropTarget && (
                 <ImageCropModal
-                    imageSrc={uploadImageToCrop}
-                    aspectRatio={aspectRatio} // Crop to current aspect ratio? Or free? Let's use current aspect ratio for consistency, or maybe '1:1' if it's just a ref? 
-                    // Actually, for reference, free crop or 1:1 is usually better, but let's stick to aspect ratio for now or maybe allow user to change?
-                    // The user asked "allow cropping", usually implies freedom.
-                    // But ImageCropModal takes a fixed aspectRatio prop.
-                    // Let's pass '1:1' for now as generic reference, or maybe allow free?
-                    // ImageCropModal implementation defaults to 16:9 if invalid.
-                    // Let's pass '1:1' as default for references since they are typically square-ish in UI.
-                    // No, let's use the SCENE aspect ratio because often we want to crop a reference LAYOUT that matches the scene.
+                    imageSrc={cropTarget.url}
+                    aspectRatio={aspectRatio}
                     onConfirm={handleUploadCropConfirm}
-                    onCancel={() => setUploadImageToCrop(null)}
+                    onCancel={() => setCropTarget(null)}
                 />
             )}
 

@@ -5,7 +5,7 @@ import { X, Upload, Image as ImageIcon, Film, Layers, Monitor } from 'lucide-rea
 interface ReferenceSelectorModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSelect: (imageUrl: string) => void;
+    onSelect: (asset: { url: string; name?: string; type?: string; id?: string }) => void;
     projectAssets: Array<{ id: string; name: string; url: string; type: string }>;
     pastCuts: Array<{ id: string; url: string; index: number }>;
     drafts: string[];
@@ -29,7 +29,7 @@ export const ReferenceSelectorModal: React.FC<ReferenceSelectorModalProps> = ({
         if (!file) return;
         const reader = new FileReader();
         reader.onloadend = () => {
-            onSelect(reader.result as string);
+            onSelect({ url: reader.result as string, name: 'Upload', type: 'style' });
         };
         reader.readAsDataURL(file);
     };
@@ -94,7 +94,7 @@ export const ReferenceSelectorModal: React.FC<ReferenceSelectorModalProps> = ({
                     {activeTab === 'assets' && (
                         <div className="grid grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
                             {projectAssets.map((asset) => (
-                                <button key={asset.id} onClick={() => onSelect(asset.url)} className="group relative aspect-square rounded-xl overflow-hidden border border-white/10 hover:border-[var(--color-primary)] transition-all bg-black">
+                                <button key={asset.id} onClick={() => onSelect({ url: asset.url, name: asset.name, type: asset.type, id: asset.id })} className="group relative aspect-square rounded-xl overflow-hidden border border-white/10 hover:border-[var(--color-primary)] transition-all bg-black">
                                     <img src={asset.url} alt={asset.name} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-all" />
                                     <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/90 to-transparent">
                                         <p className="text-[10px] font-bold text-white truncate text-center">{asset.name}</p>
@@ -109,7 +109,7 @@ export const ReferenceSelectorModal: React.FC<ReferenceSelectorModalProps> = ({
                     {activeTab === 'cuts' && (
                         <div className="grid grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
                             {pastCuts.map((cut) => (
-                                <button key={cut.id} onClick={() => onSelect(cut.url)} className="group relative aspect-video rounded-xl overflow-hidden border border-white/10 hover:border-[var(--color-primary)] transition-all bg-black">
+                                <button key={cut.id} onClick={() => onSelect({ url: cut.url, name: `Cut #${cut.index}`, type: 'composition', id: String(cut.id) })} className="group relative aspect-video rounded-xl overflow-hidden border border-white/10 hover:border-[var(--color-primary)] transition-all bg-black">
                                     <img src={cut.url} alt={`Cut ${cut.index}`} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-all" />
                                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
                                         <span className="px-2 py-1 bg-[var(--color-primary)] text-black text-[10px] font-black rounded">SELECT</span>
@@ -124,7 +124,7 @@ export const ReferenceSelectorModal: React.FC<ReferenceSelectorModalProps> = ({
                     {activeTab === 'drafts' && (
                         <div className="grid grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
                             {drafts.map((url, i) => (
-                                <button key={i} onClick={() => onSelect(url)} className="group relative aspect-square rounded-xl overflow-hidden border border-white/10 hover:border-[var(--color-primary)] transition-all bg-black">
+                                <button key={i} onClick={() => onSelect({ url, name: `Draft #${i + 1}`, type: 'style' })} className="group relative aspect-square rounded-xl overflow-hidden border border-white/10 hover:border-[var(--color-primary)] transition-all bg-black">
                                     <img src={url} alt={`Draft ${i}`} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-all" />
                                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
                                         <span className="px-2 py-1 bg-[var(--color-primary)] text-black text-[10px] font-black rounded">SELECT</span>
