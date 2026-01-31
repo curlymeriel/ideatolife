@@ -485,8 +485,8 @@ export const CutItem = memo(({
                     {/* Floating Visual Settings Panel - MOVED HERE */}
                     {isVisualManualExpand && (
                         /* @ts-ignore */
-                        <Draggable nodeRef={visualPanelRef} bounds="parent" handle=".drag-handle" defaultPosition={{ x: 10, y: 10 }}>
-                            <div ref={visualPanelRef} className="absolute z-40 w-[90%] max-w-[400px] bg-black/80 backdrop-blur-md rounded-xl border border-white/20 shadow-2xl overflow-hidden flex flex-col">
+                        <Draggable nodeRef={visualPanelRef} bounds="parent" handle=".drag-handle" defaultPosition={{ x: 0, y: 0 }}>
+                            <div ref={visualPanelRef} className="absolute bottom-2 left-[5%] z-40 w-[90%] max-w-[400px] bg-black/80 backdrop-blur-md rounded-xl border border-white/20 shadow-2xl overflow-hidden flex flex-col">
                                 {/* Header / Drag Handle */}
                                 <div className="drag-handle bg-white/10 px-3 py-2 cursor-move flex items-center justify-between border-b border-white/10">
                                     <div className="flex items-center gap-2">
