@@ -1,7 +1,7 @@
 ﻿import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useWorkflowStore } from '../store/workflowStore';
 import { useShallow } from 'zustand/react/shallow';
-import { generateScript, DEFAULT_SCRIPT_INSTRUCTIONS, DEFAULT_VIDEO_PROMPT_INSTRUCTIONS } from '../services/gemini';
+import { generateScript, DEFAULT_SCRIPT_INSTRUCTIONS, DEFAULT_VIDEO_PROMPT_INSTRUCTIONS, detectGender } from '../services/gemini';
 import type { ScriptCut } from '../services/gemini';
 import { generateImage } from '../services/imageGen';
 import { generateSpeech, type VoiceConfig } from '../services/tts';
@@ -129,32 +129,7 @@ export const Step3_Production: React.FC = () => {
         { value: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro Image', cost: '$$$', hint: '고품질 프리미엄 이미지 생성 (2026)' },
     ];
 
-    // --- HELPERS (Moved to top to prevent ReferenceErrors) ---
-    // Helper: Detect gender from speaker name
-    const detectGender = (speakerName: string): 'male' | 'female' | 'neutral' => {
-        const lower = speakerName.toLowerCase();
-        if (lower.includes('어머니') || lower.includes('엄마') || lower.includes('할머니') ||
-            lower.includes('누나') || lower.includes('언니') || lower.includes('여자') ||
-            lower.includes('소녀') || lower.includes('아가씨') || lower.includes('이모') || lower.includes('고모')) {
-            return 'female';
-        }
-        if (lower.includes('아버지') || lower.includes('아빠') || lower.includes('할아버지') ||
-            lower.includes('형') || lower.includes('오빠') || lower.includes('남자') ||
-            lower.includes('소년') || lower.includes('삼촌') || lower.includes('이모부') || lower.includes('고모부')) {
-            return 'male';
-        }
-        if (lower.includes('hero') || lower.includes('male') || lower.includes('man') ||
-            lower.includes('boy') || lower.includes('father') || lower.includes('dad') ||
-            lower.includes('brother') || lower.includes('uncle')) {
-            return 'male';
-        }
-        if (lower.includes('heroine') || lower.includes('female') || lower.includes('woman') ||
-            lower.includes('girl') || lower.includes('mother') || lower.includes('mom') ||
-            lower.includes('sister') || lower.includes('aunt')) {
-            return 'female';
-        }
-        return 'neutral';
-    };
+
 
     // Helper: Auto-detect language from dialogue text
     const detectLanguageFromText = (text: string): 'en-US' | 'ko-KR' => {
@@ -288,95 +263,14 @@ export const Step3_Production: React.FC = () => {
             // Link cuts to storyline scenes
             const linkedScript = linkCutsToStoryline(generated, storylineTable);
 
-            // Merge generated script with confirmed cuts
-            // Respect granular locks for Audio and Image
-            const mergedScript = linkedScript.map((newCut, index) => {
-                const existingCut = localScriptRef.current[index];
+            // Merge Logic Moved to Gemini.ts (ID-based stability)
+            // We now trust the generated script as the source of truth, 
+            // since gemini.ts handles the granular locking and merging internally.
 
-                if (existingCut) {
-                    // MIGRATION: Treat old 'isConfirmed' as both locked
-                    const isAudioLocked = existingCut.isAudioConfirmed || existingCut.isConfirmed;
-                    const isImageLocked = existingCut.isImageConfirmed || existingCut.isConfirmed;
+            console.log('[Step3] Received merged script from Gemini Service:', linkedScript);
 
-                    let finalCut = { ...newCut };
-
-                    // Preserve Audio/Dialogue properties if locked
-                    if (isAudioLocked) {
-                        console.log(`[Step3] Preserving AUDIO for cut #${existingCut.id}`);
-                        finalCut = {
-                            ...finalCut,
-                            speaker: existingCut.speaker,
-                            dialogue: existingCut.dialogue,
-                            emotion: existingCut.emotion,
-                            emotionIntensity: existingCut.emotionIntensity,
-                            language: existingCut.language, // Keep user setting
-                            voiceGender: existingCut.voiceGender,
-                            voiceAge: existingCut.voiceAge,
-                            voiceSpeed: existingCut.voiceSpeed,
-                            actingDirection: existingCut.actingDirection,
-                            audioUrl: existingCut.audioUrl,
-                            // SFX preservation Linked to Audio Lock
-                            sfxUrl: existingCut.sfxUrl,
-                            sfxName: existingCut.sfxName,
-                            sfxDescription: existingCut.sfxDescription,
-                            sfxVolume: existingCut.sfxVolume,
-                            audioPadding: existingCut.audioPadding,
-                            estimatedDuration: existingCut.estimatedDuration,
-                            isAudioConfirmed: true
-                        };
-                    } else {
-                        // Auto-populate logic for NEW audio content
-                        // Ensure actingDirection is preserved or generated
-                        finalCut.actingDirection = newCut.actingDirection || existingCut.actingDirection;
-
-                        // Priority: 1. Character gender/age from Step 1, 2. Name-based detection / default
-                        const speakerChar = allCharacters.find(c => c.name.toLowerCase() === (newCut.speaker || 'Narrator').toLowerCase());
-                        if (speakerChar?.gender && speakerChar.gender !== 'other') {
-                            finalCut.voiceGender = speakerChar.gender as 'male' | 'female';
-                        } else {
-                            finalCut.voiceGender = detectGender(newCut.speaker || 'Narrator');
-                        }
-                        finalCut.voiceAge = speakerChar?.age || 'adult';
-                    }
-
-                    // Preserve Visual/Image properties if locked
-                    if (isImageLocked) {
-                        console.log(`[Step3] Preserving IMAGE for cut #${existingCut.id}`);
-                        finalCut = {
-                            ...finalCut,
-                            visualPrompt: existingCut.visualPrompt,
-                            finalImageUrl: existingCut.finalImageUrl,
-                            referenceAssetIds: existingCut.referenceAssetIds,
-                            referenceCutIds: existingCut.referenceCutIds,
-                            isImageConfirmed: true
-                        };
-                    }
-
-                    // Clear old deprecated flag
-                    delete finalCut.isConfirmed;
-
-                    return finalCut;
-                }
-
-                // Completely new cut
-                // Priority: 1. Character gender/age from Step 1, 2. Name-based detection / default
-                const speakerChar = allCharacters.find(c => c.name.toLowerCase() === (newCut.speaker || 'Narrator').toLowerCase());
-                let voiceGender: 'male' | 'female' | 'neutral';
-                if (speakerChar?.gender && speakerChar.gender !== 'other') {
-                    voiceGender = speakerChar.gender as 'male' | 'female';
-                } else {
-                    voiceGender = detectGender(newCut.speaker || 'Narrator');
-                }
-
-                return {
-                    ...newCut,
-                    voiceGender,
-                    voiceAge: speakerChar?.age || 'adult'
-                };
-            });
-
-            setLocalScript(mergedScript);
-            saveToStore(mergedScript);
+            setLocalScript(linkedScript);
+            saveToStore(linkedScript);
         } catch (error) {
             console.error(error);
             // ... (keep default fallback)

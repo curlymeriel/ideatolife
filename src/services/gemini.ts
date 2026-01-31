@@ -138,6 +138,33 @@ const GEMINI_API_URL = GEMINI_3_FLASH_URL;
 import type { StrategicAnalysis, StrategyInsight, YouTubeTrendVideo, ChannelAnalysis, TrendAnalysisInsights } from '../store/types';
 
 // Default instructions (can be overridden by UI)
+// Helper: Detect gender from speaker name
+export const detectGender = (speakerName: string): 'male' | 'female' | 'neutral' => {
+    const lower = speakerName.toLowerCase();
+    if (lower.includes('어머니') || lower.includes('엄마') || lower.includes('할머니') ||
+        lower.includes('누나') || lower.includes('언니') || lower.includes('여자') ||
+        lower.includes('소녀') || lower.includes('아가씨') || lower.includes('이모') || lower.includes('고모')) {
+        return 'female';
+    }
+    if (lower.includes('아버지') || lower.includes('아빠') || lower.includes('할아버지') ||
+        lower.includes('형') || lower.includes('오빠') || lower.includes('남자') ||
+        lower.includes('소년') || lower.includes('삼촌') || lower.includes('이모부') || lower.includes('고모부')) {
+        return 'male';
+    }
+    if (lower.includes('hero') || lower.includes('male') || lower.includes('man') ||
+        lower.includes('boy') || lower.includes('father') || lower.includes('dad') ||
+        lower.includes('brother') || lower.includes('uncle')) {
+        return 'male';
+    }
+    if (lower.includes('heroine') || lower.includes('female') || lower.includes('woman') ||
+        lower.includes('girl') || lower.includes('mother') || lower.includes('mom') ||
+        lower.includes('sister') || lower.includes('aunt')) {
+        return 'female';
+    }
+    return 'neutral';
+};
+
+// Default instructions (can be overridden by UI)
 export const DEFAULT_SCRIPT_INSTRUCTIONS = `
       **Instructions:**
       Break the episode plot into cinematic cuts that fit within the target duration.
@@ -575,7 +602,7 @@ ${customInstructions || DEFAULT_SCRIPT_INSTRUCTIONS}
                 // Normalize and ensure IDs are numbers
                 return validScript.map((cut: any, index: number) => {
                     // GRANULAR LOCKED CUT OVERRIDE logic
-                    let lockedOriginal = null;
+                    let lockedOriginal: any = null; // Use 'any' to avoid strict type issues with ScriptCut imports matching
                     if (existingScript) {
                         // AI is instructed to respect established cut IDs. 
                         // We find if this cut ID was previously locked in any way.
@@ -732,11 +759,52 @@ ${customInstructions || DEFAULT_SCRIPT_INSTRUCTIONS}
                         dialogue = '...';
                     }
 
+                    // --- ENRICHMENT FOR NEW CUTS (Gender/Age) ---
+                    // If not locked (handled above), we need to populate voice details
+
+                    let voiceGender = cut.voiceGender;
+                    let voiceAge = cut.voiceAge;
+
+                    if (!lockedOriginal) {
+                        const allCharacters = [...(characters || [])]; // Characters from Step 1
+                        const speakerChar = allCharacters.find(c => c.name.toLowerCase() === (speaker || 'Narrator').toLowerCase());
+
+                        if (speakerChar?.gender && speakerChar.gender !== 'other') {
+                            voiceGender = speakerChar.gender as 'male' | 'female';
+                        } else {
+                            voiceGender = detectGender(speaker || 'Narrator');
+                        }
+                        voiceAge = speakerChar?.age || 'adult';
+                    }
+
+                    // ID STABILITY FIX: Use the ID from the source (AI or Locked)
+                    // If new cut (ID clash or missing), generate a unique timestamp-based ID
+                    // The AI is instructed to preserve IDs for established cuts. 
+                    // However, if the AI makes a mistake and duplicates an ID, or adds a new cut, we need to handle it.
+
+                    let finalId = cut.id;
+
+                    // If we found a locked original, we MUST use its ID.
+                    if (lockedOriginal) {
+                        finalId = lockedOriginal.id;
+                    } else {
+                        // For NEW cuts, ensure ID doesn't clash with existing ones if possible, 
+                        // or just accept AI's ID if it's unique. 
+                        // Current logic: Trust AI ID unless it's null/0, then generate.
+                        if (!finalId) {
+                            finalId = Date.now() + index; // Fallback
+                        }
+                        // If ID exists but clashes with a locked ID that ISN'T this one (rare but possible),
+                        // we should probably re-assign. But simpler to trust for now.
+                    }
+
                     return {
                         ...cut,
-                        id: index + 1, // STRICTLY enforce unique sequential ID
+                        id: finalId, // PRESERVE ID instead of overwriting with index + 1
                         speaker,
                         dialogue,
+                        voiceGender, // Apply detected gender
+                        voiceAge,    // Apply detected age
                         estimatedDuration: Number(cut.estimatedDuration)
                     };
                 });

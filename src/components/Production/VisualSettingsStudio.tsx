@@ -128,7 +128,7 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
 
     const draftFileInputRef = useRef<HTMLInputElement>(null);
     const wasOpenRef = useRef(false);
-    const prevRefsRef = useRef<TaggedReference[]>([]); // Track previous refs for sync
+
     const [resolvedCandidates, setResolvedCandidates] = useState<Array<{ id: number, url: string, index: number }>>([]);
     const [resolvedProjectAssets, setResolvedProjectAssets] = useState<Array<{ id: string, name: string, url: string, type: string }>>([]);
     const [showRefSelector, setShowRefSelector] = useState(false);
