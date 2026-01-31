@@ -954,13 +954,16 @@ export const CutItem = memo(({
                             .map(r => parseInt(r.id.replace('cut-', ''), 10))
                             .filter(n => !isNaN(n));
 
+                        const userRef = result.taggedReferences.find(r => r.id === 'user-ref');
+
                         onUpdateCut(cut.id, {
                             visualPrompt: result.visualPrompt,
                             visualPromptKR: result.visualPromptKR,
                             videoPrompt: result.videoPrompt,
                             finalImageUrl: result.finalImageUrl || undefined,
                             referenceAssetIds: manualAssetIds,
-                            referenceCutIds: referenceCutIds
+                            referenceCutIds: referenceCutIds,
+                            userReferenceImage: userRef?.url
                         });
                         onSave();
                     }}

@@ -556,6 +556,21 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                     }
                 }
 
+                // 4. Load User Reference Image
+                if (currentCut?.userReferenceImage) {
+                    let url = currentCut.userReferenceImage;
+                    if (isIdbUrl(url)) url = await resolveUrl(url) || url;
+                    if (url) {
+                        loadedRefs.push({
+                            id: 'user-ref',
+                            url,
+                            name: 'User Reference',
+                            categories: ['style'],
+                            isAuto: false
+                        });
+                    }
+                }
+
                 setTaggedReferences(loadedRefs);
             };
 
