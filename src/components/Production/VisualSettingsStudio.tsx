@@ -128,6 +128,7 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
 
     const draftFileInputRef = useRef<HTMLInputElement>(null);
     const wasOpenRef = useRef(false);
+    const prevRefsRef = useRef<TaggedReference[]>([]); // Track previous refs for sync
     const [resolvedCandidates, setResolvedCandidates] = useState<Array<{ id: number, url: string, index: number }>>([]);
     const [resolvedProjectAssets, setResolvedProjectAssets] = useState<Array<{ id: string, name: string, url: string, type: string }>>([]);
     const [showRefSelector, setShowRefSelector] = useState(false);
@@ -475,6 +476,54 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
             wasOpenRef.current = false;
         }
     }, [isOpen, initialVisualPrompt, initialVisualPromptKR, initialFinalImageUrl, initialVideoPrompt, assetDefinitions, autoMatchedAssets, manualAssetObjs]);
+
+    // PREV REFS SYNC: Track initial refs once loaded
+    useEffect(() => {
+        if (isOpen && taggedReferences.length > 0 && prevRefsRef.current.length === 0) {
+            prevRefsRef.current = taggedReferences;
+        }
+    }, [isOpen, taggedReferences]);
+
+    // SYNC PROMPT TAGS: Automatically update (Reference #N) tags when refs change
+    useEffect(() => {
+        const prevRefs = prevRefsRef.current;
+        const currentRefs = taggedReferences;
+
+        // Skip if no change or initial load
+        if (prevRefs === currentRefs || prevRefs.length === 0) return;
+
+        // Build Index Map: oldIndex (1-based) -> newIndex (1-based)
+        const indexMap = new Map<number, number>();
+        prevRefs.forEach((ref, idx) => {
+            const oldIndex = idx + 1;
+            const newIndex = currentRefs.findIndex(r => r.id === ref.id) + 1;
+            if (newIndex > 0 && oldIndex !== newIndex) {
+                indexMap.set(oldIndex, newIndex);
+            }
+        });
+
+        if (indexMap.size > 0) {
+            console.log('[AutoSync] Remapping tags:', Object.fromEntries(indexMap));
+
+            const updateText = (text: string) => {
+                if (!text) return text;
+                // Replace (Reference #X) with placeholders first to avoid collision (e.g. 1->2, 2->1)
+                let temp = text;
+                indexMap.forEach((newIdx, oldIdx) => {
+                    const regex = new RegExp(`\\(Reference #${oldIdx}\\)`, 'g');
+                    temp = temp.replace(regex, `__REF_PLACEHOLDER_${newIdx}__`);
+                });
+                // Replace placeholders with final tags
+                return temp.replace(/__REF_PLACEHOLDER_(\d+)__/g, '(Reference #$1)');
+            };
+
+            setVisualPrompt(prev => updateText(prev));
+            setVisualPromptKR(prev => updateText(prev));
+        }
+
+        // Update ref for next change
+        prevRefsRef.current = currentRefs;
+    }, [taggedReferences]);
 
     useEffect(() => {
         setCurrentMask(null);
