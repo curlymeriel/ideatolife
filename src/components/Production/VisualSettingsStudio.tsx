@@ -7,6 +7,7 @@ import {
 import { ImageCropModal } from '../ImageCropModal';
 import { InteractiveImageViewer } from '../InteractiveImageViewer';
 import { CompositionEditor } from './CompositionEditor';
+import { ReferenceSelectorModal } from '../ReferenceSelectorModal';
 import { resolveUrl, isIdbUrl } from '../../utils/imageStorage';
 import { generateText } from '../../services/gemini';
 import type { ScriptCut } from '../../services/gemini';
@@ -129,6 +130,8 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
     const draftFileInputRef = useRef<HTMLInputElement>(null);
     const wasOpenRef = useRef(false);
     const [resolvedCandidates, setResolvedCandidates] = useState<Array<{ id: number, url: string, index: number }>>([]);
+    const [resolvedProjectAssets, setResolvedProjectAssets] = useState<Array<{ id: string, name: string, url: string, type: string }>>([]);
+    const [showRefSelector, setShowRefSelector] = useState(false);
 
     // Tab state for switching between visual settings and composition editor
     const [activeTab, setActiveTab] = useState<'visual' | 'composition'>('visual');
@@ -265,17 +268,10 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
         }
     };
 
-    const handleAddReference = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            const base64 = reader.result as string;
-            // Open Crop Modal instead of adding immediately
-            setUploadImageToCrop(base64);
-        };
-        reader.readAsDataURL(file);
-        e.target.value = '';
+    const handleSelectReference = (imgUrl: string) => {
+        // Close selector and open cropper
+        setShowRefSelector(false);
+        setUploadImageToCrop(imgUrl);
     };
 
     const handleUploadCropConfirm = (croppedImg: string) => {
@@ -524,6 +520,31 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
         resolveCandidates();
     }, [existingCuts, cutId]);
 
+    // Resolve Project Assets
+    useEffect(() => {
+        const resolveAssets = async () => {
+            if (!assetDefinitions) return;
+            const rawAssets = Object.values(assetDefinitions)
+                .filter((a: any) => (a.type === 'character' || a.type === 'location' || a.type === 'prop') && (a.masterImage || a.draftImage || a.referenceImage))
+                .map((a: any) => ({
+                    id: a.id,
+                    name: a.name,
+                    type: a.type,
+                    url: a.masterImage || a.draftImage || a.referenceImage
+                }));
+
+            const resolved = await Promise.all(rawAssets.map(async a => {
+                let url = a.url;
+                if (isIdbUrl(url)) {
+                    url = await resolveUrl(url) || url;
+                }
+                return { ...a, url };
+            }));
+            setResolvedProjectAssets(resolved);
+        };
+        resolveAssets();
+    }, [assetDefinitions]);
+
     // ========================================================================
     // RENDER
     // ========================================================================
@@ -645,39 +666,15 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                                         ))}
                                         {taggedReferences.length === 0 && <div className="py-10 border border-dashed border-white/10 rounded-2xl flex flex-col items-center justify-center text-gray-600"><ImageIcon size={32} className="mb-2 opacity-10" /><p className="text-[10px] font-bold">참조 이미지가 없습니다.</p></div>}
                                     </div>
+                                    <div className="pt-2 flex justify-center">
+                                        <button
+                                            onClick={() => setShowRefSelector(true)}
+                                            className="w-full py-3 border border-dashed border-white/20 rounded-xl flex items-center justify-center gap-2 text-gray-400 hover:text-white hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/5 transition-all text-xs font-bold"
+                                        >
+                                            <Plus size={14} /> ADD REFERENCE
+                                        </button>
+                                    </div>
                                 </section>
-
-                                {/* Project Assets Candidates (Key Visuals) */}
-                                {projectAssetCandidates.length > 0 && (
-                                    <section className="space-y-4 pt-4 border-t border-white/5">
-                                        <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">Key Visuals</h3>
-                                        <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
-                                            {projectAssetCandidates.map((c: any) => (
-                                                <button key={c.id} onClick={() => handleAddCandidate(c.url)} className="w-16 h-16 shrink-0 rounded-lg overflow-hidden border border-white/10 hover:border-[var(--color-primary)] transition-all relative group">
-                                                    <img src={c.url} className="w-full h-full object-cover" />
-                                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center"><Plus size={16} className="text-white" /></div>
-                                                    <div className="absolute bottom-0 left-0 right-0 py-0.5 bg-black/60 text-[8px] font-bold text-white text-center truncate px-1">{c.name}</div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </section>
-                                )}
-
-                                {/* Candidate Assets from other cuts */}
-                                {resolvedCandidates.length > 0 && (
-                                    <section className="space-y-4 pt-4 border-t border-white/5">
-                                        <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">Candidates from other cuts</h3>
-                                        <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
-                                            {resolvedCandidates.map((c: any) => (
-                                                <button key={c.id} onClick={() => handleAddCandidate(c.url)} className="w-16 h-16 shrink-0 rounded-lg overflow-hidden border border-white/10 hover:border-[var(--color-primary)] transition-all relative group">
-                                                    <img src={c.url} className="w-full h-full object-cover" />
-                                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center"><Plus size={16} className="text-white" /></div>
-                                                    <div className="absolute bottom-0 left-0 right-0 py-0.5 bg-black/60 text-[8px] font-bold text-white text-center">CUT {c.index}</div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </section>
-                                )}
 
                                 {/* Prompt & Translation */}
                                 <section className="space-y-4 pt-4 border-t border-white/5">
@@ -863,6 +860,16 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                     onCancel={() => setShowCropModal(false)}
                 />
             )}
+
+            {/* Reference Selector Modal */}
+            <ReferenceSelectorModal
+                isOpen={showRefSelector}
+                onClose={() => setShowRefSelector(false)}
+                onSelect={handleSelectReference}
+                projectAssets={resolvedProjectAssets}
+                pastCuts={resolvedCandidates}
+                drafts={draftHistory}
+            />
         </div>
         , document.body
     );
