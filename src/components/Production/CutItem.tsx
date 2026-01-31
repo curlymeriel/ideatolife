@@ -678,7 +678,7 @@ export const CutItem = memo(({
                 <div className="space-y-3">
                     <div className="flex items-center justify-between">
                         <select
-                            className={`bg-transparent border-b border-[var(--color-border)] text-[var(--color-primary)] font-bold focus:border-[var(--color-primary)] outline-none py-0.5 text-xs appearance-none cursor-pointer ${isAudioConfirmed ? 'opacity-70 cursor-not-allowed' : ''}`}
+                            className={`bg-[#1a1a1a] border-b border-[var(--color-border)] text-[var(--color-primary)] font-bold focus:border-[var(--color-primary)] outline-none py-0.5 text-xs appearance-none cursor-pointer ${isAudioConfirmed ? 'opacity-70 cursor-not-allowed' : ''}`}
                             value={cut.speaker}
                             disabled={isAudioConfirmed}
                             onChange={(e) => {
@@ -687,13 +687,13 @@ export const CutItem = memo(({
                             }}
                         >
                             {cut.speaker && !speakerList.includes(cut.speaker) && (
-                                <option value={cut.speaker}>{cut.speaker}</option>
+                                <option value={cut.speaker} className="bg-[#1a1a1a]">{cut.speaker}</option>
                             )}
                             {speakerList.map(name => (
-                                <option key={name} value={name}>{name}</option>
+                                <option key={name} value={name} className="bg-[#1a1a1a]">{name}</option>
                             ))}
-                            {!speakerList.includes('Narrator') && <option value="Narrator">Narrator</option>}
-                            {!speakerList.includes('SILENT') && <option value="SILENT">SILENT</option>}
+                            {!speakerList.includes('Narrator') && <option value="Narrator" className="bg-[#1a1a1a]">Narrator</option>}
+                            {!speakerList.includes('SILENT') && <option value="SILENT" className="bg-[#1a1a1a]">SILENT</option>}
                         </select>
                     </div>
 
@@ -746,47 +746,48 @@ export const CutItem = memo(({
                         </div>
                     </div>
 
-                    {localActingDirection && (
-                        <div className="flex items-center gap-1.5 text-[10px] text-gray-500 font-medium">
-                            <Sparkles size={10} className="text-[var(--color-primary)]" />
-                            <span>{localActingDirection}</span>
+                    {/* Acting Direction & Audio Settings Row - Aligned with Dialogue above */}
+                    <div className="flex gap-3 pt-1">
+                        <div className="flex-1 flex items-center gap-2">
+                            <div className="flex items-center gap-1.5 shrink-0 opacity-80">
+                                <Sparkles size={10} className="text-[var(--color-primary)]" />
+                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">연기 지시</span>
+                            </div>
+                            <textarea
+                                className={`flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-white text-[10px] h-8 focus:border-[var(--color-primary)] outline-none resize-none transition-all ${isAudioConfirmed ? 'opacity-70' : 'hover:border-white/20 hover:bg-black/50'}`}
+                                value={localActingDirection}
+                                disabled={isAudioConfirmed}
+                                onChange={(e) => handleActingDirectionChange(e.target.value)}
+                                onFocus={() => { isActingDirectionFocusedRef.current = true; }}
+                                onBlur={() => {
+                                    isActingDirectionFocusedRef.current = false;
+                                    onSave();
+                                }}
+                                placeholder="Acting direction (e.g., Speak slowly / 슬픈 목소리로)"
+                            />
                         </div>
-                    )}
+
+                        <div className="w-8 shrink-0 flex flex-col items-center">
+                            <button
+                                onClick={() => setIsAudioManualExpand(!isAudioManualExpand)}
+                                className={`w-8 h-8 rounded-full flex items-center justify-center transition-all border ${isAudioManualExpand
+                                    ? 'bg-[var(--color-primary)] text-black border-[var(--color-primary)]'
+                                    : 'bg-white/5 text-gray-400 hover:text-white border-white/10 hover:bg-white/10'
+                                    }`}
+                                title="Audio Settings"
+                            >
+                                <Settings size={14} />
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 {/* 4. COLLAPSIBLE DETAILS (Audio + Visual) */}
                 <div className="space-y-2 pt-2 border-t border-white/5">
-                    {/* Audio Details Toggle */}
-                    <button
-                        onClick={() => setIsAudioManualExpand(!isAudioManualExpand)}
-                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all ${isAudioManualExpand ? 'bg-white/10' : 'hover:bg-white/5'}`}
-                    >
-                        <div className="flex items-center gap-2">
-                            <Mic size={12} className="text-gray-400" />
-                            <span className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">Audio Settings</span>
-                        </div>
-                        <ChevronDown size={14} className={`text-gray-500 transition-transform ${isAudioManualExpand ? 'rotate-180' : ''}`} />
-                    </button>
+                    {/* Audio Details Toggle REMOVED - Triggered by Settings icon above */}
 
                     {isAudioVisible && (
                         <div className="px-2 pb-4 space-y-4 animate-in slide-in-from-top-1 duration-200">
-                            <div className="space-y-1">
-                                <label className="text-[10px] text-gray-500 uppercase font-bold block ml-1 tracking-wider flex items-center gap-1">
-                                    <Sparkles size={10} className="text-[var(--color-primary)]" /> 연기 지시 (Acting Direction)
-                                </label>
-                                <textarea
-                                    className={`w-full bg-[rgba(0,0,0,0.3)] border border-white/10 rounded-lg px-3 py-2 text-white text-[11px] min-h-[50px] focus:border-[var(--color-primary)] outline-none resize-none ${isAudioConfirmed ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                    value={localActingDirection}
-                                    disabled={isAudioConfirmed}
-                                    onChange={(e) => handleActingDirectionChange(e.target.value)}
-                                    onFocus={() => { isActingDirectionFocusedRef.current = true; }}
-                                    onBlur={() => {
-                                        isActingDirectionFocusedRef.current = false;
-                                        onSave();
-                                    }}
-                                    placeholder="톤, 감정, 속도 등 연기 지침 (예: 슬픈 목소리로 천천히)"
-                                />
-                            </div>
 
                             <div className="flex flex-wrap gap-2">
                                 <button

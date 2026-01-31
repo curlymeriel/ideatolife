@@ -93,32 +93,39 @@ export const AssistantDirectorChat: React.FC<AssistantDirectorChatProps> = memo(
                         .map((id: string) => allAssets.find((a: any) => a.id === id))
                         .filter(Boolean);
 
-                    // Reconstruct Reference #N indexing logic from Step3_Production
-                    const refUrls: string[] = [];
-                    if (cut.userReferenceImage) refUrls.push(cut.userReferenceImage);
+                    const linkedReferences: any[] = [];
 
-                    const assetsWithImages = matchedAssets
-                        .map((a: any) => ({ name: a.name, url: a.masterImage || a.draftImage || a.referenceImage, type: a.type }))
-                        .filter((a: any) => !!a.url);
+                    // 1. User Uploads
+                    if (cut.userReferenceImage) {
+                        linkedReferences.push({
+                            name: "User Reference",
+                            type: "user",
+                            hasImage: true
+                        });
+                    }
 
-                    const remainingSlot = 4 - refUrls.length;
-                    const limitedAssets = assetsWithImages.slice(0, remainingSlot);
-                    limitedAssets.forEach((a: any) => refUrls.push(a.url));
+                    // 2. Previous Cuts
+                    (cut.referenceCutIds || []).forEach((refId: number) => {
+                        const refCut = localScript.find(c => c.id === refId);
+                        linkedReferences.push({
+                            name: `Cut #${refId}`,
+                            type: "composition",
+                            hasImage: !!refCut?.finalImageUrl
+                        });
+                    });
 
-                    const linkedAssetsMeta = matchedAssets.map((asset: any) => {
-                        const assetImageUrl = asset.masterImage || asset.draftImage || asset.referenceImage;
-                        const imgIdx = refUrls.indexOf(assetImageUrl || '');
-                        return {
+                    // 3. Project Assets
+                    matchedAssets.forEach((asset: any) => {
+                        linkedReferences.push({
                             name: asset.name,
                             type: asset.type,
-                            refNumber: imgIdx !== -1 ? imgIdx + 1 : null,
-                            hasImage: !!assetImageUrl
-                        };
+                            hasImage: !!(asset.masterImage || asset.draftImage || asset.referenceImage)
+                        });
                     });
 
                     return {
                         ...cut,
-                        linkedAssets: linkedAssetsMeta
+                        linkedAssets: linkedReferences
                     };
                 })
             };
