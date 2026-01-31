@@ -943,11 +943,24 @@ export const CutItem = memo(({
                     initialDialogue={cut.dialogue}
                     masterStyle={masterStyle}
                     onSave={(result) => {
+                        // Extract Asset IDs and Cut IDs from taggedReferences
+                        // only for non-auto matches
+                        const manualAssetIds = result.taggedReferences
+                            .filter(r => !r.isAuto && assetDefinitions && assetDefinitions[r.id])
+                            .map(r => r.id);
+
+                        const referenceCutIds = result.taggedReferences
+                            .filter(r => !r.isAuto && r.id.startsWith('cut-'))
+                            .map(r => parseInt(r.id.replace('cut-', ''), 10))
+                            .filter(n => !isNaN(n));
+
                         onUpdateCut(cut.id, {
                             visualPrompt: result.visualPrompt,
                             visualPromptKR: result.visualPromptKR,
                             videoPrompt: result.videoPrompt,
                             finalImageUrl: result.finalImageUrl || undefined,
+                            referenceAssetIds: manualAssetIds,
+                            referenceCutIds: referenceCutIds
                         });
                         onSave();
                     }}

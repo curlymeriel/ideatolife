@@ -515,9 +515,11 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                     if (imgUrl) {
                         let url = imgUrl;
                         if (isIdbUrl(url)) url = await resolveUrl(url) || url;
-                        if (url && !loadedRefs.some(r => r.name === asset.name)) {
+                        // Use raw asset.id to ensure CutItem can recognize it when saving back
+                        const refId = asset.id || `${isAuto ? 'auto' : 'manual'}-${Date.now()}-${Math.random()}`;
+                        if (url && !loadedRefs.some(r => r.id === refId)) {
                             loadedRefs.push({
-                                id: `${isAuto ? 'auto' : 'manual'}-${asset.id || Date.now()}-${Math.random()}`,
+                                id: refId,
                                 url,
                                 categories: [asset.type === 'character' ? `character-${asset.name}` : 'style'],
                                 name: asset.name,
@@ -527,8 +529,33 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                     }
                 };
 
+                // 1. Load Manual Asset References
                 for (const asset of manualAssetObjs) await processAsset(asset, false);
+
+                // 2. Load Auto Matched Asset References
                 for (const asset of autoMatchedAssets) await processAsset(asset, true);
+
+                // 3. Load Previous Cut References
+                const currentCut = existingCuts.find(c => c.id === cutId);
+                if (currentCut?.referenceCutIds) {
+                    for (const refId of currentCut.referenceCutIds) {
+                        const refCut = existingCuts.find(c => c.id === refId);
+                        if (refCut?.finalImageUrl) {
+                            let url = refCut.finalImageUrl;
+                            if (isIdbUrl(url)) url = await resolveUrl(url) || url;
+                            if (url) {
+                                loadedRefs.push({
+                                    id: `cut-${refId}`,
+                                    url,
+                                    name: `Cut #${refId}`,
+                                    categories: ['style'],
+                                    isAuto: false
+                                });
+                            }
+                        }
+                    }
+                }
+
                 setTaggedReferences(loadedRefs);
             };
 

@@ -109,7 +109,7 @@ export const ReferenceSelectorModal: React.FC<ReferenceSelectorModalProps> = ({
                     {activeTab === 'cuts' && (
                         <div className="grid grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
                             {pastCuts.map((cut) => (
-                                <button key={cut.id} onClick={() => onSelect({ url: cut.url, name: `Cut #${cut.index}`, type: 'composition', id: String(cut.id) })} className="group relative aspect-video rounded-xl overflow-hidden border border-white/10 hover:border-[var(--color-primary)] transition-all bg-black">
+                                <button key={cut.id} onClick={() => onSelect({ url: cut.url, name: `Cut #${cut.index}`, type: 'composition', id: `cut-${cut.id}` })} className="group relative aspect-video rounded-xl overflow-hidden border border-white/10 hover:border-[var(--color-primary)] transition-all bg-black">
                                     <img src={cut.url} alt={`Cut ${cut.index}`} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-all" />
                                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
                                         <span className="px-2 py-1 bg-[var(--color-primary)] text-black text-[10px] font-black rounded">SELECT</span>
