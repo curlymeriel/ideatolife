@@ -126,7 +126,6 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
     const [uploadImageToCrop, setUploadImageToCrop] = useState<string | null>(null); // NEW: For cropping uploaded refs
     const [currentMask, setCurrentMask] = useState<string | null>(null);
 
-    const fileInputRef = useRef<HTMLInputElement>(null);
     const draftFileInputRef = useRef<HTMLInputElement>(null);
     const wasOpenRef = useRef(false);
     const [resolvedCandidates, setResolvedCandidates] = useState<Array<{ id: number, url: string, index: number }>>([]);
@@ -147,18 +146,6 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
             .map((a: any) => ({
                 value: `${a.type}-${a.name}`,
                 label: `${a.type === 'character' ? '인물' : '장소'}: ${a.name}`
-            }));
-    }, [assetDefinitions]);
-
-    const projectAssetCandidates = useMemo(() => {
-        if (!assetDefinitions) return [];
-        return Object.values(assetDefinitions)
-            .filter((a: any) => (a.type === 'character' || a.type === 'location' || a.type === 'prop') && (a.masterImage || a.draftImage || a.referenceImage))
-            .map((a: any) => ({
-                id: a.id,
-                name: a.name,
-                type: a.type,
-                url: a.masterImage || a.draftImage || a.referenceImage
             }));
     }, [assetDefinitions]);
 
@@ -282,12 +269,6 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
             isAuto: false
         }]);
         setUploadImageToCrop(null);
-    };
-
-    const handleAddCandidate = async (url: string) => {
-        let resolved = url;
-        if (isIdbUrl(url)) resolved = await resolveUrl(url) || url;
-        setTaggedReferences(prev => [...prev, { id: `cut-${Date.now()}`, url: resolved, categories: ['style'], isAuto: false }]);
     };
 
     const handleToggleRefCategory = (refId: string, cat: string) => {
@@ -635,10 +616,6 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                                         <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
                                             <Image size={14} /> Reference Assets
                                         </h3>
-                                        <button onClick={() => fileInputRef.current?.click()} className="p-1 px-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-[10px] font-bold text-gray-400 transition-all flex items-center gap-2">
-                                            <Plus size={12} /> ADD
-                                            <input ref={fileInputRef} type="file" onChange={(e) => { handleAddReference(e); (e.target as any).value = null; }} className="hidden" />
-                                        </button>
                                     </div>
 
                                     <div className="grid grid-cols-1 gap-4">
@@ -867,7 +844,7 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                 onClose={() => setShowRefSelector(false)}
                 onSelect={handleSelectReference}
                 projectAssets={resolvedProjectAssets}
-                pastCuts={resolvedCandidates}
+                pastCuts={resolvedCandidates.map(c => ({ ...c, id: String(c.id) }))}
                 drafts={draftHistory}
             />
         </div>
