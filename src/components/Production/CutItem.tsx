@@ -2,6 +2,7 @@ import { memo, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import Draggable from 'react-draggable';
 import { Mic, Loader2, Play, Square, ImageIcon as Image, X, Plus, HelpCircle, Waves, Volume2, Settings, Trash2, Sparkles, ChevronDown, ChevronUp, RotateCcw, Languages, Maximize2 } from 'lucide-react';
 import type { ScriptCut } from '../../services/gemini';
+import { generateVideoMotionPrompt, type VideoMotionContext } from '../../services/gemini';
 import { getMatchedAssets } from '../../utils/assetUtils';
 import { resolveUrl, isIdbUrl } from '../../utils/imageStorage';
 import type { AspectRatio } from '../../store/types';
@@ -267,12 +268,61 @@ export const CutItem = memo(({
         onUpdateCut(cut.id, { actingDirection: value });
     }, [cut.id, onUpdateCut]);
 
-    // Auto-generate video prompt from visual prompt
-    const handleAutoGenerateVideoPrompt = useCallback(() => {
-        const basePrompt = cut.visualPrompt || '';
-        const motionSuffix = '. Camera slowly pushes in. Subtle atmospheric motion. Character breathes naturally.';
-        onUpdateCut(cut.id, { videoPrompt: basePrompt + motionSuffix });
-    }, [cut.id, cut.visualPrompt, onUpdateCut]);
+    // Auto-generate video prompt from visual prompt (AI-powered)
+    const [_isGeneratingMotion, setIsGeneratingMotion] = useState(false);
+    const handleAutoGenerateVideoPrompt = useCallback(async () => {
+        if (!apiKey) {
+            // Fallback for no API key
+            const basePrompt = cut.visualPrompt || '';
+            const motionSuffix = '. Camera slowly pushes in. Subtle atmospheric motion. Character breathes naturally.';
+            onUpdateCut(cut.id, { videoPrompt: basePrompt + motionSuffix });
+            return;
+        }
+
+        setIsGeneratingMotion(true);
+        try {
+            // Build context from cut and asset definitions
+            const speakerAsset = assetDefinitions ?
+                Object.values(assetDefinitions).find((a: any) =>
+                    a.type === 'character' && a.name?.toLowerCase() === cut.speaker?.toLowerCase()
+                ) as any : null;
+
+            // Find location from visual prompt mentions
+            const locationAsset = assetDefinitions ?
+                Object.values(assetDefinitions).find((a: any) =>
+                    a.type === 'location' && cut.visualPrompt?.toLowerCase().includes(a.name?.toLowerCase())
+                ) as any : null;
+
+            const context: VideoMotionContext = {
+                visualPrompt: cut.visualPrompt || '',
+                dialogue: cut.dialogue,
+                actingDirection: cut.actingDirection,
+                emotion: cut.emotion,
+                audioDuration: actualAudioDuration || cut.estimatedDuration,
+                speakerInfo: speakerAsset ? {
+                    name: speakerAsset.name,
+                    visualFeatures: speakerAsset.visualSummary || speakerAsset.description,
+                    gender: speakerAsset.gender
+                } : undefined,
+                locationInfo: locationAsset ? {
+                    name: locationAsset.name,
+                    visualFeatures: locationAsset.visualSummary || locationAsset.description
+                } : undefined
+            };
+
+            console.log('[CutItem] Generating AI motion prompt with context:', context);
+            const motionPrompt = await generateVideoMotionPrompt(context, apiKey);
+            onUpdateCut(cut.id, { videoPrompt: motionPrompt });
+            console.log('[CutItem] ✨ AI motion prompt generated:', motionPrompt.substring(0, 100) + '...');
+        } catch (error) {
+            console.error('[CutItem] Failed to generate AI motion prompt:', error);
+            // Fallback to basic
+            const basePrompt = cut.visualPrompt || '';
+            onUpdateCut(cut.id, { videoPrompt: basePrompt + '. Camera slowly pushes in. Subtle atmospheric motion.' });
+        } finally {
+            setIsGeneratingMotion(false);
+        }
+    }, [cut.id, cut.visualPrompt, cut.dialogue, cut.actingDirection, cut.emotion, cut.speaker, actualAudioDuration, cut.estimatedDuration, assetDefinitions, apiKey, onUpdateCut]);
 
     // Auto-translate visual prompt (KR -> EN)
     const handleAutoTranslate = useCallback(() => {

@@ -2036,3 +2036,156 @@ export const generateText = async (
     throw lastError || new Error("All models failed");
 };
 
+// ============================================================================
+// VIDEO MOTION PROMPT GENERATOR
+// ============================================================================
+
+/**
+ * Context for generating intelligent video motion prompts
+ */
+export interface VideoMotionContext {
+    visualPrompt: string;           // Base scene description
+    dialogue?: string;              // Character speech
+    actingDirection?: string;       // Emotional/performance notes
+    emotion?: string;               // Detected emotion (happy, sad, tense, etc.)
+    speakerInfo?: {
+        name: string;
+        visualFeatures?: string;    // "long flowing hair", "wears glasses", etc.
+        gender?: 'male' | 'female' | 'other';
+    };
+    locationInfo?: {
+        name: string;
+        visualFeatures?: string;    // "dimly lit", "modern office", etc.
+    };
+    audioDuration?: number;         // In seconds
+    previousCutMotion?: string;     // For continuity checking
+    presetId?: string;              // Optional preset to base on
+}
+
+/**
+ * Get motion intensity description based on duration
+ */
+function getMotionIntensityForDuration(durationSeconds?: number): { intensity: string; description: string } {
+    if (!durationSeconds || durationSeconds < 2) {
+        return {
+            intensity: 'minimal',
+            description: 'Static or near-static shot with only subtle micro-movements like breathing or blinking.'
+        };
+    } else if (durationSeconds < 5) {
+        return {
+            intensity: 'light',
+            description: 'One slow camera movement (pan, push, or pull). Minimal subject motion.'
+        };
+    } else if (durationSeconds < 10) {
+        return {
+            intensity: 'medium',
+            description: 'Moderate camera movement with natural subject motion. Can include a camera technique change mid-shot.'
+        };
+    } else {
+        return {
+            intensity: 'dynamic',
+            description: 'Complex camera choreography. Multiple movements. Full character performance with gestures and expressions.'
+        };
+    }
+}
+
+/**
+ * Suggest camera work based on emotional context
+ */
+function suggestCameraWorkForEmotion(emotion?: string): string[] {
+    const emotionMap: Record<string, string[]> = {
+        'happy': ['Medium shot', 'Warm lighting', 'Slow dolly in', 'Natural smile animation'],
+        'sad': ['Close-up', 'Soft diffused lighting', 'Static or slow push', 'Tears forming', 'Downcast eyes'],
+        'angry': ['Close-up', 'Hard lighting', 'Slight camera shake', 'Clenched jaw', 'Intense eyes'],
+        'excited': ['Dynamic tracking', 'Fast movement', 'Quick cuts feel', 'Energetic gestures'],
+        'calm': ['Wide shot', 'Soft lighting', 'Slow gentle pan', 'Relaxed posture', 'Peaceful atmosphere'],
+        'tense': ['Dutch angle', 'High contrast', 'Slow ominous push', 'Nervous micro-movements'],
+        'fearful': ['Low angle', 'Shadows', 'Shaky handheld feel', 'Wide eyes', 'Backing away'],
+        'romantic': ['Soft focus', 'Golden hour lighting', 'Slow orbit', 'Lingering gazes'],
+        'neutral': ['Medium shot', 'Natural lighting', 'Subtle movement', 'Authentic expression']
+    };
+    return emotionMap[emotion?.toLowerCase() || 'neutral'] || emotionMap['neutral'];
+}
+
+/**
+ * Generate an intelligent video motion prompt using AI
+ */
+export const generateVideoMotionPrompt = async (
+    context: VideoMotionContext,
+    apiKey: string
+): Promise<string> => {
+    if (!apiKey) {
+        // Fallback for no API key
+        const basePrompt = context.visualPrompt || '';
+        return `${basePrompt}. Camera slowly pushes in. Subtle atmospheric motion. Character breathes naturally.`;
+    }
+
+    const { intensity, description: intensityDesc } = getMotionIntensityForDuration(context.audioDuration);
+    const emotionSuggestions = suggestCameraWorkForEmotion(context.emotion);
+
+    // Build character motion hints from visual features
+    let characterMotionHints = '';
+    if (context.speakerInfo?.visualFeatures) {
+        const features = context.speakerInfo.visualFeatures.toLowerCase();
+        const hints: string[] = [];
+        if (features.includes('long hair') || features.includes('flowing hair')) hints.push('hair flows naturally with subtle movement');
+        if (features.includes('glasses')) hints.push('light reflects off glasses');
+        if (features.includes('cape') || features.includes('cloak')) hints.push('fabric billows gently');
+        if (features.includes('jewelry') || features.includes('earrings')) hints.push('accessories catch light');
+        if (features.includes('scarf')) hints.push('scarf sways with movement');
+        if (hints.length > 0) characterMotionHints = hints.join(', ');
+    }
+
+    // Build location atmosphere hints
+    let locationHints = '';
+    if (context.locationInfo?.visualFeatures) {
+        const locFeatures = context.locationInfo.visualFeatures.toLowerCase();
+        const hints: string[] = [];
+        if (locFeatures.includes('rain') || locFeatures.includes('rainy')) hints.push('rain continues to fall');
+        if (locFeatures.includes('wind') || locFeatures.includes('windy')) hints.push('wind affects environment');
+        if (locFeatures.includes('neon') || locFeatures.includes('lights')) hints.push('neon lights flicker');
+        if (locFeatures.includes('fog') || locFeatures.includes('mist')) hints.push('fog drifts slowly');
+        if (locFeatures.includes('candle') || locFeatures.includes('fire')) hints.push('flames flicker, casting dancing shadows');
+        if (hints.length > 0) locationHints = hints.join(', ');
+    }
+
+    const prompt = `You are a professional cinematographer creating motion scripts for AI video generation (Veo3/Kling).
+
+**INPUT SCENE:**
+Visual: ${context.visualPrompt}
+${context.dialogue ? `Dialogue: "${context.dialogue}"` : 'No dialogue (ambient/silent shot)'}
+${context.actingDirection ? `Acting Direction: ${context.actingDirection}` : ''}
+${context.emotion ? `Emotion: ${context.emotion}` : ''}
+${context.speakerInfo?.name ? `Character: ${context.speakerInfo.name}` : ''}
+${characterMotionHints ? `Character Visual Features: ${characterMotionHints}` : ''}
+${context.locationInfo?.name ? `Location: ${context.locationInfo.name}` : ''}
+${locationHints ? `Environmental Elements: ${locationHints}` : ''}
+${context.previousCutMotion ? `Previous Cut Motion (for continuity): ${context.previousCutMotion.substring(0, 100)}...` : ''}
+
+**MOTION INTENSITY: ${intensity.toUpperCase()}**
+${intensityDesc}
+
+**SUGGESTED CAMERA WORK FOR THIS EMOTION:**
+${emotionSuggestions.join(', ')}
+
+**YOUR TASK:**
+Generate a single, cohesive video motion prompt (3-5 sentences) that:
+1. Starts with the exact visual composition
+2. Specifies ONE primary camera movement matching the intensity level
+3. Describes natural character/subject motion (${context.dialogue ? 'speaking animation, gestures' : 'breathing, subtle movements'})
+4. Includes environmental motion (particles, lighting, atmosphere)
+5. Mentions any character-specific visual elements that should move naturally
+
+**OUTPUT ONLY THE MOTION PROMPT - No explanations, no markdown, just the prompt text:**`;
+
+    try {
+        const result = await generateText(prompt, apiKey, undefined, undefined, undefined, { temperature: 0.7 });
+        return result?.trim() || `${context.visualPrompt}. Camera holds steady. Subtle atmospheric motion.`;
+    } catch (error) {
+        console.error('[generateVideoMotionPrompt] Error:', error);
+        // Fallback with basic enhancement
+        const basePrompt = context.visualPrompt || '';
+        const cameraMove = emotionSuggestions[0] || 'Camera holds steady';
+        return `${basePrompt}. ${cameraMove}. ${characterMotionHints || 'Subtle breathing motion'}. ${locationHints || 'Ambient atmosphere'}.`;
+    }
+};
