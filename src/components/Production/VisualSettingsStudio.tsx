@@ -129,12 +129,29 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
     const draftFileInputRef = useRef<HTMLInputElement>(null);
     const wasOpenRef = useRef(false);
 
+    // Memory management: Track all blob URLs created in this component
+    const blobUrlsRef = useRef<Set<string>>(new Set());
+
     const [resolvedCandidates, setResolvedCandidates] = useState<Array<{ id: number, url: string, index: number }>>([]);
     const [resolvedProjectAssets, setResolvedProjectAssets] = useState<Array<{ id: string, name: string, url: string, type: string }>>([]);
     const [showRefSelector, setShowRefSelector] = useState(false);
 
     // Tab state for switching between visual settings and composition editor
     const [activeTab, setActiveTab] = useState<'visual' | 'composition'>('visual');
+
+    // Memory cleanup: Revoke all blob URLs when closing
+    useEffect(() => {
+        if (!isOpen && wasOpenRef.current) {
+            // Component is closing - cleanup all blob URLs
+            blobUrlsRef.current.forEach(url => {
+                if (url.startsWith('blob:')) {
+                    URL.revokeObjectURL(url);
+                }
+            });
+            blobUrlsRef.current.clear();
+            console.log('[VisualSettingsStudio] Cleaned up blob URLs on close');
+        }
+    }, [isOpen]);
 
     // ========================================================================
     // MEMOS
@@ -593,8 +610,9 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
         return () => clearTimeout(timer);
     }, [visualPrompt, apiKey]);
 
-    // Resolve candidates URLs
+    // Resolve candidates URLs - only when modal is open
     useEffect(() => {
+        if (!isOpen) return;
         const resolveCandidates = async () => {
             const candidates = existingCuts
                 .filter(c => c.id !== cutId && c.finalImageUrl)
@@ -604,16 +622,19 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                 let url = c.url;
                 if (isIdbUrl(url)) {
                     url = await resolveUrl(url) || url;
+                    // Track blob URLs for cleanup
+                    if (url.startsWith('blob:')) blobUrlsRef.current.add(url);
                 }
                 return { ...c, url };
             }));
             setResolvedCandidates(resolved);
         };
         resolveCandidates();
-    }, [existingCuts, cutId]);
+    }, [existingCuts, cutId, isOpen]);
 
-    // Resolve Project Assets
+    // Resolve Project Assets - only when modal is open
     useEffect(() => {
+        if (!isOpen) return;
         const resolveAssets = async () => {
             if (!assetDefinitions) return;
             const rawAssets = Object.values(assetDefinitions)
@@ -629,13 +650,15 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                 let url = a.url;
                 if (isIdbUrl(url)) {
                     url = await resolveUrl(url) || url;
+                    // Track blob URLs for cleanup
+                    if (url.startsWith('blob:')) blobUrlsRef.current.add(url);
                 }
                 return { ...a, url };
             }));
             setResolvedProjectAssets(resolved);
         };
         resolveAssets();
-    }, [assetDefinitions]);
+    }, [assetDefinitions, isOpen]);
 
     // ========================================================================
     // RENDER
