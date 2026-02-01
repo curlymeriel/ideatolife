@@ -5,13 +5,14 @@ import {
     Video, Upload, Play, Edit3, Check, X, Loader2,
     ChevronLeft, ChevronRight, FileVideo, Image as ImageIcon,
     FolderOpen, CheckCircle2, Lock, Download, Package, Zap,
-    Volume2, VolumeX, Sparkles, AlertCircle
+    Volume2, VolumeX, Sparkles, AlertCircle, Trash2
 } from 'lucide-react';
-import type { ScriptCut } from '../services/gemini';
+import type { ScriptCut, VideoMotionContext } from '../services/gemini';
 import { resolveUrl, isIdbUrl, saveToIdb, generateVideoKey } from '../utils/imageStorage';
 import { exportVideoGenerationKit } from '../utils/videoGenerationKitExporter';
 import { generateVideo, getVideoModels, type VideoModel } from '../services/videoGen';
 import { generateVideoWithVeo, getVeoModels } from '../services/veoGen';
+import { generateVideoMotionPrompt } from '../services/gemini';
 import type { VideoGenerationProvider, ReplicateVideoModel, VeoModel } from '../store/types';
 
 interface VideoClipStatus {
@@ -105,7 +106,14 @@ const VideoCompositionRow = React.memo(({
             try {
                 let url = cut.videoUrl;
                 if (isIdbUrl(url)) {
+                    console.log(`[Step4.5] Resolving IDB URL for cut ${cut.id}:`, url);
                     url = await resolveUrl(url);
+                    console.log(`[Step4.5] Resolved to:`, url ? `${url.substring(0, 50)}... (${Math.round(url.length / 1024)}KB)` : 'EMPTY');
+
+                    if (!url) {
+                        console.error(`[Step4.5] Cut ${cut.id}: resolveUrl returned empty! IDB data may be corrupted.`);
+                        return;
+                    }
                 }
 
                 if (active) {
@@ -134,7 +142,7 @@ const VideoCompositionRow = React.memo(({
                     }
                 }
             } catch (e) {
-                console.error("Failed to resolve/convert video:", e);
+                console.error(`[Step4.5] Failed to resolve/convert video for cut ${cut.id}:`, e);
                 if (active) setResolvedVideoUrl('');
             }
         };
@@ -419,7 +427,9 @@ const AudioComparisonModal: React.FC<{
     );
     const [isTtsPlaying, setIsTtsPlaying] = useState(false);
     const [resolvedTtsUrl, setResolvedTtsUrl] = useState<string>('');
-    const [customDuration, setCustomDuration] = useState<number>(previewCut?.videoDuration || 0);
+    const [customDuration, setCustomDuration] = useState<number>(
+        previewCut?.videoDuration || previewCut?.estimatedDuration || 0
+    );
     const ttsAudioRef = useRef<HTMLAudioElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -429,8 +439,9 @@ const AudioComparisonModal: React.FC<{
             const handleLoadedMetadata = () => {
                 const dur = videoRef.current?.duration || 0;
                 // Set initial custom duration if not already set
+                // Prioritize: Saved videoDuration > TTS/Estimated Duration > Full Video Length
                 if (!customDuration && dur > 0) {
-                    setCustomDuration(previewCut?.videoDuration || dur);
+                    setCustomDuration(previewCut?.videoDuration || previewCut?.estimatedDuration || dur);
                 }
             };
             videoRef.current.addEventListener('loadedmetadata', handleLoadedMetadata);
@@ -661,7 +672,7 @@ const AudioComparisonModal: React.FC<{
 export const Step4_5_VideoComposition: React.FC = () => {
     const navigate = useNavigate();
     const {
-        id: projectId, script, setScript, episodeName, seriesName
+        id: projectId, script, setScript, episodeName, seriesName, aspectRatio
     } = useWorkflowStore();
 
     // Get API keys from store
@@ -672,10 +683,12 @@ export const Step4_5_VideoComposition: React.FC = () => {
     const [clipStatuses, setClipStatuses] = useState<Record<number, VideoClipStatus>>({});
     const [showPromptEditor, setShowPromptEditor] = useState<number | null>(null);
     const [editingPrompt, setEditingPrompt] = useState('');
+    const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
     const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
     const [previewCutId, setPreviewCutId] = useState<number | null>(null);
     const [previewVideoUrl, setPreviewVideoUrl] = useState<string>('');
     const [isExportingKit, setIsExportingKit] = useState(false);
+    const [isBulkGeneratingMotion, setIsBulkGeneratingMotion] = useState(false);
     const [isRepairing, setIsRepairing] = useState(false);
 
     // AI Video Generation Mode State
@@ -742,10 +755,51 @@ export const Step4_5_VideoComposition: React.FC = () => {
         console.log(`[Video Remove] Cut ${cutId}: State updated, videoUrl set to undefined`);
     };
 
-    // Save prompt
-    const saveVideoPrompt = (cutId: number) => {
+    // Save prompt (with auto-generation)
+    const saveVideoPrompt = async (cutId: number) => {
+        let finalPrompt = editingPrompt;
+
+        // Auto-generate logic if empty
+        if (!finalPrompt.trim()) {
+            try {
+                setIsGeneratingPrompt(true);
+                const cut = script.find(c => c.id === cutId);
+                if (!cut) throw new Error("Cut not found");
+
+                const state = useWorkflowStore.getState();
+                const apiKey = state.apiKeys?.gemini;
+
+                if (!apiKey) {
+                    alert("Gemini API Key is missing. Please check Settings.");
+                    setIsGeneratingPrompt(false);
+                    return;
+                }
+
+                // Resolve character info for better context
+                const allChars = [...(state.characters || []), ...(state.episodeCharacters || [])];
+                const char = allChars.find(c => c.name === cut.speaker);
+
+                const context: VideoMotionContext = {
+                    visualPrompt: cut.visualPrompt,
+                    dialogue: cut.dialogue,
+                    emotion: cut.emotion,
+                    audioDuration: cut.estimatedDuration || 5,
+                    speakerInfo: char ? { name: char.name, visualFeatures: char.visualSummary || char.description } : undefined,
+                    stylePrompts: state.styleAnchor?.prompts
+                };
+
+                finalPrompt = await generateVideoMotionPrompt(context, apiKey);
+
+            } catch (e) {
+                console.error("Detailed prompt generation failed:", e);
+                // Fallback: Just leave it empty if generation fails
+            } finally {
+                setIsGeneratingPrompt(false);
+            }
+        }
+
         const updatedScript = script.map(c =>
-            c.id === cutId ? { ...c, videoPrompt: editingPrompt } : c
+            c.id === cutId ? { ...c, videoPrompt: finalPrompt } : c
         );
         setScript(updatedScript);
         setShowPromptEditor(null);
@@ -898,6 +952,57 @@ export const Step4_5_VideoComposition: React.FC = () => {
         }
     };
 
+    // --- Bulk Motion Prompt Refresh ---
+    const handleBulkRefreshMotionPrompts = async () => {
+        const state = useWorkflowStore.getState();
+        const apiKey = state.apiKeys?.gemini;
+
+        if (!apiKey) {
+            alert("Gemini API Key is missing. Please check Settings.");
+            return;
+        }
+
+        if (!confirm("Are you sure you want to regenerate motion prompts for ALL cuts based on current Step 3 assets?\n\nThis will OVERWRITE existing motion prompts.\n(Visual prompts will be preserved)")) {
+            return;
+        }
+
+        setIsBulkGeneratingMotion(true);
+        try {
+            const allChars = [...(state.characters || []), ...(state.episodeCharacters || [])];
+
+            // Process in parallel (Gemini Flash is fast enough)
+            const updatedScript = await Promise.all(script.map(async (cut) => {
+                const char = allChars.find(c => c.name === cut.speaker);
+
+                const context: VideoMotionContext = {
+                    visualPrompt: cut.visualPrompt,
+                    dialogue: cut.dialogue,
+                    emotion: cut.emotion,
+                    audioDuration: cut.estimatedDuration || 5, // Fallback duration
+                    speakerInfo: char ? { name: char.name, visualFeatures: char.visualSummary || char.description } : undefined,
+                    stylePrompts: state.styleAnchor?.prompts
+                };
+
+                try {
+                    const newPrompt = await generateVideoMotionPrompt(context, apiKey);
+                    return { ...cut, videoPrompt: newPrompt || cut.videoPrompt };
+                } catch (e) {
+                    console.error(`[BulkGen] Failed for cut ${cut.id}:`, e);
+                    return cut; // Keep original on failure
+                }
+            }));
+
+            setScript(updatedScript);
+            // alert(`Successfully refreshed motion prompts for ${updatedScript.length} cuts!`);
+
+        } catch (e) {
+            console.error("Bulk generation failed:", e);
+            alert("Failed to refresh motion prompts.");
+        } finally {
+            setIsBulkGeneratingMotion(false);
+        }
+    };
+
     const handleRepairVideos = async () => {
         if (!confirm("비디오 데이터 검사 및 복구를 진행하시겠습니까?\n(재생이 안 되는 비디오가 있을 경우 권장)")) return;
 
@@ -960,10 +1065,11 @@ export const Step4_5_VideoComposition: React.FC = () => {
         }
 
         setIsGenerating(true);
-        setGenerationProgress({ current: 0, total: targetCuts.length, status: '준비 중...' });
+        setGenerationProgress({ current: 0, total: targetCuts.length, status: 'Starting...' });
 
         let successCount = 0;
         let failCount = 0;
+        const errors: string[] = [];
 
         for (let i = 0; i < targetCuts.length; i++) {
             const cut = targetCuts[i];
@@ -980,17 +1086,42 @@ export const Step4_5_VideoComposition: React.FC = () => {
                     imageUrl = await resolveUrl(imageUrl);
                 }
 
-                const prompt = cut.videoPrompt || cut.visualPrompt || `${cut.speaker}: ${cut.dialogue}`;
+                // If user provided a custom video prompt, use it exactly as is (gives full control).
+                // Otherwise, use visual prompt and conditionally append dialogue.
+                let prompt = cut.videoPrompt || cut.visualPrompt || '';
+
+                // Only append dialogue if the speaker is explicitly mentioned in the prompt.
+                // This prevents attaching dialogue to landscape shots or other characters, which can confuse the AI/Safety filters.
+                if (!cut.videoPrompt && cut.dialogue && cut.speaker) {
+                    const speakerName = cut.speaker.toLowerCase();
+                    const promptText = prompt.toLowerCase();
+                    if (promptText.includes(speakerName)) {
+                        prompt += `. Character speaking: "${cut.dialogue}"`;
+                    }
+                }
+
                 let videoUrl: string;
 
                 if (selectedProvider === 'gemini-veo') {
                     // Use Veo
+                    // Validate model existence (fallback for deprecated models like veo-3.0)
+                    const validModels = getVeoModels().map(m => m.id);
+                    const effectiveModel = validModels.includes(selectedVeoModel) ? selectedVeoModel : 'veo-3.1-generate-preview';
+
+                    if (effectiveModel !== selectedVeoModel) {
+                        console.warn(`[Step4.5] Deprecated model ${selectedVeoModel} detected. Switching to ${effectiveModel}.`);
+                        setSelectedVeoModel(effectiveModel as VeoModel);
+                    }
+
+                    // Use Veo model's max duration (usually 8-10s) to give user flexibility
+                    const veoMaxDuration = getVeoModels().find(m => m.id === effectiveModel)?.maxDuration || 8;
+
                     const result = await generateVideoWithVeo(apiKey, {
                         prompt,
-                        imageUrl: selectedVeoModel === 'veo-3.1-generate-preview' ? imageUrl : undefined,
-                        model: selectedVeoModel,
-                        aspectRatio: '16:9',
-                        duration: cut.estimatedDuration || 5,
+                        imageUrl: effectiveModel === 'veo-3.1-generate-preview' ? imageUrl : undefined,
+                        model: effectiveModel,
+                        aspectRatio: aspectRatio || '16:9', // Use project aspect ratio
+                        duration: veoMaxDuration, // Always request max duration
                     }, (status, _progress) => {
                         setGenerationProgress(prev => ({
                             ...prev,
@@ -999,13 +1130,15 @@ export const Step4_5_VideoComposition: React.FC = () => {
                     });
                     videoUrl = result.videoUrl;
                 } else {
-                    // Use Replicate
+                    // Use Replicate model's max duration
+                    const replicateMaxDuration = getVideoModels().find(m => m.id === selectedReplicateModel)?.maxDuration || 5;
+
                     const result = await generateVideo(apiKey, {
                         prompt,
                         imageUrl: selectedReplicateModel.includes('i2v') ? imageUrl : undefined,
                         model: selectedReplicateModel as VideoModel,
-                        aspectRatio: '16:9',
-                        duration: cut.estimatedDuration || 5,
+                        aspectRatio: aspectRatio || '16:9', // Use project aspect ratio
+                        duration: replicateMaxDuration, // Always request max duration
                     }, (status, _progress) => {
                         setGenerationProgress(prev => ({
                             ...prev,
@@ -1021,8 +1154,24 @@ export const Step4_5_VideoComposition: React.FC = () => {
                     let dataUrl = videoUrl;
                     if (!videoUrl.startsWith('data:')) {
                         try {
-                            const response = await fetch(videoUrl);
+                            // Google API URLs require the API key and must go through our proxy to avoid CORS
+                            let fetchUrl = videoUrl;
+                            if (videoUrl.includes('generativelanguage.googleapis.com')) {
+                                // Convert: https://generativelanguage.googleapis.com/v1beta/files/xxx
+                                // To:      /api/google-ai/v1beta/files/xxx?key=...
+                                const urlObj = new URL(videoUrl);
+                                const proxyPath = `/api/google-ai${urlObj.pathname}${urlObj.search}`;
+                                const separator = urlObj.search ? '&' : '?';
+                                fetchUrl = `${proxyPath}${separator}key=${apiKey}`;
+                                console.log('[VideoGen] Fetching video via proxy:', fetchUrl.substring(0, 100) + '...');
+                            }
+
+                            const response = await fetch(fetchUrl);
+                            if (!response.ok) {
+                                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                            }
                             const blob = await response.blob();
+                            console.log('[VideoGen] Video blob size:', Math.round(blob.size / 1024), 'KB');
                             dataUrl = await new Promise<string>((resolve, reject) => {
                                 const reader = new FileReader();
                                 reader.onload = () => resolve(reader.result as string);
@@ -1031,7 +1180,8 @@ export const Step4_5_VideoComposition: React.FC = () => {
                             });
                         } catch (e) {
                             console.error('Failed to fetch video:', e);
-                            // Use original URL as fallback
+                            // Use original URL as fallback - but this will likely not work
+                            throw new Error(`Failed to download video from Veo API: ${(e as Error).message}`);
                         }
                     }
 
@@ -1052,8 +1202,23 @@ export const Step4_5_VideoComposition: React.FC = () => {
                 }
             } catch (error: any) {
                 console.error(`Failed to generate video for cut ${cut.id}:`, error);
+
+                const errorMessage = error.message || 'Unknown error';
+                errors.push(`Cut #${cut.id}: ${errorMessage}`);
                 failCount++;
-                // Continue with next cut
+
+                // Circuit Breaker: Stop batch if Quota or Auth error occurs
+                if (
+                    errorMessage.includes('quota') ||
+                    errorMessage.includes('429') ||
+                    errorMessage.includes('403') ||
+                    errorMessage.includes('401')
+                ) {
+                    const abortMsg = "⚠️ Critical API Error (Quota/Auth). Aborting remaining cuts to prevent system spam.";
+                    console.warn(abortMsg);
+                    errors.push(abortMsg);
+                    break; // Stop the loop
+                }
             }
         }
 
@@ -1064,7 +1229,15 @@ export const Step4_5_VideoComposition: React.FC = () => {
         setSelectedCuts(new Set());
         setGenerationProgress({ current: 0, total: 0, status: '' });
 
-        alert(`✅ 완료!\n성공: ${successCount}개\n실패: ${failCount}개`);
+        if (failCount > 0) {
+            let tip = "";
+            if (errors.some(e => e.includes('quota') || e.includes('429'))) {
+                tip = "\n💡 팁: 'Quota' 또는 '429' 에러는 구글 사용량이 일시적으로 몰린 것입니다. 1-2분 뒤에 다시 시도하거나, 계속되면 API Key를 변경해보세요.";
+            }
+            alert(`⚠️ 완료되었으나 일부 실패가 있습니다.\n성공: ${successCount}개\n실패: ${failCount}개\n\n[실패 원인]\n${errors.join('\n')}${tip}`);
+        } else {
+            alert(`✅ 모든 영상 생성 완료!\n성공: ${successCount}개`);
+        }
     };
 
     return (
@@ -1092,16 +1265,30 @@ export const Step4_5_VideoComposition: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Repair Button */}
-                <button
-                    onClick={handleRepairVideos}
-                    disabled={isRepairing}
-                    className="ml-4 px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs flex items-center gap-2 transition-colors border border-gray-700"
-                    title="재생 오류 시 클릭"
-                >
-                    {isRepairing ? <Loader2 className="animate-spin" size={14} /> : <Zap size={14} />}
-                    비디오 데이터 복구
-                </button>
+
+                <div className="flex items-center gap-2">
+                    {/* Bulk Refresh Button */}
+                    <button
+                        onClick={handleBulkRefreshMotionPrompts}
+                        disabled={isBulkGeneratingMotion || isGenerating}
+                        className="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 rounded-lg text-xs flex items-center gap-2 transition-colors border border-purple-500/30"
+                        title="Refresh all motion prompts based on Step 3 data"
+                    >
+                        {isBulkGeneratingMotion ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
+                        Motion Refresh
+                    </button>
+
+                    {/* Repair Button */}
+                    <button
+                        onClick={handleRepairVideos}
+                        disabled={isRepairing}
+                        className="ml-4 px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs flex items-center gap-2 transition-colors border border-gray-700"
+                        title="재생 오류 시 클릭"
+                    >
+                        {isRepairing ? <Loader2 className="animate-spin" size={14} /> : <Zap size={14} />}
+                        비디오 데이터 복구
+                    </button>
+                </div>
             </div>
 
             {/* AI Video Generation Mode */}
@@ -1181,12 +1368,6 @@ export const Step4_5_VideoComposition: React.FC = () => {
                                     <>
                                         <span className="px-2 py-1 bg-blue-500/20 text-blue-300 text-xs rounded-full">4K 지원</span>
                                         <span className="px-2 py-1 bg-purple-500/20 text-purple-300 text-xs rounded-full">Image-to-Video</span>
-                                        <span className="px-2 py-1 bg-green-500/20 text-green-300 text-xs rounded-full">Native Audio</span>
-                                    </>
-                                )}
-                                {selectedVeoModel === 'veo-3.0-generate-preview' && (
-                                    <>
-                                        <span className="px-2 py-1 bg-blue-500/20 text-blue-300 text-xs rounded-full">1080p</span>
                                         <span className="px-2 py-1 bg-green-500/20 text-green-300 text-xs rounded-full">Native Audio</span>
                                     </>
                                 )}
@@ -1329,32 +1510,34 @@ export const Step4_5_VideoComposition: React.FC = () => {
             </div>
 
             {/* Selection Actions */}
-            {selectedCuts.size > 0 && (
-                <div className="flex items-center gap-4 p-4 bg-[var(--color-bg)] rounded-xl border border-[var(--color-border)]">
-                    <span className="text-sm text-white font-bold">
-                        {selectedCuts.size}개 컷 선택됨
-                    </span>
-                    <div className="w-px h-4 bg-gray-700"></div>
-                    <button
-                        onClick={confirmSelectedVideos}
-                        className="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700"
-                    >
-                        선택 확정
-                    </button>
-                    <button
-                        onClick={unconfirmSelectedVideos}
-                        className="px-3 py-1.5 bg-gray-700 text-gray-300 rounded text-xs hover:bg-gray-600"
-                    >
-                        확정 해제
-                    </button>
-                    <button
-                        onClick={removeSelectedVideos}
-                        className="px-3 py-1.5 bg-red-600/80 text-white rounded text-xs hover:bg-red-600"
-                    >
-                        선택 삭제
-                    </button>
-                </div>
-            )}
+            {
+                selectedCuts.size > 0 && (
+                    <div className="flex items-center gap-4 p-4 bg-[var(--color-bg)] rounded-xl border border-[var(--color-border)]">
+                        <span className="text-sm text-white font-bold">
+                            {selectedCuts.size}개 컷 선택됨
+                        </span>
+                        <div className="w-px h-4 bg-gray-700"></div>
+                        <button
+                            onClick={confirmSelectedVideos}
+                            className="px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700"
+                        >
+                            선택 확정
+                        </button>
+                        <button
+                            onClick={unconfirmSelectedVideos}
+                            className="px-3 py-1.5 bg-gray-700 text-gray-300 rounded text-xs hover:bg-gray-600"
+                        >
+                            확정 해제
+                        </button>
+                        <button
+                            onClick={removeSelectedVideos}
+                            className="px-3 py-1.5 bg-red-600/80 text-white rounded text-xs hover:bg-red-600"
+                        >
+                            선택 삭제
+                        </button>
+                    </div>
+                )
+            }
 
 
             {/* Cuts List */}
@@ -1421,101 +1604,135 @@ export const Step4_5_VideoComposition: React.FC = () => {
             </div>
 
             {/* Prompt Editor */}
-            {showPromptEditor !== null && (
-                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-                    <div className="bg-[var(--color-surface)] rounded-xl p-6 max-w-2xl w-full border border-[var(--color-border)]">
-                        <h3 className="text-lg font-bold text-white mb-4">Edit Video Prompt - Cut #{showPromptEditor}</h3>
-                        <textarea
-                            value={editingPrompt}
-                            onChange={(e) => setEditingPrompt(e.target.value)}
-                            className="w-full h-40 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg p-4 text-white resize-none focus:border-[var(--color-primary)] outline-none"
-                        />
-                        <div className="flex justify-end gap-2 mt-4">
-                            <button onClick={() => setShowPromptEditor(null)} className="px-4 py-2 bg-[var(--color-bg)] text-[var(--color-text-muted)] rounded-lg">Cancel</button>
-                            <button onClick={() => saveVideoPrompt(showPromptEditor)} className="px-4 py-2 bg-[var(--color-primary)] text-black font-semibold rounded-lg">Save</button>
+            {
+                showPromptEditor !== null && (
+                    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+                        <div className="bg-[var(--color-surface)] rounded-xl p-6 max-w-2xl w-full border border-[var(--color-border)]">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-bold text-white">Edit Video Prompt - Cut #{showPromptEditor}</h3>
+                                <button
+                                    onClick={() => setEditingPrompt('')}
+                                    className="px-2 py-1 bg-red-500/10 text-red-500 rounded hover:bg-red-500/20 transition-colors flex items-center gap-1.5 text-xs font-bold"
+                                    title="내용 지우기 (저장 시 자동 생성됨)"
+                                >
+                                    <Trash2 size={12} /> CLEAR
+                                </button>
+                            </div>
+                            <textarea
+                                value={editingPrompt}
+                                onChange={(e) => setEditingPrompt(e.target.value)}
+                                className="w-full h-40 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg p-4 text-white resize-none focus:border-[var(--color-primary)] outline-none"
+                            />
+                            <div className="flex justify-end gap-2 mt-4">
+                                <button
+                                    onClick={() => setShowPromptEditor(null)}
+                                    className="px-4 py-2 bg-[var(--color-bg)] text-[var(--color-text-muted)] rounded-lg"
+                                    disabled={isGeneratingPrompt}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={() => saveVideoPrompt(showPromptEditor)}
+                                    className="px-4 py-2 bg-[var(--color-primary)] text-black font-semibold rounded-lg flex items-center gap-2"
+                                    disabled={isGeneratingPrompt}
+                                >
+                                    {isGeneratingPrompt ? (
+                                        <>
+                                            <Loader2 size={16} className="animate-spin" />
+                                            Generating...
+                                        </>
+                                    ) : (
+                                        'Save'
+                                    )}
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Bulk Upload Modal */}
-            {showBulkUploadModal && (
-                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-                    <div className="bg-[var(--color-surface)] rounded-xl p-6 max-w-md w-full border border-[var(--color-border)]">
-                        <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                            <FolderOpen size={20} className="text-blue-400" />
-                            일괄 업로드 - 매칭 방식
-                        </h3>
-                        <div className="space-y-3 mb-6">
-                            <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg text-sm text-blue-200">
-                                💡 업로드할 파일의 이름이 <b>숫자</b>를 포함하고 있으면 (예: cut_001.mp4) 순서대로 자동 매칭됩니다.
+            {
+                showBulkUploadModal && (
+                    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+                        <div className="bg-[var(--color-surface)] rounded-xl p-6 max-w-md w-full border border-[var(--color-border)]">
+                            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                                <FolderOpen size={20} className="text-blue-400" />
+                                일괄 업로드 - 매칭 방식
+                            </h3>
+                            <div className="space-y-3 mb-6">
+                                <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg text-sm text-blue-200">
+                                    💡 업로드할 파일의 이름이 <b>숫자</b>를 포함하고 있으면 (예: cut_001.mp4) 순서대로 자동 매칭됩니다.
+                                </div>
+                                <label className="flex items-center gap-3 p-3 bg-[var(--color-bg)] rounded-lg cursor-pointer hover:bg-[var(--color-bg)]/80">
+                                    <input type="radio" name="matchMode" value="number" defaultChecked className="accent-[var(--color-primary)]" />
+                                    <div>
+                                        <div className="text-white text-sm font-medium">파일명 숫자 (cut_01.mp4)</div>
+                                        <div className="text-xs text-[var(--color-text-muted)]">가장 권장되는 방식입니다.</div>
+                                    </div>
+                                </label>
+                                <label className="flex items-center gap-3 p-3 bg-[var(--color-bg)] rounded-lg cursor-pointer hover:bg-[var(--color-bg)]/80">
+                                    <input type="radio" name="matchMode" value="name-asc" className="accent-[var(--color-primary)]" />
+                                    <div>
+                                        <div className="text-white text-sm font-medium">파일명 알파벳순</div>
+                                    </div>
+                                </label>
+                                <label className="flex items-center gap-3 p-3 bg-[var(--color-bg)] rounded-lg cursor-pointer hover:bg-[var(--color-bg)]/80">
+                                    <input type="checkbox" id="overwrite-check" className="w-4 h-4 accent-red-500" />
+                                    <div>
+                                        <div className="text-white text-sm font-medium text-red-300">기존 비디오 덮어쓰기</div>
+                                        <div className="text-xs text-[var(--color-text-muted)]">체크 해제 시: 이미 비디오가 있는 컷은 건너뜁니다.</div>
+                                    </div>
+                                </label>
                             </div>
-                            <label className="flex items-center gap-3 p-3 bg-[var(--color-bg)] rounded-lg cursor-pointer hover:bg-[var(--color-bg)]/80">
-                                <input type="radio" name="matchMode" value="number" defaultChecked className="accent-[var(--color-primary)]" />
-                                <div>
-                                    <div className="text-white text-sm font-medium">파일명 숫자 (cut_01.mp4)</div>
-                                    <div className="text-xs text-[var(--color-text-muted)]">가장 권장되는 방식입니다.</div>
-                                </div>
-                            </label>
-                            <label className="flex items-center gap-3 p-3 bg-[var(--color-bg)] rounded-lg cursor-pointer hover:bg-[var(--color-bg)]/80">
-                                <input type="radio" name="matchMode" value="name-asc" className="accent-[var(--color-primary)]" />
-                                <div>
-                                    <div className="text-white text-sm font-medium">파일명 알파벳순</div>
-                                </div>
-                            </label>
-                            <label className="flex items-center gap-3 p-3 bg-[var(--color-bg)] rounded-lg cursor-pointer hover:bg-[var(--color-bg)]/80">
-                                <input type="checkbox" id="overwrite-check" className="w-4 h-4 accent-red-500" />
-                                <div>
-                                    <div className="text-white text-sm font-medium text-red-300">기존 비디오 덮어쓰기</div>
-                                    <div className="text-xs text-[var(--color-text-muted)]">체크 해제 시: 이미 비디오가 있는 컷은 건너뜁니다.</div>
-                                </div>
-                            </label>
-                        </div>
-                        <div className="flex justify-end gap-2">
-                            <button onClick={() => setShowBulkUploadModal(false)} className="px-4 py-2 bg-[var(--color-bg)] text-[var(--color-text-muted)] rounded-lg">취소</button>
-                            <label className="px-4 py-2 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition-colors cursor-pointer flex items-center gap-2">
-                                <FolderOpen size={16} />
-                                파일 선택
-                                <input
-                                    type="file"
-                                    accept="video/*"
-                                    multiple
-                                    className="hidden"
-                                    onChange={(e) => {
-                                        const files = e.target.files;
-                                        if (files) {
-                                            const modeInput = document.querySelector('input[name="matchMode"]:checked') as HTMLInputElement;
-                                            const overwrite = (document.getElementById('overwrite-check') as HTMLInputElement).checked;
-                                            handleBulkUpload(files, (modeInput?.value || 'number') as 'name-asc' | 'number', overwrite);
-                                        }
-                                    }}
-                                />
-                            </label>
+                            <div className="flex justify-end gap-2">
+                                <button onClick={() => setShowBulkUploadModal(false)} className="px-4 py-2 bg-[var(--color-bg)] text-[var(--color-text-muted)] rounded-lg">취소</button>
+                                <label className="px-4 py-2 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition-colors cursor-pointer flex items-center gap-2">
+                                    <FolderOpen size={16} />
+                                    파일 선택
+                                    <input
+                                        type="file"
+                                        accept="video/*"
+                                        multiple
+                                        className="hidden"
+                                        onChange={(e) => {
+                                            const files = e.target.files;
+                                            if (files) {
+                                                const modeInput = document.querySelector('input[name="matchMode"]:checked') as HTMLInputElement;
+                                                const overwrite = (document.getElementById('overwrite-check') as HTMLInputElement).checked;
+                                                handleBulkUpload(files, (modeInput?.value || 'number') as 'name-asc' | 'number', overwrite);
+                                            }
+                                        }}
+                                    />
+                                </label>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Video Preview Modal with Audio Comparison */}
-            {previewVideoUrl && previewCutId !== null && (() => {
-                const previewCut = script.find(c => c.id === previewCutId);
-                return (
-                    <AudioComparisonModal
-                        previewCut={previewCut}
-                        previewVideoUrl={previewVideoUrl}
-                        onClose={() => setPreviewCutId(null)}
-                        onSave={(useVideoAudio, videoDuration) => {
-                            if (previewCut) {
-                                const updatedScript = script.map(c =>
-                                    c.id === previewCut.id ? { ...c, useVideoAudio, videoDuration } : c
-                                );
-                                setScript(updatedScript);
-                            }
-                            setPreviewCutId(null);
-                        }}
-                    />
-                );
-            })()}
-        </div>
+            {
+                previewVideoUrl && previewCutId !== null && (() => {
+                    const previewCut = script.find(c => c.id === previewCutId);
+                    return (
+                        <AudioComparisonModal
+                            previewCut={previewCut}
+                            previewVideoUrl={previewVideoUrl}
+                            onClose={() => setPreviewCutId(null)}
+                            onSave={(useVideoAudio, videoDuration) => {
+                                if (previewCut) {
+                                    const updatedScript = script.map(c =>
+                                        c.id === previewCut.id ? { ...c, useVideoAudio, videoDuration } : c
+                                    );
+                                    setScript(updatedScript);
+                                }
+                                setPreviewCutId(null);
+                            }}
+                        />
+                    );
+                })()
+            }
+        </div >
     );
 };

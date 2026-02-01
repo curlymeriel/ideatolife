@@ -109,7 +109,7 @@ const getEmptyProjectState = (id: string, apiKeys: any = {}): ProjectData => ({
     assetDefinitions: {},
     script: [],
     ttsModel: 'neural2',
-    imageModel: 'gemini-1.5-flash',
+    imageModel: 'gemini-3-pro-image-preview',
     assets: {},
     currentStep: 1,
 });
@@ -207,7 +207,7 @@ const loadProjectFromDisk = async (id: string): Promise<ProjectData | null> => {
             return null;
         }
 
-        console.log(`[Store] Project found. Size: ${JSON.stringify(project).length} chars. Checking for legacy data...`);
+        console.log(`[Store] Project found. Script items: ${project.script?.length || 0}. Checking for legacy data...`);
 
         // 2. JIT Migration (Fix OOM by stripping Base64 BEFORE it hits State)
         let wasMigrated = false;
@@ -486,6 +486,7 @@ async function syncProjectAssetsToPC(projectData: ProjectData, directoryHandle: 
     const uniqueAssets = Array.from(new Set(assetsToSync));
     if (uniqueAssets.length === 0) return;
 
+    const syncStart = Date.now();
     console.log(`[LocalSync] Deep scanning ${uniqueAssets.length} assets for PC sync...`);
 
     // 2. Resolve and save each asset
@@ -520,6 +521,7 @@ async function syncProjectAssetsToPC(projectData: ProjectData, directoryHandle: 
             console.error(`[LocalSync] Failed to sync asset ${idbUrl}:`, e);
         }
     }
+    console.log(`[LocalSync] Asset sync completed in ${Date.now() - syncStart}ms`);
 }
 
 /**
@@ -1320,14 +1322,19 @@ export const useWorkflowStore = create<WorkflowStore>()(
                 // Optimize: prevent redundant save if loading the same project (or no project)
                 // Actually, loading a new project means we should save the OLD one.
                 const state = get() as any;
-                if (state.id && state.script && state.script.length > 0) {
+                if (state.id && state.id !== 'default-project' && state.script && state.script.length > 0) {
+                    console.log(`[Store] Saving current project ${state.id} before loading new one...`);
+                    const preSaveStart = Date.now();
                     await get().saveProject();
+                    console.log(`[Store] Pre-load save completed in ${Date.now() - preSaveStart}ms`);
                 } else {
                     console.log('[Store] Skipping save before load (empty/default project)');
                 }
 
                 console.log(`[Store] Loading project ${id}...`);
+                const loadDiskStart = Date.now();
                 const projectData = await loadProjectFromDisk(id);
+                console.log(`[Store] loadProjectFromDisk completed in ${Date.now() - loadDiskStart}ms`);
 
                 if (projectData) {
                     // IMPORTANT: Preserve savedProjects when loading a project

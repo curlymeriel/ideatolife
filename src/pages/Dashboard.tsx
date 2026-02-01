@@ -73,18 +73,24 @@ export const Dashboard: React.FC = () => {
         if (isOpeningProject) return;
         setIsOpeningProject(true);
 
-        // Safety timeout to prevent UI lockup
+        // Safety timer for UI feedback (shows a reminder after 10s)
         const safetyTimer = setTimeout(() => {
             if (isOpeningProject) {
-                console.warn("[Dashboard] Load taking too long, offering recovery...");
-                // We don't force false here yet, let the user decide or the actual load finish
+                console.warn("[Dashboard] Load taking too long, possibly due to large project data or migration...");
             }
         }, 10000);
 
+        const startTime = Date.now();
+
         try {
-            const loadPromise = loadProject(projectId);
+            const loadPromise = (async () => {
+                console.log(`[Dashboard] Starting loadProject(${projectId})...`);
+                await loadProject(projectId);
+                console.log(`[Dashboard] loadProject completed in ${Date.now() - startTime}ms`);
+            })();
+
             const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error("Timeout")), 45000)
+                setTimeout(() => reject(new Error("Timeout (90s exceeded). Large projects with many assets may take longer to migrate or sync.")), 90000)
             );
 
             await Promise.race([loadPromise, timeoutPromise]);
@@ -92,8 +98,15 @@ export const Dashboard: React.FC = () => {
             navigate(`/step/1`);
         } catch (e) {
             clearTimeout(safetyTimer);
-            console.error("Failed to load project:", e);
-            alert(`Failed to load: ${(e as Error).message}`);
+            const duration = Date.now() - startTime;
+            console.error(`[Dashboard] Failed to load project after ${duration}ms:`, e);
+
+            let errorMsg = (e as Error).message;
+            if (errorMsg === 'Timeout') {
+                errorMsg = "Timeout: The project is taking too long to load. This can happen if you have a massive amount of images/audio that need to be migrated or synced to your local PC.";
+            }
+
+            alert(`Failed to load: ${errorMsg}`);
             setIsOpeningProject(false);
         }
     };

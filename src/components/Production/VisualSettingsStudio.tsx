@@ -869,7 +869,16 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                                         <p className="text-[11px] text-gray-400 italic leading-relaxed pt-2">{visualPromptKR || (isTranslating ? '번역 중...' : '자동 번역 대기...')}</p>
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-[10px] font-black text-purple-400 uppercase tracking-widest flex items-center gap-2"><Film size={14} /> Motion Direction</label>
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-[10px] font-black text-purple-400 uppercase tracking-widest flex items-center gap-2"><Film size={14} /> Motion Direction</label>
+                                            <button
+                                                onClick={() => setVideoPrompt('')}
+                                                className="text-[9px] font-bold text-gray-500 hover:text-red-400 flex items-center gap-1 transition-colors"
+                                                title="내용 지우기 (저장 시 자동 생성됨)"
+                                            >
+                                                <Trash2 size={12} /> CLEAR
+                                            </button>
+                                        </div>
                                         <textarea value={videoPrompt} onChange={e => setVideoPrompt(e.target.value)} placeholder="Camera panning, movement..." className="w-full h-20 bg-purple-500/5 border border-purple-500/10 rounded-xl p-3 text-[11px] text-gray-400 outline-none focus:border-purple-500/30 transition-all resize-none" />
                                     </div>
                                 </section>

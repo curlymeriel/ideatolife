@@ -777,6 +777,14 @@ export const CutItem = memo(({
                                                     {_isGeneratingMotion ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
                                                     AUTO
                                                 </button>
+                                                <button
+                                                    onClick={() => onUpdateCut(cut.id, { videoPrompt: '' })}
+                                                    className="flex items-center gap-1 text-[8px] font-bold text-red-500/80 hover:text-red-500 transition-colors"
+                                                    title="Clear (Auto-generates on empty save)"
+                                                >
+                                                    <Trash2 size={10} />
+                                                    CLEAR
+                                                </button>
                                             </div>
                                         </div>
                                         <textarea
@@ -784,7 +792,12 @@ export const CutItem = memo(({
                                             value={cut.videoPrompt || ''}
                                             disabled={isImageConfirmed}
                                             onChange={(e) => onUpdateCut(cut.id, { videoPrompt: e.target.value })}
-                                            onBlur={onSave}
+                                            onBlur={() => {
+                                                if (!cut.videoPrompt?.trim()) {
+                                                    handleAutoGenerateVideoPrompt();
+                                                }
+                                                onSave();
+                                            }}
                                         />
                                     </div>
                                 </div>

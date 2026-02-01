@@ -125,8 +125,9 @@ export const Step3_Production: React.FC = () => {
 
 
     const IMAGE_MODELS = [
-        { value: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image', cost: '$', hint: '빠르고 효율적인 최신 이미지 표준 모델' },
-        { value: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro Image', cost: '$$$', hint: '고품질 프리미엄 이미지 생성 (2026)' },
+        { value: 'gemini-3-pro-image-preview', label: 'Gemini 3.0 Pro', cost: '$$$$', hint: '최고 품질 프리미엄 이미지 생성' },
+        { value: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash', cost: '$', hint: '빠르고 효율적인 표준 모델' },
+        { value: 'gemini-2.5-pro-image', label: 'Gemini 2.5 Pro', cost: '$$$', hint: '고품질 프리미엄 이미지 생성' },
     ];
 
 

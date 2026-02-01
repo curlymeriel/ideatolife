@@ -128,12 +128,13 @@ export interface ProjectContext {
     masterStyle?: string;
 }
 
-const GEMINI_3_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent';
-const GEMINI_3_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent';
+const GEMINI_3_0_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-pro:generateContent';
+const GEMINI_3_0_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-flash:generateContent';
 const GEMINI_2_5_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent';
 const GEMINI_2_5_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
-const GEMINI_2_0_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
-const GEMINI_API_URL = GEMINI_3_FLASH_URL;
+
+const GEMINI_API_URL = GEMINI_3_0_PRO_URL;
+
 
 import type { StrategicAnalysis, StrategyInsight, YouTubeTrendVideo, ChannelAnalysis, TrendAnalysisInsights } from '../store/types';
 
@@ -548,28 +549,27 @@ ${lockedCutsContext}
 ${customInstructions || DEFAULT_SCRIPT_INSTRUCTIONS}
 `;
 
-        const models = [];
-
-        // 1. If preferredModel is provided, try it first
-        if (preferredModel) {
-            let modelUrl = GEMINI_2_5_FLASH_URL;
-            if (preferredModel.includes('3-pro')) modelUrl = GEMINI_3_PRO_URL;
-            else if (preferredModel.includes('3-flash')) modelUrl = GEMINI_3_FLASH_URL;
-            else if (preferredModel.includes('2.5')) modelUrl = GEMINI_2_5_FLASH_URL;
-            else if (preferredModel.includes('2.0')) modelUrl = GEMINI_2_0_FLASH_URL;
-            else if (preferredModel.includes('pro')) modelUrl = GEMINI_3_PRO_URL;
-
-            models.push({ name: preferredModel, url: modelUrl });
-        }
-
-        // 2. Add fallbacks (2026 priority - latest models first)
-        models.push(
-            { name: 'Gemini 3 Pro', url: GEMINI_3_PRO_URL },
-            { name: 'Gemini 3 Flash', url: GEMINI_3_FLASH_URL },
+        // Base model list (fallback order)
+        const baseModels = [
+            { name: 'Gemini 3.0 Pro', url: GEMINI_3_0_PRO_URL },
+            { name: 'Gemini 3.0 Flash', url: GEMINI_3_0_FLASH_URL },
             { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
-            { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },
-            { name: 'Gemini 2.0 Flash', url: GEMINI_2_0_FLASH_URL }
-        );
+            { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL }
+        ];
+
+        // Prioritize preferredModel if specified
+        let models = [...baseModels];
+        if (preferredModel) {
+            const preferredIndex = baseModels.findIndex(m =>
+                m.name.toLowerCase().includes(preferredModel.toLowerCase()) ||
+                m.url.includes(preferredModel)
+            );
+            if (preferredIndex > 0) {
+                const preferred = baseModels[preferredIndex];
+                models = [preferred, ...baseModels.filter((_, i) => i !== preferredIndex)];
+                console.log(`[Gemini] Prioritizing preferred model: ${preferred.name}`);
+            }
+        }
 
         let lastError: any = null;
 
@@ -1186,11 +1186,10 @@ export const consultStory = async (
         }));
 
         const modelsToTry = [
-            { name: 'Gemini 3 Pro', url: `${GEMINI_3_PRO_URL}?key=${apiKey}` },
-            { name: 'Gemini 3 Flash', url: `${GEMINI_3_FLASH_URL}?key=${apiKey}` },
+            { name: 'Gemini 3.0 Pro', url: `${GEMINI_3_0_PRO_URL}?key=${apiKey}` },
+            { name: 'Gemini 3.0 Flash', url: `${GEMINI_3_0_FLASH_URL}?key=${apiKey}` },
             { name: 'Gemini 2.5 Pro', url: `${GEMINI_2_5_PRO_URL}?key=${apiKey}` },
-            { name: 'Gemini 2.5 Flash', url: `${GEMINI_2_5_FLASH_URL}?key=${apiKey}` },
-            { name: 'Gemini 2.0 Flash', url: `${GEMINI_2_0_FLASH_URL}?key=${apiKey}` }
+            { name: 'Gemini 2.5 Flash', url: `${GEMINI_2_5_FLASH_URL}?key=${apiKey}` }
         ];
 
         let lastError: any = null;
@@ -1347,25 +1346,50 @@ export const consultAssistantDirector = async (
             };
         }));
 
-        const response = await axios.post(
-            `${GEMINI_3_FLASH_URL}?key=${apiKey}`,
-            {
-                contents: [
-                    {
-                        role: 'user',
-                        parts: [{ text: systemInstruction }]
-                    },
-                    ...contents
-                ],
-                generationConfig: {
-                    temperature: 0.7,
-                    response_mime_type: "application/json"
-                }
-            },
-            { timeout: 60000 }
-        );
+        const models = [
+            { name: 'Gemini 3.0 Pro', url: GEMINI_3_0_PRO_URL },
+            { name: 'Gemini 3.0 Flash', url: GEMINI_3_0_FLASH_URL },
+            { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
+            { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL }
+        ];
 
-        const generatedText = response.data.candidates[0].content.parts[0].text;
+        let lastError: any = null;
+        let bestResponse: any = null;
+
+        for (const model of models) {
+            try {
+                console.log(`[Gemini] Consulting Assistant Director with model: ${model.name}`);
+                const response = await axios.post(
+                    `${model.url}?key=${apiKey}`,
+                    {
+                        contents: [
+                            {
+                                role: 'user',
+                                parts: [{ text: systemInstruction }]
+                            },
+                            ...contents
+                        ],
+                        generationConfig: {
+                            temperature: 0.7,
+                            response_mime_type: "application/json"
+                        }
+                    },
+                    { timeout: 60000 }
+                );
+
+                bestResponse = response;
+                break; // Success
+            } catch (error: any) {
+                console.warn(`[Gemini] Assistant Director failed with ${model.name}:`, error.message);
+                lastError = error;
+            }
+        }
+
+        if (!bestResponse) {
+            throw lastError || new Error("All Assistant Director models failed.");
+        }
+
+        const generatedText = bestResponse.data.candidates[0].content.parts[0].text;
         const parsed = JSON.parse(generatedText);
 
         return {
@@ -1453,11 +1477,10 @@ Gritty and used. Guns and gadgets show signs of wear, oil stains, and scratched 
 `;
 
     const models = [
-        { name: 'Gemini 3 Pro', url: GEMINI_3_PRO_URL },
-        { name: 'Gemini 3 Flash', url: GEMINI_3_FLASH_URL },
+        { name: 'Gemini 3.0 Pro', url: GEMINI_3_0_PRO_URL },
+        { name: 'Gemini 3.0 Flash', url: GEMINI_3_0_FLASH_URL },
         { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
-        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },
-        { name: 'Gemini 2.0 Flash', url: GEMINI_2_0_FLASH_URL }
+        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL }
     ];
 
     let lastError: any = null;
@@ -1488,11 +1511,10 @@ export const analyzeImage = async (
     if (!apiKey) return "Analyzed image description...";
 
     const models = [
-        { name: 'Gemini 3 Pro', url: GEMINI_3_PRO_URL },
-        { name: 'Gemini 3 Flash', url: GEMINI_3_FLASH_URL },
+        { name: 'Gemini 3.0 Pro', url: GEMINI_3_0_PRO_URL },
+        { name: 'Gemini 3.0 Flash', url: GEMINI_3_0_FLASH_URL },
         { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
-        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },
-        { name: 'Gemini 2.0 Flash', url: GEMINI_2_0_FLASH_URL }
+        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL }
     ];
 
     // Dynamic MIME type extraction
@@ -1549,11 +1571,10 @@ export const generateVisualPrompt = async (
     if (!apiKey) return "Please provide an API key.";
 
     const models = [
-        GEMINI_3_PRO_URL,
-        GEMINI_3_FLASH_URL,
-        GEMINI_2_5_PRO_URL,
-        GEMINI_2_5_FLASH_URL,
-        GEMINI_2_0_FLASH_URL
+        { name: 'Gemini 3.0 Pro', url: GEMINI_3_0_PRO_URL },
+        { name: 'Gemini 3.0 Flash', url: GEMINI_3_0_FLASH_URL },
+        { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
+        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL }
     ];
 
     const parts: any[] = [
@@ -1715,28 +1736,20 @@ export const consultSupport = async (
     }
 
     try {
-        const contents = history.map(msg => ({
+        const historyForGenerateText = history.map(msg => ({
             role: msg.role === 'user' ? 'user' : 'model',
             parts: [{ text: msg.content }]
         }));
 
-        const response = await axios.post(
-            `${GEMINI_2_5_FLASH_URL}?key=${apiKey}`,
-            {
-                contents: [
-                    {
-                        role: 'user',
-                        parts: [{ text: `SYSTEM_INSTRUCTION: ${systemPrompt}\n\nIMPORTANT: You must output ONLY text, no JSON. Be helpful, concise, and friendly.\n\n` }]
-                    },
-                    ...contents
-                ],
-                generationConfig: {
-                    temperature: 0.7,
-                }
-            }
+        return await generateText(
+            null,
+            apiKey,
+            undefined,
+            undefined,
+            systemPrompt,
+            { temperature: 0.7 },
+            historyForGenerateText
         );
-
-        return response.data.candidates[0].content.parts[0].text;
     } catch (error: any) {
         console.error("Gemini Support Chat Error:", error);
         return `오류가 발생했습니다: ${error.message || 'Unknown Error'}`;
@@ -1952,11 +1965,10 @@ export const generateText = async (
 
     // Prioritize stable models
     const models = [
-        { name: 'Gemini 3 Pro', url: GEMINI_3_PRO_URL },
-        { name: 'Gemini 3 Flash', url: GEMINI_3_FLASH_URL },
+        { name: 'Gemini 3.0 Pro', url: GEMINI_3_0_PRO_URL },
+        { name: 'Gemini 3.0 Flash', url: GEMINI_3_0_FLASH_URL },
         { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
-        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },
-        { name: 'Gemini 2.0 Flash', url: GEMINI_2_0_FLASH_URL }
+        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL }
     ];
 
     let lastError: any = null;
@@ -2060,6 +2072,11 @@ export interface VideoMotionContext {
     audioDuration?: number;         // In seconds
     previousCutMotion?: string;     // For continuity checking
     presetId?: string;              // Optional preset to base on
+    stylePrompts?: {                // Style guidelines from Step 2
+        font: string;
+        layout: string;
+        color: string;
+    };
 }
 
 /**

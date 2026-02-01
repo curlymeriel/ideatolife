@@ -31,8 +31,9 @@ export const Step4_Draft: React.FC = () => {
     ];
 
     const IMAGE_MODELS = [
+        { value: 'gemini-3-pro-image-preview', label: 'Gemini 3.0 Pro', cost: '$$$$', hint: 'Ultimate quality, premium' },
         { value: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash', cost: '$', hint: 'Fast, efficient' },
-        { value: 'gemini-3.0-pro-image', label: 'Gemini 3.0 Pro', cost: '$$$', hint: 'High fidelity, premium' },
+        { value: 'gemini-2.5-pro-image', label: 'Gemini 2.5 Pro', cost: '$$$', hint: 'High fidelity, premium' },
     ];
 
     const handleGenerateScript = async () => {

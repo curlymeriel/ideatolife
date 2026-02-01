@@ -100,6 +100,9 @@ export const AssetGenerationModal: React.FC<AssetGenerationModalProps> = ({
     // AI Expander state
     const [isExpanding, setIsExpanding] = useState(false);
 
+    // Model selection state (PRO = gemini-3-pro-image-preview, STD = gemini-2.5-flash-image)
+    const [selectedModel, setSelectedModel] = useState<'PRO' | 'STD'>('PRO');
+
     // [New] Resolved assets state for IDB url support
     const [resolvedAssets, setResolvedAssets] = useState<{ id: string, name: string, url: string, type: string }[]>([]);
 
@@ -408,7 +411,7 @@ export const AssetGenerationModal: React.FC<AssetGenerationModalProps> = ({
                 apiKey,
                 refImages.length > 0 ? refImages : undefined,
                 aspectRatio,
-                'gemini-3-pro-image-preview',
+                selectedModel === 'PRO' ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image',
                 draftCount
             );
 
@@ -832,6 +835,25 @@ SUGGESTED_PROMPT: [your improved English prompt]
 
                         {/* Generate Button */}
                         <div className="p-4 border-t border-[var(--color-border)]">
+                            {/* Model Selection */}
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-[10px] text-gray-500">Model:</span>
+                                <div className="flex bg-white/5 p-0.5 rounded-lg border border-white/5 gap-0.5">
+                                    {[
+                                        { id: 'PRO' as const, label: 'PRO', hint: 'Gemini 3 Pro' },
+                                        { id: 'STD' as const, label: 'STD', hint: 'Gemini 2.5 Flash' }
+                                    ].map(model => (
+                                        <button
+                                            key={model.id}
+                                            onClick={() => setSelectedModel(model.id)}
+                                            className={`px-2 py-1 text-[10px] font-bold rounded transition-all ${selectedModel === model.id ? 'bg-[var(--color-primary)] text-black' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}
+                                            title={model.hint}
+                                        >
+                                            {model.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
                             <div className="flex items-center gap-2 mb-2">
                                 <span className="text-[10px] text-gray-500">Count:</span>
                                 <div className="flex gap-1">

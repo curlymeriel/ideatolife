@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { Play, Loader2, Image as ImageIcon, Music, ArrowRight } from 'lucide-react';
 
 export const Step5_Production: React.FC = () => {
-    const { script, apiKeys, ttsModel, updateAsset, nextStep, assetDefinitions, assets, aspectRatio } = useWorkflowStore();
+    const { script, apiKeys, ttsModel, imageModel, updateAsset, nextStep, assetDefinitions, assets, aspectRatio } = useWorkflowStore();
     const navigate = useNavigate();
 
     const [productionStatus, setProductionStatus] = useState<Record<number, { audio: 'pending' | 'loading' | 'done' | 'error', image: 'pending' | 'loading' | 'done' | 'error' }>>({});
@@ -109,7 +109,7 @@ export const Step5_Production: React.FC = () => {
                     apiKeys.gemini,
                     referenceImage ? [referenceImage] : undefined,
                     aspectRatio,
-                    'gemini-2.5-flash-image'
+                    imageModel
                 );
                 updateAsset(cut.id, { imageUrl: result.urls[0] });
                 setProductionStatus(prev => ({ ...prev, [cut.id]: { ...prev[cut.id], image: 'done' } }));

@@ -9,7 +9,7 @@ export const generateImage = async (
     apiKey: string,
     referenceImages?: string | string[], // Optional base64 string(s) for Image-to-Image
     aspectRatio?: string, // Target aspect ratio (e.g., '16:9', '9:16', '1:1', '2.35:1')
-    modelName: string = 'imagen-3.0-generate-001',
+    modelName: string = 'gemini-3-pro-image-preview',
     candidateCount: number = 1
 ): Promise<{ urls: string[] }> => {
     if (!apiKey) {
@@ -24,10 +24,11 @@ export const generateImage = async (
         });
     }
 
-    // Fallback models
+    // Fallback models (3.0 Pro -> 2.5 Pro -> 2.5 Flash -> 3.0 Flash)
     const fallbackModels = [
-        'imagen-4.0-generate-001',
-        'gemini-2.5-flash-image'
+        'gemini-2.5-pro-image',
+        'gemini-2.5-flash-image',
+        'gemini-3.0-flash-image'
     ];
 
     // Add primary model to the start of the list if it's not already there
@@ -283,7 +284,7 @@ export const editImageWithChat = async (
 
         // Use Gemini for image editing
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${apiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -321,7 +322,7 @@ export const editImageWithChat = async (
             // Fallback: Try with the same model but simpler prompt
             console.warn('[ImageEdit] No image in response, trying simplified fallback...');
             const fallbackResponse = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },

@@ -61,7 +61,7 @@ export const ChannelArtModal: React.FC<ChannelArtModalProps> = ({
     const [isGridView, setIsGridView] = useState(false);
     const [koreanTranslation, setKoreanTranslation] = useState('');
     const [isTranslating, setIsTranslating] = useState(false);
-    const [selectedModel, setSelectedModel] = useState('gemini-2.5-flash-image');
+    const [selectedModel, setSelectedModel] = useState('gemini-3-pro-image-preview');
     const [pendingCrop, setPendingCrop] = useState<{ url: string; aspectRatio: string } | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 

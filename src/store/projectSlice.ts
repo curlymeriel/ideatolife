@@ -81,7 +81,7 @@ const sampleProjectDefaults = {
     visualAssets: {},
     script: [],
     ttsModel: 'neural2' as const,
-    imageModel: 'gemini-2.5-flash-image' as const,
+    imageModel: 'gemini-3-pro-image-preview' as const,
     assets: {},
     currentStep: 1,
 };

@@ -3,6 +3,8 @@
  * Supports multiple video AI models through Replicate's unified API
  */
 
+import type { AspectRatio } from '../store/types';
+
 export type VideoModel =
     | 'kling-1.6'
     | 'kling-2.0'
@@ -16,7 +18,7 @@ interface VideoGenerationOptions {
     prompt: string;
     imageUrl?: string; // For image-to-video
     duration?: number; // In seconds (default 5)
-    aspectRatio?: '16:9' | '9:16' | '1:1';
+    aspectRatio?: AspectRatio;
     model?: VideoModel;
 }
 
@@ -69,7 +71,12 @@ export async function generateVideo(
     // Model-specific input formatting
     if (model.startsWith('kling')) {
         input.duration = options.duration || 5;
-        input.aspect_ratio = options.aspectRatio || '16:9';
+        // Kling supports 16:9, 9:16, 1:1, 4:3, 3:4, 21:9
+        // Map other ratios to closest supported
+        let ratio: string = options.aspectRatio || '16:9';
+        if (ratio === '4:5') ratio = '3:4'; // Closest approximation
+        if (ratio === '2.35:1') ratio = '21:9';
+        input.aspect_ratio = ratio;
     } else if (model === 'runway-gen3') {
         input.duration = Math.min(options.duration || 5, 10); // Runway max 10s
     } else if (model === 'stable-video') {
@@ -78,13 +85,31 @@ export async function generateVideo(
         // Wan 2.2 specific parameters
         input.num_frames = 81; // ~5 seconds at 16fps
         input.fps = 16;
-        if (options.aspectRatio === '9:16') {
-            input.width = 480;
-            input.height = 832;
-        } else {
-            input.width = model.includes('720p') ? 1280 : 832;
-            input.height = model.includes('720p') ? 720 : 480;
+
+        // Calculate dimensions based on aspect ratio
+        const ratio = options.aspectRatio || '16:9';
+        let width = 832;
+        let height = 480;
+
+        const is720p = model.includes('720p');
+        const baseSize = is720p ? 1280 : 832;
+        const smallSize = is720p ? 720 : 480;
+
+        switch (ratio) {
+            case '16:9': width = baseSize; height = smallSize; break;
+            case '9:16': width = smallSize; height = baseSize; break;
+            case '1:1': width = is720p ? 1024 : 640; height = is720p ? 1024 : 640; break;
+            case '4:3': width = baseSize; height = Math.round(baseSize * 0.75); break;
+            case '3:4': width = Math.round(baseSize * 0.75); height = baseSize; break;
+            case '21:9': width = baseSize; height = Math.round(baseSize * 0.42); break;
+            case '2.35:1': width = baseSize; height = Math.round(baseSize / 2.35); break;
+            case '4:5': width = Math.round(baseSize * 0.8); height = baseSize; break;
+            default: width = baseSize; height = smallSize; break;
         }
+
+        // Align to multiples of 16
+        input.width = Math.round(width / 16) * 16;
+        input.height = Math.round(height / 16) * 16;
     }
 
     // Start prediction

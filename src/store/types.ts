@@ -5,7 +5,7 @@ import type { ScriptCut, ChatMessage } from '../services/gemini';
 // ====================
 
 export type TtsModel = 'standard' | 'wavenet' | 'neural2' | 'chirp3-hd' | 'gemini-tts';
-export type ImageModel = 'gemini-1.5-flash' | 'gemini-2.0-flash-exp' | 'gemini-2.0-flash' | 'gemini-2.5-flash' | 'gemini-2.5-flash-image' | 'gemini-2.5-pro' | 'gemini-3.0-pro' | 'gemini-3-pro-image-preview' | 'gemini-3-flash-preview';
+export type ImageModel = 'gemini-3-pro-image-preview' | 'gemini-2.5-flash-image' | 'gemini-2.5-pro-image' | 'gemini-3.0-flash-image' | 'imagen-3';
 export type AspectRatio = '16:9' | '9:16' | '1:1' | '2.35:1' | '4:5' | '21:9' | '4:3' | '3:4';
 
 export interface ApiKeys {
@@ -22,7 +22,10 @@ export interface ApiKeys {
 // ====================
 
 export type VideoGenerationProvider = 'gemini-veo' | 'replicate';
-export type VeoModel = 'veo-3.0-generate-preview' | 'veo-3.1-generate-preview';
+export type VeoModel =
+    | 'veo-3.1-generate-preview'
+    | 'veo-3.0-generate-preview'
+    | 'veo-2.0-generate-preview';
 export type ReplicateVideoModel =
     | 'wan-2.2-t2v-480p'
     | 'wan-2.2-t2v-720p'
