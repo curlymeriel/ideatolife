@@ -55,10 +55,12 @@ export async function generateVideoWithVeo(
     options: VeoGenerationOptions,
     onProgress?: (status: string, progress?: number) => void
 ): Promise<VeoGenerationResult> {
-    // If a specific model is requested, try only that. Otherwise, use the fallback chain.
-    const modelsToTry = options.model
-        ? [options.model]
-        : ['veo-3.1-generate-preview', 'veo-3.0-generate-preview', 'veo-2.0-generate-preview'];
+    // Always try the requested model first, then fallback to others in the chain
+    const fallbackChain = ['veo-3.1-generate-preview', 'veo-3.0-generate-preview', 'veo-2.0-generate-preview'];
+    const requestedModel = options.model || fallbackChain[0];
+
+    // Create unique list: [requested, ...others]
+    const modelsToTry = Array.from(new Set([requestedModel, ...fallbackChain]));
 
     let lastError: any = null;
 
@@ -399,6 +401,8 @@ export async function validateVeoAccess(apiKey: string): Promise<boolean> {
         }
 
         const data = await response.json();
+        console.log('[Veo] Available Models:', data.models?.map((m: any) => m.name));
+
         // Check if Veo models are available
         const hasVeo = data.models?.some((m: any) =>
             m.name?.includes('veo') || m.supportedGenerationMethods?.includes('generateVideo')
