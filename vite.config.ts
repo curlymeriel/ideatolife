@@ -21,6 +21,12 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api\/replicate/, ''),
         secure: true,
       },
+      '/api/google-ai': {
+        target: 'https://generativelanguage.googleapis.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/google-ai/, ''),
+        secure: true,
+      },
     },
   },
   // Also add headers for preview/production builds

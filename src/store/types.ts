@@ -14,7 +14,23 @@ export interface ApiKeys {
     elevenLabs: string;
     elevenLabsModelId: string;
     freesound?: string;  // Freesound.org API key for SFX search
+    replicate?: string;  // Replicate API key for video generation (Wan 2.2, Kling, etc.)
 }
+
+// ====================
+// Video Generation Types
+// ====================
+
+export type VideoGenerationProvider = 'gemini-veo' | 'replicate';
+export type VeoModel = 'veo-3.0-generate-preview' | 'veo-3.1-generate-preview';
+export type ReplicateVideoModel =
+    | 'wan-2.2-t2v-480p'
+    | 'wan-2.2-t2v-720p'
+    | 'wan-2.2-i2v'
+    | 'kling-1.6'
+    | 'kling-2.0'
+    | 'runway-gen3'
+    | 'stable-video';
 
 export interface Character {
     id: string;

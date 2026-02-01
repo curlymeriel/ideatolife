@@ -3,7 +3,14 @@
  * Supports multiple video AI models through Replicate's unified API
  */
 
-export type VideoModel = 'kling-1.6' | 'kling-2.0' | 'runway-gen3' | 'stable-video';
+export type VideoModel =
+    | 'kling-1.6'
+    | 'kling-2.0'
+    | 'runway-gen3'
+    | 'stable-video'
+    | 'wan-2.2-t2v-480p'
+    | 'wan-2.2-t2v-720p'
+    | 'wan-2.2-i2v';
 
 interface VideoGenerationOptions {
     prompt: string;
@@ -19,13 +26,17 @@ interface VideoGenerationResult {
     model: string;
 }
 
-// Replicate model identifiers (updated December 2025)
+// Replicate model identifiers (updated January 2026)
 // These are model owner/name pairs, NOT version hashes
 const REPLICATE_MODELS: Record<VideoModel, string> = {
     'kling-1.6': 'kwaivgi/kling-v1.6-pro',
     'kling-2.0': 'kwaivgi/kling-v2.1', // Using 2.1 as it's the latest stable
     'runway-gen3': 'minimax/video-01', // Alternative: MiniMax Video-01
     'stable-video': 'stability-ai/stable-video-diffusion',
+    // Wan 2.2 models (Alibaba Cloud - open source)
+    'wan-2.2-t2v-480p': 'wan-ai/wan2.2-t2v-480p',
+    'wan-2.2-t2v-720p': 'wan-ai/wan2.2-t2v-720p',
+    'wan-2.2-i2v': 'wan-ai/wan2.2-i2v',
 };
 
 /**
@@ -63,6 +74,17 @@ export async function generateVideo(
         input.duration = Math.min(options.duration || 5, 10); // Runway max 10s
     } else if (model === 'stable-video') {
         input.frames = Math.round((options.duration || 5) * 24); // 24fps
+    } else if (model.startsWith('wan-2.2')) {
+        // Wan 2.2 specific parameters
+        input.num_frames = 81; // ~5 seconds at 16fps
+        input.fps = 16;
+        if (options.aspectRatio === '9:16') {
+            input.width = 480;
+            input.height = 832;
+        } else {
+            input.width = model.includes('720p') ? 1280 : 832;
+            input.height = model.includes('720p') ? 720 : 480;
+        }
     }
 
     // Start prediction
@@ -188,6 +210,31 @@ export function getVideoModels(): Array<{
             description: 'Open source, good for motion loops',
             pricePerSecond: 0.02,
             maxDuration: 4,
+            supportsImageToVideo: true,
+        },
+        // Wan 2.2 models (open source, high quality)
+        {
+            id: 'wan-2.2-t2v-480p',
+            name: 'Wan 2.2 T2V (480p)',
+            description: '빠른 생성, 저해상도 - 프리뷰용 권장',
+            pricePerSecond: 0.015,
+            maxDuration: 5,
+            supportsImageToVideo: false,
+        },
+        {
+            id: 'wan-2.2-t2v-720p',
+            name: 'Wan 2.2 T2V (720p)',
+            description: '고품질 오픈소스, MoE 아키텍처',
+            pricePerSecond: 0.025,
+            maxDuration: 5,
+            supportsImageToVideo: false,
+        },
+        {
+            id: 'wan-2.2-i2v',
+            name: 'Wan 2.2 Image-to-Video',
+            description: '이미지 → 비디오 변환, 최상의 일관성',
+            pricePerSecond: 0.03,
+            maxDuration: 5,
             supportsImageToVideo: true,
         },
     ];

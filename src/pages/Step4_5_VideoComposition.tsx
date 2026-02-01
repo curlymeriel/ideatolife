@@ -5,11 +5,14 @@ import {
     Video, Upload, Play, Edit3, Check, X, Loader2,
     ChevronLeft, ChevronRight, FileVideo, Image as ImageIcon,
     FolderOpen, CheckCircle2, Lock, Download, Package, Zap,
-    Volume2, VolumeX
+    Volume2, VolumeX, Sparkles, AlertCircle
 } from 'lucide-react';
 import type { ScriptCut } from '../services/gemini';
-import { resolveUrl, isIdbUrl } from '../utils/imageStorage';
+import { resolveUrl, isIdbUrl, saveToIdb, generateVideoKey } from '../utils/imageStorage';
 import { exportVideoGenerationKit } from '../utils/videoGenerationKitExporter';
+import { generateVideo, getVideoModels, type VideoModel } from '../services/videoGen';
+import { generateVideoWithVeo, getVeoModels } from '../services/veoGen';
+import type { VideoGenerationProvider, ReplicateVideoModel, VeoModel } from '../store/types';
 
 interface VideoClipStatus {
     cutId: number;
@@ -661,6 +664,9 @@ export const Step4_5_VideoComposition: React.FC = () => {
         id: projectId, script, setScript, episodeName, seriesName
     } = useWorkflowStore();
 
+    // Get API keys from store
+    const { apiKeys } = useWorkflowStore();
+
     // State
     const [selectedCuts, setSelectedCuts] = useState<Set<number>>(new Set());
     const [clipStatuses, setClipStatuses] = useState<Record<number, VideoClipStatus>>({});
@@ -671,6 +677,13 @@ export const Step4_5_VideoComposition: React.FC = () => {
     const [previewVideoUrl, setPreviewVideoUrl] = useState<string>('');
     const [isExportingKit, setIsExportingKit] = useState(false);
     const [isRepairing, setIsRepairing] = useState(false);
+
+    // AI Video Generation Mode State
+    const [selectedProvider, setSelectedProvider] = useState<VideoGenerationProvider>('replicate');
+    const [selectedVeoModel, setSelectedVeoModel] = useState<VeoModel>('veo-3.1-generate-preview');
+    const [selectedReplicateModel, setSelectedReplicateModel] = useState<ReplicateVideoModel>('wan-2.2-i2v');
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [generationProgress, setGenerationProgress] = useState<{ current: number; total: number; status: string }>({ current: 0, total: 0, status: '' });
 
     const prevProjectIdRef = useRef<string | null>(null);
 
@@ -907,6 +920,153 @@ export const Step4_5_VideoComposition: React.FC = () => {
         }
     };
 
+    // --- AI Video Generation Handler ---
+    const handleAIVideoGeneration = async (mode: 'selected' | 'all') => {
+        const currentProjectId = useWorkflowStore.getState().id;
+        if (!currentProjectId) {
+            alert('프로젝트를 먼저 저장해주세요.');
+            return;
+        }
+
+        // Check API key
+        const apiKey = selectedProvider === 'gemini-veo'
+            ? apiKeys.gemini
+            : apiKeys.replicate;
+
+        if (!apiKey) {
+            alert(`${selectedProvider === 'gemini-veo' ? 'Gemini' : 'Replicate'} API 키가 설정되지 않았습니다.\nStep 1에서 API 키를 설정해주세요.`);
+            return;
+        }
+
+        // Get target cuts
+        let targetCuts: ScriptCut[];
+        if (mode === 'selected') {
+            targetCuts = script.filter(cut =>
+                selectedCuts.has(cut.id) &&
+                !cut.isVideoConfirmed &&
+                cut.finalImageUrl // Must have an image for I2V
+            );
+        } else {
+            targetCuts = script.filter(cut =>
+                !cut.videoUrl &&
+                !cut.isVideoConfirmed &&
+                cut.finalImageUrl
+            );
+        }
+
+        if (targetCuts.length === 0) {
+            alert('생성할 대상 컷이 없습니다.\n이미지가 있고 비디오가 없는 컷을 선택해주세요.');
+            return;
+        }
+
+        setIsGenerating(true);
+        setGenerationProgress({ current: 0, total: targetCuts.length, status: '준비 중...' });
+
+        let successCount = 0;
+        let failCount = 0;
+
+        for (let i = 0; i < targetCuts.length; i++) {
+            const cut = targetCuts[i];
+            setGenerationProgress({
+                current: i + 1,
+                total: targetCuts.length,
+                status: `Cut #${cut.id} 생성 중...`
+            });
+
+            try {
+                // Resolve image URL for I2V
+                let imageUrl = cut.finalImageUrl;
+                if (imageUrl && isIdbUrl(imageUrl)) {
+                    imageUrl = await resolveUrl(imageUrl);
+                }
+
+                const prompt = cut.videoPrompt || cut.visualPrompt || `${cut.speaker}: ${cut.dialogue}`;
+                let videoUrl: string;
+
+                if (selectedProvider === 'gemini-veo') {
+                    // Use Veo
+                    const result = await generateVideoWithVeo(apiKey, {
+                        prompt,
+                        imageUrl: selectedVeoModel === 'veo-3.1-generate-preview' ? imageUrl : undefined,
+                        model: selectedVeoModel,
+                        aspectRatio: '16:9',
+                        duration: cut.estimatedDuration || 5,
+                    }, (status, _progress) => {
+                        setGenerationProgress(prev => ({
+                            ...prev,
+                            status: `Cut #${cut.id}: ${status}`
+                        }));
+                    });
+                    videoUrl = result.videoUrl;
+                } else {
+                    // Use Replicate
+                    const result = await generateVideo(apiKey, {
+                        prompt,
+                        imageUrl: selectedReplicateModel.includes('i2v') ? imageUrl : undefined,
+                        model: selectedReplicateModel as VideoModel,
+                        aspectRatio: '16:9',
+                        duration: cut.estimatedDuration || 5,
+                    }, (status, _progress) => {
+                        setGenerationProgress(prev => ({
+                            ...prev,
+                            status: `Cut #${cut.id}: ${status}`
+                        }));
+                    });
+                    videoUrl = result.videoUrl;
+                }
+
+                // Save video to IDB
+                if (videoUrl) {
+                    // If it's a URL (not data:), fetch and convert to data URL
+                    let dataUrl = videoUrl;
+                    if (!videoUrl.startsWith('data:')) {
+                        try {
+                            const response = await fetch(videoUrl);
+                            const blob = await response.blob();
+                            dataUrl = await new Promise<string>((resolve, reject) => {
+                                const reader = new FileReader();
+                                reader.onload = () => resolve(reader.result as string);
+                                reader.onerror = reject;
+                                reader.readAsDataURL(blob);
+                            });
+                        } catch (e) {
+                            console.error('Failed to fetch video:', e);
+                            // Use original URL as fallback
+                        }
+                    }
+
+                    const videoKey = generateVideoKey(currentProjectId, cut.id, 'mp4');
+                    const idbUrl = await saveToIdb('video', videoKey, dataUrl);
+
+                    // Update script
+                    useWorkflowStore.setState(state => ({
+                        script: state.script.map(c =>
+                            c.id === cut.id ? {
+                                ...c,
+                                videoUrl: idbUrl,
+                                videoSource: selectedProvider === 'gemini-veo' ? 'veo' : 'ai' as const
+                            } : c
+                        )
+                    }));
+                    successCount++;
+                }
+            } catch (error: any) {
+                console.error(`Failed to generate video for cut ${cut.id}:`, error);
+                failCount++;
+                // Continue with next cut
+            }
+        }
+
+        // Save project
+        await useWorkflowStore.getState().saveProject();
+
+        setIsGenerating(false);
+        setSelectedCuts(new Set());
+        setGenerationProgress({ current: 0, total: 0, status: '' });
+
+        alert(`✅ 완료!\n성공: ${successCount}개\n실패: ${failCount}개`);
+    };
+
     return (
         <div className="space-y-6">
             {/* Header */}
@@ -942,6 +1102,180 @@ export const Step4_5_VideoComposition: React.FC = () => {
                     {isRepairing ? <Loader2 className="animate-spin" size={14} /> : <Zap size={14} />}
                     비디오 데이터 복구
                 </button>
+            </div>
+
+            {/* AI Video Generation Mode */}
+            <div className="bg-gradient-to-r from-purple-900/20 via-blue-900/20 to-purple-900/20 rounded-xl p-6 border border-purple-500/30">
+                <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                        <Sparkles size={22} className="text-purple-400" />
+                        🎬 AI Video 생성모드
+                    </h2>
+                    {isGenerating && (
+                        <div className="flex items-center gap-3 text-sm">
+                            <div className="flex items-center gap-2 text-purple-300">
+                                <Loader2 className="animate-spin" size={16} />
+                                <span>{generationProgress.current}/{generationProgress.total}</span>
+                            </div>
+                            <span className="text-gray-400">{generationProgress.status}</span>
+                        </div>
+                    )}
+                </div>
+
+                {/* Provider Tabs */}
+                <div className="flex gap-2 mb-4">
+                    <button
+                        onClick={() => setSelectedProvider('gemini-veo')}
+                        className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${selectedProvider === 'gemini-veo'
+                            ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25'
+                            : 'bg-[var(--color-bg)] text-gray-400 hover:text-white hover:bg-[var(--color-bg)]/80'
+                            }`}
+                    >
+                        <span className="text-xl">🌟</span>
+                        Gemini Veo
+                    </button>
+                    <button
+                        onClick={() => setSelectedProvider('replicate')}
+                        className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${selectedProvider === 'replicate'
+                            ? 'bg-green-500 text-white shadow-lg shadow-green-500/25'
+                            : 'bg-[var(--color-bg)] text-gray-400 hover:text-white hover:bg-[var(--color-bg)]/80'
+                            }`}
+                    >
+                        <span className="text-xl">🔄</span>
+                        Replicate API
+                    </button>
+                </div>
+
+                {/* Model Selection & Actions */}
+                <div className="bg-[var(--color-bg)] rounded-lg p-4">
+                    {selectedProvider === 'gemini-veo' ? (
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-4">
+                                <div className="flex-1">
+                                    <label className="text-xs text-gray-500 uppercase mb-1 block">Model</label>
+                                    <select
+                                        value={selectedVeoModel}
+                                        onChange={(e) => setSelectedVeoModel(e.target.value as VeoModel)}
+                                        className="w-full bg-black/40 border border-[var(--color-border)] rounded-lg px-3 py-2 text-white focus:border-blue-500 outline-none"
+                                    >
+                                        {getVeoModels().map(model => (
+                                            <option key={model.id} value={model.id}>
+                                                {model.name} - {model.description}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* API Key Warning */}
+                            {!apiKeys.gemini && (
+                                <div className="flex items-center gap-2 text-yellow-400 text-sm bg-yellow-500/10 px-3 py-2 rounded-lg">
+                                    <AlertCircle size={16} />
+                                    <span>Gemini API 키가 필요합니다. Step 1에서 설정하세요.</span>
+                                </div>
+                            )}
+
+                            {/* Feature Badge */}
+                            <div className="flex gap-2 flex-wrap">
+                                {selectedVeoModel === 'veo-3.1-generate-preview' && (
+                                    <>
+                                        <span className="px-2 py-1 bg-blue-500/20 text-blue-300 text-xs rounded-full">4K 지원</span>
+                                        <span className="px-2 py-1 bg-purple-500/20 text-purple-300 text-xs rounded-full">Image-to-Video</span>
+                                        <span className="px-2 py-1 bg-green-500/20 text-green-300 text-xs rounded-full">Native Audio</span>
+                                    </>
+                                )}
+                                {selectedVeoModel === 'veo-3.0-generate-preview' && (
+                                    <>
+                                        <span className="px-2 py-1 bg-blue-500/20 text-blue-300 text-xs rounded-full">1080p</span>
+                                        <span className="px-2 py-1 bg-green-500/20 text-green-300 text-xs rounded-full">Native Audio</span>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-4">
+                                <div className="flex-1">
+                                    <label className="text-xs text-gray-500 uppercase mb-1 block">Model</label>
+                                    <select
+                                        value={selectedReplicateModel}
+                                        onChange={(e) => setSelectedReplicateModel(e.target.value as ReplicateVideoModel)}
+                                        className="w-full bg-black/40 border border-[var(--color-border)] rounded-lg px-3 py-2 text-white focus:border-green-500 outline-none"
+                                    >
+                                        {getVideoModels().map(model => (
+                                            <option key={model.id} value={model.id}>
+                                                {model.name} - {model.description}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* API Key Warning */}
+                            {!apiKeys.replicate && (
+                                <div className="flex items-center gap-2 text-yellow-400 text-sm bg-yellow-500/10 px-3 py-2 rounded-lg">
+                                    <AlertCircle size={16} />
+                                    <span>Replicate API 키가 필요합니다. Step 1에서 설정하세요.</span>
+                                </div>
+                            )}
+
+                            {/* Feature Badge */}
+                            <div className="flex gap-2 flex-wrap">
+                                {selectedReplicateModel.includes('wan-2.2') && (
+                                    <span className="px-2 py-1 bg-orange-500/20 text-orange-300 text-xs rounded-full">Open Source</span>
+                                )}
+                                {selectedReplicateModel.includes('i2v') && (
+                                    <span className="px-2 py-1 bg-purple-500/20 text-purple-300 text-xs rounded-full">Image-to-Video</span>
+                                )}
+                                {selectedReplicateModel.includes('720p') && (
+                                    <span className="px-2 py-1 bg-blue-500/20 text-blue-300 text-xs rounded-full">720p HD</span>
+                                )}
+                                {selectedReplicateModel.includes('kling') && (
+                                    <span className="px-2 py-1 bg-pink-500/20 text-pink-300 text-xs rounded-full">Cinematic</span>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Generation Progress */}
+                    {isGenerating && (
+                        <div className="mt-4 space-y-2">
+                            <div className="h-2 bg-[var(--color-border)] rounded-full overflow-hidden">
+                                <div
+                                    className="h-full bg-gradient-to-r from-purple-500 to-blue-500 transition-all duration-300"
+                                    style={{ width: `${(generationProgress.current / generationProgress.total) * 100}%` }}
+                                />
+                            </div>
+                            <p className="text-xs text-gray-400 text-center">{generationProgress.status}</p>
+                        </div>
+                    )}
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-3 mt-4">
+                        <button
+                            onClick={() => handleAIVideoGeneration('selected')}
+                            disabled={isGenerating || selectedCuts.size === 0}
+                            className={`flex-1 py-3 px-4 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${isGenerating || selectedCuts.size === 0
+                                ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                                : 'bg-gradient-to-r from-purple-500 to-blue-500 text-white hover:from-purple-600 hover:to-blue-600 shadow-lg shadow-purple-500/20'
+                                }`}
+                        >
+                            {isGenerating ? <Loader2 className="animate-spin" size={18} /> : <Sparkles size={18} />}
+                            선택 컷 생성 ({selectedCuts.size}개)
+                        </button>
+                        <button
+                            onClick={() => handleAIVideoGeneration('all')}
+                            disabled={isGenerating}
+                            className={`flex-1 py-3 px-4 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${isGenerating
+                                ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                                : 'bg-gradient-to-r from-green-500 to-teal-500 text-white hover:from-green-600 hover:to-teal-600 shadow-lg shadow-green-500/20'
+                                }`}
+                        >
+                            {isGenerating ? <Loader2 className="animate-spin" size={18} /> : <Video size={18} />}
+                            미생성 컷 전체 ({script.filter(c => !c.videoUrl && c.finalImageUrl && !c.isVideoConfirmed).length}개)
+                        </button>
+                    </div>
+                </div>
             </div>
 
             {/* Action Bar (Replaces Provider Selector) */}
