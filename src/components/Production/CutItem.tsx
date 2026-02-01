@@ -2,7 +2,8 @@ import { memo, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import Draggable from 'react-draggable';
 import { Mic, Loader2, Play, Square, ImageIcon as Image, X, Plus, HelpCircle, Waves, Volume2, Settings, Trash2, Sparkles, ChevronDown, ChevronUp, RotateCcw, Languages, Maximize2 } from 'lucide-react';
 import type { ScriptCut } from '../../services/gemini';
-import { generateVideoMotionPrompt, type VideoMotionContext } from '../../services/gemini';
+import { generateVideoMotionPrompt, generateText, type VideoMotionContext } from '../../services/gemini';
+import { DEFAULT_MOTION_PRESETS, getPresetsByCategory } from '../../data/motionPresets';
 import { getMatchedAssets } from '../../utils/assetUtils';
 import { resolveUrl, isIdbUrl } from '../../utils/imageStorage';
 import type { AspectRatio } from '../../store/types';
@@ -335,6 +336,42 @@ export const CutItem = memo(({
         // onTranslate?.(cut.id, current);
     }, [cut.id, localVisualPrompt]);
 
+    // AI Visual Suggestion
+    const [isSuggestingVisual, setIsSuggestingVisual] = useState(false);
+    const handleAiVisualSuggest = useCallback(async () => {
+        if (!apiKey) return;
+        setIsSuggestingVisual(true);
+        try {
+            const prompt = `
+            Act as a cinematographic expert. Create a concise, high-quality visual prompt for an image generation model (like Midjourney) based on this movie script cut.
+            
+            Context:
+            - Speaker: ${cut.speaker}
+            - Dialogue: "${cut.dialogue}"
+            - Emotion: ${cut.emotion || 'Neutral'}
+            - Action/Direction: ${cut.actingDirection || 'None'}
+            
+            Requirements:
+            - Include camera angle, lighting, and atmosphere keywords.
+            - Focus on visual storytelling.
+            - English only.
+            - Max 50 words.
+            - Direct description only, no "Here is the prompt" prefix.
+            `;
+
+            const suggestion = await generateText(prompt, apiKey);
+            if (suggestion) {
+                const finalPrompt = suggestion.trim();
+                onUpdateCut(cut.id, { visualPrompt: finalPrompt });
+                setLocalVisualPrompt(finalPrompt);
+            }
+        } catch (error) {
+            console.error('Failed to suggest visual prompt:', error);
+        } finally {
+            setIsSuggestingVisual(false);
+        }
+    }, [apiKey, cut.speaker, cut.dialogue, cut.emotion, cut.actingDirection, onUpdateCut, cut.id]);
+
     // Asset matching
     const manualAssets = cut.referenceAssetIds || [];
     const allMatchedResults = useMemo(() =>
@@ -564,6 +601,15 @@ export const CutItem = memo(({
                                                     <HelpCircle size={8} /> Terms
                                                 </button>
                                                 <button
+                                                    onClick={handleAiVisualSuggest}
+                                                    disabled={isSuggestingVisual}
+                                                    className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold border bg-purple-500/10 text-purple-400 border-purple-500/20 hover:bg-purple-500/20 hover:text-purple-300 disabled:opacity-50"
+                                                    title="AI Camera Suggestion"
+                                                >
+                                                    {isSuggestingVisual ? <Loader2 size={8} className="animate-spin" /> : <Sparkles size={8} />}
+                                                    Suggest
+                                                </button>
+                                                <button
                                                     onClick={handleAutoTranslate}
                                                     className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold border bg-white/5 text-gray-500 border-white/5 hover:text-white"
                                                     title="Auto Translate (KR->EN)"
@@ -691,7 +737,47 @@ export const CutItem = memo(({
                                     <div className="space-y-1">
                                         <div className="flex items-center justify-between">
                                             <label className="text-[9px] text-purple-400/70 uppercase font-bold tracking-wider">Motion</label>
-                                            <button onClick={handleAutoGenerateVideoPrompt} className="text-[8px] font-bold text-purple-400/80 hover:text-purple-400">AUTO</button>
+                                            <div className="flex items-center gap-2">
+                                                <select
+                                                    className="bg-black/40 text-[8px] text-gray-400 border border-white/10 rounded px-1.5 py-0.5 outline-none focus:border-purple-500 cursor-pointer hover:bg-white/5 transition-colors max-w-[80px]"
+                                                    onChange={(e) => {
+                                                        const preset = DEFAULT_MOTION_PRESETS.find(p => p.id === e.target.value);
+                                                        if (preset) {
+                                                            const base = cut.visualPrompt ? cut.visualPrompt.trim().replace(/\.$/, '') : '';
+                                                            const newPrompt = base ? `${base}. ${preset.template}` : preset.template;
+                                                            onUpdateCut(cut.id, { videoPrompt: newPrompt });
+                                                        }
+                                                        e.target.value = ''; // Reset selection
+                                                    }}
+                                                >
+                                                    <option value="">Presets...</option>
+                                                    <optgroup label="Emotional">
+                                                        {getPresetsByCategory('emotional').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                                    </optgroup>
+                                                    <optgroup label="Action">
+                                                        {getPresetsByCategory('action').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                                    </optgroup>
+                                                    <optgroup label="Dialogue">
+                                                        {getPresetsByCategory('dialogue').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                                    </optgroup>
+                                                    <optgroup label="Establishing">
+                                                        {getPresetsByCategory('establishing').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                                    </optgroup>
+                                                    <optgroup label="Transition">
+                                                        {getPresetsByCategory('transition').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                                    </optgroup>
+                                                </select>
+
+                                                <button
+                                                    onClick={handleAutoGenerateVideoPrompt}
+                                                    disabled={_isGeneratingMotion}
+                                                    className="flex items-center gap-1 text-[8px] font-bold text-purple-400/80 hover:text-purple-400 disabled:opacity-50 transition-colors"
+                                                    title="Generate with AI"
+                                                >
+                                                    {_isGeneratingMotion ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+                                                    AUTO
+                                                </button>
+                                            </div>
                                         </div>
                                         <textarea
                                             className="w-full bg-black/50 border border-purple-500/10 rounded-lg px-2 py-1 text-gray-400 text-[9px] min-h-[30px] focus:border-purple-500 outline-none resize-none"
