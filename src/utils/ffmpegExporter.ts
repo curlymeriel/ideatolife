@@ -129,6 +129,7 @@ export interface FFmpegExportOptions {
     height?: number;
     fps?: number;
     quality?: 'low' | 'medium' | 'high';
+    aspectRatio?: string;
 }
 
 export interface FFmpegExportResult {
@@ -148,7 +149,8 @@ export async function exportWithFFmpeg(
     const {
         width = 1920,
         height = 1080,
-        quality = 'high'
+        quality = 'high',
+        aspectRatio = '16:9'
     } = options;
 
     const ffmpeg = await loadFFmpeg(onProgress);
@@ -236,9 +238,13 @@ export async function exportWithFFmpeg(
             // 2. Add Subtitles
             let lastVideoOutput = 'vscaled';
             if (cut.dialogue && fontFile) {
-                const lines = wrapTextDynamic(cut.dialogue, 48);
-                const lineHeight = 65;
-                const bottomMargin = 140;
+                const isVertical = aspectRatio === '9:16';
+                const fontSize = isVertical ? 34 : 48; // ~30% reduction (48 * 0.7 = 33.6)
+                const lineHeight = isVertical ? 46 : 65; // ~30% reduction (65 * 0.7 = 45.5)
+                const maxCharsPerLine = isVertical ? 25 : 48; // Narrower wrap for vertical
+
+                const lines = wrapTextDynamic(cut.dialogue, maxCharsPerLine);
+                const bottomMargin = isVertical ? 240 : 140; // Position relatively higher for shorts/reels
                 const totalHeight = lines.length * lineHeight;
                 const startY = height - bottomMargin - totalHeight;
 
@@ -270,9 +276,8 @@ export async function exportWithFFmpeg(
                         await ffmpeg.writeFile(subFileName, lineObj.text);
                         tempFiles.push(subFileName);
 
-                        // Note: reload=1 is technically not needed for static file but good practice if reusing names
-                        // expansion=none is CRITICAL here to prevent % from being interpreted
-                        filterChain += `[${lastVideoOutput}]drawtext=fontfile=${fontFile}:textfile=${subFileName}:expansion=none:fontcolor=white:fontsize=48:x=(w-text_w)/2:y=${lineY}[${nextOutput}];`;
+                        // Expansion=none is CRITICAL here to prevent % from being interpreted
+                        filterChain += `[${lastVideoOutput}]drawtext=fontfile=${fontFile}:textfile=${subFileName}:expansion=none:fontcolor=white:fontsize=${fontSize}:x=(w-text_w)/2:y=${lineY}[${nextOutput}];`;
                         lastVideoOutput = nextOutput;
                     }
                 }

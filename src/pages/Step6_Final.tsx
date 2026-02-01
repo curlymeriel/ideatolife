@@ -1056,7 +1056,7 @@ export const Step6_Final = () => {
 
             const result = await recordCanvasVideo(
                 recordingCuts,
-                { width: 1920, height: 1080, fps: 30, showSubtitles: true },
+                { width: 1920, height: 1080, fps: 30, showSubtitles: true, aspectRatio: aspectRatio || '16:9' },
                 (progress, status) => {
                     setExportProgress(Math.round(progress));
                     setExportStatus(status);
@@ -1107,7 +1107,7 @@ export const Step6_Final = () => {
 
             const result = await exportWithFFmpeg(
                 recordingCuts,
-                { width: 1920, height: 1080, quality: 'high' },
+                { width: 1920, height: 1080, quality: 'high', aspectRatio: aspectRatio || '16:9' },
                 (progress, status) => {
                     setExportProgress(Math.round(progress));
                     setExportStatus(status);
@@ -1280,13 +1280,13 @@ export const Step6_Final = () => {
     const getSubtitleClasses = () => {
         switch (aspectRatio) {
             case '9:16': // Shorts / Reels (Occupies ~31% of 16:9 width)
-                return { container: "bottom-32", inner: "max-w-[28%] px-4" };
+                return { container: "bottom-32", inner: "max-w-[28%] px-4", text: "text-base md:text-lg" };
             case '1:1': // Square (Occupies ~56% of 16:9 width)
-                return { container: "bottom-24", inner: "max-w-[50%] px-6" };
+                return { container: "bottom-24", inner: "max-w-[50%] px-6", text: "text-xl md:text-2xl" };
             case '4:5': // Vertical Feed (Occupies ~45% of 16:9 width)
-                return { container: "bottom-28", inner: "max-w-[40%] px-4" };
+                return { container: "bottom-28", inner: "max-w-[40%] px-4", text: "text-lg md:text-xl" };
             default: // 16:9 (Landscape)
-                return { container: "bottom-16", inner: "max-w-4xl px-12" };
+                return { container: "bottom-16", inner: "max-w-4xl px-12", text: "text-xl md:text-2xl" };
         }
     };
 
@@ -1437,7 +1437,7 @@ export const Step6_Final = () => {
                 !showThumbnail && script[currentCutIndex] && (
                     <div className={`absolute left-0 w-full flex justify-center z-40 pointer-events-none transition-opacity duration-300 ${getSubtitleClasses().container}`}>
                         <div className={`bg-black/50 backdrop-blur-sm py-3 md:py-4 rounded-xl text-center ${getSubtitleClasses().inner}`}>
-                            <p className="text-xl md:text-2xl text-white font-medium drop-shadow-md whitespace-pre-wrap leading-relaxed">
+                            <p className={`${getSubtitleClasses().text} text-white font-medium drop-shadow-md whitespace-pre-wrap leading-relaxed`}>
                                 {script[currentCutIndex].dialogue}
                             </p>
                         </div>

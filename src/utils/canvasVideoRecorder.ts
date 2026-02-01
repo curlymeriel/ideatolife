@@ -20,6 +20,7 @@ export interface RecordingOptions {
     height?: number;
     fps?: number;
     showSubtitles?: boolean;
+    aspectRatio?: string;
 }
 
 export interface RecordingResult {
@@ -40,7 +41,8 @@ export async function recordCanvasVideo(
         width = 1920,
         height = 1080,
         fps = 30,
-        showSubtitles = true
+        showSubtitles = true,
+        aspectRatio = '16:9'
     } = options;
 
     onProgress?.(0, 'Initializing recorder...');
@@ -279,8 +281,9 @@ export async function recordCanvasVideo(
 
             // Draw Subtitles (Updated Style: Bottom Overlay)
             if (showSubtitles && cut.dialogue) {
-                const fontSize = 36;
-                const lineHeight = 48;
+                const isVertical = aspectRatio === '9:16';
+                const fontSize = isVertical ? 25 : 36;
+                const lineHeight = isVertical ? 34 : 48;
                 // Use a modern font stack
                 ctx.font = `bold ${fontSize}px sans-serif`;
 
