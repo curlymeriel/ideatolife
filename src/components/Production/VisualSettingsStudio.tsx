@@ -9,7 +9,7 @@ import { InteractiveImageViewer } from '../InteractiveImageViewer';
 import { CompositionEditor } from './CompositionEditor';
 import { ReferenceSelectorModal } from '../ReferenceSelectorModal';
 import { resolveUrl, isIdbUrl } from '../../utils/imageStorage';
-import { generateText } from '../../services/gemini';
+import { generateText, generateVideoMotionPrompt, type VideoMotionContext } from '../../services/gemini';
 import type { ScriptCut } from '../../services/gemini';
 import type { AspectRatio } from '../../store/types';
 
@@ -478,7 +478,72 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
     const handleCropSelected = () => { if (selectedDraft) { setImageToCrop(selectedDraft); setShowCropModal(true); } };
     const handleCropConfirm = (img: string) => { setDraftHistory(prev => [...prev, img]); setSelectedDraft(img); setShowCropModal(false); };
     const handleClearHistory = () => { if (confirm('Clear all drafts?')) { setDraftHistory([]); setSelectedDraft(null); } };
-    const handleSave = () => { onSave({ visualPrompt, visualPromptKR, videoPrompt, finalImageUrl: selectedDraft, draftHistory, taggedReferences }); onClose(); };
+
+    // Auto-generate AI video prompt on save
+    const [isSaving, setIsSaving] = useState(false);
+    const handleSave = async () => {
+        setIsSaving(true);
+        try {
+            let finalVideoPrompt = videoPrompt;
+
+            // If no video prompt or it's empty, auto-generate using AI
+            if (!finalVideoPrompt?.trim() && visualPrompt?.trim()) {
+                console.log('[VisualSettingsStudio] Auto-generating AI video prompt on save...');
+
+                // Find speaker asset for visual features
+                const speakerAsset = assetDefinitions ?
+                    Object.values(assetDefinitions).find((a: any) =>
+                        a.type === 'character' && a.name?.toLowerCase() === initialSpeaker?.toLowerCase()
+                    ) as any : null;
+
+                // Find location from visual prompt
+                const locationAsset = assetDefinitions ?
+                    Object.values(assetDefinitions).find((a: any) =>
+                        a.type === 'location' && visualPrompt?.toLowerCase().includes(a.name?.toLowerCase())
+                    ) as any : null;
+
+                // Find the current cut to get duration and emotion
+                const currentCut = existingCuts.find(c => c.id === cutId);
+
+                const context: VideoMotionContext = {
+                    visualPrompt: visualPrompt,
+                    dialogue: initialDialogue,
+                    emotion: currentCut?.emotion,
+                    audioDuration: currentCut?.estimatedDuration,
+                    speakerInfo: speakerAsset ? {
+                        name: speakerAsset.name,
+                        visualFeatures: speakerAsset.visualSummary || speakerAsset.description,
+                        gender: speakerAsset.gender
+                    } : undefined,
+                    locationInfo: locationAsset ? {
+                        name: locationAsset.name,
+                        visualFeatures: locationAsset.visualSummary || locationAsset.description
+                    } : undefined
+                };
+
+                try {
+                    finalVideoPrompt = await generateVideoMotionPrompt(context, apiKey);
+                    console.log('[VisualSettingsStudio] ✨ AI video prompt generated:', finalVideoPrompt.substring(0, 80) + '...');
+                } catch (err) {
+                    console.error('[VisualSettingsStudio] Failed to generate AI video prompt:', err);
+                    // Fallback to basic
+                    finalVideoPrompt = `${visualPrompt}. Camera slowly pushes in. Subtle atmospheric motion.`;
+                }
+            }
+
+            onSave({
+                visualPrompt,
+                visualPromptKR,
+                videoPrompt: finalVideoPrompt,
+                finalImageUrl: selectedDraft,
+                draftHistory,
+                taggedReferences
+            });
+            onClose();
+        } finally {
+            setIsSaving(false);
+        }
+    };
 
     const handleAddDraftAsReference = (url: string) => {
         setTaggedReferences(prev => [...prev, {
@@ -717,8 +782,8 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                 </div>
 
                 <div className="flex items-center gap-3">
-                    <button onClick={handleSave} className="px-6 py-2.5 bg-[var(--color-primary)] text-black font-black rounded-xl text-sm hover:scale-105 transition-all flex items-center gap-2 shadow-xl">
-                        <Check size={18} /> SAVE & CLOSE
+                    <button onClick={handleSave} disabled={isSaving} className="px-6 py-2.5 bg-[var(--color-primary)] text-black font-black rounded-xl text-sm hover:scale-105 transition-all flex items-center gap-2 shadow-xl disabled:opacity-50 disabled:scale-100">
+                        {isSaving ? <><Loader2 size={18} className="animate-spin" /> AI 생성중...</> : <><Check size={18} /> SAVE & CLOSE</>}
                     </button>
                     <button onClick={onClose} className="p-2.5 text-gray-500 hover:text-white hover:bg-white/5 rounded-xl transition-all"><X size={24} /></button>
                 </div>
