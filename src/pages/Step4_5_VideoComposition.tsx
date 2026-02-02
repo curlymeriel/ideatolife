@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import {
     Video, Upload, Play, Edit3, Check, X, Loader2,
     ChevronLeft, ChevronRight, FileVideo, Image as ImageIcon,
-    Lock, Download, Zap, RefreshCw,
+    Lock, Download, Zap, RefreshCw, FolderOpen,
     Volume2, VolumeX, Sparkles, AlertCircle, Trash2
 } from 'lucide-react';
 import type { ScriptCut, VideoMotionContext } from '../services/gemini';

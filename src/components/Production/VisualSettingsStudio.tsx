@@ -294,7 +294,7 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                 // Find matching asset
                 const refObj =
                     unifiedRefs.find(r => r.name === name) ||
-                    unifiedRefs.find(r => r.name.includes(name)); // Weak match fallback
+                    unifiedRefs.find(r => r.name?.includes(name)); // Weak match fallback
 
                 if (refObj) {
                     let url = refObj.url;
@@ -331,7 +331,7 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
             // Wait, if I manually add a ref, I want it used.
             // Let's APPEND any unused taggedReferences to the end of the list, 
             // just in case they are needed for style but not explicitly named.
-            const unusedRefs = unifiedRefs.filter(r => !nameToIndex.has(r.name));
+            const unusedRefs = unifiedRefs.filter(r => r.name && !nameToIndex.has(r.name));
             for (const r of unusedRefs) {
                 let url = r.url;
                 if (url.startsWith('idb://')) url = await resolveUrl(url) || url;
