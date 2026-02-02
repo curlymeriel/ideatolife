@@ -130,6 +130,7 @@ export interface FFmpegExportOptions {
     fps?: number;
     quality?: 'low' | 'medium' | 'high';
     aspectRatio?: string;
+    showSubtitles?: boolean;
 }
 
 export interface FFmpegExportResult {
@@ -235,9 +236,11 @@ export async function exportWithFFmpeg(
             // 1. Video scaling and padding (Unified)
             filterChain += `[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black,fps=30[vscaled];`;
 
-            // 2. Add Subtitles
+            // 2. Add Subtitles (Only if showSubtitles is true)
             let lastVideoOutput = 'vscaled';
-            if (cut.dialogue && fontFile) {
+            const shouldAddSubtitles = options.showSubtitles !== false; // Default to true if undefined
+
+            if (cut.dialogue && fontFile && shouldAddSubtitles) {
                 const isVertical = aspectRatio === '9:16';
                 const fontSize = isVertical ? 34 : 48; // ~30% reduction (48 * 0.7 = 33.6)
                 const lineHeight = isVertical ? 46 : 65; // ~30% reduction (65 * 0.7 = 45.5)

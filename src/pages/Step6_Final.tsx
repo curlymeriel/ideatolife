@@ -21,6 +21,10 @@ const getAudioDuration = (url: string): Promise<number> => {
 
 export const Step6_Final = () => {
     const location = useLocation();
+    // State for subtitle toggles - Moved to top to avoid hoisting issues
+    const [showSubtitles, setShowSubtitles] = useState(true);
+    const [exportSubtitles, setExportSubtitles] = useState(true);
+
     const {
         id: projectId,
         script,
@@ -31,6 +35,26 @@ export const Step6_Final = () => {
         storylineTable,
         aspectRatio // Destructure aspectRatio
     } = useWorkflowStore();
+
+    // Custom CC Icon Component - Defined inside is okay, or move outside if no props dependency
+    const CustomCCIcon = ({ size = 24, className = "" }: { size?: number, className?: string }) => (
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width={size}
+            height={size}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={className}
+        >
+            <path d="M4 6h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z" />
+            <path d="M6 15h4" />
+            <path d="M14 15h4" />
+        </svg>
+    );
 
 
 
@@ -1056,7 +1080,7 @@ export const Step6_Final = () => {
 
             const result = await recordCanvasVideo(
                 recordingCuts,
-                { width: 1920, height: 1080, fps: 30, showSubtitles: true, aspectRatio: aspectRatio || '16:9' },
+                { width: 1920, height: 1080, fps: 30, showSubtitles: exportSubtitles, aspectRatio: aspectRatio || '16:9' },
                 (progress, status) => {
                     setExportProgress(Math.round(progress));
                     setExportStatus(status);
@@ -1107,7 +1131,7 @@ export const Step6_Final = () => {
 
             const result = await exportWithFFmpeg(
                 recordingCuts,
-                { width: 1920, height: 1080, quality: 'high', aspectRatio: aspectRatio || '16:9' },
+                { width: 1920, height: 1080, quality: 'high', aspectRatio: aspectRatio || '16:9', showSubtitles: exportSubtitles },
                 (progress, status) => {
                     setExportProgress(Math.round(progress));
                     setExportStatus(status);
@@ -1434,7 +1458,7 @@ export const Step6_Final = () => {
 
             {/* Subtitles Overlay */}
             {
-                !showThumbnail && script[currentCutIndex] && (
+                !showThumbnail && showSubtitles && script[currentCutIndex] && (
                     <div className={`absolute left-0 w-full flex justify-center z-40 pointer-events-none transition-opacity duration-300 ${getSubtitleClasses().container}`}>
                         <div className={`bg-black/50 backdrop-blur-sm py-3 md:py-4 rounded-xl text-center ${getSubtitleClasses().inner}`}>
                             <p className={`${getSubtitleClasses().text} text-white font-medium drop-shadow-md whitespace-pre-wrap leading-relaxed`}>
@@ -1509,7 +1533,6 @@ export const Step6_Final = () => {
                             </div>
                         </div>
 
-                        {/* Middle: View Mode Toggle */}
                         <div className="bg-black/40 rounded-lg p-1 border border-white/10 flex gap-1">
                             <button
                                 onClick={() => setPlaybackMode('hybrid')}
@@ -1522,6 +1545,17 @@ export const Step6_Final = () => {
                                 className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-2 transition-all ${playbackMode === 'still' ? 'bg-[var(--color-primary)] text-black' : 'text-gray-400 hover:text-white'}`}
                             >
                                 <ImageIcon size={14} /> Still
+                            </button>
+                        </div>
+
+                        {/* Subtitle Toggle - Separated */}
+                        <div className="bg-black/40 rounded-lg p-1 border border-white/10">
+                            <button
+                                onClick={() => setShowSubtitles(!showSubtitles)}
+                                className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-2 transition-all ${showSubtitles ? 'bg-white text-black' : 'text-gray-400 hover:text-white'}`}
+                                title="Toggle Subtitles"
+                            >
+                                <CustomCCIcon size={14} /> {showSubtitles ? 'CC On' : 'CC Off'}
                             </button>
                         </div>
                     </div>
@@ -1597,94 +1631,112 @@ export const Step6_Final = () => {
                                         <ImageIcon size={14} /> Still Only
                                     </button>
                                 </div>
-                                <p className="text-[10px] text-gray-500 italic">
-                                    {exportHybrid
-                                        ? "비디오 클립이 있는 컷은 비디오로 포함됩니다."
-                                        : "모든 컷을 이미지로 내보냅니다. (비디오 클립 무시)"}
-                                </p>
                             </div>
 
-                            <div className="space-y-4">
-                                {/* Quick Export */}
-                                <button
-                                    onClick={handleQuickExport}
-                                    disabled={!isCanvasRecordingSupported()}
-                                    className="w-full p-5 glass-panel border border-white/10 hover:border-[var(--color-primary)]/50 rounded-xl text-left transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    <div className="flex items-start gap-4">
-                                        <div className="p-3 rounded-lg bg-yellow-500/20 text-yellow-400">
-                                            <Zap size={24} />
+                            {/* Export Options */}
+                            <div className="mb-8 p-4 bg-black/30 rounded-xl border border-white/5 space-y-3">
+                                <label className="text-sm font-bold text-gray-400 block mb-1">옵션</label>
+                                <label className="flex items-center gap-3 p-3 bg-white/5 rounded-lg cursor-pointer hover:bg-white/10 transition-colors">
+                                    <input
+                                        type="checkbox"
+                                        checked={exportSubtitles}
+                                        onChange={(e) => setExportSubtitles(e.target.checked)}
+                                        className="w-5 h-5 rounded border-gray-600 bg-black/40 text-[var(--color-primary)] focus:ring-[var(--color-primary)] focus:ring-offset-0"
+                                    />
+                                    <div>
+                                        <div className="text-white text-sm font-bold flex items-center gap-2">
+                                            <CustomCCIcon size={16} /> 자막 포함 (Burn-in)
                                         </div>
-                                        <div className="flex-1">
-                                            <h4 className="text-lg font-bold text-white group-hover:text-[var(--color-primary)] transition-colors">
-                                                ⚡ Quick Export (WebM)
-                                            </h4>
-                                            <p className="text-sm text-gray-400 mt-1">
-                                                빠른 실시간 녹화. 양호한 화질, 자막 포함.
-                                            </p>
-                                            <div className="flex gap-2 mt-2">
-                                                <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs rounded-full">Fast</span>
-                                                <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full">WebM</span>
-                                            </div>
-                                        </div>
+                                        <div className="text-xs text-gray-400">영상에 자막을 입혀서 저장합니다.</div>
                                     </div>
-                                </button>
-
-                                {/* High Quality Export */}
-                                <button
-                                    onClick={handleHQExport}
-                                    className="w-full p-5 glass-panel border border-white/10 hover:border-[var(--color-primary)]/50 rounded-xl text-left transition-all group"
-                                >
-                                    <div className="flex items-start gap-4">
-                                        <div className="p-3 rounded-lg bg-purple-500/20 text-purple-400">
-                                            <Film size={24} />
-                                        </div>
-                                        <div className="flex-1">
-                                            <h4 className="text-lg font-bold text-white group-hover:text-[var(--color-primary)] transition-colors">
-                                                🎥 High Quality (MP4)
-                                            </h4>
-                                            <p className="text-sm text-gray-400 mt-1">
-                                                FFmpeg 기반 H.264 인코딩. 최고 화질, 범용 호환성.
-                                            </p>
-                                            <div className="flex gap-2 mt-2">
-                                                <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 text-xs rounded-full">Best Quality</span>
-                                                <span className="px-2 py-0.5 bg-orange-500/20 text-orange-400 text-xs rounded-full">MP4</span>
-                                                {!isFFmpegSupported() && (
-                                                    <span className="px-2 py-0.5 bg-red-500/20 text-red-400 text-xs rounded-full">CORS 설정 필요</span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </button>
-
-                                {/* Video Kit Export */}
-                                <button
-                                    onClick={handleVideoKitExport}
-                                    className="w-full p-5 glass-panel border border-white/10 hover:border-[var(--color-primary)]/50 rounded-xl text-left transition-all group"
-                                >
-                                    <div className="flex items-start gap-4">
-                                        <div className="p-3 rounded-lg bg-cyan-500/20 text-cyan-400">
-                                            <Download size={24} />
-                                        </div>
-                                        <div className="flex-1">
-                                            <h4 className="text-lg font-bold text-white group-hover:text-[var(--color-primary)] transition-colors">
-                                                📦 Video Kit (ZIP)
-                                            </h4>
-                                            <p className="text-sm text-gray-400 mt-1">
-                                                모든 에셋과 FFmpeg 스크립트를 다운로드. 외부 도구로 영상 제작.
-                                            </p>
-                                            <div className="flex gap-2 mt-2">
-                                                <span className="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 text-xs rounded-full">Offline</span>
-                                                <span className="px-2 py-0.5 bg-gray-500/20 text-gray-400 text-xs rounded-full">ZIP</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </button>
+                                </label>
                             </div>
+                            <p className="text-[10px] text-gray-500 italic">
+                                {exportHybrid
+                                    ? "비디오 클립이 있는 컷은 비디오로 포함됩니다."
+                                    : "모든 컷을 이미지로 내보냅니다. (비디오 클립 무시)"}
+                            </p>
+                        </div>
+
+                        <div className="space-y-4">
+                            {/* Quick Export */}
+                            <button
+                                onClick={handleQuickExport}
+                                disabled={!isCanvasRecordingSupported()}
+                                className="w-full p-5 glass-panel border border-white/10 hover:border-[var(--color-primary)]/50 rounded-xl text-left transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <div className="flex items-start gap-4">
+                                    <div className="p-3 rounded-lg bg-yellow-500/20 text-yellow-400">
+                                        <Zap size={24} />
+                                    </div>
+                                    <div className="flex-1">
+                                        <h4 className="text-lg font-bold text-white group-hover:text-[var(--color-primary)] transition-colors">
+                                            ⚡ Quick Export (WebM)
+                                        </h4>
+                                        <p className="text-sm text-gray-400 mt-1">
+                                            빠른 실시간 녹화. 양호한 화질, 자막 포함.
+                                        </p>
+                                        <div className="flex gap-2 mt-2">
+                                            <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs rounded-full">Fast</span>
+                                            <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full">WebM</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </button>
+
+                            {/* High Quality Export */}
+                            <button
+                                onClick={handleHQExport}
+                                className="w-full p-5 glass-panel border border-white/10 hover:border-[var(--color-primary)]/50 rounded-xl text-left transition-all group"
+                            >
+                                <div className="flex items-start gap-4">
+                                    <div className="p-3 rounded-lg bg-purple-500/20 text-purple-400">
+                                        <Film size={24} />
+                                    </div>
+                                    <div className="flex-1">
+                                        <h4 className="text-lg font-bold text-white group-hover:text-[var(--color-primary)] transition-colors">
+                                            🎥 High Quality (MP4)
+                                        </h4>
+                                        <p className="text-sm text-gray-400 mt-1">
+                                            FFmpeg 기반 H.264 인코딩. 최고 화질, 범용 호환성.
+                                        </p>
+                                        <div className="flex gap-2 mt-2">
+                                            <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 text-xs rounded-full">Best Quality</span>
+                                            <span className="px-2 py-0.5 bg-orange-500/20 text-orange-400 text-xs rounded-full">MP4</span>
+                                            {!isFFmpegSupported() && (
+                                                <span className="px-2 py-0.5 bg-red-500/20 text-red-400 text-xs rounded-full">CORS 설정 필요</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </button>
+
+                            {/* Video Kit Export */}
+                            <button
+                                onClick={handleVideoKitExport}
+                                className="w-full p-5 glass-panel border border-white/10 hover:border-[var(--color-primary)]/50 rounded-xl text-left transition-all group"
+                            >
+                                <div className="flex items-start gap-4">
+                                    <div className="p-3 rounded-lg bg-cyan-500/20 text-cyan-400">
+                                        <Download size={24} />
+                                    </div>
+                                    <div className="flex-1">
+                                        <h4 className="text-lg font-bold text-white group-hover:text-[var(--color-primary)] transition-colors">
+                                            📦 Video Kit (ZIP)
+                                        </h4>
+                                        <p className="text-sm text-gray-400 mt-1">
+                                            모든 에셋과 FFmpeg 스크립트를 다운로드. 외부 도구로 영상 제작.
+                                        </p>
+                                        <div className="flex gap-2 mt-2">
+                                            <span className="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 text-xs rounded-full">Offline</span>
+                                            <span className="px-2 py-0.5 bg-gray-500/20 text-gray-400 text-xs rounded-full">ZIP</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </button>
                         </div>
                     </div>
-                )
-            }
+                )}
 
             {/* Video Export Progress Modal */}
             {
@@ -1705,18 +1757,20 @@ export const Step6_Final = () => {
                 )
             }
 
-            {viewOnly ? createPortal(
-                <div className="fixed inset-0 bg-black z-[999999] flex items-center justify-center p-4">
-                    <div className="w-full max-w-screen-2xl max-h-screen aspect-video relative flex items-center justify-center">
+            {
+                viewOnly ? createPortal(
+                    <div className="fixed inset-0 bg-black z-[999999] flex items-center justify-center p-4">
+                        <div className="w-full max-w-screen-2xl max-h-screen aspect-video relative flex items-center justify-center">
+                            {playerContent}
+                        </div>
+                    </div>,
+                    document.body
+                ) : (
+                    <div className="w-full max-w-[1200px] aspect-video mx-auto mb-12 shadow-2xl rounded-xl border border-white/10 overflow-hidden">
                         {playerContent}
                     </div>
-                </div>,
-                document.body
-            ) : (
-                <div className="w-full max-w-[1200px] aspect-video mx-auto mb-12 shadow-2xl rounded-xl border border-white/10 overflow-hidden">
-                    {playerContent}
-                </div>
-            )}
+                )
+            }
 
             {/* Hidden Audio Players (Double Buffered) - Made 'visible' to bypass browser restrictions */}
             <audio
@@ -1749,9 +1803,8 @@ export const Step6_Final = () => {
                 playsInline
                 muted={false}
                 onError={(e) => console.error("SFX error:", e.currentTarget.error)}
-
             />
-        </div >
+        </div>
     );
 };
 
