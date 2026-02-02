@@ -51,9 +51,24 @@ const STEPS = [
                         </div>
                         <div className="text-gray-400 space-y-1 text-[10px]">
                             <p><strong className="text-gray-300">#1.</strong> Google AI Studio 접속 → <span className="text-[var(--color-primary)]">Create API Key</span> 클릭</p>
-                            <p><strong className="text-gray-300">#2.</strong> 프로젝트 선택 후 키 생성 → 복사 <span className="text-gray-500">(약 39자)</span></p>
+                            <p><strong className="text-gray-300">#2.</strong> <span className="text-blue-400">(Veo 사용시)</span> <a href="https://console.cloud.google.com/apis/library/aiplatform.googleapis.com" target="_blank" rel="noopener noreferrer" className="text-[var(--color-primary)] underline hover:text-orange-300">Google Cloud Console</a> 접속 → <strong className="text-white underline">Vertex AI API</strong> (또는 Vertex AI) → [사용함] 클릭</p>
                             <p><strong className="text-gray-300">#3.</strong> <span className="text-blue-400">(TTS 사용시)</span> <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-[var(--color-primary)] underline hover:text-orange-300">Google Cloud Console</a> → 키 클릭 → API restrictions를 "Don't restrict key"로 변경</p>
                             <p><strong className="text-gray-300">#4.</strong> <span className="text-purple-400">(📊 시장조사 사용시)</span> Google Cloud Console → APIs & Services → <a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener noreferrer" className="text-purple-400 underline hover:text-purple-300">YouTube Data API v3</a> → Enable</p>
+                        </div>
+                    </div>
+
+                    {/* Replicate API Section */}
+                    <div className="bg-[var(--color-surface)] p-3 rounded border border-[var(--color-border)]">
+                        <div className="flex justify-between items-start mb-2">
+                            <span className="text-white font-bold">🎬 Replicate API (영상 생성)</span>
+                            <a href="https://replicate.com/account/api-tokens" target="_blank" rel="noopener noreferrer" className="bg-white/10 hover:bg-white/20 text-white p-1.5 rounded transition-colors" title="Get API Key">
+                                <ExternalLink size={12} />
+                            </a>
+                        </div>
+                        <div className="text-gray-400 space-y-1 text-[10px]">
+                            <p><strong className="text-gray-300">#1.</strong> Replicate.com 가입/로그인 → <a href="https://replicate.com/account/api-tokens" target="_blank" rel="noopener noreferrer" className="text-[var(--color-primary)] underline">API Tokens</a> 이동</p>
+                            <p><strong className="text-gray-300">#2.</strong> Token 생성 후 복사 → 사이드바 <span className="text-[var(--color-primary)] font-bold">Replicate API Key</span>에 입력</p>
+                            <p><strong className="text-gray-300">#3.</strong> Wan 2.1, Kling 등 고성능 모델을 통해 고품질 영상을 생성할 수 있습니다.</p>
                         </div>
                     </div>
 
@@ -66,9 +81,8 @@ const STEPS = [
                             </a>
                         </div>
                         <div className="text-gray-400 space-y-1 text-[10px]">
-                            <p><strong className="text-gray-300">#1.</strong> Freesound.org 회원가입/로그인</p>
-                            <p><strong className="text-gray-300">#2.</strong> Apply for API → Name, Description 입력 후 제출</p>
-                            <p><strong className="text-gray-300">#3.</strong> 승인 후 <span className="text-purple-400">Client secret/API key</span> 값을 복사 <span className="text-gray-500">(약 40자)</span></p>
+                            <p><strong className="text-gray-300">#1.</strong> Freesound.org 회원가입/로그인 → Apply for API</p>
+                            <p><strong className="text-gray-300">#2.</strong> 승인 후 복사한 <span className="text-purple-400">Client secret/API key</span> 값을 사이드바에 입력</p>
                         </div>
                     </div>
                 </div>

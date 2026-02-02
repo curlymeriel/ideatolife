@@ -397,90 +397,74 @@ export const generateScript = async (
     }
 
     try {
-        // Build character info string with Step 2 asset details
-        let characterInfo = '';
-        if (characters && characters.length > 0) {
-            characterInfo = characters.map(c => {
-                // Try to find matching asset definition from Step 2
-                // STRICT PRIORITY: Check for exact ID match first (to avoid "Ghost" assets with same name)
-                const assets = assetDefinitions ? Object.values(assetDefinitions) : [];
-                let assetDef = assets.find((a: any) => a.type === 'character' && a.id === c.id);
+        // Helper to get Step 2 asset definition
+        const getAssetDef = (type: string, id?: string, name?: string) => {
+            const assets = assetDefinitions ? Object.values(assetDefinitions) : [];
+            let def = assets.find((a: any) => a.type === type && id && a.id === id);
+            if (!def && name) {
+                def = assets.find((a: any) => a.type === type && a.name?.toLowerCase() === name.toLowerCase());
+            }
+            return def as any;
+        };
 
-                // Fallback: Name matching (only if ID match fails)
-                if (!assetDef) {
-                    assetDef = assets.find((a: any) => a.type === 'character' && a.name?.toLowerCase() === c.name?.toLowerCase());
+        // Build character info
+        let characterStrings = (characters || []).map(c => {
+            const assetDef = getAssetDef('character', c.id, c.name);
+            const step1Desc = c.description || '';
+            const step2Desc = assetDef?.description || '';
+            const visualDetails = step2Desc;
+
+            if (visualDetails) {
+                return `- ${c.name} (${c.role}):\n  * Story Context: ${step1Desc}\n  * Visual Appearance: ${visualDetails}`;
+            }
+            return `- ${c.name} (${c.role}): ${step1Desc}`;
+        });
+
+        // Add "orphan" characters from Step 2 (defined in Step 2 but not in Step 1)
+        if (assetDefinitions) {
+            Object.values(assetDefinitions).forEach((a: any) => {
+                if (a.type === 'character' && !characters?.some(c => c.id === a.id || c.name?.toLowerCase() === a.name?.toLowerCase())) {
+                    characterStrings.push(`- ${a.name} (New Character):\n  * Visual Appearance: ${a.description || ''}`);
+                    console.log(`[Gemini] Including Step 2 orphan character: ${a.name}`);
                 }
-
-                // Debug log
-                if (assetDef) {
-                    console.log(`[Gemini] Matched Step 1 character "${c.name}" (ID: ${c.id}) with Step 2 asset (ID: ${(assetDef as any).id})`);
-                } else {
-                    console.log(`[Gemini] No Step 2 match for character "${c.name}" (ID: ${c.id}). Available IDs: ${assetDefinitions ? Object.keys(assetDefinitions).join(', ') : 'None'}`);
-                }
-
-                // Merge Step 1 and Step 2 descriptions
-                // Visual source priority: Step 2 Asset Def ONLY (Step 1 visual is excluded to avoid outdated info)
-                const step1Desc = c.description || '';
-                const step2Desc = (assetDef as any)?.description || '';
-
-                // ONLY use Step 2 for visual details to prevent outdated Step 1 info leaking
-                const visualDetails = step2Desc;
-
-                if (visualDetails) {
-                    // EXPLICITLY separate Narrative vs Visual to prevent AI confusion
-                    return `- ${c.name} (${c.role}):
-  * Story Context: ${step1Desc}
-  * Visual Appearance: ${visualDetails}`;
-                }
-
-                // No Step 2 visual available, provide narrative context only
-                return `- ${c.name} (${c.role}): ${step1Desc}`;
-            }).join('\n');
-        } else {
-            characterInfo = 'No specific characters defined';
+            });
         }
+        const characterInfo = characterStrings.length > 0 ? characterStrings.join('\n') : 'No specific characters defined';
 
-        // Build location info string with Step 2 asset details
-        let locationInfo = '';
-        if (locations && locations.length > 0) {
-            locationInfo = locations.map(l => {
-                // Try to find matching asset definition from Step 2
-                // STRICT PRIORITY: Check for exact ID match first
-                const assets = assetDefinitions ? Object.values(assetDefinitions) : [];
-                let assetDef = assets.find((a: any) => a.type === 'location' && a.id === l.id);
+        // Build location info
+        let locationStrings = (locations || []).map(l => {
+            const assetDef = getAssetDef('location', l.id, l.name);
+            const step1Desc = l.description || '';
+            const step2Desc = assetDef?.description || '';
+            const visualDetails = step2Desc;
 
-                // Fallback: Name matching
-                if (!assetDef) {
-                    assetDef = assets.find((a: any) => a.type === 'location' && a.name?.toLowerCase() === l.name?.toLowerCase());
+            if (visualDetails) {
+                return `- ${l.name}:\n  * Story Context: ${step1Desc}\n  * Visual Appearance: ${visualDetails}`;
+            }
+            return `- ${l.name}: ${step1Desc}`;
+        });
+
+        // Add orphan locations
+        if (assetDefinitions) {
+            Object.values(assetDefinitions).forEach((a: any) => {
+                if (a.type === 'location' && !locations?.some(l => l.id === a.id || l.name?.toLowerCase() === a.name?.toLowerCase())) {
+                    locationStrings.push(`- ${a.name} (New Location):\n  * Visual Appearance: ${a.description || ''}`);
+                    console.log(`[Gemini] Including Step 2 orphan location: ${a.name}`);
                 }
-
-                // Debug log
-                if (assetDef) {
-                    console.log(`[Gemini] Matched Step 1 location "${l.name}" (ID: ${l.id}) with Step 2 asset (ID: ${(assetDef as any).id})`);
-                } else {
-                    console.log(`[Gemini] No Step 2 match for location "${l.name}" (ID: ${l.id}). Available IDs: ${assetDefinitions ? Object.keys(assetDefinitions).join(', ') : 'None'}`);
-                }
-
-                // Merge Step 1 and Step 2 descriptions
-                // Visual source priority: Step 2 Asset Def ONLY (Step 1 visual is excluded to avoid outdated info)
-                const step1Desc = l.description || '';
-                const step2Desc = (assetDef as any)?.description || '';
-
-                // ONLY use Step 2 for visual details
-                const visualDetails = step2Desc;
-
-                if (visualDetails) {
-                    return `- ${l.name}:
-  * Story Context: ${step1Desc}
-  * Visual Appearance: ${visualDetails}`;
-                }
-
-                // No Step 2 visual available, provide narrative context only
-                return `- ${l.name}: ${step1Desc}`;
-            }).join('\n');
-        } else {
-            locationInfo = 'No specific locations defined';
+            });
         }
+        const locationInfo = locationStrings.length > 0 ? locationStrings.join('\n') : 'No specific locations defined';
+
+        // NEW: Build Prop info
+        let propStrings: string[] = [];
+        if (assetDefinitions) {
+            Object.values(assetDefinitions).forEach((a: any) => {
+                if (a.type === 'prop') {
+                    propStrings.push(`- ${a.name} (Prop): ${a.description || ''}`);
+                }
+            });
+        }
+        const propInfo = propStrings.length > 0 ? propStrings.join('\n') : 'No specific props defined';
 
         // Build storyline context if available
         let storylineContext = '';
@@ -539,6 +523,9 @@ ${characterInfo}
 
 Locations:
 ${locationInfo}
+
+Props:
+${propInfo}
 
 Episode Plot:
 ${episodePlot || 'No specific plot provided.'}
@@ -1297,6 +1284,16 @@ export const consultAssistantDirector = async (
             isLocked: c.isAudioConfirmed || c.isImageConfirmed
         }));
 
+        // Build Prop info
+        let propStrings: string[] = [];
+        const assets = (context as any).assetDefinitions ? Object.values((context as any).assetDefinitions) : [];
+        assets.forEach((a: any) => {
+            if (a.type === 'prop') {
+                propStrings.push(`- ${a.name}: ${a.description || ''}`);
+            }
+        });
+        const propInfo = propStrings.length > 0 ? propStrings.join('\n') : 'No specific props defined';
+
         // Hydrate template variables
         systemInstruction = systemInstruction
             .replace('{{seriesName}}', context.seriesName || '')
@@ -1313,6 +1310,7 @@ export const consultAssistantDirector = async (
             .replace('{{targetDuration}}', String(context.targetDuration))
             .replace('{{aspectRatio}}', context.aspectRatio)
             .replace('{{masterStyle}}', (context as any).masterStyle || '')
+            .replace('{{props}}', propInfo) // NEW: Add props tag for templates
             .replace('{{currentScript}}', JSON.stringify(compactScript, null, 2));
 
         const { resolveUrl } = await import('../utils/imageStorage');
@@ -2077,6 +2075,10 @@ export interface VideoMotionContext {
         layout: string;
         color: string;
     };
+    propInfo?: {                    // NEW: Prop information for motion hints
+        name: string;
+        visualFeatures: string;
+    }[];
 }
 
 /**
@@ -2166,6 +2168,20 @@ export const generateVideoMotionPrompt = async (
         if (hints.length > 0) locationHints = hints.join(', ');
     }
 
+    // NEW: Build Prop motion hints
+    let propHints = '';
+    if (context.propInfo && context.propInfo.length > 0) {
+        const hints: string[] = [];
+        context.propInfo.forEach(p => {
+            const features = p.visualFeatures?.toLowerCase() || '';
+            if (features.includes('glow') || features.includes('shining')) hints.push(`${p.name} glows softly`);
+            if (features.includes('metallic') || features.includes('shiny')) hints.push(`${p.name} reflects the environment`);
+            if (features.includes('floating') || features.includes('hover')) hints.push(`${p.name} floats or hovers subtly`);
+            if (features.includes('flicker') || features.includes('light')) hints.push(`${p.name} light source flickers`);
+        });
+        if (hints.length > 0) propHints = hints.join(', ');
+    }
+
     const prompt = `You are a professional cinematographer creating motion scripts for AI video generation (Veo3/Kling).
 
 **INPUT SCENE:**
@@ -2177,6 +2193,7 @@ ${context.speakerInfo?.name ? `Character: ${context.speakerInfo.name}` : ''}
 ${characterMotionHints ? `Character Visual Features: ${characterMotionHints}` : ''}
 ${context.locationInfo?.name ? `Location: ${context.locationInfo.name}` : ''}
 ${locationHints ? `Environmental Elements: ${locationHints}` : ''}
+${propHints ? `Prop Motion Hints: ${propHints}` : ''}
 ${context.previousCutMotion ? `Previous Cut Motion (for continuity): ${context.previousCutMotion.substring(0, 100)}...` : ''}
 
 **MOTION INTENSITY: ${intensity.toUpperCase()}**

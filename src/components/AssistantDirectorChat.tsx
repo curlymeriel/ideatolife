@@ -86,7 +86,9 @@ export const AssistantDirectorChat: React.FC<AssistantDirectorChatProps> = memo(
                         ...projectContext.characters,
                         ...projectContext.episodeCharacters,
                         ...projectContext.seriesLocations,
-                        ...projectContext.episodeLocations
+                        ...projectContext.episodeLocations,
+                        ...(projectContext.seriesProps || []),
+                        ...(projectContext.episodeProps || [])
                     ];
 
                     const matchedAssets = (cut.referenceAssetIds || [])
@@ -127,7 +129,8 @@ export const AssistantDirectorChat: React.FC<AssistantDirectorChatProps> = memo(
                         ...cut,
                         linkedAssets: linkedReferences
                     };
-                })
+                }),
+                assetDefinitions: useWorkflowStore.getState().assetDefinitions // Pass full definitions for Prop info
             };
 
             const result = await consultAssistantDirector(updatedHistory, context, projectContext.apiKeys.gemini);

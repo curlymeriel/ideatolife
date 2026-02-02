@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import {
     Video, Upload, Play, Edit3, Check, X, Loader2,
     ChevronLeft, ChevronRight, FileVideo, Image as ImageIcon,
-    FolderOpen, CheckCircle2, Lock, Download, Package, Zap,
+    Lock, Download, Zap, RefreshCw,
     Volume2, VolumeX, Sparkles, AlertCircle, Trash2
 } from 'lucide-react';
 import type { ScriptCut, VideoMotionContext } from '../services/gemini';
@@ -263,7 +263,7 @@ const VideoCompositionRow = React.memo(({
                     cut.videoUrl ? (
                         cut.isVideoConfirmed ? (
                             <span className="flex items-center gap-1 text-xs text-green-400 font-medium">
-                                <CheckCircle2 size={12} /> Confirmed
+                                <Check size={12} /> Confirmed
                             </span>
                         ) : (
                             <span className="flex items-center gap-1 text-xs text-blue-400 font-medium">
@@ -1271,10 +1271,10 @@ export const Step4_5_VideoComposition: React.FC = () => {
                     <button
                         onClick={handleBulkRefreshMotionPrompts}
                         disabled={isBulkGeneratingMotion || isGenerating}
-                        className="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 rounded-lg text-xs flex items-center gap-2 transition-colors border border-purple-500/30"
+                        className="px-3 py-2 bg-orange-500/10 hover:bg-orange-500/20 text-orange-300 rounded-lg text-xs flex items-center gap-2 transition-colors border border-orange-500/20"
                         title="Refresh all motion prompts based on Step 3 data"
                     >
-                        {isBulkGeneratingMotion ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
+                        {isBulkGeneratingMotion ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
                         Motion Refresh
                     </button>
 
@@ -1291,221 +1291,236 @@ export const Step4_5_VideoComposition: React.FC = () => {
                 </div>
             </div>
 
-            {/* AI Video Generation Mode */}
-            <div className="bg-gradient-to-r from-purple-900/20 via-blue-900/20 to-purple-900/20 rounded-xl p-6 border border-purple-500/30">
-                <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                        <Sparkles size={22} className="text-purple-400" />
-                        🎬 AI Video 생성모드
+            {/* Main Content Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                {/* 1. AI Video Generation Mode (Left) */}
+                <div className="bg-[var(--color-surface)] rounded-xl p-6 border border-[var(--color-border)] hover:border-orange-500/30 transition-colors h-full flex flex-col">
+                    <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                            <Video size={22} className="text-[var(--color-primary)]" />
+                            AI Video 생성모드
+                        </h2>
+                        {isGenerating && (
+                            <div className="flex items-center gap-3 text-sm">
+                                <div className="flex items-center gap-2 text-[var(--color-primary)] opacity-80">
+                                    <Loader2 className="animate-spin" size={16} />
+                                    <span>{generationProgress.current}/{generationProgress.total}</span>
+                                </div>
+                                <span className="text-gray-400">{generationProgress.status}</span>
+                            </div>
+                        )}
+                    </div>
+
+                    <p className="text-xs text-[var(--color-text-muted)] mb-4 leading-relaxed">
+                        Google Gemini Veo 또는 Replicate API를 통해 이미지로부터 직접 영상을 생성합니다.<br />
+                        생성할 모델을 선택한 후, 리스트에서 컷을 골라 고품질 AI 비디오를 만들어보세요.
+                    </p>
+
+                    {/* Provider Tabs */}
+                    <div className="flex gap-2 mb-4 shrink-0">
+                        <button
+                            onClick={() => setSelectedProvider('gemini-veo')}
+                            className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${selectedProvider === 'gemini-veo'
+                                ? 'bg-[var(--color-primary)] text-black shadow-lg shadow-[var(--color-primary)]/20'
+                                : 'bg-[var(--color-bg)] text-gray-400 hover:text-white hover:bg-[var(--color-bg)]/80'
+                                }`}
+                        >
+                            Gemini Veo
+                        </button>
+                        <button
+                            onClick={() => setSelectedProvider('replicate')}
+                            className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${selectedProvider === 'replicate'
+                                ? 'bg-stone-600 text-white shadow-lg shadow-stone-500/20'
+                                : 'bg-[var(--color-bg)] text-gray-400 hover:text-white hover:bg-[var(--color-bg)]/80'
+                                }`}
+                        >
+                            Replicate API
+                        </button>
+                    </div>
+
+                    {/* Model Selection & Actions (Flex-1 to fill height if needed, but contents are static usually) */}
+                    <div className="bg-[var(--color-bg)] rounded-lg p-4 flex-1 flex flex-col">
+                        {selectedProvider === 'gemini-veo' ? (
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-4">
+                                    <div className="flex-1">
+                                        <label className="text-xs text-gray-500 uppercase mb-1 block">Model</label>
+                                        <select
+                                            value={selectedVeoModel}
+                                            onChange={(e) => setSelectedVeoModel(e.target.value as VeoModel)}
+                                            className="w-full bg-black/40 border border-[var(--color-border)] rounded-lg px-3 py-2 text-white focus:border-[var(--color-primary)] outline-none"
+                                        >
+                                            {getVeoModels().map(model => (
+                                                <option key={model.id} value={model.id}>
+                                                    {model.name} - {model.description}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* API Key Warning */}
+                                {!apiKeys.gemini && (
+                                    <div className="flex items-center gap-2 text-yellow-400 text-sm bg-yellow-500/10 px-3 py-2 rounded-lg">
+                                        <AlertCircle size={16} />
+                                        <span>Gemini API 키가 필요합니다. Step 1에서 설정하세요.</span>
+                                    </div>
+                                )}
+
+                                {/* Feature Badge */}
+                                <div className="flex gap-2 flex-wrap">
+                                    {selectedVeoModel === 'veo-3.1-generate-preview' && (
+                                        <>
+                                            <span className="px-2 py-1 bg-[var(--color-primary-dim)] text-[var(--color-primary)] text-xs rounded-full">4K 지원</span>
+                                            <span className="px-2 py-1 bg-gray-500/20 text-gray-300 text-xs rounded-full">Image-to-Video</span>
+                                            <span className="px-2 py-1 bg-green-500/20 text-green-300 text-xs rounded-full">Native Audio</span>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-4">
+                                    <div className="flex-1">
+                                        <label className="text-xs text-gray-500 uppercase mb-1 block">Model</label>
+                                        <select
+                                            value={selectedReplicateModel}
+                                            onChange={(e) => setSelectedReplicateModel(e.target.value as ReplicateVideoModel)}
+                                            className="w-full bg-black/40 border border-[var(--color-border)] rounded-lg px-3 py-2 text-white focus:border-gray-500 outline-none"
+                                        >
+                                            {getVideoModels().map(model => (
+                                                <option key={model.id} value={model.id}>
+                                                    {model.name} - {model.description}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* API Key Warning */}
+                                {!apiKeys.replicate && (
+                                    <div className="flex items-center gap-2 text-yellow-400 text-sm bg-yellow-500/10 px-3 py-2 rounded-lg">
+                                        <AlertCircle size={16} />
+                                        <span>Replicate API 키가 필요합니다. Step 1에서 설정하세요.</span>
+                                    </div>
+                                )}
+
+                                {/* Feature Badge */}
+                                <div className="flex gap-2 flex-wrap">
+                                    {selectedReplicateModel.includes('wan-2.2') && (
+                                        <span className="px-2 py-1 bg-orange-500/20 text-orange-300 text-xs rounded-full">Open Source</span>
+                                    )}
+                                    {selectedReplicateModel.includes('i2v') && (
+                                        <span className="px-2 py-1 bg-gray-500/20 text-gray-300 text-xs rounded-full">Image-to-Video</span>
+                                    )}
+                                    {selectedReplicateModel.includes('720p') && (
+                                        <span className="px-2 py-1 bg-blue-500/20 text-blue-300 text-xs rounded-full">720p HD</span>
+                                    )}
+                                    {selectedReplicateModel.includes('kling') && (
+                                        <span className="px-2 py-1 bg-pink-500/20 text-pink-300 text-xs rounded-full">Cinematic</span>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Generation Progress */}
+                        {isGenerating && (
+                            <div className="mt-4 space-y-2">
+                                <div className="h-2 bg-[var(--color-border)] rounded-full overflow-hidden">
+                                    <div
+                                        className="h-full bg-gradient-to-r from-[var(--color-primary)] to-[#FF9A5C] transition-all duration-300"
+                                        style={{ width: `${(generationProgress.current / generationProgress.total) * 100}%` }}
+                                    />
+                                </div>
+                                <p className="text-xs text-gray-400 text-center">{generationProgress.status}</p>
+                            </div>
+                        )}
+
+                        {/* Spacer to push buttons down */}
+                        <div className="flex-1 min-h-[20px]"></div>
+
+                        {/* Action Buttons */}
+                        <div className="flex gap-3 mt-4 shrink-0">
+                            <button
+                                onClick={() => handleAIVideoGeneration('selected')}
+                                disabled={isGenerating || selectedCuts.size === 0}
+                                className={`flex-1 py-3 px-4 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${isGenerating || selectedCuts.size === 0
+                                    ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                                    : 'bg-[var(--color-primary)] text-black hover:brightness-110 shadow-lg shadow-[var(--color-primary)]/20'
+                                    }`}
+                            >
+                                {isGenerating ? <Loader2 className="animate-spin" size={18} /> : <Sparkles size={18} />}
+                                선택 컷 생성 ({selectedCuts.size}개)
+                            </button>
+                            <button
+                                onClick={() => handleAIVideoGeneration('all')}
+                                disabled={isGenerating}
+                                className={`flex-1 py-3 px-4 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${isGenerating
+                                    ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                                    : 'bg-stone-700 text-white hover:bg-stone-600 shadow-lg shadow-stone-500/20'
+                                    }`}
+                            >
+                                {isGenerating ? <Loader2 className="animate-spin" size={18} /> : <Video size={18} />}
+                                미생성 컷 전체
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. External Tools (Right) - Modified to Stack Vertically */}
+                <div className="bg-[var(--color-surface)] rounded-xl p-6 border border-[var(--color-border)] hover:border-[var(--color-primary)]/30 transition-colors h-full flex flex-col">
+                    <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-6">
+                        <Upload size={22} className="text-[var(--color-primary)]" />
+                        외부 비디오 업로드 모드
                     </h2>
-                    {isGenerating && (
-                        <div className="flex items-center gap-3 text-sm">
-                            <div className="flex items-center gap-2 text-purple-300">
-                                <Loader2 className="animate-spin" size={16} />
-                                <span>{generationProgress.current}/{generationProgress.total}</span>
-                            </div>
-                            <span className="text-gray-400">{generationProgress.status}</span>
-                        </div>
-                    )}
-                </div>
 
-                {/* Provider Tabs */}
-                <div className="flex gap-2 mb-4">
-                    <button
-                        onClick={() => setSelectedProvider('gemini-veo')}
-                        className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${selectedProvider === 'gemini-veo'
-                            ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25'
-                            : 'bg-[var(--color-bg)] text-gray-400 hover:text-white hover:bg-[var(--color-bg)]/80'
-                            }`}
-                    >
-                        <span className="text-xl">🌟</span>
-                        Gemini Veo
-                    </button>
-                    <button
-                        onClick={() => setSelectedProvider('replicate')}
-                        className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${selectedProvider === 'replicate'
-                            ? 'bg-green-500 text-white shadow-lg shadow-green-500/25'
-                            : 'bg-[var(--color-bg)] text-gray-400 hover:text-white hover:bg-[var(--color-bg)]/80'
-                            }`}
-                    >
-                        <span className="text-xl">🔄</span>
-                        Replicate API
-                    </button>
-                </div>
+                    <div className="flex flex-col gap-6 flex-1">
 
-                {/* Model Selection & Actions */}
-                <div className="bg-[var(--color-bg)] rounded-lg p-4">
-                    {selectedProvider === 'gemini-veo' ? (
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-4">
-                                <div className="flex-1">
-                                    <label className="text-xs text-gray-500 uppercase mb-1 block">Model</label>
-                                    <select
-                                        value={selectedVeoModel}
-                                        onChange={(e) => setSelectedVeoModel(e.target.value as VeoModel)}
-                                        className="w-full bg-black/40 border border-[var(--color-border)] rounded-lg px-3 py-2 text-white focus:border-blue-500 outline-none"
-                                    >
-                                        {getVeoModels().map(model => (
-                                            <option key={model.id} value={model.id}>
-                                                {model.name} - {model.description}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
-
-                            {/* API Key Warning */}
-                            {!apiKeys.gemini && (
-                                <div className="flex items-center gap-2 text-yellow-400 text-sm bg-yellow-500/10 px-3 py-2 rounded-lg">
-                                    <AlertCircle size={16} />
-                                    <span>Gemini API 키가 필요합니다. Step 1에서 설정하세요.</span>
-                                </div>
-                            )}
-
-                            {/* Feature Badge */}
-                            <div className="flex gap-2 flex-wrap">
-                                {selectedVeoModel === 'veo-3.1-generate-preview' && (
-                                    <>
-                                        <span className="px-2 py-1 bg-blue-500/20 text-blue-300 text-xs rounded-full">4K 지원</span>
-                                        <span className="px-2 py-1 bg-purple-500/20 text-purple-300 text-xs rounded-full">Image-to-Video</span>
-                                        <span className="px-2 py-1 bg-green-500/20 text-green-300 text-xs rounded-full">Native Audio</span>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-4">
-                                <div className="flex-1">
-                                    <label className="text-xs text-gray-500 uppercase mb-1 block">Model</label>
-                                    <select
-                                        value={selectedReplicateModel}
-                                        onChange={(e) => setSelectedReplicateModel(e.target.value as ReplicateVideoModel)}
-                                        className="w-full bg-black/40 border border-[var(--color-border)] rounded-lg px-3 py-2 text-white focus:border-green-500 outline-none"
-                                    >
-                                        {getVideoModels().map(model => (
-                                            <option key={model.id} value={model.id}>
-                                                {model.name} - {model.description}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
-
-                            {/* API Key Warning */}
-                            {!apiKeys.replicate && (
-                                <div className="flex items-center gap-2 text-yellow-400 text-sm bg-yellow-500/10 px-3 py-2 rounded-lg">
-                                    <AlertCircle size={16} />
-                                    <span>Replicate API 키가 필요합니다. Step 1에서 설정하세요.</span>
-                                </div>
-                            )}
-
-                            {/* Feature Badge */}
-                            <div className="flex gap-2 flex-wrap">
-                                {selectedReplicateModel.includes('wan-2.2') && (
-                                    <span className="px-2 py-1 bg-orange-500/20 text-orange-300 text-xs rounded-full">Open Source</span>
-                                )}
-                                {selectedReplicateModel.includes('i2v') && (
-                                    <span className="px-2 py-1 bg-purple-500/20 text-purple-300 text-xs rounded-full">Image-to-Video</span>
-                                )}
-                                {selectedReplicateModel.includes('720p') && (
-                                    <span className="px-2 py-1 bg-blue-500/20 text-blue-300 text-xs rounded-full">720p HD</span>
-                                )}
-                                {selectedReplicateModel.includes('kling') && (
-                                    <span className="px-2 py-1 bg-pink-500/20 text-pink-300 text-xs rounded-full">Cinematic</span>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Generation Progress */}
-                    {isGenerating && (
-                        <div className="mt-4 space-y-2">
-                            <div className="h-2 bg-[var(--color-border)] rounded-full overflow-hidden">
-                                <div
-                                    className="h-full bg-gradient-to-r from-purple-500 to-blue-500 transition-all duration-300"
-                                    style={{ width: `${(generationProgress.current / generationProgress.total) * 100}%` }}
-                                />
-                            </div>
-                            <p className="text-xs text-gray-400 text-center">{generationProgress.status}</p>
-                        </div>
-                    )}
-
-                    {/* Action Buttons */}
-                    <div className="flex gap-3 mt-4">
-                        <button
-                            onClick={() => handleAIVideoGeneration('selected')}
-                            disabled={isGenerating || selectedCuts.size === 0}
-                            className={`flex-1 py-3 px-4 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${isGenerating || selectedCuts.size === 0
-                                ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                                : 'bg-gradient-to-r from-purple-500 to-blue-500 text-white hover:from-purple-600 hover:to-blue-600 shadow-lg shadow-purple-500/20'
-                                }`}
-                        >
-                            {isGenerating ? <Loader2 className="animate-spin" size={18} /> : <Sparkles size={18} />}
-                            선택 컷 생성 ({selectedCuts.size}개)
-                        </button>
-                        <button
-                            onClick={() => handleAIVideoGeneration('all')}
-                            disabled={isGenerating}
-                            className={`flex-1 py-3 px-4 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${isGenerating
-                                ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                                : 'bg-gradient-to-r from-green-500 to-teal-500 text-white hover:from-green-600 hover:to-teal-600 shadow-lg shadow-green-500/20'
-                                }`}
-                        >
-                            {isGenerating ? <Loader2 className="animate-spin" size={18} /> : <Video size={18} />}
-                            미생성 컷 전체 ({script.filter(c => !c.videoUrl && c.finalImageUrl && !c.isVideoConfirmed).length}개)
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            {/* Action Bar (Replaces Provider Selector) */}
-            <div className="bg-[var(--color-surface)] rounded-xl p-6 border border-[var(--color-border)]">
-                <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-
-                    {/* Left: Export Kit */}
-                    <div className="flex-1 w-full">
-                        <h3 className="text-white font-bold mb-2 flex items-center gap-2">
-                            <Package size={20} className="text-purple-400" />
-                            1. 외부 Video 생성 Kit
-                        </h3>
-                        <p className="text-xs text-[var(--color-text-muted)] mb-4">
-                            각 컷의 이미지 파일과 기술적으로 보강된 비디오 프롬프트를 묶어 다운로드합니다.<br />
-                            Runway, Luma, Kling 등의 외부 서비스에서 이 파일들을 사용하여 고품질 비디오를 생성하세요.
-                        </p>
-                        <button
-                            onClick={handleExportKit}
-                            disabled={isExportingKit}
-                            className="flex items-center gap-2 px-5 py-3 bg-purple-500/20 text-purple-300 rounded-xl hover:bg-purple-500/30 border border-purple-500/30 transition-colors w-full md:w-auto justify-center"
-                        >
-                            {isExportingKit ? <Loader2 className="animate-spin" /> : <Download size={20} />}
-                            <span className="font-semibold">Generation Kit 다운로드 (.zip)</span>
-                        </button>
-                    </div>
-
-                    <div className="hidden md:block w-px h-24 bg-[var(--color-border)]"></div>
-
-                    {/* Right: Import */}
-                    <div className="flex-1 w-full text-right md:text-left">
-                        <div className="flex flex-col md:items-end">
+                        {/* Top: Export Kit */}
+                        <div className="flex-1 p-4 bg-white/5 rounded-xl border border-white/5 hover:border-[var(--color-primary)]/50 transition-all group">
                             <h3 className="text-white font-bold mb-2 flex items-center gap-2">
-                                <Upload size={20} className="text-blue-400" />
+                                <Download size={20} className="text-[var(--color-primary)]" />
+                                1. 외부 Video 생성 Kit
+                            </h3>
+                            <p className="text-xs text-[var(--color-text-muted)] mb-4 leading-relaxed">
+                                각 컷의 이미지 파일과 기술적으로 보강된 비디오 프롬프트를 묶어 다운로드합니다.<br />
+                                Runway, Luma, Kling 등의 외부 서비스에서 이 파일들을 사용하여 고품질 비디오를 생성하세요.
+                            </p>
+                            <button
+                                onClick={handleExportKit}
+                                disabled={isExportingKit}
+                                className="w-full flex items-center justify-center gap-2 px-5 py-3 bg-gray-700/50 text-gray-300 rounded-xl hover:bg-gray-700 border border-white/10 group-hover:border-[var(--color-primary)]/30 transition-colors"
+                            >
+                                {isExportingKit ? <Loader2 className="animate-spin" /> : <Download size={20} />}
+                                <span className="font-semibold">Generation Kit 다운로드 (.zip)</span>
+                            </button>
+                        </div>
+
+                        {/* Arrow separator (Visual only) */}
+                        <div className="flex justify-center text-gray-600">
+                            <ChevronLeft className="rotate-[-90deg]" size={24} />
+                        </div>
+
+                        {/* Bottom: Import */}
+                        <div className="flex-1 p-4 bg-white/5 rounded-xl border border-white/5 hover:border-[var(--color-primary)]/50 transition-all group">
+                            <h3 className="text-white font-bold mb-2 flex items-center gap-2">
+                                <Upload size={20} className="text-[var(--color-primary)]" />
                                 2. 생성된 비디오 업로드
                             </h3>
-                            <p className="text-xs text-[var(--color-text-muted)] mb-4 text-right md:text-left">
+                            <p className="text-xs text-[var(--color-text-muted)] mb-4 leading-relaxed">
                                 외부에서 생성한 영상 파일들을 이곳에 일괄 업로드하세요.<br />
                                 파일명을 'cut_001.mp4' 등으로 유지하면 자동으로 매칭됩니다.
                             </p>
                             <button
                                 onClick={() => setShowBulkUploadModal(true)}
-                                className="flex items-center gap-2 px-5 py-3 bg-blue-500/20 text-blue-300 rounded-xl hover:bg-blue-500/30 border border-blue-500/30 transition-colors w-full md:w-auto justify-center"
+                                className="w-full flex items-center justify-center gap-2 px-5 py-3 bg-gray-700/50 text-gray-300 rounded-xl hover:bg-gray-700 border border-white/10 group-hover:border-[var(--color-primary)]/30 transition-colors"
                             >
-                                <FolderOpen size={20} />
+                                <Upload size={20} />
                                 <span className="font-semibold">비디오 일괄 업로드</span>
                             </button>
                         </div>
                     </div>
-
                 </div>
             </div>
 

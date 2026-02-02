@@ -336,7 +336,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                     <div className="flex items-center gap-3 text-[var(--color-text-muted)]">
                                         <Settings size={16} />
                                         <span className="text-sm font-medium">API 키 입력</span>
-                                        <div className={`w-2 h-2 rounded-full ${(apiKeys?.gemini && apiKeys?.googleCloud) ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`} />
+                                        <div className={`w-2 h-2 rounded-full ${(apiKeys?.gemini && apiKeys?.googleCloud && apiKeys?.replicate) ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`} />
                                     </div>
                                     <ChevronDown size={16} className={`transition-transform duration-300 ${showApiConfig ? 'rotate-180' : ''}`} />
                                 </button>
@@ -350,6 +350,26 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                                 value={apiKeys?.gemini || ''}
                                                 onChange={(e) => setApiKeys({ ...apiKeys, gemini: e.target.value })}
                                                 placeholder="Required"
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Freesound API Key (SFX)</label>
+                                            <input
+                                                type="password"
+                                                className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-2 py-1 text-xs text-white focus:border-[var(--color-primary)] outline-none"
+                                                value={apiKeys?.freesound || ''}
+                                                onChange={(e) => setApiKeys({ ...apiKeys, freesound: e.target.value })}
+                                                placeholder="Optional (SFX Search)"
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Replicate API Key (Video)</label>
+                                            <input
+                                                type="password"
+                                                className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-2 py-1 text-xs text-white focus:border-[var(--color-primary)] outline-none"
+                                                value={apiKeys?.replicate || ''}
+                                                onChange={(e) => setApiKeys({ ...apiKeys, replicate: e.target.value })}
+                                                placeholder="Required for Video"
                                             />
                                         </div>
                                     </div>

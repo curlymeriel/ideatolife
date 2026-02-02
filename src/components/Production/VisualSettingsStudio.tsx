@@ -160,11 +160,18 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
     const dynamicCategories = useMemo(() => {
         if (!assetDefinitions) return [];
         return Object.values(assetDefinitions)
-            .filter((a: any) => a.type === 'character' || a.type === 'location')
-            .map((a: any) => ({
-                value: `${a.type}-${a.name}`,
-                label: `${a.type === 'character' ? '인물' : '장소'}: ${a.name}`
-            }));
+            .filter((a: any) => a.type === 'character' || a.type === 'location' || a.type === 'prop')
+            .map((a: any) => {
+                let typeLabel = '기타';
+                if (a.type === 'character') typeLabel = '인물';
+                else if (a.type === 'location') typeLabel = '장소';
+                else if (a.type === 'prop') typeLabel = '소품';
+
+                return {
+                    value: `${a.type}-${a.name}`,
+                    label: `${typeLabel}: ${a.name}`
+                };
+            });
     }, [assetDefinitions]);
 
     const referenceCategories = useMemo(() => [...DEFAULT_CATEGORIES, ...dynamicCategories], [dynamicCategories]);
@@ -200,56 +207,14 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
         }
     }, [initialVisualPrompt]);
 
-    const getUnifiedReferences = async () => {
-        const currentCut = (existingCuts || []).find(c => c.id === cutId);
-        if (!currentCut) return [];
-
-        const manualAssetIds = currentCut.referenceAssetIds || [];
-        const referenceCutIds = currentCut.referenceCutIds || [];
-
-        interface SyncRef { id: string; name: string; url: string; type: string; categories: string[] }
-        const syncRefs: SyncRef[] = [];
-
-        if (currentCut.userReferenceImage) {
-            syncRefs.push({ id: 'user-ref', name: 'User Reference', url: currentCut.userReferenceImage, type: 'user', categories: ['style'] });
-        }
-
-        referenceCutIds.forEach(refId => {
-            const refCut = existingCuts.find(c => c.id === refId);
-            if (refCut?.finalImageUrl) {
-                syncRefs.push({ id: `cut-${refId}`, name: `Prev Cut #${refId}`, url: refCut.finalImageUrl, type: 'location', categories: ['composition', 'style'] });
-            }
-        });
-
-        manualAssetIds.forEach(assetId => {
-            const asset = assetDefinitions?.[assetId];
-            if (asset) {
-                const imageToUse = asset.masterImage || asset.draftImage || asset.referenceImage;
-                if (imageToUse) {
-                    syncRefs.push({ id: assetId, name: asset.name, url: imageToUse, type: asset.type, categories: [asset.type === 'character' ? 'face' : 'style'] });
-                }
-            }
-        });
-
-        autoMatchedAssets.forEach((asset: any) => {
-            if (syncRefs.some(r => r.name === asset.name)) return;
-            const imageToUse = asset.masterImage || asset.draftImage || asset.referenceImage;
-            if (imageToUse) {
-                syncRefs.push({ id: asset.id, name: asset.name, url: imageToUse, type: asset.type, categories: [asset.type === 'character' ? 'face' : 'style'] });
-            }
-        });
-
-        return syncRefs.slice(0, 4);
-    };
-
     const analyzeReferences = async () => {
-        const refs = await getUnifiedReferences();
+        const refs = taggedReferences;
         if (refs.length === 0) return null;
 
         const results = await Promise.all(refs.map(async (ref) => {
             const imgData = await resolveUrl(ref.url);
-            const mappingHeader = `Reference Asset: "${ref.name}" [Type: ${ref.type}]`;
-            const analysisPrompt = `Describe the VISUAL FEATURES (face, hair, costume, lighting) of this image. If this is a character, focus on their unique facial features so we can maintain identity. Return ONLY the description.`;
+            const mappingHeader = `Reference Asset: "${ref.name}" [Categories: ${ref.categories.join(', ')}]`;
+            const analysisPrompt = `Describe the VISUAL FEATURES (face, hair, costume, lighting, material) of this image. If this is a character, focus on their unique facial features so we can maintain identity. If it is an object/prop, focus on its specific design and texture. Return ONLY the description.`;
             const text = await generateText(analysisPrompt, apiKey, undefined, imgData);
             return `${mappingHeader}\nDetailed Analysis: ${text}`;
         }));
@@ -307,8 +272,8 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
             const { generateImage } = await import('../../services/imageGen');
             const { cleanPromptForGeneration } = await import('../../utils/promptUtils');
 
-            // 1. Resolve Unified References (All potential refs)
-            const unifiedRefs = await getUnifiedReferences();
+            // 1. Use Tagged References from State (User Edited)
+            const unifiedRefs = taggedReferences;
 
             // 2. Parse Prompt for (Ref: Name) tags
             // regex matches (Ref: Name) or (Reference #N) fallback
@@ -394,11 +359,11 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
         try {
             if (chatIntent === 'image' && selectedDraft) {
                 const { editImageWithChat } = await import('../../services/imageGen');
-                const unifiedRefs = await getUnifiedReferences();
-                const refImages = await Promise.all(unifiedRefs.map(r => r.url.startsWith('idb://') ? resolveUrl(r.url) : r.url));
+                const unifiedRefs = taggedReferences;
+                const refImages = await Promise.all(unifiedRefs.map(r => resolveUrl(r.url)));
 
                 // Add reference mapping instruction to the user's chat input for the editor
-                const mappingMeta = unifiedRefs.map((r, i) => `[Visual Reference #${i + 1}]: ${r.name} (${r.type})`).join('\n');
+                const mappingMeta = unifiedRefs.map((r, i) => `[Visual Reference #${i + 1}]: ${r.name} (Tags: ${r.categories.join(',')})`).join('\n');
                 const enhancedInstruction = `### EDIT TARGET\nModify the Primary Draft (IMAGE_0) based on the instruction below. \n\n### VISUAL CONTEXT MAPPING\n${mappingMeta}\n\n### USER INSTRUCTION\n${chatInput}`;
 
                 const result = await editImageWithChat(selectedDraft, enhancedInstruction, apiKey, currentMask, refImages.filter(Boolean) as string[]);
@@ -502,6 +467,12 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                         a.type === 'location' && visualPrompt?.toLowerCase().includes(a.name?.toLowerCase())
                     ) as any : null;
 
+                // NEW: Find Props from visual prompt
+                const propAssets = assetDefinitions ?
+                    Object.values(assetDefinitions).filter((a: any) =>
+                        a.type === 'prop' && visualPrompt?.toLowerCase().includes(a.name?.toLowerCase())
+                    ) as any[] : [];
+
                 // Find the current cut to get duration and emotion
                 const currentCut = existingCuts.find(c => c.id === cutId);
 
@@ -518,7 +489,11 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                     locationInfo: locationAsset ? {
                         name: locationAsset.name,
                         visualFeatures: locationAsset.visualSummary || locationAsset.description
-                    } : undefined
+                    } : undefined,
+                    propInfo: propAssets.length > 0 ? propAssets.map(p => ({
+                        name: p.name,
+                        visualFeatures: p.visualSummary || p.description
+                    })) : undefined
                 };
 
                 try {
@@ -600,10 +575,15 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                         // Use raw asset.id to ensure CutItem can recognize it when saving back
                         const refId = asset.id || `${isAuto ? 'auto' : 'manual'}-${Date.now()}-${Math.random()}`;
                         if (url && !loadedRefs.some(r => r.id === refId)) {
+                            let category = 'style';
+                            if (asset.type === 'character') category = `character-${asset.name}`;
+                            else if (asset.type === 'location') category = `location-${asset.name}`;
+                            else if (asset.type === 'prop') category = `prop-${asset.name}`;
+
                             loadedRefs.push({
                                 id: refId,
                                 url,
-                                categories: [asset.type === 'character' ? `character-${asset.name}` : 'style'],
+                                categories: [category],
                                 name: asset.name,
                                 isAuto
                             });
