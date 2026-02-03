@@ -2213,6 +2213,9 @@ Generate a single, cohesive video motion prompt (3-5 sentences) that:
 4. Includes environmental motion (particles, lighting, atmosphere)
 5. Mentions any character-specific visual elements that should move naturally
 
+**CRITICAL AUDIO RULE:**
+- **NO BACKGROUND MUSIC**: Do NOT include any instructions for background music, soundtrack, or musical score. Focus ONLY on motion, camera work, and natural ambient sounds (e.g., footsteps, wind, dialogue).
+
 **OUTPUT ONLY THE MOTION PROMPT - No explanations, no markdown, just the prompt text:**`;
 
     try {

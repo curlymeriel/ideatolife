@@ -1220,7 +1220,15 @@ export const Step4_5_VideoComposition: React.FC = () => {
             } catch (error: any) {
                 console.error(`Failed to generate video for cut ${cut.id}:`, error);
 
-                const errorMessage = error.message || 'Unknown error';
+                let errorMessage = error.message || 'Unknown error';
+
+                // Parse safety filter errors for user-friendly display
+                if (error.isSafetyFilter || errorMessage.includes('SAFETY_FILTER:') || errorMessage.includes('celebrity')) {
+                    errorMessage = `⚠️ 안전 필터 감지: 유명인 또는 실제 인물이 포함된 이미지로 판단되어 생성이 차단되었습니다. 다른 이미지를 사용해주세요.`;
+                } else if (errorMessage.includes('raiMediaFiltered')) {
+                    errorMessage = `⚠️ 콘텐츠 정책 위반: 이미지가 Google 안전 정책에 위반됩니다.`;
+                }
+
                 errors.push(`Cut #${cut.id}: ${errorMessage}`);
                 failCount++;
 

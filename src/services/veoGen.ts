@@ -55,12 +55,18 @@ export async function generateVideoWithVeo(
     options: VeoGenerationOptions,
     onProgress?: (status: string, progress?: number) => void
 ): Promise<VeoGenerationResult> {
-    // Always try the requested model first, then fallback to others in the chain
-    const fallbackChain = ['veo-3.1-generate-preview', 'veo-3.0-generate-preview', 'veo-2.0-generate-preview'];
-    const requestedModel = options.model || fallbackChain[0];
+    // Available Veo models (as of Feb 2026)
+    const availableModels = [
+        'veo-3.1-generate-preview',      // Best quality, 4K
+        'veo-3.1-fast-generate-preview', // Fast generation, slightly lower quality
+        'veo-2.0-generate-001'           // Stable legacy model
+    ];
+    const requestedModel = options.model || availableModels[0];
 
-    // Create unique list: [requested, ...others]
-    const modelsToTry = Array.from(new Set([requestedModel, ...fallbackChain]));
+    // If user requested a model not in available list, warn and use default
+    const modelsToTry = availableModels.includes(requestedModel as string)
+        ? [requestedModel]
+        : availableModels;
 
     let lastError: any = null;
 
@@ -198,10 +204,11 @@ async function generateWithSingleModel(
  * Get available Veo models with their info
  */
 export function getVeoModels(): VeoModelInfo[] {
+    // Available Veo models via predictLongRunning API (as of Feb 2026)
     return [
         {
             id: 'veo-3.1-generate-preview',
-            name: 'Veo 3.1 (Latest)',
+            name: 'Veo 3.1 (Best Quality)',
             description: '최고 품질, 4K 지원, 자연스러운 사람 동작 및 오디오 생성',
             features: ['4K', 'Native Audio', 'Smart Motion'],
             maxDuration: 8,
@@ -210,20 +217,20 @@ export function getVeoModels(): VeoModelInfo[] {
             resolutions: ['720p', '1080p', '4k'],
         },
         {
-            id: 'veo-3.0-generate-preview',
-            name: 'Veo 3.0',
-            description: '고품질 비디오 생성, 1080p 지원',
-            features: ['1080p', 'Native Audio'],
+            id: 'veo-3.1-fast-generate-preview',
+            name: 'Veo 3.1 Fast',
+            description: '빠른 생성 속도, 약간 낮은 품질 (프리뷰/테스트용)',
+            features: ['1080p', 'Fast Generation', 'Native Audio'],
             maxDuration: 8,
             supportsImageToVideo: true,
             supportsAudio: true,
             resolutions: ['720p', '1080p'],
         },
         {
-            id: 'veo-2.0-generate-preview',
-            name: 'Veo 2.0 (Legacy)',
-            description: '빠른 생성 속도, 안정적인 구형 모델',
-            features: ['1080p', 'Fast Generation'],
+            id: 'veo-2.0-generate-001',
+            name: 'Veo 2.0 (Stable)',
+            description: '안정적인 레거시 모델, 일관된 결과',
+            features: ['1080p', 'Stable Output'],
             maxDuration: 5,
             supportsImageToVideo: true,
             supportsAudio: false,
@@ -281,12 +288,15 @@ async function pollVeoOperation(
                     throw new Error(`Operation marked as done but no response/result found. Full operation: ${JSON.stringify(operation).substring(0, 300)}`);
                 }
 
-                // Check for Safety Filters (RAI)
-                // The logs show the structure is typically nested under generateVideoResponse
+                // Check for Safety Filters (RAI) - immediately throw, do NOT continue polling
                 const safetyResponse = result.generateVideoResponse || result;
                 if (safetyResponse.raiMediaFilteredCount > 0) {
                     const reasons = safetyResponse.raiMediaFilteredReasons?.join(', ') || 'Unknown safety reason';
-                    throw new Error(`Video generation blocked by safety filters: ${reasons}`);
+                    // Create a special error type that signals UI to show user-friendly message
+                    const safetyError = new Error(`SAFETY_FILTER: ${reasons}`);
+                    (safetyError as any).isSafetyFilter = true;
+                    (safetyError as any).reasons = safetyResponse.raiMediaFilteredReasons || [];
+                    throw safetyError;
                 }
 
                 let videoUrl = '';
@@ -373,10 +383,18 @@ async function pollVeoOperation(
             onProgress?.('Generating video...', progress);
 
         } catch (error: any) {
+            // CRITICAL: Safety filter errors should NOT be retried - throw immediately
+            if (error.isSafetyFilter || error.message?.startsWith('SAFETY_FILTER:')) {
+                throw error;
+            }
+            // Also don't retry on fatal parsing errors
+            if (error.message?.includes('No video URL found')) {
+                throw error;
+            }
             if (attempts >= maxAttempts - 1) {
                 throw error;
             }
-            // Continue polling on non-fatal errors
+            // Continue polling only on transient network errors
         }
     }
 

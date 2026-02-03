@@ -25,8 +25,8 @@ export interface ApiKeys {
 export type VideoGenerationProvider = 'gemini-veo' | 'replicate' | 'kie-ai';
 export type VeoModel =
     | 'veo-3.1-generate-preview'
-    | 'veo-3.0-generate-preview'
-    | 'veo-2.0-generate-preview';
+    | 'veo-3.1-fast-generate-preview'
+    | 'veo-2.0-generate-001';
 export type ReplicateVideoModel =
     | 'wan-2.2-t2v-480p'
     | 'wan-2.2-t2v-720p'
