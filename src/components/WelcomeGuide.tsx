@@ -58,17 +58,29 @@ const STEPS = [
                     </div>
 
                     {/* Replicate API Section */}
-                    <div className="bg-[var(--color-surface)] p-3 rounded border border-[var(--color-border)]">
-                        <div className="flex justify-between items-start mb-2">
-                            <span className="text-white font-bold">🎬 Replicate API (영상 생성)</span>
-                            <a href="https://replicate.com/account/api-tokens" target="_blank" rel="noopener noreferrer" className="bg-white/10 hover:bg-white/20 text-white p-1.5 rounded transition-colors" title="Get API Key">
-                                <ExternalLink size={12} />
+                    <div className="bg-[var(--color-surface)] p-2 rounded border border-[var(--color-border)]">
+                        <div className="flex justify-between items-start mb-1">
+                            <span className="text-white font-bold text-[11px]">🎬 Replicate API</span>
+                            <a href="https://replicate.com/account/api-tokens" target="_blank" rel="noopener noreferrer" className="bg-white/10 hover:bg-white/20 text-white p-1 rounded transition-colors">
+                                <ExternalLink size={10} />
                             </a>
                         </div>
-                        <div className="text-gray-400 space-y-1 text-[10px]">
-                            <p><strong className="text-gray-300">#1.</strong> Replicate.com 가입/로그인 → <a href="https://replicate.com/account/api-tokens" target="_blank" rel="noopener noreferrer" className="text-[var(--color-primary)] underline">API Tokens</a> 이동</p>
-                            <p><strong className="text-gray-300">#2.</strong> Token 생성 후 복사 → 사이드바 <span className="text-[var(--color-primary)] font-bold">Replicate API Key</span>에 입력</p>
-                            <p><strong className="text-gray-300">#3.</strong> Wan 2.1, Kling 등 고성능 모델을 통해 고품질 영상을 생성할 수 있습니다.</p>
+                        <div className="text-gray-400 space-y-0.5 text-[10px]">
+                            <p>Wan 2.1, Kling 등 고성능 모델 지원</p>
+                        </div>
+                    </div>
+
+                    {/* KieAI API Section */}
+                    <div className="bg-[var(--color-surface)] p-2 rounded border border-[var(--color-border)]">
+                        <div className="flex justify-between items-start mb-1">
+                            <span className="text-[var(--color-primary)] font-bold text-[11px]">⚡ KieAI API (kie.ai)</span>
+                            <a href="https://kie.ai" target="_blank" rel="noopener noreferrer" className="bg-white/10 hover:bg-white/20 text-white p-1 rounded transition-colors">
+                                <ExternalLink size={10} />
+                            </a>
+                        </div>
+                        <div className="text-gray-400 space-y-0.5 text-[10px]">
+                            <p><strong className="text-gray-300">#1.</strong> Kie.ai 가입 및 API 키 발급</p>
+                            <p><strong className="text-gray-300">#2.</strong> Veo 3.1, Runway Aleph 등 다양한 최신 모델을 하나의 API로 사용 가능</p>
                         </div>
                     </div>
 

@@ -12,6 +12,7 @@ import { resolveUrl, isIdbUrl, saveToIdb, generateVideoKey } from '../utils/imag
 import { exportVideoGenerationKit } from '../utils/videoGenerationKitExporter';
 import { generateVideo, getVideoModels, type VideoModel } from '../services/videoGen';
 import { generateVideoWithVeo, getVeoModels } from '../services/veoGen';
+import { generateVideoWithKie, getKieModels } from '../services/kieGen';
 import { generateVideoMotionPrompt } from '../services/gemini';
 import type { VideoGenerationProvider, ReplicateVideoModel, VeoModel } from '../store/types';
 
@@ -692,9 +693,10 @@ export const Step4_5_VideoComposition: React.FC = () => {
     const [isRepairing, setIsRepairing] = useState(false);
 
     // AI Video Generation Mode State
-    const [selectedProvider, setSelectedProvider] = useState<VideoGenerationProvider>('replicate');
+    const [selectedProvider, setSelectedProvider] = useState<VideoGenerationProvider>('gemini-veo');
     const [selectedVeoModel, setSelectedVeoModel] = useState<VeoModel>('veo-3.1-generate-preview');
     const [selectedReplicateModel, setSelectedReplicateModel] = useState<ReplicateVideoModel>('wan-2.2-i2v');
+    const [selectedKieModel, setSelectedKieModel] = useState<string>('veo-3.1');
     const [isGenerating, setIsGenerating] = useState(false);
     const [generationProgress, setGenerationProgress] = useState<{ current: number; total: number; status: string }>({ current: 0, total: 0, status: '' });
 
@@ -1129,6 +1131,21 @@ export const Step4_5_VideoComposition: React.FC = () => {
                         }));
                     });
                     videoUrl = result.videoUrl;
+                } else if (selectedProvider === 'kie-ai') {
+                    // Use KieAI
+                    const apiKey = apiKeys.kieai || '';
+                    if (!apiKey) throw new Error('KieAI API Key is missing. Please set it in sidebar settings.');
+
+                    const result = await generateVideoWithKie(apiKey, {
+                        prompt,
+                        imageUrl,
+                        model: selectedKieModel,
+                        aspectRatio: aspectRatio || '16:9',
+                        duration: 10, // Always max
+                    }, (status) => {
+                        setGenerationProgress(prev => ({ ...prev, status: `Cut #${cut.id}: ${status}` }));
+                    });
+                    videoUrl = result.videoUrl;
                 } else {
                     // Use Replicate model's max duration
                     const replicateMaxDuration = getVideoModels().find(m => m.id === selectedReplicateModel)?.maxDuration || 5;
@@ -1337,6 +1354,15 @@ export const Step4_5_VideoComposition: React.FC = () => {
                         >
                             Replicate API
                         </button>
+                        <button
+                            onClick={() => setSelectedProvider('kie-ai')}
+                            className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${selectedProvider === 'kie-ai'
+                                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'
+                                : 'bg-[var(--color-bg)] text-gray-400 hover:text-white hover:bg-[var(--color-bg)]/80'
+                                }`}
+                        >
+                            KieAI (Kie.ai)
+                        </button>
                     </div>
 
                     {/* Model Selection & Actions (Flex-1 to fill height if needed, but contents are static usually) */}
@@ -1379,6 +1405,48 @@ export const Step4_5_VideoComposition: React.FC = () => {
                                     )}
                                 </div>
                             </div>
+                        ) : selectedProvider === 'kie-ai' ? (
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-4">
+                                    <div className="flex-1">
+                                        <label className="text-xs text-gray-500 uppercase mb-1 block">Model</label>
+                                        <select
+                                            value={selectedKieModel}
+                                            onChange={(e) => setSelectedKieModel(e.target.value)}
+                                            className="w-full bg-black/40 border border-[var(--color-border)] rounded-lg px-3 py-2 text-white focus:border-indigo-500 outline-none"
+                                        >
+                                            {getKieModels().map(model => (
+                                                <option key={model.id} value={model.id}>
+                                                    {model.name} - {model.description}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* API Key Warning */}
+                                {!apiKeys.kieai && (
+                                    <div className="flex items-center gap-2 text-yellow-400 text-sm bg-yellow-500/10 px-3 py-2 rounded-lg">
+                                        <AlertCircle size={16} />
+                                        <span>KieAI API 키가 필요합니다. 사이드바 설정에서 입력하세요.</span>
+                                    </div>
+                                )}
+
+                                {/* Feature Badge */}
+                                <div className="flex gap-2 flex-wrap">
+                                    <span className="px-2 py-1 bg-indigo-500/20 text-indigo-300 text-xs rounded-full">Unified API</span>
+                                    {selectedKieModel === 'grok-vision-video' && (
+                                        <span className="px-2 py-1 bg-red-500/20 text-red-300 text-xs rounded-full">Grok Vision</span>
+                                    )}
+                                    {selectedKieModel.startsWith('kling') && (
+                                        <span className="px-2 py-1 bg-blue-500/20 text-blue-300 text-xs rounded-full">Kling AI</span>
+                                    )}
+                                    {selectedKieModel === 'veo-3.1' && (
+                                        <span className="px-2 py-1 bg-green-500/20 text-green-300 text-xs rounded-full">Premium Quality</span>
+                                    )}
+                                    <span className="px-2 py-1 bg-gray-500/20 text-gray-300 text-xs rounded-full">Image-to-Video</span>
+                                </div>
+                            </div>
                         ) : (
                             <div className="space-y-4">
                                 <div className="flex items-center gap-4">
@@ -1391,6 +1459,7 @@ export const Step4_5_VideoComposition: React.FC = () => {
                                         >
                                             {getVideoModels().map(model => (
                                                 <option key={model.id} value={model.id}>
+                                                    {model.isOpenSource ? '[Open Source] ' : '[Proprietary] '}
                                                     {model.name} - {model.description}
                                                 </option>
                                             ))}
@@ -1409,11 +1478,19 @@ export const Step4_5_VideoComposition: React.FC = () => {
                                 {/* Feature Badge */}
                                 <div className="flex gap-2 flex-wrap">
                                     {selectedReplicateModel.includes('wan-2.2') && (
-                                        <span className="px-2 py-1 bg-orange-500/20 text-orange-300 text-xs rounded-full">Open Source</span>
+                                        <span className="px-2 py-1 bg-orange-500/20 text-orange-300 text-xs rounded-full">Alibaba Wan</span>
                                     )}
-                                    {selectedReplicateModel.includes('i2v') && (
+                                    {getVideoModels().find(m => m.id === selectedReplicateModel)?.isOpenSource ? (
+                                        <span className="px-2 py-1 bg-green-500/20 text-green-300 text-xs rounded-full">Open Source</span>
+                                    ) : (
+                                        <span className="px-2 py-1 bg-purple-500/20 text-purple-300 text-xs rounded-full">Proprietary</span>
+                                    )}
+                                    {selectedReplicateModel === 'ltx-2-distilled' && (
+                                        <span className="px-2 py-1 bg-yellow-500/20 text-yellow-300 text-xs rounded-full">Real-time (Distilled)</span>
+                                    )}
+                                    {selectedReplicateModel.includes('i2v') || selectedReplicateModel === 'ltx-2-distilled' || selectedReplicateModel === 'stable-video' ? (
                                         <span className="px-2 py-1 bg-gray-500/20 text-gray-300 text-xs rounded-full">Image-to-Video</span>
-                                    )}
+                                    ) : null}
                                     {selectedReplicateModel.includes('720p') && (
                                         <span className="px-2 py-1 bg-blue-500/20 text-blue-300 text-xs rounded-full">720p HD</span>
                                     )}

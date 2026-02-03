@@ -226,7 +226,8 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
         try {
             const refContext = await analyzeReferences();
             const systemPrompt = "You are a visual director. Enhance the user's prompt by integrating visual analysis from references. Use the format '(Ref: {Asset Name})' to link specific assets. Stay concise and premium.";
-            const fullPrompt = `User Prompt: ${visualPrompt}\nMotion/Video Direction: ${videoPrompt}\n\n${refContext ? `[Reference Analysis]\n${refContext}` : ''}\n\n[Instructions]\n1. Incorporate specific details from named references (e.g., "match the lighting from (Ref: My Asset)").\n2. Maintain consistent identity by appending "(Ref: {Asset Name})" after character names.\n3. Expand into a detailed 8k English prompt.`;
+            // REMOVE videoPrompt from context to prevent dialogue leakage
+            const fullPrompt = `User Prompt: ${visualPrompt}\n\n${refContext ? `[Reference Analysis]\n${refContext}` : ''}\n\n[Instructions]\n1. Incorporate specific details from named references (e.g., "match the lighting from (Ref: My Asset)").\n2. Maintain consistent identity by appending "(Ref: {Asset Name})" after character names.\n3. Expand into a detailed 8k English prompt.\n4. **CRITICAL NEGATIVE CONSTRAINT**: DO NOT include any script dialogue, character quotes, or speech lines. Focus strictly on visual composition and atmosphere.`;
 
             const result = await generateText(fullPrompt, apiKey, undefined, undefined, systemPrompt);
             if (result) setVisualPrompt(result.trim());
@@ -387,6 +388,7 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                 4. **MASTER STYLE ADHERENCE**: The overall project style is: "${masterStyle}".
                 5. **ASSET CONSISTENCY**: Use the EXACT asset names for characters and locations.
                 6. **8K EXPANSION**: Expand the final result into a highly detailed, premium 8k English prompt.
+                7. **NO DIALOGUE/TEXT (Strictly enforced)**: DO NOT include any script dialogue, character quotes, or instructions to "render text" or "say something". Image prompts must be purely visual.
                 
                 [Project Visual Anchor]
                 Master Style: ${masterStyle}

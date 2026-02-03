@@ -263,9 +263,10 @@ export const DEFAULT_SCRIPT_INSTRUCTIONS = `
         - ✅ GOOD: "Max Fisher's Sanctuary", "Kael standing in The Ancient Workshop", "Dr. Aris enters Rain-Soaked Street"
         - This ensures the image generator correctly matches reference images for each asset.
         
-        **TEXT RULE (ZERO TOLERANCE):** 
-        - NEVER include text, labels, signs, or names as rendered text.
-        - Reference characters by name, but don't ask for text rendering.
+        **TEXT & DIALOGUE RULE (ZERO TOLERANCE):** 
+        - NEVER include script dialogue, character quotes, speech, or instructions to "render text".
+        - DO NOT include "says...", "yells...", or any action that implies rendering text on screen. (Dialogue belongs in the 'dialogue' field, not 'visualPrompt').
+        - Reference characters by name, but focus strictly on their physical appearance, pose, and emotion.
         
         **NEGATIVE CONSTRAINTS:**
         - No text, No typography, No UI overlays, No speech bubbles, No camera movements, No scene transitions.
@@ -2206,7 +2207,9 @@ ${emotionSuggestions.join(', ')}
 Generate a single, cohesive video motion prompt (3-5 sentences) that:
 1. Starts with the exact visual composition
 2. Specifies ONE primary camera movement matching the intensity level
-3. Describes natural character/subject motion (${context.dialogue ? 'speaking animation, gestures' : 'breathing, subtle movements'})
+3. Describes natural character/subject motion:
+   - **SPEECH ANIMATION RULE**: ONLY include "speaking", "talking", or "lip-sync" animation IF the Character Name (${context.speakerInfo?.name || 'unknown'}) matches a character explicitly mentioned as being present in the Visual: "${context.visualPrompt}".
+   - If the dialogue is from a "Narrator" or an off-screen character (not in visual), DO NOT animate speech. Focus on environmental or atmospheric motion instead.
 4. Includes environmental motion (particles, lighting, atmosphere)
 5. Mentions any character-specific visual elements that should move naturally
 

@@ -15,13 +15,14 @@ export interface ApiKeys {
     elevenLabsModelId: string;
     freesound?: string;  // Freesound.org API key for SFX search
     replicate?: string;  // Replicate API key for video generation (Wan 2.2, Kling, etc.)
+    kieai?: string;      // KieAI (kie.ai) API key for video generation
 }
 
 // ====================
 // Video Generation Types
 // ====================
 
-export type VideoGenerationProvider = 'gemini-veo' | 'replicate';
+export type VideoGenerationProvider = 'gemini-veo' | 'replicate' | 'kie-ai';
 export type VeoModel =
     | 'veo-3.1-generate-preview'
     | 'veo-3.0-generate-preview'
@@ -33,7 +34,8 @@ export type ReplicateVideoModel =
     | 'kling-1.6'
     | 'kling-2.0'
     | 'runway-gen3'
-    | 'stable-video';
+    | 'stable-video'
+    | 'ltx-2-distilled';
 
 export interface Character {
     id: string;

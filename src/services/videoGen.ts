@@ -12,7 +12,8 @@ export type VideoModel =
     | 'stable-video'
     | 'wan-2.2-t2v-480p'
     | 'wan-2.2-t2v-720p'
-    | 'wan-2.2-i2v';
+    | 'wan-2.2-i2v'
+    | 'ltx-2-distilled';
 
 interface VideoGenerationOptions {
     prompt: string;
@@ -39,6 +40,7 @@ const REPLICATE_MODELS: Record<VideoModel, string> = {
     'wan-2.2-t2v-480p': 'wan-ai/wan2.2-t2v-480p',
     'wan-2.2-t2v-720p': 'wan-ai/wan2.2-t2v-720p',
     'wan-2.2-i2v': 'wan-ai/wan2.2-i2v',
+    'ltx-2-distilled': 'lightricks/ltx-2-distilled',
 };
 
 /**
@@ -203,56 +205,17 @@ export function getVideoModels(): Array<{
     pricePerSecond: number;
     maxDuration: number;
     supportsImageToVideo: boolean;
+    isOpenSource: boolean;
 }> {
     return [
         {
-            id: 'kling-1.6',
-            name: 'Kling 1.6 Pro',
-            description: 'High quality, cinematic video generation',
-            pricePerSecond: 0.028,
+            id: 'ltx-2-distilled',
+            name: 'LTX-2 Distilled',
+            description: '초고속 고품질 비디오 + 오디오 동시 생성',
+            pricePerSecond: 0.035,
             maxDuration: 10,
             supportsImageToVideo: true,
-        },
-        {
-            id: 'kling-2.0',
-            name: 'Kling 2.0',
-            description: 'Latest Kling model with improved motion',
-            pricePerSecond: 0.04,
-            maxDuration: 10,
-            supportsImageToVideo: true,
-        },
-        {
-            id: 'runway-gen3',
-            name: 'Runway Gen3 Turbo',
-            description: 'Fast and consistent video generation',
-            pricePerSecond: 0.05,
-            maxDuration: 10,
-            supportsImageToVideo: true,
-        },
-        {
-            id: 'stable-video',
-            name: 'Stable Video Diffusion',
-            description: 'Open source, good for motion loops',
-            pricePerSecond: 0.02,
-            maxDuration: 4,
-            supportsImageToVideo: true,
-        },
-        // Wan 2.2 models (open source, high quality)
-        {
-            id: 'wan-2.2-t2v-480p',
-            name: 'Wan 2.2 T2V (480p)',
-            description: '빠른 생성, 저해상도 - 프리뷰용 권장',
-            pricePerSecond: 0.015,
-            maxDuration: 5,
-            supportsImageToVideo: false,
-        },
-        {
-            id: 'wan-2.2-t2v-720p',
-            name: 'Wan 2.2 T2V (720p)',
-            description: '고품질 오픈소스, MoE 아키텍처',
-            pricePerSecond: 0.025,
-            maxDuration: 5,
-            supportsImageToVideo: false,
+            isOpenSource: true,
         },
         {
             id: 'wan-2.2-i2v',
@@ -261,6 +224,61 @@ export function getVideoModels(): Array<{
             pricePerSecond: 0.03,
             maxDuration: 5,
             supportsImageToVideo: true,
+            isOpenSource: true,
+        },
+        {
+            id: 'wan-2.2-t2v-720p',
+            name: 'Wan 2.2 T2V (720p)',
+            description: '고품질 오픈소스, MoE 아키텍처',
+            pricePerSecond: 0.025,
+            maxDuration: 5,
+            supportsImageToVideo: false,
+            isOpenSource: true,
+        },
+        {
+            id: 'wan-2.2-t2v-480p',
+            name: 'Wan 2.2 T2V (480p)',
+            description: '빠른 생성, 저해상도 - 프리뷰용 권장',
+            pricePerSecond: 0.015,
+            maxDuration: 5,
+            supportsImageToVideo: false,
+            isOpenSource: true,
+        },
+        {
+            id: 'stable-video',
+            name: 'Stable Video Diffusion',
+            description: 'Open source, good for motion loops',
+            pricePerSecond: 0.02,
+            maxDuration: 4,
+            supportsImageToVideo: true,
+            isOpenSource: true,
+        },
+        {
+            id: 'runway-gen3',
+            name: 'Runway Gen3 Turbo',
+            description: 'Fast and consistent video generation',
+            pricePerSecond: 0.05,
+            maxDuration: 10,
+            supportsImageToVideo: true,
+            isOpenSource: false,
+        },
+        {
+            id: 'kling-2.0',
+            name: 'Kling 2.0',
+            description: 'Latest Kling model with improved motion',
+            pricePerSecond: 0.04,
+            maxDuration: 10,
+            supportsImageToVideo: true,
+            isOpenSource: false,
+        },
+        {
+            id: 'kling-1.6',
+            name: 'Kling 1.6 Pro',
+            description: 'High quality, cinematic video generation',
+            pricePerSecond: 0.028,
+            maxDuration: 10,
+            supportsImageToVideo: true,
+            isOpenSource: false,
         },
     ];
 }

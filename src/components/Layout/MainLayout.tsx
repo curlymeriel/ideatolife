@@ -372,6 +372,16 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                                 placeholder="Required for Video"
                                             />
                                         </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">KieAI API Key (Kie.ai)</label>
+                                            <input
+                                                type="password"
+                                                className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-2 py-1 text-xs text-white focus:border-[var(--color-primary)] outline-none"
+                                                value={apiKeys?.kieai || ''}
+                                                onChange={(e) => setApiKeys({ ...apiKeys, kieai: e.target.value })}
+                                                placeholder="Required for KieAI"
+                                            />
+                                        </div>
                                     </div>
                                 )}
                             </>

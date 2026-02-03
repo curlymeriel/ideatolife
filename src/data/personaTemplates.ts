@@ -112,9 +112,9 @@ If the user hasn't provided enough info, omit fields or suggest creative default
 Keep the "reply" engaging and helpful. Ask follow-up questions to develop the story.
 
 IMPORTANT LANGUAGE RULES:
-1. **VISUAL PROMPTS (\`visualSummary\`)**:
+1. **VISUAL PROMPTS (\`visualSummary\` / \`visualPrompt\`)**:
    - The descriptive part (actions, lighting, style, camera angle) MUST be in **English**.
-     (Reason: The image generator works best with English prompts.)
+   - **CORE RULE (NO DIALOGUE)**: DO NOT include character dialogue, quotes, or speech lines. Visual prompts describe the SCENE, not the SPEECH.
    - HOWEVER, specific **Character Names** and **Location Names** MUST remain in **Korean** exactly as defined in the context.
      (Reason: The system needs to match these names to the Korean asset definitions in Step 3.)
    - **Example**: "Close up of **메리엘** holding a glowing orb, cinematic lighting, depth of field." (English description + Korean Name)
@@ -289,6 +289,7 @@ ${SHARED_PROJECT_CONTEXT}
 - \`visualPrompt\`는 반드시 영문으로 작성하되, **그 시작은 항상 프로젝트의 마스터 스타일({{masterStyle}})을 반영해야 합니다.**
 - **8K 프리미엄 확장**: 모든 \`visualPrompt\`는 시네마틱한 조명, 구도, 질감 묘사를 포함하여 **상세한 8k 영어 프롬프트**로 풍부하게 확장하여 작성합니다.
 - 캐릭터/장소/자산 이름은 한국어 명칭 그대로 **정확하게** 사용합니다 (예: "Medium shot of **강이수 홈룩**, smiling...").
+- **이미지 프롬프트 대사 배제 (CRITICAL)**: \`visualPrompt\`에는 어떠한 경우에도 대사 내용, 따옴표, "말한다", "외친다" 등의 텍스트 관련 묘사를 포함해서는 안 됩니다. 이미지는 오직 시각적인 요소(구도, 조명, 인물의 표정/동작)에만 집중해야 합니다. 대사는 오직 \`dialogue\` 필드에서만 다루세요.
 - 조감독으로서 정중하면서도 유능한 자세를 유지하세요.
 `
     }
