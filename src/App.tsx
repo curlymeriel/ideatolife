@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Suspense } from 'react';
 import { MainLayout } from './components/Layout/MainLayout';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { AuthProvider } from './contexts/AuthContext';
 import { Loader2 } from 'lucide-react';
 import { lazyImport } from './utils/lazyImport';
 
@@ -32,35 +33,37 @@ const PageLoader = () => (
 
 export const App: React.FC = () => {
   return (
-    <Router>
-      <Routes>
-        <Route path="/*" element={
-          <ErrorBoundary>
-            <MainLayout>
-              <Suspense fallback={<PageLoader />}>
-                <Routes>
-                  <Route path="/" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
+    <AuthProvider>
+      <Router>
+        <Routes>
+          <Route path="/*" element={
+            <ErrorBoundary>
+              <MainLayout>
+                <Suspense fallback={<PageLoader />}>
+                  <Routes>
+                    <Route path="/" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
 
-                  <Route path="/research" element={<ErrorBoundary><MarketResearch /></ErrorBoundary>} />
-                  <Route path="/research/competitor" element={<ErrorBoundary><CompetitorAnalysis /></ErrorBoundary>} />
-                  <Route path="/research/strategy" element={<ErrorBoundary><StrategyFormulation /></ErrorBoundary>} />
-                  <Route path="/research/ideas" element={<ErrorBoundary><IdeaPool /></ErrorBoundary>} />
-                  <Route path="/research/guide" element={<ErrorBoundary><PrepPhasesGuide /></ErrorBoundary>} />
-                  <Route path="/step/1" element={<ErrorBoundary><Step1_Setup /></ErrorBoundary>} />
-                  <Route path="/step/2" element={<ErrorBoundary><Step2_Style /></ErrorBoundary>} />
-                  <Route path="/step/3" element={<ErrorBoundary><Step3_Production /></ErrorBoundary>} />
-                  <Route path="/step/4" element={<ErrorBoundary><Step4_QualityAssurance /></ErrorBoundary>} />
-                  <Route path="/step/4.5" element={<ErrorBoundary><Step4_5_VideoComposition /></ErrorBoundary>} />
-                  <Route path="/step/5" element={<ErrorBoundary><Step5_Thumbnail /></ErrorBoundary>} />
-                  <Route path="/step/6" element={<ErrorBoundary><Step6_Final /></ErrorBoundary>} />
-                  <Route path="/share/:shareId" element={<ErrorBoundary><SharedView /></ErrorBoundary>} />
-                </Routes>
-              </Suspense>
-            </MainLayout>
-          </ErrorBoundary>
-        } />
-      </Routes>
-    </Router>
+                    <Route path="/research" element={<ErrorBoundary><MarketResearch /></ErrorBoundary>} />
+                    <Route path="/research/competitor" element={<ErrorBoundary><CompetitorAnalysis /></ErrorBoundary>} />
+                    <Route path="/research/strategy" element={<ErrorBoundary><StrategyFormulation /></ErrorBoundary>} />
+                    <Route path="/research/ideas" element={<ErrorBoundary><IdeaPool /></ErrorBoundary>} />
+                    <Route path="/research/guide" element={<ErrorBoundary><PrepPhasesGuide /></ErrorBoundary>} />
+                    <Route path="/step/1" element={<ErrorBoundary><Step1_Setup /></ErrorBoundary>} />
+                    <Route path="/step/2" element={<ErrorBoundary><Step2_Style /></ErrorBoundary>} />
+                    <Route path="/step/3" element={<ErrorBoundary><Step3_Production /></ErrorBoundary>} />
+                    <Route path="/step/4" element={<ErrorBoundary><Step4_QualityAssurance /></ErrorBoundary>} />
+                    <Route path="/step/4.5" element={<ErrorBoundary><Step4_5_VideoComposition /></ErrorBoundary>} />
+                    <Route path="/step/5" element={<ErrorBoundary><Step5_Thumbnail /></ErrorBoundary>} />
+                    <Route path="/step/6" element={<ErrorBoundary><Step6_Final /></ErrorBoundary>} />
+                    <Route path="/share/:shareId" element={<ErrorBoundary><SharedView /></ErrorBoundary>} />
+                  </Routes>
+                </Suspense>
+              </MainLayout>
+            </ErrorBoundary>
+          } />
+        </Routes>
+      </Router>
+    </AuthProvider>
   );
 };
 

@@ -2137,11 +2137,34 @@ export const generateVideoMotionPrompt = async (
     if (!apiKey) {
         // Fallback for no API key
         const basePrompt = context.visualPrompt || '';
-        return `${basePrompt}. Camera slowly pushes in. Subtle atmospheric motion. Character breathes naturally.`;
+        return `${basePrompt}. Camera slowly pushes in. Subtle atmospheric motion. Character breathes naturally. No background music.`;
     }
 
     const { intensity, description: intensityDesc } = getMotionIntensityForDuration(context.audioDuration);
     const emotionSuggestions = suggestCameraWorkForEmotion(context.emotion);
+
+    // ============ DETERMINISTIC SPEAKER VISIBILITY CHECK ============
+    // Check if speaker name appears in visualPrompt (case-insensitive)
+    const speakerName = context.speakerInfo?.name || '';
+    const visualPromptLower = (context.visualPrompt || '').toLowerCase();
+    const isNarrator = speakerName.toLowerCase().includes('narrator') ||
+        speakerName.toLowerCase().includes('나레이터') ||
+        speakerName.toLowerCase().includes('narration');
+
+    // Speaker is considered ON-SCREEN only if:
+    // 1. Not a narrator AND
+    // 2. Speaker name explicitly appears in visualPrompt
+    const isSpeakerOnScreen = !isNarrator &&
+        speakerName.length > 0 &&
+        visualPromptLower.includes(speakerName.toLowerCase());
+
+    // Filter dialogue for off-screen speakers
+    const effectiveDialogue = isSpeakerOnScreen ? context.dialogue : undefined;
+    const dialogueContext = effectiveDialogue
+        ? `Dialogue: "${effectiveDialogue}" (Character speaks on-screen - include natural lip-sync)`
+        : isNarrator
+            ? 'Voice-over narration (NO lip-sync needed - character not speaking on screen)'
+            : 'No dialogue (ambient/silent shot)';
 
     // Build character motion hints from visual features
     let characterMotionHints = '';
@@ -2169,7 +2192,7 @@ export const generateVideoMotionPrompt = async (
         if (hints.length > 0) locationHints = hints.join(', ');
     }
 
-    // NEW: Build Prop motion hints
+    // Build Prop motion hints
     let propHints = '';
     if (context.propInfo && context.propInfo.length > 0) {
         const hints: string[] = [];
@@ -2187,10 +2210,10 @@ export const generateVideoMotionPrompt = async (
 
 **INPUT SCENE:**
 Visual: ${context.visualPrompt}
-${context.dialogue ? `Dialogue: "${context.dialogue}"` : 'No dialogue (ambient/silent shot)'}
+${dialogueContext}
 ${context.actingDirection ? `Acting Direction: ${context.actingDirection}` : ''}
 ${context.emotion ? `Emotion: ${context.emotion}` : ''}
-${context.speakerInfo?.name ? `Character: ${context.speakerInfo.name}` : ''}
+${isSpeakerOnScreen && context.speakerInfo?.name ? `On-Screen Character: ${context.speakerInfo.name}` : ''}
 ${characterMotionHints ? `Character Visual Features: ${characterMotionHints}` : ''}
 ${context.locationInfo?.name ? `Location: ${context.locationInfo.name}` : ''}
 ${locationHints ? `Environmental Elements: ${locationHints}` : ''}
@@ -2208,24 +2231,35 @@ Generate a single, cohesive video motion prompt (3-5 sentences) that:
 1. Starts with the exact visual composition
 2. Specifies ONE primary camera movement matching the intensity level
 3. Describes natural character/subject motion:
-   - **SPEECH ANIMATION RULE**: ONLY include "speaking", "talking", or "lip-sync" animation IF the Character Name (${context.speakerInfo?.name || 'unknown'}) matches a character explicitly mentioned as being present in the Visual: "${context.visualPrompt}".
-   - If the dialogue is from a "Narrator" or an off-screen character (not in visual), DO NOT animate speech. Focus on environmental or atmospheric motion instead.
+   ${isSpeakerOnScreen
+            ? '- Character speaks with natural lip-sync, gestures matching emotion'
+            : '- NO lip-sync or speaking animation (voice is off-screen or narration). Focus on breathing, subtle movements.'}
 4. Includes environmental motion (particles, lighting, atmosphere)
 5. Mentions any character-specific visual elements that should move naturally
 
-**CRITICAL AUDIO RULE:**
-- **NO BACKGROUND MUSIC**: Do NOT include any instructions for background music, soundtrack, or musical score. Focus ONLY on motion, camera work, and natural ambient sounds (e.g., footsteps, wind, dialogue).
+**CRITICAL RULES:**
+- **NO BACKGROUND MUSIC**: NEVER include background music, soundtrack, or musical score.
+- **NO TEXT RENDERING**: Do NOT render dialogue as on-screen text or subtitles.
+- **AMBIENT SOUNDS ONLY**: Focus on natural sounds (footsteps, wind, breathing, environment).
 
-**OUTPUT ONLY THE MOTION PROMPT - No explanations, no markdown, just the prompt text:**`;
+**OUTPUT FORMAT:**
+Output ONLY the motion prompt text. End with "No background music. Ambient sounds only."`;
 
     try {
         const result = await generateText(prompt, apiKey, undefined, undefined, undefined, { temperature: 0.7 });
-        return result?.trim() || `${context.visualPrompt}. Camera holds steady. Subtle atmospheric motion.`;
+        let finalPrompt = result?.trim() || `${context.visualPrompt}. Camera holds steady. Subtle atmospheric motion.`;
+
+        // ENFORCE: Always append negative suffix if not present
+        if (!finalPrompt.toLowerCase().includes('no background music')) {
+            finalPrompt += ' No background music. Ambient sounds only.';
+        }
+
+        return finalPrompt;
     } catch (error) {
         console.error('[generateVideoMotionPrompt] Error:', error);
         // Fallback with basic enhancement
         const basePrompt = context.visualPrompt || '';
         const cameraMove = emotionSuggestions[0] || 'Camera holds steady';
-        return `${basePrompt}. ${cameraMove}. ${characterMotionHints || 'Subtle breathing motion'}. ${locationHints || 'Ambient atmosphere'}.`;
+        return `${basePrompt}. ${cameraMove}. ${characterMotionHints || 'Subtle breathing motion'}. ${locationHints || 'Ambient atmosphere'}. No background music.`;
     }
 };

@@ -16,11 +16,17 @@ const getExtension = (mimeType: string): string => {
     // Audio
     if (mimeType.includes('mpeg') || mimeType.includes('mp3')) return 'mp3';
     if (mimeType.includes('wav')) return 'wav';
-    if (mimeType.includes('ogg')) return 'ogg';
-    if (mimeType.includes('webm')) return 'webm';
+    if (mimeType.includes('ogg') && !mimeType.includes('video')) return 'ogg';
     if (mimeType.includes('aac')) return 'aac';
     if (mimeType.includes('m4a')) return 'm4a';
     if (mimeType.includes('flac')) return 'flac';
+
+    // Video
+    if (mimeType.includes('mp4') || mimeType.includes('video/mp4')) return 'mp4';
+    if (mimeType.includes('quicktime') || mimeType.includes('mov')) return 'mov';
+    if (mimeType.includes('webm') || mimeType.includes('video/webm')) return 'webm';
+    if (mimeType.includes('avi')) return 'avi';
+    if (mimeType.includes('mkv') || mimeType.includes('matroska')) return 'mkv';
 
     return 'bin';
 };
@@ -74,6 +80,7 @@ export const exportProjectToZip = async (projectData: ProjectData): Promise<Blob
 
     const imagesFolder = root.folder("images");
     const audioFolder = root.folder("audio");
+    const videosFolder = root.folder("videos");
     const keyVisualsFolder = root.folder("key_visuals");
 
     // We will build a "Portable" Project Data object as we go
@@ -141,6 +148,20 @@ export const exportProjectToZip = async (projectData: ProjectData): Promise<Blob
                     console.log(`[ZipExport] ✅ Included SFX: ${filename}`);
                 } else {
                     console.warn(`[ZipExport] ❌ FAILED to fetch SFX for Cut ${i + 1}: ${cut.sfxUrl}`);
+                }
+            }
+            // Step 4.5: Export Video Clips
+            if (cut.videoUrl) {
+                console.log(`[ZipExport] Processing Video for Cut ${i + 1}: ${cut.videoUrl}`);
+                const res = await fetchResource(cut.videoUrl);
+                if (res) {
+                    const ext = getExtension(res.mimeType);
+                    const filename = `cut_${String(i + 1).padStart(3, '0')}_video.${ext}`;
+                    addFileToZip(videosFolder, filename, res);
+                    portableProject.script[i].videoUrl = `videos/${filename}`;
+                    console.log(`[ZipExport] ✅ Included Video: ${filename}`);
+                } else {
+                    console.warn(`[ZipExport] ❌ FAILED to fetch Video for Cut ${i + 1}: ${cut.videoUrl}`);
                 }
             }
         }

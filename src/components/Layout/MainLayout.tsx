@@ -7,6 +7,7 @@ import { WelcomeGuide } from '../WelcomeGuide';
 import { SupportModal } from '../SupportModal';
 import { RescueModal } from '../RescueModal';
 import { AppSupportChatbot } from '../AppSupportChatbot';
+import UserMenu from '../UserMenu';
 
 
 interface MainLayoutProps {
@@ -475,10 +476,13 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                             </div>
                         </div>
                         {!isMobile && (
-                            <div className="flex items-center gap-1">
-                                <button onClick={() => setShowGuide(true)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 text-xs"><BookOpen size={14} /> 시작 가이드</button>
-                                <button onClick={() => setShowSupport(true)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 text-xs"><HelpCircle size={14} /> Support</button>
-                                <button onClick={() => setShowChatbot(true)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 text-xs font-bold border border-[var(--color-primary)]/30"><MessageCircle size={14} /> AI Q&A</button>
+                            <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-1">
+                                    <button onClick={() => setShowGuide(true)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 text-xs"><BookOpen size={14} /> 시작 가이드</button>
+                                    <button onClick={() => setShowSupport(true)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 text-xs"><HelpCircle size={14} /> Support</button>
+                                    <button onClick={() => setShowChatbot(true)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 text-xs font-bold border border-[var(--color-primary)]/30"><MessageCircle size={14} /> AI Q&A</button>
+                                </div>
+                                <UserMenu syncStatus="synced" />
                             </div>
                         )}
                     </div>

@@ -95,7 +95,8 @@ export const importProjectFromZip = async (zipData: Blob | ArrayBuffer): Promise
 
                     // Image extension priority order (prefer real images over .bin)
                     const preferredImageExts = ['png', 'jpg', 'jpeg', 'webp', 'gif'];
-                    const audioExts = ['mp3', 'wav', 'ogg', 'webm', 'm4a', 'aac'];
+                    const audioExts = ['mp3', 'wav', 'ogg', 'm4a', 'aac'];
+                    const videoExts = ['mp4', 'webm', 'mov', 'avi', 'mkv'];
 
                     // Find all files matching by base name
                     const matchingFiles = Object.keys(zip.files).filter(f => {
@@ -115,7 +116,15 @@ export const importProjectFromZip = async (zipData: Blob | ArrayBuffer): Promise
                             return preferredImageExts.includes(ext);
                         });
 
-                        // If no preferred image, try audio
+                        // If no preferred image, try video
+                        if (!looseMatch) {
+                            looseMatch = matchingFiles.find(f => {
+                                const ext = f.split('.').pop()?.toLowerCase() || '';
+                                return videoExts.includes(ext);
+                            });
+                        }
+
+                        // If no video, try audio
                         if (!looseMatch) {
                             looseMatch = matchingFiles.find(f => {
                                 const ext = f.split('.').pop()?.toLowerCase() || '';
@@ -248,6 +257,18 @@ export const importProjectFromZip = async (zipData: Blob | ArrayBuffer): Promise
                         const newUrl = await restoreFile(cut.sfxUrl);
                         console.log(`[ZipImport] Restored SFX to: ${newUrl}`);
                         if (newUrl) cut.sfxUrl = newUrl;
+                    }
+                }
+
+                // Step 4.5: Video Clips
+                if (cut.videoUrl) {
+                    console.log(`[ZipImport] Found Video URL: ${cut.videoUrl} for cut ${cutId}`);
+                    if (cut.videoUrl.startsWith('data:')) {
+                        cut.videoUrl = await migrateBase64ToIdb(cut.videoUrl, 'images', `cut_${cutId}_video`);
+                    } else {
+                        const newUrl = await restoreFile(cut.videoUrl);
+                        console.log(`[ZipImport] Restored Video to: ${newUrl}`);
+                        if (newUrl) cut.videoUrl = newUrl;
                     }
                 }
             }

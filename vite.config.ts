@@ -9,11 +9,14 @@ export default defineConfig({
     tailwindcss(),
   ],
   // Required for FFmpeg.wasm SharedArrayBuffer support
+  // (Disabled for Auth Debugging: COOP blocks Firebase Redirect/Popup)
+  // server: {
+  //   headers: {
+  //     "Cross-Origin-Opener-Policy": "same-origin",
+  //     "Cross-Origin-Embedder-Policy": "credentialless",
+  //   },
+  //   proxy: { ... }
   server: {
-    headers: {
-      "Cross-Origin-Opener-Policy": "same-origin",
-      "Cross-Origin-Embedder-Policy": "credentialless",
-    },
     proxy: {
       '/api/replicate': {
         target: 'https://api.replicate.com',
@@ -30,12 +33,13 @@ export default defineConfig({
     },
   },
   // Also add headers for preview/production builds
-  preview: {
-    headers: {
-      "Cross-Origin-Opener-Policy": "same-origin",
-      "Cross-Origin-Embedder-Policy": "credentialless",
-    },
-  },
+  // Also add headers for preview/production builds
+  // preview: {
+  //   headers: {
+  //     "Cross-Origin-Opener-Policy": "same-origin",
+  //     "Cross-Origin-Embedder-Policy": "credentialless",
+  //   },
+  // },
   // Optimize FFmpeg imports
   optimizeDeps: {
     exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],

@@ -11,6 +11,8 @@ import { createIntelligenceSlice, type IntelligenceSlice } from './intelligenceS
 import { createUISlice, type UISlice } from './uiSlice';
 import { saveToIdb, generateAudioKey, generateCutImageKey, generateAssetImageKey, resolveUrl, loadFromIdb, parseIdbUrl } from '../utils/imageStorage';
 import { selectLocalFolder, saveFileToHandle, readFilesFromDirectory, verifyPermission, requestPermission, getSubFolder, deleteFileFromHandle, deleteDirectoryFromHandle, type LocalFolderHandle } from '../utils/localFileSystem';
+import { auth, isFirebaseConfigured } from '../lib/firebase';
+import { migrateProjectToCloud } from '../utils/cloudMigration';
 
 // ====================
 // Multi-Project Actions
@@ -52,6 +54,10 @@ interface MultiProjectActions {
     requestLocalFolderPermission: () => Promise<boolean>;
     disconnectLocalFolder: () => void;
     forceSyncLibrary: () => Promise<void>;
+
+    // Cloud Sync
+    syncStatus: 'idle' | 'syncing' | 'synced' | 'error';
+    lastSynced: number | null;
 }
 
 // Combined Store Type
@@ -170,6 +176,18 @@ const saveProjectToDisk = async (project: ProjectData) => {
 
             // Broadcast the change to other tabs
             syncChannel.postMessage({ type: 'PROJECT_SAVED', projectId });
+
+            // 🔄 Auto Cloud Sync: If user is logged in, sync to Firebase
+            if (isFirebaseConfigured() && auth?.currentUser) {
+                try {
+                    console.log(`[Store] Auto-syncing to cloud for user: ${auth.currentUser.email}`);
+                    await migrateProjectToCloud(auth.currentUser.uid, project);
+                    console.log(`[Store] Cloud sync completed for ${projectId}`);
+                } catch (cloudError) {
+                    console.error(`[Store] Cloud sync failed (will retry later):`, cloudError);
+                    // Don't fail the whole save, just log the error
+                }
+            }
 
             useWorkflowStore.getState().setSaveStatus('saved'); // Finish saving
 
@@ -963,6 +981,9 @@ export const useWorkflowStore = create<WorkflowStore>()(
             },
 
             // Multi-project Actions
+            syncStatus: 'idle',
+            lastSynced: null,
+
             saveProject: async () => {
                 const state = get() as any;
                 const projectId = state.id;
@@ -1094,6 +1115,24 @@ export const useWorkflowStore = create<WorkflowStore>()(
                     } catch (e) {
                         console.error("[LocalSync] Failed to sync to local folder:", e);
                     }
+                }
+
+                // CLOUD SYNC: Firebase
+                const isCloudAvailable = isFirebaseConfigured() && auth?.currentUser;
+                if (isCloudAvailable) {
+                    // Don't block local save, run in background
+                    set({ syncStatus: 'syncing' } as any);
+
+                    // Use a non-blocking promise
+                    migrateProjectToCloud(auth!.currentUser!.uid, projectData)
+                        .then(() => {
+                            console.log(`[CloudSync] Synced project ${projectId} to Firebase`);
+                            set({ syncStatus: 'synced', lastSynced: Date.now() } as any);
+                        })
+                        .catch((err) => {
+                            console.error(`[CloudSync] Failed to sync ${projectId}:`, err);
+                            set({ syncStatus: 'error' } as any);
+                        });
                 }
 
 

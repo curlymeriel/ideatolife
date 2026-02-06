@@ -1,13 +1,16 @@
 import React from 'react';
 import { useWorkflowStore, type ProjectData, type ProjectMetadata } from '../store/workflowStore';
 import { useNavigate } from 'react-router-dom';
-import { Image, FileText, Music, ArrowRight, BarChart3, Plus, Download, Trash2, Database, Loader2, Copy, Check, HardDrive, AlertTriangle, RotateCcw, Settings, ChevronDown, FolderSync, ShieldAlert } from 'lucide-react';
+import { Image, FileText, Music, ArrowRight, BarChart3, Plus, Download, Trash2, Database, Loader2, Copy, Check, HardDrive, AlertTriangle, RotateCcw, Settings, ChevronDown, FolderSync, ShieldAlert, Cloud, CloudOff, RefreshCw } from 'lucide-react';
+import { set as idbSet } from 'idb-keyval';
 
 import { UnifiedStorageManager } from '../components/UnifiedStorageManager';
 import { ProfileNameModal } from '../components/ui/ProfileNameModal';
 import { migrateAllProjects } from '../utils/migration';
 
 import { debugListKeys, resolveUrl } from '../utils/imageStorage';
+import { useAuth } from '../contexts/AuthContext';
+import * as cloudDatabase from '../services/cloudDatabase';
 
 export const Dashboard: React.FC = () => {
     // Expose for debugging
@@ -44,6 +47,25 @@ export const Dashboard: React.FC = () => {
     React.useEffect(() => {
         return () => setIsOpeningProject(false);
     }, []);
+
+    // Cloud Integration
+    const { user, signInWithGoogle, isConfigured } = useAuth();
+    const [cloudProjects, setCloudProjects] = React.useState<Map<string, ProjectMetadata>>(new Map());
+    React.useEffect(() => {
+        if (!user) {
+            setCloudProjects(new Map());
+            return;
+        }
+
+        // Just load quietly
+        cloudDatabase.listProjects(user.uid)
+            .then((list: ProjectMetadata[]) => {
+                const map = new Map<string, ProjectMetadata>();
+                list.forEach((p: ProjectMetadata) => map.set(p.id, p));
+                setCloudProjects(map);
+            })
+            .catch(console.error);
+    }, [user]);
 
     const handleCreateProject = async () => {
         if (isOpeningProject) return;
@@ -325,15 +347,52 @@ export const Dashboard: React.FC = () => {
         }
     };
 
+    const handleDownloadProject = async (projectId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!user) return;
+
+        setIsOpeningProject(true);
+        try {
+            console.log(`[Dashboard] Downloading project ${projectId} from cloud...`);
+            const projectData = await cloudDatabase.loadProject(user.uid, projectId);
+
+            // Save to local IDB directly
+            await idbSet(`project-${projectId}`, projectData);
+
+            // Reload to reflect changes
+            window.location.reload();
+        } catch (e) {
+            console.error("Failed to download project:", e);
+            alert("Failed to download project from cloud.");
+            setIsOpeningProject(false);
+        }
+    };
+
     // Group projects by series based on Metadata
     const seriesMap = new Map<string, ProjectMetadata[]>();
 
     // Ensure we have at least the current project if savedProjects is empty (edge case)
     const allProjects = React.useMemo(() => {
-        const projects = Object.values(savedProjects);
+        const local = Object.values(savedProjects);
+        const combined = [...local];
+
+        // Add cloud-only projects
+        if (cloudProjects.size > 0) {
+            cloudProjects.forEach(cp => {
+                // If not in local savedProjects, add it
+                if (!savedProjects[cp.id]) {
+                    combined.push({
+                        ...cp,
+                        // Mark as cloud-only for the UI to handle download logic
+                        isCloudOnly: true
+                    } as any);
+                }
+            });
+        }
+
         // Sort all projects by lastModified once for the entire list
-        return projects.sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0));
-    }, [savedProjects]);
+        return combined.sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0));
+    }, [savedProjects, cloudProjects]);
 
     // PAGINATION: Only render visible Series (previously it was episodes, which hid older series)
     // We group ALL projects first, then decide how many series to show.
@@ -434,7 +493,9 @@ export const Dashboard: React.FC = () => {
                 scriptLength: cached?.scriptLength || 0,
                 assetsCount: cached?.assetsTotal || 0,
                 lastModified: p.lastModified || 0,
-                currentStep: cached?.completedStepsCount !== undefined ? cached.completedStepsCount : (p.currentStep || 1)
+                currentStep: cached?.completedStepsCount !== undefined ? cached.completedStepsCount : (p.currentStep || 1),
+                isCloudOnly: (p as any).isCloudOnly,
+                isSynced: !!cloudProjects.get(p.id)
             };
         })
             // Sort episodes by lastModified (most recent first)
@@ -919,28 +980,51 @@ export const Dashboard: React.FC = () => {
 
                                         {/* Row Actions */}
                                         <div className="flex items-center gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
-                                            <button
-                                                onClick={(e) => handleDuplicateProject(episode.id, episode.name, e)}
-                                                className="p-1.5 rounded-md text-gray-400 hover:text-blue-400 hover:bg-blue-400/10 transition-colors"
-                                                title="Duplicate"
-                                            >
-                                                <Copy size={14} />
-                                            </button>
-                                            <button
-                                                onClick={(e) => handleDeleteProject(episode.id, episode.name, e)}
-                                                className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-500/10 transition-colors"
-                                                title="Delete"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
-                                            <button
-                                                onClick={() => handleLoadProject(episode.id)}
-                                                className="p-1.5 rounded-md text-gray-400 hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 transition-colors"
-                                                title="Open Project"
-                                            >
-                                                <ArrowRight size={14} />
-                                            </button>
+                                            {episode.isCloudOnly ? (
+                                                <button
+                                                    onClick={(e) => handleDownloadProject(episode.id, e)}
+                                                    className="p-1.5 rounded-md text-gray-400 hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 transition-colors"
+                                                    title="Download from Cloud"
+                                                >
+                                                    <Cloud size={14} />
+                                                </button>
+                                            ) : (
+                                                <>
+                                                    <button
+                                                        onClick={(e) => handleDuplicateProject(episode.id, episode.name, e)}
+                                                        className="p-1.5 rounded-md text-gray-400 hover:text-blue-400 hover:bg-blue-400/10 transition-colors"
+                                                        title="Duplicate"
+                                                    >
+                                                        <Copy size={14} />
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => handleDeleteProject(episode.id, episode.name, e)}
+                                                        className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                                                        title="Delete"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleLoadProject(episode.id)}
+                                                        className="p-1.5 rounded-md text-gray-400 hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 transition-colors"
+                                                        title="Open Project"
+                                                    >
+                                                        <ArrowRight size={14} />
+                                                    </button>
+                                                </>
+                                            )}
                                         </div>
+
+                                        {/* Cloud Status Icon */}
+                                        {user && (
+                                            <div className="absolute top-2 right-2 opacity-100 pointer-events-none">
+                                                {episode.isCloudOnly ? (
+                                                    <div title="Cloud Only"><CloudOff size={12} className="text-gray-500" /></div>
+                                                ) : episode.isSynced ? (
+                                                    <div title="Synced"><Cloud size={12} className="text-[var(--color-primary)]" /></div>
+                                                ) : null}
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
@@ -963,8 +1047,6 @@ export const Dashboard: React.FC = () => {
                     )}
                 </div>
             </div>
-
-
         </>
     );
 };
