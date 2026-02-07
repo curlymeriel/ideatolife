@@ -352,26 +352,44 @@ const AudioComparisonModal: React.FC<{
         if (videoRef.current) {
             const handleLoadedMetadata = () => {
                 setVideoDuration(videoRef.current?.duration || 0);
+                // Initial seek to trim start if exists
+                if (previewCut?.videoTrim && videoRef.current) {
+                    videoRef.current.currentTime = previewCut.videoTrim.start;
+                }
             };
 
             const handlePlay = () => setIsVideoPlaying(true);
             const handlePause = () => setIsVideoPlaying(false);
 
-            videoRef.current.addEventListener('loadedmetadata', handleLoadedMetadata);
+            const handleTimeUpdate = () => {
+                if (!videoRef.current || !previewCut?.videoTrim) return;
+                const { start, end } = previewCut.videoTrim;
+                const curr = videoRef.current.currentTime;
 
+                if (curr < start) {
+                    videoRef.current.currentTime = start;
+                } else if (curr >= end) {
+                    videoRef.current.currentTime = start;
+                    // If we want it to stop instead of loop, we could call pause() here.
+                    // But usually preview should loop.
+                }
+            };
+
+            videoRef.current.addEventListener('loadedmetadata', handleLoadedMetadata);
             videoRef.current.addEventListener('play', handlePlay);
             videoRef.current.addEventListener('pause', handlePause);
+            videoRef.current.addEventListener('timeupdate', handleTimeUpdate);
 
             if (videoRef.current.duration) handleLoadedMetadata();
 
             return () => {
                 videoRef.current?.removeEventListener('loadedmetadata', handleLoadedMetadata);
-
                 videoRef.current?.removeEventListener('play', handlePlay);
                 videoRef.current?.removeEventListener('pause', handlePause);
+                videoRef.current?.removeEventListener('timeupdate', handleTimeUpdate);
             };
         }
-    }, [previewVideoUrl]);
+    }, [previewVideoUrl, previewCut?.videoTrim?.start, previewCut?.videoTrim?.end]);
 
     // Resolve TTS audio URL
     useEffect(() => {
