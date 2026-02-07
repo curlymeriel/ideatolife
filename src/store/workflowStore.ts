@@ -118,6 +118,7 @@ const getEmptyProjectState = (id: string, apiKeys: any = {}): ProjectData => ({
     imageModel: 'gemini-3-pro-image-preview',
     assets: {},
     currentStep: 1,
+    bgmTracks: [],
 });
 
 
@@ -1093,6 +1094,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
                     imageModel: state.imageModel,
                     assets: state.assets,
                     currentStep: state.currentStep,
+                    bgmTracks: state.bgmTracks || [],
                 };
 
                 await saveProjectToDisk(projectData);

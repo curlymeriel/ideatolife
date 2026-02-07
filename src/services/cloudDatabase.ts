@@ -23,11 +23,17 @@ import type { ProjectData, ProjectMetadata } from '../store/types';
 // Firestore 컬렉션 경로
 const getUserProjectsPath = (userId: string) => `users/${userId}/projects`;
 
+const getDb = () => {
+    if (!db) throw new Error("Firebase DB not initialized");
+    return db;
+};
+
+
 /**
  * 프로젝트 목록 조회
  */
 export const listProjects = async (userId: string): Promise<ProjectMetadata[]> => {
-    const projectsRef = collection(db, getUserProjectsPath(userId));
+    const projectsRef = collection(getDb(), getUserProjectsPath(userId));
     const q = query(projectsRef, orderBy('lastModified', 'desc'));
     const snapshot = await getDocs(q);
 
@@ -53,7 +59,7 @@ export const saveProject = async (
     userId: string,
     projectData: ProjectData
 ): Promise<void> => {
-    const projectRef = doc(db, getUserProjectsPath(userId), projectData.id);
+    const projectRef = doc(getDb(), getUserProjectsPath(userId), projectData.id);
 
     // Firestore에 저장할 데이터 준비
     // 바이너리 데이터(이미지 URL 등)는 Storage에 저장하므로 여기서는 URL 참조만 저장
@@ -75,7 +81,7 @@ export const updateProjectMetadata = async (
     projectId: string,
     metadata: Partial<ProjectMetadata>
 ): Promise<void> => {
-    const projectRef = doc(db, getUserProjectsPath(userId), projectId);
+    const projectRef = doc(getDb(), getUserProjectsPath(userId), projectId);
 
     await updateDoc(projectRef, {
         ...metadata,
@@ -91,7 +97,7 @@ export const loadProject = async (
     userId: string,
     projectId: string
 ): Promise<ProjectData | null> => {
-    const projectRef = doc(db, getUserProjectsPath(userId), projectId);
+    const projectRef = doc(getDb(), getUserProjectsPath(userId), projectId);
     const snapshot = await getDoc(projectRef);
 
     if (!snapshot.exists()) {
@@ -120,7 +126,7 @@ export const deleteProject = async (
     userId: string,
     projectId: string
 ): Promise<void> => {
-    const projectRef = doc(db, getUserProjectsPath(userId), projectId);
+    const projectRef = doc(getDb(), getUserProjectsPath(userId), projectId);
     await deleteDoc(projectRef);
     console.log(`[CloudDB] Deleted project: ${projectId}`);
 };
@@ -132,7 +138,7 @@ export const projectExists = async (
     userId: string,
     projectId: string
 ): Promise<boolean> => {
-    const projectRef = doc(db, getUserProjectsPath(userId), projectId);
+    const projectRef = doc(getDb(), getUserProjectsPath(userId), projectId);
     const snapshot = await getDoc(projectRef);
     return snapshot.exists();
 };
@@ -144,7 +150,7 @@ export const saveUserSettings = async (
     userId: string,
     settings: Record<string, any>
 ): Promise<void> => {
-    const settingsRef = doc(db, `users/${userId}/settings`, 'main');
+    const settingsRef = doc(getDb(), `users/${userId}/settings`, 'main');
     await setDoc(settingsRef, {
         ...settings,
         updatedAt: serverTimestamp(),
@@ -158,7 +164,7 @@ export const saveUserSettings = async (
 export const loadUserSettings = async (
     userId: string
 ): Promise<Record<string, any> | null> => {
-    const settingsRef = doc(db, `users/${userId}/settings`, 'main');
+    const settingsRef = doc(getDb(), `users/${userId}/settings`, 'main');
     const snapshot = await getDoc(settingsRef);
 
     if (!snapshot.exists()) {
@@ -176,7 +182,7 @@ export const saveIntelligenceData = async (
     dataType: 'trends' | 'competitors' | 'strategies' | 'ideas',
     data: any[]
 ): Promise<void> => {
-    const dataRef = doc(db, `users/${userId}/intelligence`, dataType);
+    const dataRef = doc(getDb(), `users/${userId}/intelligence`, dataType);
     await setDoc(dataRef, {
         items: data,
         updatedAt: serverTimestamp(),
@@ -191,7 +197,7 @@ export const loadIntelligenceData = async (
     userId: string,
     dataType: 'trends' | 'competitors' | 'strategies' | 'ideas'
 ): Promise<any[]> => {
-    const dataRef = doc(db, `users/${userId}/intelligence`, dataType);
+    const dataRef = doc(getDb(), `users/${userId}/intelligence`, dataType);
     const snapshot = await getDoc(dataRef);
 
     if (!snapshot.exists()) {

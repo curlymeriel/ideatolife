@@ -33,7 +33,8 @@ export const Step6_Final = () => {
         targetDuration,
         thumbnailUrl,
         storylineTable,
-        aspectRatio // Destructure aspectRatio
+        aspectRatio, // Destructure aspectRatio
+        bgmTracks // Destructure bgmTracks
     } = useWorkflowStore();
 
     // Custom CC Icon Component - Defined inside is okay, or move outside if no props dependency
@@ -159,6 +160,132 @@ export const Step6_Final = () => {
     const [playbackMode, setPlaybackMode] = useState<'hybrid' | 'still'>('hybrid');
     const [exportHybrid, setExportHybrid] = useState(true);
     const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
+    const resolvingRef = useRef<Set<string>>(new Set());
+
+    // ========================
+    // BGM LOGIC
+    // ========================
+    const bgmRefs = useRef<Record<string, HTMLAudioElement>>({});
+
+    // Calculate start times for all cuts (cumulative) to map BGM ranges
+    const cutStartTimes = React.useMemo(() => {
+        const times: number[] = [0];
+        let runningTotal = 0;
+        script.forEach((cut, i) => {
+            let dur = 0;
+            // MATCH LOGIC WITH getCutDuration below
+            if (cut.videoDuration && cut.videoDuration > 0) {
+                dur = cut.videoDuration;
+            } else {
+                const audioDur = audioDurations[i] || 0;
+                if (audioDur > 0) {
+                    dur = audioDur + (cut.audioPadding ?? 0.5);
+                } else {
+                    // Fallback logic
+                    if (cut.dialogue && cut.dialogue.length > 5) {
+                        dur = Math.max(cut.estimatedDuration || 0, 2.0);
+                    } else {
+                        dur = cut.estimatedDuration || 5;
+                    }
+                }
+            }
+            runningTotal += dur;
+            times.push(runningTotal);
+        });
+        return times;
+    }, [script, audioDurations]);
+
+    // Initialize BGM Audio Elements
+    useEffect(() => {
+        // Cleanup old
+        Object.values(bgmRefs.current).forEach(audio => {
+            audio.pause();
+            audio.src = "";
+        });
+        bgmRefs.current = {};
+
+        if (!bgmTracks || bgmTracks.length === 0) return;
+
+        console.log(`[Step6] Initializing ${bgmTracks.length} BGM tracks`);
+
+        bgmTracks.forEach(track => {
+            if (!track.url) return;
+            const audio = new Audio(track.url);
+            audio.loop = track.loop;
+            audio.volume = track.volume ?? 0.5;
+            audio.preload = 'auto'; // Preload for smooth playback
+            bgmRefs.current[track.id] = audio;
+        });
+
+        return () => {
+            Object.values(bgmRefs.current).forEach(audio => {
+                audio.pause();
+                audio.src = "";
+            });
+        };
+    }, [bgmTracks]);
+
+    // BGM SYNC FUNCTION (Called in loop)
+    const syncBGM = (globalTime: number, isPlaying: boolean, currentCutIdx: number) => {
+        bgmTracks?.forEach(track => {
+            const audio = bgmRefs.current[track.id];
+            if (!audio) return;
+
+            // Resolve cut IDs to time
+            // Find index of startCutId (Robust comparison)
+            const startIndex = script.findIndex(c => String(c.id) === String(track.startCutId));
+            const endIndex = script.findIndex(c => String(c.id) === String(track.endCutId));
+
+            if (startIndex === -1) return; // Invalid track
+
+            const startTime = cutStartTimes[startIndex] || 0;
+            // End time is START of next cut (end of endCut)
+            const endTime = (endIndex !== -1 && endIndex + 1 < cutStartTimes.length)
+                ? cutStartTimes[endIndex + 1]
+                : cutStartTimes[cutStartTimes.length - 1];
+
+            // If invalid range, ignore
+            if (startTime >= endTime) return;
+
+            // Check if active
+            if (globalTime >= startTime && globalTime < endTime) {
+                // SHOULD BE PLAYING
+                const targetTime = globalTime - startTime;
+
+                // VOLUME DUCKING LOGIC
+                // Check local volume setting for the current cut
+                const currentCut = script[currentCutIdx];
+                const duckingMultiplier = currentCut?.audioVolumes?.bgm ?? 1;
+                const baseVolume = track.volume ?? 0.5;
+                audio.volume = Math.max(0, Math.min(1, baseVolume * duckingMultiplier));
+
+                if (isPlaying) {
+                    if (audio.paused) {
+                        audio.currentTime = targetTime;
+                        audio.play().catch(e => console.warn("BGM Play failed", e));
+                    } else {
+                        // Drift Correction
+                        if (Math.abs(audio.currentTime - targetTime) > 0.3) {
+                            audio.currentTime = targetTime;
+                        }
+                    }
+                } else {
+                    // Paused state
+                    if (!audio.paused) audio.pause();
+                    // Keep time synced even when paused for seeking
+                    if (Math.abs(audio.currentTime - targetTime) > 0.5) {
+                        audio.currentTime = targetTime;
+                    }
+                }
+            } else {
+                // STOPPED (Outside range)
+                if (!audio.paused) {
+                    audio.pause();
+                    audio.currentTime = 0; // Reset
+                }
+            }
+        });
+    };
 
     // 1. Optimize Assets (Convert Base64 to Blob URLs & Measure Audio)
     // Priority loading: load first 5 cuts first, then rest in background
@@ -470,6 +597,8 @@ export const Step6_Final = () => {
 
             const totalElapsed = (now - startTimeRef.current) / 1000;
 
+
+
             // Optimization: Throttle state updates to ~10fps to reduce React re-render overhead
             if (now - lastStateUpdateRef.current > 100) {
                 setElapsedTime(totalElapsed);
@@ -494,6 +623,10 @@ export const Step6_Final = () => {
                 }
             }
 
+            // SYNC BGM
+            // Pass foundIndex if valid (transitioning), otherwise currentCutIndex
+            syncBGM(totalElapsed, true, foundIndex !== -1 ? foundIndex : currentCutIndex);
+
             if (foundIndex !== -1) {
                 if (foundIndex !== currentCutIndex) {
                     console.log(`[Step6] Cut Transition: ${currentCutIndex} -> ${foundIndex} at ${totalElapsed.toFixed(3)}s`);
@@ -505,6 +638,7 @@ export const Step6_Final = () => {
                 console.log(`[Step6] Script ended? TotalElapsed:${totalElapsed.toFixed(3)}s, Accumulated:${accumulatedTime.toFixed(3)}s, ScriptLen:${script.length}`);
                 console.log(`[Step6] Playback stopped. IsPlaying set to false.`);
                 setIsPlaying(false, "End of Script (updateLoop)");
+                syncBGM(totalElapsed, false, 0); // Pause BGM
                 setShowThumbnail(true);
                 setCurrentCutIndex(0);
                 setElapsedTime(0);
@@ -524,7 +658,7 @@ export const Step6_Final = () => {
         }
 
         return () => cancelAnimationFrame(animationFrameId);
-    }, [isPlaying, showThumbnail, script, currentCutIndex, audioDurations]);
+    }, [isPlaying, showThumbnail, script, currentCutIndex, audioDurations, bgmTracks, cutStartTimes, blobCache]);
 
 
 
@@ -560,6 +694,8 @@ export const Step6_Final = () => {
         audioARef.current?.pause();
         audioBRef.current?.pause();
         sfxRef.current?.pause();
+        // Pause BGM
+        Object.values(bgmRefs.current).forEach(a => a.pause());
         // Pause all videos
         videoRefs.current.forEach(v => {
             if (v) v.pause();
@@ -584,8 +720,10 @@ export const Step6_Final = () => {
             const nextPlayer = getPlayerForIndex(currentCutIndex + 1);
 
             // 1. PLAY CURRENT (TTS Audio)
-            // Skip TTS if this cut uses video audio instead
-            const shouldPlayTts = !currentCut?.useVideoAudio || !currentCut?.videoUrl;
+            // Skip TTS if:
+            // - Hybrid Mode AND Video Audio is enabled
+            // - Still Mode: ALWAYS play TTS (since video audio is impossible)
+            const shouldPlayTts = playbackMode === 'still' || !currentCut?.useVideoAudio || !currentCut?.videoUrl;
 
             if (currentPlayer && shouldPlayTts) {
                 // Use Ref for lookup to avoid dependency on blobCache state updates
@@ -594,8 +732,27 @@ export const Step6_Final = () => {
                 let url: string | undefined = undefined;
 
                 if (rawUrl) {
-                    url = blobCacheRef.current[rawUrl] || rawUrl;
-                    if (url.startsWith('idb://')) url = undefined;
+                    url = blobCacheRef.current[rawUrl] || blobCache[rawUrl] || rawUrl;
+
+                    // JIT RESOLUTION
+                    if (url.startsWith('idb://')) {
+                        if (!resolvingRef.current.has(rawUrl)) {
+                            console.log(`[Step6] JIT Resolution triggering for ${rawUrl}`);
+                            resolvingRef.current.add(rawUrl);
+                            isBufferingRef.current = true; // Pause Timer
+
+                            resolveUrl(rawUrl, { asBlob: true }).then(resolved => {
+                                if (resolved) {
+                                    console.log(`[Step6] JIT Resolved: ${resolved.substring(0, 30)}...`);
+                                    blobCacheRef.current[rawUrl] = resolved;
+                                    setBlobCache(prev => ({ ...prev, [rawUrl]: resolved }));
+                                }
+                                resolvingRef.current.delete(rawUrl);
+                                isBufferingRef.current = false; // Resume Timer
+                            });
+                        }
+                        url = undefined; // Don't play yet
+                    }
                 }
 
                 if (url) {
@@ -618,7 +775,7 @@ export const Step6_Final = () => {
                         }
 
                         // Play
-                        const playAudio = async () => {
+                        const playAudio = async (retryCount = 0) => {
                             try {
                                 // If we have a pending play, wait for it
                                 if (playPromiseRef.current) {
@@ -627,22 +784,44 @@ export const Step6_Final = () => {
                                     } catch (e) { /* Ignore previous aborts */ }
                                 }
 
-                                // Ensure the OTHER player is paused
-                                if (nextPlayer) nextPlayer.pause();
+                                // Ensure the OTHER player is paused AND reset
+                                if (nextPlayer) {
+                                    nextPlayer.pause();
+                                    nextPlayer.currentTime = 0;
+                                }
 
-                                // Reset time to start (Crucial for preloaded assets)
-                                currentPlayer.currentTime = 0;
+                                // FORCE RESET: Load explicitly if starting fresh
+                                if (currentPlayer.currentTime > 0 || currentPlayer.ended) {
+                                    currentPlayer.currentTime = 0;
+                                }
+
                                 // FORCE RESET VOLUME/MUTE to ensure audible playback
                                 currentPlayer.volume = 1;
                                 currentPlayer.muted = false;
 
-                                console.log(`[Audio ${currentCutIndex}] Playing on ${currentCutIndex % 2 === 0 ? 'A' : 'B'} (Vol:${currentPlayer.volume}, State:${currentPlayer.readyState}, Dur:${currentPlayer.duration})`);
+                                console.log(`[Audio ${currentCutIndex}] Playing on ${currentCutIndex % 2 === 0 ? 'A' : 'B'} (Vol:${currentPlayer.volume}, Ready:${currentPlayer.readyState}, Dur:${currentPlayer.duration})`);
+
+                                // Explicitly load if not ready (HAVE_NOTHING or HAVE_METADATA)
+                                if (currentPlayer.readyState < 2) {
+                                    console.log(`[Audio ${currentCutIndex}] Player not ready, forcing load()`);
+                                    currentPlayer.load();
+                                }
+
                                 playPromiseRef.current = currentPlayer.play();
                                 await playPromiseRef.current;
                             } catch (e: any) {
                                 isBufferingRef.current = false; // Release buffering lock on error
+
+                                console.warn(`[Audio ${currentCutIndex}] Play failed (Attempt ${retryCount + 1}):`, e);
+
+                                // RETRY LOGIC for NotSupportedError or similar transient issues
+                                if (retryCount < 1 && (e.name === 'NotSupportedError' || e.name === 'AbortError')) {
+                                    console.log(`[Audio ${currentCutIndex}] Retrying playback...`);
+                                    setTimeout(() => playAudio(retryCount + 1), 50);
+                                    return;
+                                }
+
                                 if (e.name !== 'AbortError') {
-                                    console.error(`[Audio ${currentCutIndex}] Play failed:`, e);
                                     // Additional detail for debugging
                                     if (currentPlayer.error) {
                                         console.error(`[Audio ${currentCutIndex}] Media Error Code:`, currentPlayer.error.code, currentPlayer.error.message);

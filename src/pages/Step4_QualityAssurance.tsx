@@ -1,19 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useWorkflowStore } from '../store/workflowStore';
 import { generateImage } from '../services/imageGen';
 import { generateSpeech } from '../services/tts';
 import { generateGeminiSpeech } from '../services/geminiTts';
 import { useNavigate } from 'react-router-dom';
-import { Play, Loader2, Image as ImageIcon, Music, ArrowRight, ArrowLeft, BarChart3, CheckCircle, Pause } from 'lucide-react';
+import { Play, Loader2, Image as ImageIcon, Music, ArrowRight, ArrowLeft, BarChart3, CheckCircle, Pause, LayoutList, Clock } from 'lucide-react';
 import { resolveUrl, isIdbUrl, generateAudioKey, saveToIdb } from '../utils/imageStorage';
+import { TimelineView } from '../components/Production/TimelineView';
+import { GlobalBGMEditor } from '../components/Production/GlobalBGMEditor';
 
 export const Step4_QualityAssurance: React.FC = () => {
-    const { id: projectId, script, apiKeys, ttsModel, imageModel, nextStep, prevStep, assetDefinitions, aspectRatio, masterStyle, setScript } = useWorkflowStore();
+    const { id: projectId, script, apiKeys, ttsModel, imageModel, nextStep, prevStep, assetDefinitions, aspectRatio, masterStyle, setScript, bgmTracks, setBGMTracks } = useWorkflowStore();
     const navigate = useNavigate();
 
     const [batchLoading, setBatchLoading] = useState(false);
     const [currentCutIndex, setCurrentCutIndex] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
+    const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list');
 
     // Resolved image URLs for idb:// references
     const [resolvedImages, setResolvedImages] = useState<Record<number, string>>({});
@@ -21,6 +24,9 @@ export const Step4_QualityAssurance: React.FC = () => {
     const [resolvedAudios, setResolvedAudios] = useState<Record<number, string>>({});
     // Resolved SFX URLs for idb:// or external references
     const [resolvedSfx, setResolvedSfx] = useState<Record<number, string>>({});
+
+    // BGM audio refs for preview playback
+    const bgmRefs = useRef<Record<string, HTMLAudioElement>>({});
 
     // CRITICAL: Reset state when project changes to prevent showing old project data
     useEffect(() => {
@@ -158,8 +164,41 @@ export const Step4_QualityAssurance: React.FC = () => {
             sfxAudio.pause();
             sfxAudio.currentTime = 0;
         }
+        // Also stop BGM
+        Object.values(bgmRefs.current).forEach(audio => {
+            audio.pause();
+            audio.currentTime = 0;
+        });
         setIsPlaying(false);
     }, [currentCutIndex]);
+
+    // Initialize BGM audio elements
+    useEffect(() => {
+        // Cleanup old
+        Object.values(bgmRefs.current).forEach(audio => {
+            audio.pause();
+            audio.src = '';
+        });
+        bgmRefs.current = {};
+
+        if (!bgmTracks || bgmTracks.length === 0) return;
+
+        bgmTracks.forEach(track => {
+            if (!track.url) return;
+            const audio = new Audio(track.url);
+            audio.loop = track.loop;
+            audio.volume = track.volume ?? 0.5;
+            audio.preload = 'auto';
+            bgmRefs.current[track.id] = audio;
+        });
+
+        return () => {
+            Object.values(bgmRefs.current).forEach(audio => {
+                audio.pause();
+                audio.src = '';
+            });
+        };
+    }, [bgmTracks]);
 
     const handlePlaySequential = () => {
         if (!currentCut?.audioUrl) {
@@ -193,6 +232,10 @@ export const Step4_QualityAssurance: React.FC = () => {
             if (isPlaying) {
                 audio.pause();
                 if (sfxAudio) sfxAudio.pause();
+                // Stop BGM
+                Object.values(bgmRefs.current).forEach(bgm => {
+                    bgm.pause();
+                });
                 setIsPlaying(false);
             } else {
                 // Ensure audio src is set (for cases where React rendering hasn't caught up)
@@ -226,10 +269,33 @@ export const Step4_QualityAssurance: React.FC = () => {
                 }
 
                 setIsPlaying(true);
+
+                // Play matching BGM track(s)
+                (bgmTracks || []).forEach(track => {
+                    const startIdx = script.findIndex(c => String(c.id) === String(track.startCutId));
+                    const endIdx = script.findIndex(c => String(c.id) === String(track.endCutId));
+
+                    if (startIdx === -1) return;
+
+                    const validEnd = endIdx !== -1 ? endIdx : script.length - 1;
+
+                    // Check if current cut is within this track's range
+                    if (currentCutIndex >= startIdx && currentCutIndex <= validEnd) {
+                        const bgmAudio = bgmRefs.current[track.id];
+                        if (bgmAudio) {
+                            bgmAudio.currentTime = 0;
+                            bgmAudio.play().catch(e => console.warn('BGM play failed:', e));
+                        }
+                    }
+                });
                 audio.onended = () => {
                     setIsPlaying(false);
                     // Stop SFX when TTS ends
                     if (sfxAudio) sfxAudio.pause();
+                    // Stop BGM when TTS ends
+                    Object.values(bgmRefs.current).forEach(bgm => {
+                        bgm.pause();
+                    });
                     // Auto-advance to next cut
                     if (currentCutIndex < script.length - 1) {
                         setTimeout(() => {
@@ -358,7 +424,7 @@ export const Step4_QualityAssurance: React.FC = () => {
                 <div className="glass-panel p-4">
                     <div className="flex items-center gap-2 mb-3">
                         <BarChart3 className="text-[var(--color-primary)]" size={18} />
-                        <h2 className="text-lg font-bold text-white">Quality Assurance</h2>
+                        <h2 className="text-lg font-bold text-white">Post-Production</h2>
                     </div>
 
                     {/* Progress Bar */}
@@ -487,14 +553,31 @@ export const Step4_QualityAssurance: React.FC = () => {
             <div className="flex-1 flex flex-col gap-4 overflow-hidden">
                 {script.length > 0 && currentCut ? (
                     <>
+                        {/* View Mode Toggle */}
+                        <div className="flex items-center justify-between">
+                            <span className="text-sm font-bold text-white">
+                                Cut {currentCutIndex + 1} / {script.length}
+                            </span>
+                            <div className="flex items-center gap-1 bg-white/5 rounded-lg p-1">
+                                <button
+                                    onClick={() => setViewMode('list')}
+                                    className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-bold transition-all ${viewMode === 'list' ? 'bg-[var(--color-primary)] text-black' : 'text-gray-400 hover:text-white'}`}
+                                >
+                                    <LayoutList size={14} />
+                                    List
+                                </button>
+                                <button
+                                    onClick={() => setViewMode('timeline')}
+                                    className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-bold transition-all ${viewMode === 'timeline' ? 'bg-[var(--color-primary)] text-black' : 'text-gray-400 hover:text-white'}`}
+                                >
+                                    <Clock size={14} />
+                                    Timeline
+                                </button>
+                            </div>
+                        </div>
+
                         {/* Main Image Display */}
                         <div className="flex-1 glass-panel p-4 flex flex-col overflow-hidden">
-                            <div className="mb-3">
-                                <span className="text-sm font-bold text-white">
-                                    Cut {currentCutIndex + 1} / {script.length}
-                                </span>
-                            </div>
-
                             {/* Image Container - Flex grow to fill space */}
                             <div className="flex-1 relative min-h-0">
                                 {currentResolvedImage ? (
@@ -571,6 +654,26 @@ export const Step4_QualityAssurance: React.FC = () => {
                                 </div>
                             </div>
                         </div>
+
+                        {/* Timeline View (when selected) */}
+                        {viewMode === 'timeline' && (
+                            <TimelineView
+                                script={script}
+                                bgmTracks={bgmTracks || []}
+                                currentCutIndex={currentCutIndex}
+                                onCutClick={setCurrentCutIndex}
+                                onBGMUpdate={setBGMTracks}
+                            />
+                        )}
+
+                        {/* BGM Editor (always visible in timeline mode) */}
+                        {viewMode === 'timeline' && (
+                            <GlobalBGMEditor
+                                tracks={bgmTracks || []}
+                                onChange={setBGMTracks}
+                                totalCuts={script.length}
+                            />
+                        )}
                     </>
                 ) : (
                     <div className="flex-1 glass-panel p-12 flex items-center justify-center">

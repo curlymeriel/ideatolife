@@ -83,85 +83,6 @@ export async function recordCanvasVideo(
         if (e.data.size > 0) chunks.push(e.data);
     };
 
-    // Preload all images and videos
-    onProgress?.(5, 'Loading assets...');
-    const images: HTMLImageElement[] = [];
-    const videos: (HTMLVideoElement | null)[] = [];
-
-    for (let i = 0; i < cuts.length; i++) {
-        // Image
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        await new Promise<void>((resolve) => {
-            img.onload = () => resolve();
-            img.onerror = () => {
-                console.warn(`Failed to load image ${i}`);
-                resolve();
-            };
-            img.src = cuts[i].imageUrl;
-        });
-        images.push(img);
-
-        // Video
-        if (cuts[i].videoUrl) {
-            const v = document.createElement('video');
-            v.crossOrigin = 'anonymous';
-            v.src = cuts[i].videoUrl!;
-            v.muted = true; // Required for autoplay usually
-            v.preload = 'auto';
-
-            // Wait for metadata to ensure dimensions are known
-            await new Promise<void>((resolve) => {
-                v.onloadedmetadata = () => resolve();
-                v.onerror = () => {
-                    console.warn(`Failed to load video ${i}`);
-                    resolve();
-                }
-                // Timeout fallback
-                setTimeout(resolve, 3000);
-            });
-            videos.push(v);
-        } else {
-            videos.push(null);
-        }
-    }
-
-    // Preload all audio (TTS + SFX)
-    onProgress?.(10, 'Loading audio...');
-    const audioBuffers: (AudioBuffer | null)[] = [];
-    const sfxBuffers: (AudioBuffer | null)[] = [];
-    for (let i = 0; i < cuts.length; i++) {
-        // Load TTS audio
-        if (cuts[i].audioUrl) {
-            try {
-                const response = await fetch(cuts[i].audioUrl!);
-                const arrayBuffer = await response.arrayBuffer();
-                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-                audioBuffers.push(audioBuffer);
-            } catch (e) {
-                console.warn(`Failed to load audio ${i}:`, e);
-                audioBuffers.push(null);
-            }
-        } else {
-            audioBuffers.push(null);
-        }
-
-        // Load SFX audio
-        if (cuts[i].sfxUrl) {
-            try {
-                const response = await fetch(cuts[i].sfxUrl!);
-                const arrayBuffer = await response.arrayBuffer();
-                const sfxBuffer = await audioContext.decodeAudioData(arrayBuffer);
-                sfxBuffers.push(sfxBuffer);
-            } catch (e) {
-                console.warn(`Failed to load SFX ${i}:`, e);
-                sfxBuffers.push(null);
-            }
-        } else {
-            sfxBuffers.push(null);
-        }
-    }
-
     // Start recording
     recorder.start(100); // Collect data every 100ms
 
@@ -173,124 +94,159 @@ export async function recordCanvasVideo(
     const totalDuration = cuts.reduce((sum, cut) => sum + (cut.duration || 5), 0); // Safety default
     let elapsedTime = 0;
 
-    // Process each cut
-    for (let cutIndex = 0; cutIndex < cuts.length; cutIndex++) {
-        const cut = cuts[cutIndex];
-        const img = images[cutIndex];
-        const video = videos[cutIndex];
-        const audioBuffer = audioBuffers[cutIndex];
+    // HELPER: JIT Asset Loader (Loads only ONE cut's assets)
+    const loadCutAssets = async (cut: RecordingCut, index: number) => {
+        // 1. Image
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        await new Promise<void>((resolve) => {
+            img.onload = () => resolve();
+            img.onerror = () => {
+                console.warn(`Failed to load image ${index}`);
+                resolve();
+            };
+            img.src = cut.imageUrl;
+        });
 
-        // Safety: Ensure duration is positive
-        const safeDuration = Math.max(cut.duration, 0.5);
-
-        const progressPercent = 5 + ((cutIndex) / cuts.length) * 90;
-        onProgress?.(progressPercent, `Recording cut ${cutIndex + 1}/${cuts.length}...`);
-
-        // Start audio playback for this cut (TTS + SFX or Video Audio + SFX)
-        const now = audioContext.currentTime;
-
-        // Check if we should use video audio instead of TTS
-        const shouldUseVideoAudio = cut.useVideoAudio && video;
-
-        if (shouldUseVideoAudio) {
-            // Use video's embedded audio - unmute and connect to destination
-            video.muted = false;
-            video.volume = 1;
-
-            // Create MediaElementSource to route video audio to recording
-            try {
-                const videoSource = audioContext.createMediaElementSource(video);
-                videoSource.connect(destination);
-                console.log(`[Recorder] Cut ${cutIndex}: Using VIDEO AUDIO`);
-            } catch (e) {
-                // MediaElementSource can only be created once per element
-                console.warn(`[Recorder] Cut ${cutIndex}: Video audio source already connected or failed:`, e);
-            }
-        } else {
-            // Use TTS audio buffer (default behavior)
-            if (audioBuffer) {
-                const source = audioContext.createBufferSource();
-                source.buffer = audioBuffer;
-                source.connect(destination);
-                source.start(now);
-                source.stop(now + safeDuration);
-            }
+        // 2. Video (if exists)
+        let video: HTMLVideoElement | null = null;
+        if (cut.videoUrl) {
+            video = document.createElement('video');
+            video.crossOrigin = 'anonymous';
+            video.src = cut.videoUrl;
+            video.muted = true; // Start muted
+            video.preload = 'auto';
+            await new Promise<void>((resolve) => {
+                video!.onloadedmetadata = () => resolve();
+                video!.onerror = () => { video = null; resolve(); }; // Soft fail
+                setTimeout(resolve, 2000); // Timeout
+            });
         }
 
-        // Start SFX playback (at configured volume) - always plays regardless of audio source
-        const sfxBuffer = sfxBuffers[cutIndex];
+        // 3. Audio (TTS)
+        let audioBuffer: AudioBuffer | null = null;
+        if (cut.audioUrl) {
+            try {
+                const response = await fetch(cut.audioUrl);
+                const arrayBuffer = await response.arrayBuffer();
+                audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            } catch (e) { console.warn(`Failed to load audio ${index}`, e); }
+        }
+
+        // 4. SFX
+        let sfxBuffer: AudioBuffer | null = null;
+        if (cut.sfxUrl) {
+            try {
+                const response = await fetch(cut.sfxUrl);
+                const arrayBuffer = await response.arrayBuffer();
+                sfxBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            } catch (e) { console.warn(`Failed to load SFX ${index}`, e); }
+        }
+
+        return { img, video, audioBuffer, sfxBuffer };
+    };
+
+    // Process each cut SEQUENTIALLY (JIT Loading)
+    for (let cutIndex = 0; cutIndex < cuts.length; cutIndex++) {
+        onProgress?.(
+            5 + ((cutIndex) / cuts.length) * 90,
+            `Recording cut ${cutIndex + 1}/${cuts.length} (Loading assets...)`
+        );
+
+        const cut = cuts[cutIndex];
+        const safeDuration = Math.max(cut.duration, 0.5);
+
+        // A. Load Assets Just-In-Time
+        const assets = await loadCutAssets(cut, cutIndex);
+        let { img, video, audioBuffer, sfxBuffer } = assets;
+
+        onProgress?.(
+            5 + ((cutIndex) / cuts.length) * 90,
+            `Recording cut ${cutIndex + 1}/${cuts.length} (Rendering...)`
+        );
+
+        // B. Play Audio/Video
+        const now = audioContext.currentTime;
+
+        // B-1. Video Audio vs TTS
+        let videoSourceNode: MediaElementAudioSourceNode | null = null;
+        const shouldUseVideoAudio = cut.useVideoAudio && video;
+
+        if (shouldUseVideoAudio && video) {
+            video.muted = false;
+            video.volume = 1;
+            try {
+                // Connect video audio to destination
+                videoSourceNode = audioContext.createMediaElementSource(video);
+                videoSourceNode.connect(destination);
+            } catch (e) { console.warn('Video audio connect failed:', e); }
+        } else if (audioBuffer) {
+            // Play TTS
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(destination);
+            source.start(now);
+            source.stop(now + safeDuration);
+        }
+
+        // B-2. SFX
         if (sfxBuffer) {
             const sfxSource = audioContext.createBufferSource();
             sfxSource.buffer = sfxBuffer;
-
-            // Create gain node for volume control
-            const gainNode = audioContext.createGain();
-            gainNode.gain.value = cut.sfxVolume ?? 0.3;
-
-            sfxSource.connect(gainNode);
-            gainNode.connect(destination);
+            const gain = audioContext.createGain();
+            gain.gain.value = cut.sfxVolume ?? 0.3;
+            sfxSource.connect(gain);
+            gain.connect(destination);
             sfxSource.start(now);
             sfxSource.stop(now + safeDuration);
         }
 
-        // Prepare Video Playback
+        // B-3. Start Video Playback
         if (video) {
             video.currentTime = 0;
-            // If NOT using video audio, ensure it's muted
-            if (!shouldUseVideoAudio) {
-                video.muted = true;
-            }
-            try {
-                await video.play();
-            } catch (e) {
-                console.warn("Video play failed for recording:", e);
-            }
+            if (!shouldUseVideoAudio) video.muted = true;
+            try { await video.play(); } catch (e) { console.warn('Record video play failed', e); }
         }
 
-        // Render frames for this cut's duration
+        // C. Render Loop
         const cutStartTime = performance.now();
         const cutDurationMs = safeDuration * 1000;
 
-        // Use a frame-limiter based on time to ensure we don't skip logic completely
-        // But mainly rely on time for sync
         while (performance.now() - cutStartTime < cutDurationMs) {
-            // Clear canvas
+            // Clear
             ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, width, height);
 
-            // Draw content (Video OR Image)
+            // Draw Source
             let drawSource: CanvasImageSource = img;
-            let srcWidth = img.naturalWidth;
-            let srcHeight = img.naturalHeight;
+            let srcW = img.naturalWidth;
+            let srcH = img.naturalHeight;
 
             if (video && !video.paused && video.videoWidth > 0) {
                 drawSource = video;
-                srcWidth = video.videoWidth;
-                srcHeight = video.videoHeight;
+                srcW = video.videoWidth;
+                srcH = video.videoHeight;
             }
 
-            // Draw (Contain mode)
-            if (srcWidth > 0) {
-                const scale = Math.min(width / srcWidth, height / srcHeight);
-                const drawWidth = srcWidth * scale;
-                const drawHeight = srcHeight * scale;
-                const x = (width - drawWidth) / 2;
-                const y = (height - drawHeight) / 2;
-                ctx.drawImage(drawSource, x, y, drawWidth, drawHeight);
+            if (srcW > 0) {
+                const scale = Math.min(width / srcW, height / srcH);
+                const dw = srcW * scale;
+                const dh = srcH * scale;
+                const dx = (width - dw) / 2;
+                const dy = (height - dh) / 2;
+                ctx.drawImage(drawSource, dx, dy, dw, dh);
             }
 
-            // Draw Subtitles (Updated Style: Bottom Overlay)
+            // Draw Subtitles (Bottom Overlay)
             if (showSubtitles && cut.dialogue) {
+                // ... (Subtitle logic preserved) ...
                 const isVertical = aspectRatio === '9:16';
                 const fontSize = isVertical ? 25 : 36;
                 const lineHeight = isVertical ? 34 : 48;
-                // Use a modern font stack
                 ctx.font = `bold ${fontSize}px sans-serif`;
 
-                // Robust Line Splitting with \n support
                 const paragraphs = cut.dialogue.split('\n');
                 const lines: string[] = [];
-
                 const maxWidth = width * 0.8;
 
                 paragraphs.forEach(para => {
@@ -298,10 +254,7 @@ export async function recordCanvasVideo(
                     let currentLine = '';
                     words.forEach(word => {
                         const testLine = currentLine + (currentLine ? ' ' : '') + word;
-                        const metric = ctx.measureText(testLine);
-                        const lineWidth = metric.width;
-
-                        if (lineWidth > maxWidth) {
+                        if (ctx.measureText(testLine).width > maxWidth) {
                             if (currentLine) lines.push(currentLine);
                             currentLine = word;
                         } else {
@@ -311,28 +264,19 @@ export async function recordCanvasVideo(
                     if (currentLine) lines.push(currentLine);
                 });
 
-                // Render Background Box (Semi-transparent Black)
                 if (lines.length > 0) {
                     const paddingX = 40;
                     const paddingY = 20;
                     const totalTextHeight = lines.length * lineHeight;
-
-                    // Find max line width for the box
                     let maxLineWidth = 0;
-                    lines.forEach(line => {
-                        const w = ctx.measureText(line).width;
-                        if (w > maxLineWidth) maxLineWidth = w;
-                    });
+                    lines.forEach(l => maxLineWidth = Math.max(maxLineWidth, ctx.measureText(l).width));
 
                     const boxWidth = maxLineWidth + (paddingX * 2);
                     const boxHeight = totalTextHeight + (paddingY * 2);
-
-                    // Position: Bottom 10% (approx bottom-16 equivalent ~64px-100px)
                     const bottomMargin = 80;
                     const startY = height - bottomMargin - boxHeight;
                     const centerX = width / 2;
 
-                    // Draw rounded rect (fallback to rect if roundRect missing)
                     ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
                     if (ctx.roundRect) {
                         ctx.beginPath();
@@ -342,66 +286,65 @@ export async function recordCanvasVideo(
                         ctx.fillRect(centerX - boxWidth / 2, startY, boxWidth, boxHeight);
                     }
 
-                    // Draw Text
                     ctx.fillStyle = '#ffffff';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'top';
-
-                    // Subtle Shadow
                     ctx.shadowColor = 'rgba(0,0,0,0.5)';
                     ctx.shadowBlur = 4;
                     ctx.shadowOffsetX = 1;
                     ctx.shadowOffsetY = 1;
 
                     lines.forEach((line, i) => {
-                        ctx.fillText(line, centerX, startY + paddingY + (i * lineHeight) - 5); // -5 visual tweak
+                        ctx.fillText(line, centerX, startY + paddingY + (i * lineHeight) - 5);
                     });
-
-                    // Reset shadow
                     ctx.shadowColor = 'transparent';
                 }
             }
 
-            // Wait for next frame target
-            await new Promise(resolve => setTimeout(resolve, 1000 / fps));
+            await new Promise(r => setTimeout(r, 1000 / fps));
         }
 
-        // Pause video cleanup
+        // D. Cleanup (Memory Release)
         if (video) {
             video.pause();
+            video.src = '';
+            video.load();
+            if (videoSourceNode) videoSourceNode.disconnect();
+            video.remove();
+            video = null;
         }
+        img.src = ''; // Detach
+        // img = null; // GC will handle
 
+        // Audio buffers are shared with Context? No, decodeAudioData creates new ones.
+        // We just let them go out of scope.
         elapsedTime += safeDuration;
     }
 
     // Stop recording
     onProgress?.(100, 'Finalizing video...');
 
+    // Cleanup Streams
+    canvasStream.getTracks().forEach(track => track.stop());
+    destination.stream.getTracks().forEach(track => track.stop());
+
     return new Promise((resolve, reject) => {
         recorder.onstop = () => {
             const blob = new Blob(chunks, { type: 'video/webm' });
             audioContext.close();
-
-            console.log(`[Recorder] Finished. Blob size: ${blob.size}, Format: webm`);
+            console.log(`[Recorder] Finished. Blob size: ${blob.size}`);
             if (blob.size === 0) {
-                console.error("Generated video blob is empty!");
-                reject(new Error("Video generation failed: Empty output"));
+                reject(new Error("Empty Output"));
                 return;
             }
-
-            resolve({
-                blob,
-                format: 'webm',
-                duration: totalDuration
-            });
+            resolve({ blob, format: 'webm', duration: totalDuration });
         };
-
+        // ... err handlers same ...
         recorder.onerror = (e) => {
-            console.error("MediaRecorder stopped with error:", e);
+            console.error("Recorder Error", e);
             audioContext.close();
             reject(e);
         };
-
         recorder.stop();
     });
 }

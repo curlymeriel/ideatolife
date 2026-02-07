@@ -18,8 +18,8 @@ const STEPS = [
     { id: 1, name: 'Setup', path: '/step/1', icon: Film },
     { id: 2, name: 'Key Visuals', path: '/step/2', icon: Palette },
     { id: 3, name: 'Production', path: '/step/3', icon: FileText },
-    { id: 4, name: 'Review', path: '/step/4', icon: CheckCircle2 },
-    { id: 4.5, name: 'Video', path: '/step/4.5', icon: Film },
+    { id: 4, name: 'Post-Production', path: '/step/4', icon: CheckCircle2 },
+    { id: 4.5, name: 'Motion Design', path: '/step/4.5', icon: Film },
     { id: 5, name: 'Thumbnail', path: '/step/5', icon: Image },
     { id: 6, name: 'Final', path: '/step/6', icon: Play },
 ];

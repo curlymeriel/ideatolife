@@ -192,7 +192,7 @@ export const compressVideoBlob = async (
                 destination.stream.getAudioTracks().forEach(track => {
                     stream.addTrack(track);
                 });
-            } catch (e) {
+            } catch {
                 console.log('[Compressor] No audio track or audio processing failed');
             }
 
@@ -226,7 +226,7 @@ export const compressVideoBlob = async (
                 resolve(compressedBlob);
             };
 
-            recorder.onerror = (e) => {
+            recorder.onerror = () => {
                 URL.revokeObjectURL(url);
                 reject(new Error('MediaRecorder error'));
             };

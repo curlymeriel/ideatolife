@@ -1,7 +1,7 @@
 import React from 'react';
 import { useWorkflowStore, type ProjectData, type ProjectMetadata } from '../store/workflowStore';
 import { useNavigate } from 'react-router-dom';
-import { Image, FileText, Music, ArrowRight, BarChart3, Plus, Download, Trash2, Database, Loader2, Copy, Check, HardDrive, AlertTriangle, RotateCcw, Settings, ChevronDown, FolderSync, ShieldAlert, Cloud, CloudOff, RefreshCw } from 'lucide-react';
+import { Image, FileText, Music, ArrowRight, BarChart3, Plus, Download, Trash2, Database, Loader2, Copy, Check, HardDrive, AlertTriangle, RotateCcw, Settings, ChevronDown, FolderSync, ShieldAlert, Cloud, CloudOff } from 'lucide-react';
 import { set as idbSet } from 'idb-keyval';
 
 import { UnifiedStorageManager } from '../components/UnifiedStorageManager';
@@ -49,7 +49,7 @@ export const Dashboard: React.FC = () => {
     }, []);
 
     // Cloud Integration
-    const { user, signInWithGoogle, isConfigured } = useAuth();
+    const { user } = useAuth();
     const [cloudProjects, setCloudProjects] = React.useState<Map<string, ProjectMetadata>>(new Map());
     React.useEffect(() => {
         if (!user) {
@@ -280,7 +280,8 @@ export const Dashboard: React.FC = () => {
                 ttsModel: state.ttsModel,
                 imageModel: state.imageModel,
                 assets: state.assets,
-                currentStep: state.currentStep
+                currentStep: state.currentStep,
+                bgmTracks: state.bgmTracks || []
             });
 
             // Single project optimization

@@ -17,6 +17,11 @@ import { storage } from '../lib/firebase';
 
 export type MediaType = 'images' | 'audio' | 'videos';
 
+const getStorage = () => {
+    if (!storage) throw new Error("Firebase Storage not initialized");
+    return storage;
+};
+
 interface UploadOptions {
     contentType?: string;
     customMetadata?: Record<string, string>;
@@ -52,7 +57,7 @@ export const uploadFile = async (
     options: UploadOptions = {}
 ): Promise<UploadResult> => {
     const path = getStoragePath(userId, projectId, mediaType, fileName);
-    const storageRef = ref(storage, path);
+    const storageRef = ref(getStorage(), path);
 
     const metadata = {
         contentType: options.contentType || data.type,
@@ -83,7 +88,7 @@ export const uploadBase64 = async (
     options: UploadOptions = {}
 ): Promise<UploadResult> => {
     const path = getStoragePath(userId, projectId, mediaType, fileName);
-    const storageRef = ref(storage, path);
+    const storageRef = ref(getStorage(), path);
 
     // Base64 데이터에서 실제 데이터 부분만 추출
     const base64Content = base64Data.includes(',')
@@ -119,7 +124,7 @@ export const uploadDataUrl = async (
     options: UploadOptions = {}
 ): Promise<UploadResult> => {
     const path = getStoragePath(userId, projectId, mediaType, fileName);
-    const storageRef = ref(storage, path);
+    const storageRef = ref(getStorage(), path);
 
     // Data URL에서 contentType 추출
     const match = dataUrl.match(/^data:([^;]+);base64,/);
@@ -146,7 +151,7 @@ export const uploadDataUrl = async (
  * 파일 다운로드 URL 획득
  */
 export const getFileUrl = async (path: string): Promise<string> => {
-    const storageRef = ref(storage, path);
+    const storageRef = ref(getStorage(), path);
     return await getDownloadURL(storageRef);
 };
 
@@ -154,7 +159,7 @@ export const getFileUrl = async (path: string): Promise<string> => {
  * 파일 삭제
  */
 export const deleteFile = async (path: string): Promise<void> => {
-    const storageRef = ref(storage, path);
+    const storageRef = ref(getStorage(), path);
     await deleteObject(storageRef);
     console.log(`[CloudStorage] Deleted: ${path}`);
 };
@@ -170,7 +175,7 @@ export const deleteProjectMedia = async (
     const mediaTypes: MediaType[] = ['images', 'audio', 'videos'];
 
     for (const mediaType of mediaTypes) {
-        const folderRef = ref(storage, `${basePath}/${mediaType}`);
+        const folderRef = ref(getStorage(), `${basePath}/${mediaType}`);
         try {
             const result = await listAll(folderRef);
             await Promise.all(result.items.map(item => deleteObject(item)));
@@ -194,7 +199,7 @@ export const getProjectStorageSize = async (
     let totalSize = 0;
 
     for (const mediaType of mediaTypes) {
-        const folderRef = ref(storage, `${basePath}/${mediaType}`);
+        const folderRef = ref(getStorage(), `${basePath}/${mediaType}`);
         try {
             const result = await listAll(folderRef);
             for (const item of result.items) {
@@ -214,7 +219,7 @@ export const getProjectStorageSize = async (
  */
 export const getUserStorageSize = async (userId: string): Promise<number> => {
     const basePath = `users/${userId}/projects`;
-    const projectsRef = ref(storage, basePath);
+    const projectsRef = ref(getStorage(), basePath);
     let totalSize = 0;
 
     try {

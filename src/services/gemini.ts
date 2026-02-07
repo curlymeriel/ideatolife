@@ -45,6 +45,19 @@ export interface ScriptCut {
     sfxVolume?: number;             // Volume multiplier (0.0 to 1.0, default 0.3)
     sfxFreesoundId?: number;        // Freesound.org ID for attribution
     sfxDescription?: string;         // AI-suggested SFX description for this cut
+
+    // [NEW] Advanced Video Editing
+    videoTrim?: {
+        start: number; // Start time in seconds (relative to original video)
+        end: number;   // End time in seconds
+    };
+
+    // [NEW] Advanced Audio Mixing (0.0 - 1.0)
+    audioVolumes?: {
+        video: number; // Original video sound
+        tts: number;   // Generated speech
+        bgm: number;   // Cut-specific BGM (Legacy)
+    };
 }
 
 export interface ChatMessage {

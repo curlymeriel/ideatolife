@@ -263,6 +263,28 @@ export interface ChannelAnalysis {
 // Project Data (Persisted Domain State)
 // ====================
 
+export interface BGMTrack {
+    id: string;
+    url: string;      // Audio file URL
+    label: string;    // Track title
+
+    // Playback Range (Cut IDs)
+    startCutId: string | number;
+    endCutId: string | number;
+
+    volume: number;   // 0.0 ~ 1.0
+    loop: boolean;    // Loop within range
+}
+
+export interface BGMPreset {
+    id: string;
+    title: string;
+    artist?: string;
+    category: 'Cinematic' | 'Happy' | 'Sad' | 'Action' | 'Calm' | 'Corporate' | 'Ambient' | 'Thriller' | 'Epic' | 'Quirky';
+    url: string;
+    duration: number;
+}
+
 export interface ProjectData {
     id: string;
     lastModified: number;
@@ -302,6 +324,9 @@ export interface ProjectData {
     script: ScriptCut[];
     ttsModel: TtsModel;
     imageModel: ImageModel;
+
+    // [NEW] Global BGM Tracks
+    bgmTracks: BGMTrack[];
 
     // Step 5: Production
     assets: Record<string, Asset[]>;

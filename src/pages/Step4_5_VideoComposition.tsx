@@ -5,8 +5,11 @@ import {
     Video, Upload, Play, Edit3, Check, X, Loader2,
     ChevronLeft, ChevronRight, FileVideo, Image as ImageIcon,
     Lock, Download, Zap, RefreshCw, FolderOpen,
-    Volume2, VolumeX, Sparkles, AlertCircle, Trash2
+    Volume2, VolumeX, Sparkles, AlertCircle, Trash2, Scissors, Sliders
 } from 'lucide-react';
+
+import { VideoTrimmer } from '../components/Production/VideoTrimmer';
+import { AudioMixer } from '../components/Production/AudioMixer';
 import type { ScriptCut, VideoMotionContext } from '../services/gemini';
 import { resolveUrl, isIdbUrl, saveToIdb, generateVideoKey } from '../utils/imageStorage';
 import { exportVideoGenerationKit } from '../utils/videoGenerationKitExporter';
@@ -77,6 +80,7 @@ const VideoCompositionRow = React.memo(({
     onUpload,
     onConfirm,
     onUnconfirm,
+    onUpdateCut,
     index
 }: {
     cut: ScriptCut;
@@ -90,9 +94,13 @@ const VideoCompositionRow = React.memo(({
     onUpload: (file: File) => void;
     onConfirm: () => void;
     onUnconfirm: () => void;
+    onUpdateCut: (updates: Partial<ScriptCut>) => void; // Support for updates
     index: number;
 }) => {
     const [resolvedVideoUrl, setResolvedVideoUrl] = useState('');
+    const [showTrimmer, setShowTrimmer] = useState(false);
+    const [showMixer, setShowMixer] = useState(false);
+    const [videoDuration, setVideoDuration] = useState(0);
 
     useEffect(() => {
         let active = true;
@@ -107,31 +115,24 @@ const VideoCompositionRow = React.memo(({
             try {
                 let url = cut.videoUrl;
                 if (isIdbUrl(url)) {
-                    console.log(`[Step4.5] Resolving IDB URL for cut ${cut.id}:`, url);
+                    // console.log(`[Step4.5] Resolving IDB URL for cut ${cut.id}:`, url);
                     url = await resolveUrl(url);
-                    console.log(`[Step4.5] Resolved to:`, url ? `${url.substring(0, 50)}... (${Math.round(url.length / 1024)}KB)` : 'EMPTY');
 
                     if (!url) {
-                        console.error(`[Step4.5] Cut ${cut.id}: resolveUrl returned empty! IDB data may be corrupted.`);
+                        console.error(`[Step4.5] Cut ${cut.id}: resolveUrl returned empty!`);
                         return;
                     }
                 }
 
                 if (active) {
-                    // Convert Data URL to Blob URL for fast/reliable playback
                     if (url && url.startsWith('data:')) {
                         try {
                             const res = await fetch(url);
                             const blob = await res.blob();
-
-                            // FORCE MIME TYPE: If the blob comes back as generic octet-stream,
-                            // force it to video/mp4 so the browser knows how to play it.
                             let finalBlob = blob;
                             if (blob.type === 'application/octet-stream' || !blob.type) {
-                                console.log(`[Step4.5] Fixing generic video blob type -> video/mp4`);
                                 finalBlob = new Blob([blob], { type: 'video/mp4' });
                             }
-
                             objectUrl = URL.createObjectURL(finalBlob);
                             setResolvedVideoUrl(objectUrl);
                         } catch (err) {
@@ -143,7 +144,7 @@ const VideoCompositionRow = React.memo(({
                     }
                 }
             } catch (e) {
-                console.error(`[Step4.5] Failed to resolve/convert video for cut ${cut.id}:`, e);
+                console.error(`[Step4.5] Failed to resolve video for cut ${cut.id}:`, e);
                 if (active) setResolvedVideoUrl('');
             }
         };
@@ -156,199 +157,157 @@ const VideoCompositionRow = React.memo(({
         };
     }, [cut.videoUrl]);
 
-    // Debugging 'Loading' state vs 'No Data' state
+    // Duration extraction helper to initialize trimmer
+    const handleMetadata = (e: React.SyntheticEvent<HTMLVideoElement>) => {
+        setVideoDuration(e.currentTarget.duration);
+    };
+
     const hasVideoData = !!cut.videoUrl;
     const isLoadingVideo = hasVideoData && !resolvedVideoUrl;
 
-    // Debug Log
-    useEffect(() => {
-        if (cut.videoUrl && !resolvedVideoUrl) {
-            console.log(`[Step4.5] Cut ${cut.id} has videoUrl but NO resolved URL yet.`);
-        } else if (resolvedVideoUrl) {
-            // Success case
-        }
-    }, [resolvedVideoUrl, cut.videoUrl]);
-
     return (
-        <div className={`grid grid-cols-[40px_80px_1fr_120px_150px_200px] gap-2 px-4 py-3 items-center transition-colors ${isLocked ? 'bg-green-500/5' : isSelected ? 'bg-[var(--color-primary)]/5' : 'hover:bg-[var(--color-bg)]'}`}>
-            <div className="flex items-center justify-center">
-                <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={onToggleSelection}
-                    className="w-4 h-4 accent-[var(--color-primary)]"
-                />
-            </div>
+        <div className={`transition-colors ${isLocked ? 'bg-green-500/5' : isSelected ? 'bg-[var(--color-primary)]/5' : 'hover:bg-[var(--color-bg)]'} border-b border-white/5`}>
+            {/* Top Row: Main Controls */}
+            <div className="grid grid-cols-[40px_80px_1fr_120px_150px_200px] gap-2 px-4 py-3 items-center">
+                <div className="flex items-center justify-center">
+                    <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={onToggleSelection}
+                        className="w-4 h-4 accent-[var(--color-primary)]"
+                    />
+                </div>
 
-            <div className="relative w-16 h-10 bg-[var(--color-bg)] rounded overflow-hidden">
-                {hasVideoData ? (
-                    <div className="relative w-full h-full bg-black group cursor-pointer" onClick={() => onPreview()}>
-                        {/* Fallback Image behind video */}
-                        {cut.finalImageUrl && !resolvedVideoUrl && (
-                            <ResolvedImage
-                                src={cut.finalImageUrl}
-                                alt="Poster"
-                                className="absolute inset-0 w-full h-full object-cover opacity-50"
-                            />
-                        )}
-
-                        {isLoadingVideo && (
-                            <div className="absolute inset-0 flex items-center justify-center text-white/50 z-10">
-                                <Loader2 size={16} className="animate-spin" />
-                            </div>
-                        )}
-
-                        {resolvedVideoUrl && (
-                            <>
-                                <video
-                                    src={resolvedVideoUrl}
-                                    className="w-full h-full object-cover"
-                                    muted
-                                    preload="auto"
-                                    onMouseOver={(e) => e.currentTarget.play()}
-                                    onMouseOut={(e) => {
-                                        e.currentTarget.pause();
-                                        e.currentTarget.currentTime = 0;
-                                    }}
-                                />
-                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
-                                    <Play size={20} className="text-white fill-white" />
+                <div className="relative w-16 h-10 bg-[var(--color-bg)] rounded overflow-hidden group">
+                    {hasVideoData ? (
+                        <div className="relative w-full h-full bg-black cursor-pointer" onClick={() => onPreview()}>
+                            {cut.finalImageUrl && !resolvedVideoUrl && (
+                                <ResolvedImage src={cut.finalImageUrl} className="absolute inset-0 w-full h-full object-cover opacity-50" />
+                            )}
+                            {isLoadingVideo && (
+                                <div className="absolute inset-0 flex items-center justify-center text-white/50 z-10">
+                                    <Loader2 size={16} className="animate-spin" />
                                 </div>
-                            </>
-                        )}
-                    </div>
-                ) : (
-                    cut.finalImageUrl ? (
-                        <ResolvedImage
-                            src={cut.finalImageUrl}
-                            alt={`Cut ${cut.id}`}
-                            className="w-full h-full object-cover"
-                            fallbackSrc={cut.draftImageUrl}
-                        />
-                    ) : (
-                        <div className="w-full h-full flex items-center justify-center text-[var(--color-text-muted)]">
-                            <ImageIcon size={16} />
+                            )}
+                            {resolvedVideoUrl && (
+                                <>
+                                    <video
+                                        src={resolvedVideoUrl}
+                                        className="w-full h-full object-cover"
+                                        muted
+                                        onLoadedMetadata={handleMetadata}
+                                        onMouseOver={(e) => e.currentTarget.play()}
+                                        onMouseOut={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
+                                    />
+                                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
+                                        <Play size={20} className="text-white fill-white" />
+                                    </div>
+                                </>
+                            )}
                         </div>
-                    )
-                )}
-                <div className="absolute bottom-0 right-0 bg-black/70 text-xs px-1 text-white">
-                    #{index + 1}
-                </div>
-            </div>
-
-            <div className="min-w-0">
-                <div className="text-sm text-white font-medium truncate">
-                    {cut.speaker}: {cut.dialogue}
-                </div>
-                <div className="text-xs text-[var(--color-text-muted)] truncate mt-0.5">
-                    {cut.videoPrompt || cut.visualPrompt || 'No prompt'}
-                </div>
-            </div>
-
-            <div className="text-sm text-[var(--color-text-muted)]">
-                {cut.estimatedDuration || 5}s
-            </div>
-
-            <div>
-                {status?.status === 'uploading' ? (
-                    <span className="flex items-center gap-1 text-xs text-yellow-400">
-                        <Loader2 className="animate-spin" size={12} />
-                        Uploading...
-                    </span>
-                ) : status?.status === 'error' ? (
-                    <span className="flex items-center gap-1 text-xs text-red-400">
-                        <X size={12} />
-                        {status.error}
-                    </span>
-                ) : (
-                    cut.videoUrl ? (
-                        cut.isVideoConfirmed ? (
-                            <span className="flex items-center gap-1 text-xs text-green-400 font-medium">
-                                <Check size={12} /> Confirmed
-                            </span>
-                        ) : (
-                            <span className="flex items-center gap-1 text-xs text-blue-400 font-medium">
-                                <FileVideo size={12} /> Ready
-                            </span>
-                        )
                     ) : (
-                        <span className="text-xs text-[var(--color-text-muted)] text-center block w-full opacity-50">Empty</span>
-                    )
-                )}
+                        cut.finalImageUrl ? (
+                            <ResolvedImage src={cut.finalImageUrl} className="w-full h-full object-cover" fallbackSrc={cut.draftImageUrl} />
+                        ) : (
+                            <div className="w-full h-full flex items-center justify-center text-[var(--color-text-muted)]"><ImageIcon size={16} /></div>
+                        )
+                    )}
+                    <div className="absolute bottom-0 right-0 bg-black/70 text-xs px-1 text-white">#{index + 1}</div>
+                </div>
+
+                <div className="min-w-0">
+                    <div className="text-sm text-white font-medium truncate">{cut.speaker}: {cut.dialogue}</div>
+                    <div className="text-xs text-[var(--color-text-muted)] truncate mt-0.5">{cut.videoPrompt || cut.visualPrompt || 'No prompt'}</div>
+                </div>
+
+                <div className="text-sm text-[var(--color-text-muted)]">
+                    {cut.videoTrim ? (cut.videoTrim.end - cut.videoTrim.start).toFixed(1) : (cut.estimatedDuration || 5)}s
+                    {cut.videoTrim && <span className="ml-1 text-xs text-blue-400">(Trimmed)</span>}
+                </div>
+
+                <div>
+                    {status?.status === 'uploading' ? (
+                        <span className="flex items-center gap-1 text-xs text-yellow-400"><Loader2 className="animate-spin" size={12} /> Uploading...</span>
+                    ) : status?.status === 'error' ? (
+                        <span className="flex items-center gap-1 text-xs text-red-400"><X size={12} /> {status.error}</span>
+                    ) : (
+                        cut.videoUrl ? (
+                            cut.isVideoConfirmed ?
+                                <span className="flex items-center gap-1 text-xs text-green-400 font-medium"><Check size={12} /> Confirmed</span> :
+                                <span className="flex items-center gap-1 text-xs text-blue-400 font-medium"><FileVideo size={12} /> Ready</span>
+                        ) : <span className="text-xs text-[var(--color-text-muted)] opacity-50">Empty</span>
+                    )}
+                </div>
+
+                <div className="flex items-center gap-1">
+                    {cut.videoUrl && (
+                        <>
+                            <button onClick={onPreview} className="p-1.5 rounded hover:bg-[var(--color-bg)] text-blue-400" title="Preview"><Play size={16} /></button>
+
+                            {/* Trimmer Toggle */}
+                            <button
+                                onClick={() => { setShowTrimmer(!showTrimmer); setShowMixer(false); }}
+                                className={`p-1.5 rounded hover:bg-[var(--color-bg)] transition-colors ${showTrimmer ? 'text-pink-400 bg-pink-500/10' : 'text-gray-400'}`}
+                                title="Trim Video"
+                            >
+                                <Scissors size={16} />
+                            </button>
+
+                            {/* Audio Mixer Toggle */}
+                            <button
+                                onClick={() => { setShowMixer(!showMixer); setShowTrimmer(false); }}
+                                className={`p-1.5 rounded hover:bg-[var(--color-bg)] transition-colors ${showMixer ? 'text-green-400 bg-green-500/10' : 'text-gray-400'}`}
+                                title="Audio Levels"
+                            >
+                                <Sliders size={16} />
+                            </button>
+
+                            {!isLocked && (
+                                <button onClick={onConfirm} className="p-1.5 rounded hover:bg-green-500/20 text-green-400" title="Confirm"><Check size={16} /></button>
+                            )}
+                        </>
+                    )}
+
+                    {isLocked ? (
+                        <button onClick={onUnconfirm} className="p-1.5 rounded hover:bg-green-500/20 text-green-400" title="Unlock"><Lock size={16} /></button>
+                    ) : (
+                        cut.videoUrl && <button onClick={onRemoveVideo} className="p-1.5 rounded hover:bg-[var(--color-bg)] text-red-400" title="Remove"><X size={16} /></button>
+                    )}
+
+                    {!isLocked && (
+                        <>
+                            <button onClick={onEditPrompt} className="p-1.5 rounded hover:bg-[var(--color-bg)] text-[var(--color-text-muted)]" title="Edit Prompt"><Edit3 size={16} /></button>
+                            <label className="p-1.5 rounded hover:bg-[var(--color-bg)] text-[var(--color-text-muted)] cursor-pointer" title="Upload">
+                                <Upload size={16} />
+                                <input type="file" accept="video/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(f); }} />
+                            </label>
+                        </>
+                    )}
+                </div>
             </div>
 
-            <div className="flex items-center gap-1">
-                {/* Preview */}
-                {cut.videoUrl && (
-                    <button
-                        onClick={onPreview}
-                        className="p-1.5 rounded hover:bg-[var(--color-bg)] text-blue-400"
-                        title="미리보기"
-                    >
-                        <Play size={16} />
-                    </button>
-                )}
+            {/* Trimmer UI */}
+            {showTrimmer && resolvedVideoUrl && (
+                <div className="px-4 pb-4 animate-in slide-in-from-top-2 duration-200">
+                    <VideoTrimmer
+                        videoUrl={resolvedVideoUrl}
+                        startTime={cut.videoTrim?.start ?? 0}
+                        endTime={cut.videoTrim?.end ?? videoDuration}
+                        duration={videoDuration}
+                        onChange={(start, end) => onUpdateCut({ videoTrim: { start, end } })}
+                    />
+                </div>
+            )}
 
-                {/* Confirm (Lock) */}
-                {cut.videoUrl && !isLocked && (
-                    <button
-                        onClick={onConfirm}
-                        className="p-1.5 rounded hover:bg-green-500/20 text-green-400"
-                        title="확정"
-                    >
-                        <Check size={16} />
-                    </button>
-                )}
-
-                {/* Unlock */}
-                {isLocked && (
-                    <button
-                        onClick={onUnconfirm}
-                        className="p-1.5 rounded hover:bg-green-500/20 text-green-400"
-                        title="확정 해제 (Unlock)"
-                    >
-                        <Lock size={16} />
-                    </button>
-                )}
-
-                {/* Remove Video */}
-                {cut.videoUrl && !isLocked && (
-                    <button
-                        onClick={onRemoveVideo}
-                        className="p-1.5 rounded hover:bg-[var(--color-bg)] text-red-400"
-                        title="삭제"
-                    >
-                        <X size={16} />
-                    </button>
-                )}
-
-                {/* Edit Prompt (Still useful for the Kit export) */}
-                {!isLocked && (
-                    <button
-                        onClick={onEditPrompt}
-                        className="p-1.5 rounded hover:bg-[var(--color-bg)] text-[var(--color-text-muted)]"
-                        title="프롬프트 편집"
-                    >
-                        <Edit3 size={16} />
-                    </button>
-                )}
-
-                {/* Upload */}
-                {!isLocked && (
-                    <label className="p-1.5 rounded hover:bg-[var(--color-bg)] text-[var(--color-text-muted)] cursor-pointer" title="개별 업로드">
-                        <Upload size={16} />
-                        <input
-                            type="file"
-                            accept="video/*"
-                            className="hidden"
-                            onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) onUpload(file);
-                            }}
-                        />
-                    </label>
-                )}
-            </div>
+            {/* Mixer UI */}
+            {showMixer && (
+                <div className="px-4 pb-4 animate-in slide-in-from-top-2 duration-200">
+                    <AudioMixer
+                        volumes={cut.audioVolumes ?? { video: 1, tts: 1, bgm: 0.5 }}
+                        onChange={(volumes) => onUpdateCut({ audioVolumes: volumes })}
+                    />
+                </div>
+            )}
         </div>
     );
 });
@@ -666,6 +625,10 @@ const AudioComparisonModal: React.FC<{
                     </div>
                 </div>
             </div>
+
+
+            {/* Modals */}
+            {/* ... existing modals ... */}
         </div>
     );
 };
@@ -673,7 +636,7 @@ const AudioComparisonModal: React.FC<{
 export const Step4_5_VideoComposition: React.FC = () => {
     const navigate = useNavigate();
     const {
-        id: projectId, script, setScript, episodeName, seriesName, aspectRatio
+        id: projectId, script, setScript, episodeName, seriesName, aspectRatio,
     } = useWorkflowStore();
 
     // Get API keys from store
@@ -1272,7 +1235,7 @@ export const Step4_5_VideoComposition: React.FC = () => {
                 <div>
                     <h1 className="text-2xl font-bold text-white flex items-center gap-3">
                         <Video className="text-[var(--color-primary)]" size={28} />
-                        Video Composition
+                        Motion Design
                     </h1>
                     <p className="text-[var(--color-text-muted)] text-sm mt-1">
                         Step 4의 이미지를 사용하여 외부 AI 도구(Luma Dream Machine, Runway 등)로 비디오를 생성하고 업로드하여 합성합니다.
@@ -1609,6 +1572,8 @@ export const Step4_5_VideoComposition: React.FC = () => {
                 </div>
             </div>
 
+
+
             {/* Selection Actions */}
             {
                 selectedCuts.size > 0 && (
@@ -1684,6 +1649,10 @@ export const Step4_5_VideoComposition: React.FC = () => {
                             }}
                             onUnconfirm={() => {
                                 const newScript = script.map(c => c.id === cut.id ? { ...c, isVideoConfirmed: false } : c);
+                                setScript(newScript);
+                            }}
+                            onUpdateCut={(updates) => {
+                                const newScript = script.map(c => c.id === cut.id ? { ...c, ...updates } : c);
                                 setScript(newScript);
                             }}
                         />

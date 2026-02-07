@@ -6,7 +6,8 @@ import type {
     StyleAnchor,
     TtsModel,
     ImageModel,
-    Asset
+    Asset,
+    BGMTrack
 } from './types';
 import type { ScriptCut, ChatMessage } from '../services/gemini';
 
@@ -26,6 +27,7 @@ export interface ProjectSlice extends Omit<ProjectData, 'id' | 'lastModified'> {
     setAssets: (assets: Record<string, Asset[]>) => void;
     updateAsset: (cutId: number, asset: Partial<Asset>) => void;
     setProductionChatHistory: (history: ChatMessage[]) => void;
+    setBGMTracks: (tracks: BGMTrack[]) => void;
     cleanupOrphanedAssets: () => void;
 }
 
@@ -84,6 +86,7 @@ const sampleProjectDefaults = {
     imageModel: 'gemini-3-pro-image-preview' as const,
     assets: {},
     currentStep: 1,
+    bgmTracks: [],
 };
 
 export const createProjectSlice: StateCreator<ProjectSlice> = (set) => ({
@@ -127,6 +130,8 @@ export const createProjectSlice: StateCreator<ProjectSlice> = (set) => ({
     })),
 
     setProductionChatHistory: (history) => set({ productionChatHistory: history }),
+
+    setBGMTracks: (tracks) => set({ bgmTracks: tracks }),
 
     cleanupOrphanedAssets: () => set((state) => {
         const validIds = new Set<string>();
