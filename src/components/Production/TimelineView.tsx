@@ -202,39 +202,63 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
 
                 {/* 1. Left Column: Track Headers (Fixed) */}
                 <div
-                    className="shrink-0 bg-[#0f0f0f] border-r border-white/10 z-10 flex flex-col shadow-xl"
+                    className="shrink-0 bg-[#0f0f0f] border-r border-white/10 z-20 flex flex-col shadow-xl"
                     style={{ width: `${HEADER_WIDTH}px` }}
                 >
                     {/* Header Row (matches Cut Thumbnails height) */}
-                    <div className="h-16 border-b border-white/10 flex items-center px-4 bg-white/5">
-                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Tracks Control</span>
+                    <div className="h-16 border-b border-white/10 flex items-center justify-between px-4 bg-white/5">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Track Layers</span>
+                        <Settings size={12} className="text-gray-600" />
                     </div>
 
                     {/* Track Headers List */}
-                    <div className="flex-1 overflow-hidden">
-                        {/* We need to reverse map the safeTracks to display them top-to-bottom corresponding to the visual layers 
-                             Actually, mapping them directly is fine, just need to ensure the order matches the right side.
-                         */}
+                    <div className="flex-1 overflow-y-auto custom-scrollbar">
                         {safeTracks.map((track, trackIndex) => (
-                            <div key={track.id} className="h-12 border-b border-white/5 flex items-center px-3 gap-2 group hover:bg-white/5 transition-colors">
-                                {/* Color Indicator */}
+                            <div key={track.id} className="h-12 border-b border-white/5 flex items-center px-2 gap-2 group hover:bg-white/5 transition-colors">
+                                {/* Color Indicator & Move Handle */}
                                 <div className={`w-1 h-8 rounded-full ${BGM_COLORS[trackIndex % BGM_COLORS.length].bg}`} />
 
                                 {/* Volume Control & Info */}
                                 <div className="flex-1 min-w-0 flex flex-col justify-center">
-                                    <div className="flex items-center justify-between mb-1">
-                                        <span className="text-xs font-bold text-gray-300 truncate max-w-[120px]" title={track.label}>
+                                    <div className="flex items-center justify-between gap-1">
+                                        <span className="text-[11px] font-bold text-gray-300 truncate" title={track.label}>
                                             {track.label}
                                         </span>
-                                        <button
-                                            onClick={() => handleRemoveTrack(track.id)}
-                                            className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                                        >
-                                            <Trash2 size={12} />
-                                        </button>
+                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            {/* Numeric Range Indicators/Inputs */}
+                                            <div className="flex items-center gap-0.5 bg-black/40 px-1 rounded border border-white/5">
+                                                <input
+                                                    type="number"
+                                                    value={script.findIndex(c => String(c.id) === String(track.startCutId)) + 1}
+                                                    onChange={(e) => {
+                                                        const idx = (parseInt(e.target.value) || 1) - 1;
+                                                        const targetIdx = Math.max(0, Math.min(script.length - 1, idx));
+                                                        handleUpdateTrack(track.id, { startCutId: script[targetIdx].id });
+                                                    }}
+                                                    className="w-6 bg-transparent text-[9px] text-center text-gray-400 focus:text-white outline-none"
+                                                />
+                                                <span className="text-gray-700 text-[8px]">-</span>
+                                                <input
+                                                    type="number"
+                                                    value={script.findIndex(c => String(c.id) === String(track.endCutId)) + 1}
+                                                    onChange={(e) => {
+                                                        const idx = (parseInt(e.target.value) || 1) - 1;
+                                                        const targetIdx = Math.max(0, Math.min(script.length - 1, idx));
+                                                        handleUpdateTrack(track.id, { endCutId: script[targetIdx].id });
+                                                    }}
+                                                    className="w-6 bg-transparent text-[9px] text-center text-gray-400 focus:text-white outline-none"
+                                                />
+                                            </div>
+                                            <button
+                                                onClick={() => handleRemoveTrack(track.id)}
+                                                className="text-gray-600 hover:text-red-400 p-0.5"
+                                            >
+                                                <Trash2 size={10} />
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <Volume2 size={10} className="text-gray-500" />
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                        <Volume2 size={10} className="text-gray-600" />
                                         <input
                                             type="range"
                                             min="0"
@@ -242,15 +266,16 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                                             step="0.1"
                                             value={track.volume ?? 0.5}
                                             onChange={(e) => handleUpdateTrack(track.id, { volume: parseFloat(e.target.value) })}
-                                            className="flex-1 h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-gray-400 hover:accent-pink-400"
+                                            className="flex-1 h-1 bg-white/5 rounded-full appearance-none cursor-pointer accent-gray-500 hover:accent-pink-500"
                                         />
                                     </div>
                                 </div>
                             </div>
                         ))}
                         {safeTracks.length === 0 && (
-                            <div className="p-4 text-center text-gray-600 text-xs mt-4">
-                                No tracks added.<br />Click 'Add Audio Track'
+                            <div className="p-4 text-center text-gray-600 text-[10px] opacity-50 mt-4 leading-relaxed">
+                                No BGM tracks.<br />
+                                Add one to start mixing.
                             </div>
                         )}
                     </div>
