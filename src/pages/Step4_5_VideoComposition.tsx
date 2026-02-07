@@ -1,15 +1,15 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import { useWorkflowStore } from '../store/workflowStore';
 import { useNavigate } from 'react-router-dom';
 import {
     Video, Upload, Play, Edit3, Check, X, Loader2,
     ChevronLeft, ChevronRight, FileVideo, Image as ImageIcon,
     Lock, Download, Zap, RefreshCw, FolderOpen,
-    Volume2, VolumeX, Sparkles, AlertCircle, Trash2, Scissors, Sliders
+    Volume2, Sparkles, AlertCircle, Trash2, Scissors, Mic
 } from 'lucide-react';
 
 import { VideoTrimmer } from '../components/Production/VideoTrimmer';
-import { AudioMixer } from '../components/Production/AudioMixer';
+
 import type { ScriptCut, VideoMotionContext } from '../services/gemini';
 import { resolveUrl, isIdbUrl, saveToIdb, generateVideoKey } from '../utils/imageStorage';
 import { exportVideoGenerationKit } from '../utils/videoGenerationKitExporter';
@@ -80,7 +80,7 @@ const VideoCompositionRow = React.memo(({
     onUpload,
     onConfirm,
     onUnconfirm,
-    onUpdateCut,
+
     index
 }: {
     cut: ScriptCut;
@@ -94,12 +94,10 @@ const VideoCompositionRow = React.memo(({
     onUpload: (file: File) => void;
     onConfirm: () => void;
     onUnconfirm: () => void;
-    onUpdateCut: (updates: Partial<ScriptCut>) => void; // Support for updates
+
     index: number;
 }) => {
     const [resolvedVideoUrl, setResolvedVideoUrl] = useState('');
-    const [showTrimmer, setShowTrimmer] = useState(false);
-    const [showMixer, setShowMixer] = useState(false);
     const [videoDuration, setVideoDuration] = useState(0);
 
     useEffect(() => {
@@ -115,13 +113,8 @@ const VideoCompositionRow = React.memo(({
             try {
                 let url = cut.videoUrl;
                 if (isIdbUrl(url)) {
-                    // console.log(`[Step4.5] Resolving IDB URL for cut ${cut.id}:`, url);
                     url = await resolveUrl(url);
-
-                    if (!url) {
-                        console.error(`[Step4.5] Cut ${cut.id}: resolveUrl returned empty!`);
-                        return;
-                    }
+                    if (!url) return;
                 }
 
                 if (active) {
@@ -136,7 +129,6 @@ const VideoCompositionRow = React.memo(({
                             objectUrl = URL.createObjectURL(finalBlob);
                             setResolvedVideoUrl(objectUrl);
                         } catch (err) {
-                            console.warn("[Step4.5] Blob conversion failed, falling back to raw Data URL:", err);
                             setResolvedVideoUrl(url);
                         }
                     } else {
@@ -144,20 +136,17 @@ const VideoCompositionRow = React.memo(({
                     }
                 }
             } catch (e) {
-                console.error(`[Step4.5] Failed to resolve video for cut ${cut.id}:`, e);
                 if (active) setResolvedVideoUrl('');
             }
         };
 
         loadVideo();
-
         return () => {
             active = false;
             if (objectUrl) URL.revokeObjectURL(objectUrl);
         };
     }, [cut.videoUrl]);
 
-    // Duration extraction helper to initialize trimmer
     const handleMetadata = (e: React.SyntheticEvent<HTMLVideoElement>) => {
         setVideoDuration(e.currentTarget.duration);
     };
@@ -221,7 +210,7 @@ const VideoCompositionRow = React.memo(({
                 </div>
 
                 <div className="text-sm text-[var(--color-text-muted)]">
-                    {cut.videoTrim ? (cut.videoTrim.end - cut.videoTrim.start).toFixed(1) : (cut.estimatedDuration || 5)}s
+                    {cut.videoTrim ? (cut.videoTrim.end - cut.videoTrim.start).toFixed(1) : (videoDuration || cut.estimatedDuration || 5).toFixed(1)}s
                     {cut.videoTrim && <span className="ml-1 text-xs text-blue-400">(Trimmed)</span>}
                 </div>
 
@@ -242,26 +231,7 @@ const VideoCompositionRow = React.memo(({
                 <div className="flex items-center gap-1">
                     {cut.videoUrl && (
                         <>
-                            <button onClick={onPreview} className="p-1.5 rounded hover:bg-[var(--color-bg)] text-blue-400" title="Preview"><Play size={16} /></button>
-
-                            {/* Trimmer Toggle */}
-                            <button
-                                onClick={() => { setShowTrimmer(!showTrimmer); setShowMixer(false); }}
-                                className={`p-1.5 rounded hover:bg-[var(--color-bg)] transition-colors ${showTrimmer ? 'text-pink-400 bg-pink-500/10' : 'text-gray-400'}`}
-                                title="Trim Video"
-                            >
-                                <Scissors size={16} />
-                            </button>
-
-                            {/* Audio Mixer Toggle */}
-                            <button
-                                onClick={() => { setShowMixer(!showMixer); setShowTrimmer(false); }}
-                                className={`p-1.5 rounded hover:bg-[var(--color-bg)] transition-colors ${showMixer ? 'text-green-400 bg-green-500/10' : 'text-gray-400'}`}
-                                title="Audio Levels"
-                            >
-                                <Sliders size={16} />
-                            </button>
-
+                            <button onClick={onPreview} className="p-1.5 rounded hover:bg-[var(--color-bg)] text-blue-400" title="Preview Video & Audio"><Play size={16} /></button>
                             {!isLocked && (
                                 <button onClick={onConfirm} className="p-1.5 rounded hover:bg-green-500/20 text-green-400" title="Confirm"><Check size={16} /></button>
                             )}
@@ -285,29 +255,6 @@ const VideoCompositionRow = React.memo(({
                     )}
                 </div>
             </div>
-
-            {/* Trimmer UI */}
-            {showTrimmer && resolvedVideoUrl && (
-                <div className="px-4 pb-4 animate-in slide-in-from-top-2 duration-200">
-                    <VideoTrimmer
-                        videoUrl={resolvedVideoUrl}
-                        startTime={cut.videoTrim?.start ?? 0}
-                        endTime={cut.videoTrim?.end ?? videoDuration}
-                        duration={videoDuration}
-                        onChange={(start, end) => onUpdateCut({ videoTrim: { start, end } })}
-                    />
-                </div>
-            )}
-
-            {/* Mixer UI */}
-            {showMixer && (
-                <div className="px-4 pb-4 animate-in slide-in-from-top-2 duration-200">
-                    <AudioMixer
-                        volumes={cut.audioVolumes ?? { video: 1, tts: 1, bgm: 0.5 }}
-                        onChange={(volumes) => onUpdateCut({ audioVolumes: volumes })}
-                    />
-                </div>
-            )}
         </div>
     );
 });
@@ -375,39 +322,54 @@ const repairVideoData = async (_project: any, script: ScriptCut[], onProgress: (
     return fixedCount;
 };
 
-// Audio Comparison Modal Component
 const AudioComparisonModal: React.FC<{
     previewCut: ScriptCut | undefined;
     previewVideoUrl: string;
     onClose: () => void;
+    onUpdateCut: (updates: Partial<ScriptCut>) => void;
     onSave: (useVideoAudio: boolean, videoDuration: number | undefined) => void;
-}> = ({ previewCut, previewVideoUrl, onClose, onSave }) => {
+}> = ({ previewCut, previewVideoUrl, onClose, onUpdateCut, onSave }) => {
+    // State
     const [selectedAudioSource, setSelectedAudioSource] = useState<'video' | 'tts'>(
         previewCut?.useVideoAudio ? 'video' : 'tts'
     );
-    const [isTtsPlaying, setIsTtsPlaying] = useState(false);
-    const [resolvedTtsUrl, setResolvedTtsUrl] = useState<string>('');
-    const [customDuration, setCustomDuration] = useState<number>(
-        previewCut?.videoDuration || previewCut?.estimatedDuration || 0
-    );
-    const ttsAudioRef = useRef<HTMLAudioElement>(null);
+    // Initialize volumes: default video 1, tts 1 (bgm handled elsewhere)
+    const [volumes, setVolumes] = useState(previewCut?.audioVolumes ?? { video: 1, tts: 1, bgm: 0.5 });
+
+    // Video State
+    const [videoDuration, setVideoDuration] = useState(0);
+
+    const [isvVideoPlaying, setIsVideoPlaying] = useState(false);
     const videoRef = useRef<HTMLVideoElement>(null);
+
+    // TTS State
+
+    const [resolvedTtsUrl, setResolvedTtsUrl] = useState<string>('');
+    const ttsAudioRef = useRef<HTMLAudioElement>(null);
 
     // Get actual video duration when loaded
     useEffect(() => {
         if (videoRef.current) {
             const handleLoadedMetadata = () => {
-                const dur = videoRef.current?.duration || 0;
-                // Set initial custom duration if not already set
-                // Prioritize: Saved videoDuration > TTS/Estimated Duration > Full Video Length
-                if (!customDuration && dur > 0) {
-                    setCustomDuration(previewCut?.videoDuration || previewCut?.estimatedDuration || dur);
-                }
+                setVideoDuration(videoRef.current?.duration || 0);
             };
+
+            const handlePlay = () => setIsVideoPlaying(true);
+            const handlePause = () => setIsVideoPlaying(false);
+
             videoRef.current.addEventListener('loadedmetadata', handleLoadedMetadata);
-            // If already loaded
+
+            videoRef.current.addEventListener('play', handlePlay);
+            videoRef.current.addEventListener('pause', handlePause);
+
             if (videoRef.current.duration) handleLoadedMetadata();
-            return () => videoRef.current?.removeEventListener('loadedmetadata', handleLoadedMetadata);
+
+            return () => {
+                videoRef.current?.removeEventListener('loadedmetadata', handleLoadedMetadata);
+
+                videoRef.current?.removeEventListener('play', handlePlay);
+                videoRef.current?.removeEventListener('pause', handlePause);
+            };
         }
     }, [previewVideoUrl]);
 
@@ -421,15 +383,63 @@ const AudioComparisonModal: React.FC<{
         }
     }, [previewCut?.audioUrl]);
 
-    // Handle video audio toggle
-    const handleVideoAudioToggle = (muted: boolean) => {
-        if (videoRef.current) {
-            videoRef.current.muted = muted;
+    // Sync Audio/Video Mute & Volume State
+    useEffect(() => {
+        // Apply volumes
+        if (videoRef.current) videoRef.current.volume = volumes.video;
+        if (ttsAudioRef.current) ttsAudioRef.current.volume = volumes.tts;
+
+        // Apply mute based on selected source
+        if (selectedAudioSource === 'video') {
+            if (videoRef.current) videoRef.current.muted = false;
+            if (ttsAudioRef.current) ttsAudioRef.current.muted = true;
+        } else {
+            if (videoRef.current) videoRef.current.muted = true;
+            if (ttsAudioRef.current) ttsAudioRef.current.muted = false;
         }
-        // Stop TTS if playing and switching to video audio
-        if (!muted && ttsAudioRef.current && isTtsPlaying) {
-            ttsAudioRef.current.pause();
-            setIsTtsPlaying(false);
+
+        // Sync TTS playback with video
+        if (selectedAudioSource === 'tts' && videoRef.current && ttsAudioRef.current) {
+            if (isvVideoPlaying && ttsAudioRef.current.paused) {
+                ttsAudioRef.current.play().catch(e => console.warn('TTS play warning', e));
+            } else if (!isvVideoPlaying && !ttsAudioRef.current.paused) {
+                ttsAudioRef.current.pause();
+            }
+
+            // Simple sync check (if drifted too much)
+            if (Math.abs(videoRef.current.currentTime - ttsAudioRef.current.currentTime) > 0.5) {
+                ttsAudioRef.current.currentTime = videoRef.current.currentTime;
+            }
+        }
+    }, [volumes, selectedAudioSource, isvVideoPlaying]);
+
+
+    const handleSourceChange = (source: 'video' | 'tts') => {
+        setSelectedAudioSource(source);
+        // We update parent cut data immediately? Or on save?
+        // Let's update internal state, parent update on save or effect?
+        // The current pattern uses onUpdateCut for intermediate updates?
+        // Let's keep using onUpdateCut for persistence if needed, but here we just toggle local source
+        // Actually the original code called onUpdateCut immediately.
+        onUpdateCut({ useVideoAudio: source === 'video' });
+    };
+
+    const handleVolumeChange = (type: 'video' | 'tts', val: number) => {
+        const newVolumes = { ...volumes, [type]: val };
+        setVolumes(newVolumes);
+        onUpdateCut({ audioVolumes: newVolumes });
+    };
+
+    const handleTrimChange = (start: number, end: number) => {
+        onUpdateCut({ videoTrim: { start, end } });
+        // Optionally update video duration logic or loop points here if needed by Trimmer component
+        // But Trimmer usually handles its own UI, just reports change.
+
+        // If we want the video loop to respect trim:
+        if (videoRef.current) {
+            if (videoRef.current.currentTime < start || videoRef.current.currentTime > end) {
+                videoRef.current.currentTime = start;
+            }
         }
     };
 
@@ -437,12 +447,13 @@ const AudioComparisonModal: React.FC<{
 
     return (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4 overflow-y-auto" onClick={onClose}>
-            <div className="max-w-4xl w-full relative bg-[var(--color-surface)] rounded-2xl overflow-hidden max-h-[90vh] flex flex-col my-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="max-w-4xl w-full relative bg-[var(--color-surface)] rounded-2xl overflow-hidden max-h-[95vh] flex flex-col my-auto border border-[var(--color-border)] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+
                 {/* Header */}
-                <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
+                <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)] bg-[var(--color-bg)]">
                     <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                        <Video size={20} className="text-blue-400" />
-                        Cut #{previewCut.id} - 오디오 소스 선택
+                        <Video size={20} className="text-[var(--color-primary)]" />
+                        Cut #{previewCut.id} - Unified Media Editor
                     </h3>
                     <button
                         onClick={onClose}
@@ -452,187 +463,161 @@ const AudioComparisonModal: React.FC<{
                     </button>
                 </div>
 
-                {/* Video Player */}
-                <div className="bg-black">
-                    <video
-                        ref={videoRef}
-                        src={previewVideoUrl}
-                        controls
-                        autoPlay
-                        loop
-                        playsInline
-                        muted={selectedAudioSource === 'tts'}
-                        className="w-full max-h-[50vh] object-contain"
-                        onError={(e) => {
-                            console.error("Preview playback failed:", e);
-                        }}
-                    />
+                {/* Main Content */}
+                <div className="flex-1 overflow-y-auto bg-black/20 flex flex-col">
+
+                    {/* 1. Video Preview (Top) */}
+                    <div className="bg-black relative aspect-video max-h-[40vh] shrink-0 border-b border-white/5">
+                        <video
+                            ref={videoRef}
+                            src={previewVideoUrl}
+                            className="w-full h-full object-contain"
+                            controls
+                            playsInline
+                        />
+                    </div>
+
+                    {/* 2. Video Trimmer (Slider Only) - Immediately below video */}
+                    <div className="px-4 py-3 bg-[var(--color-bg)] border-b border-[var(--color-border)]">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                                <Scissors size={14} className="text-pink-400" />
+                                <span>Trim Range</span>
+                            </div>
+                            <span className="text-xs text-[var(--color-text-muted)]">
+                                Duration: <span className="text-white">{(previewCut.videoTrim ? previewCut.videoTrim.end - previewCut.videoTrim.start : videoDuration).toFixed(1)}s</span>
+                            </span>
+                        </div>
+                        <VideoTrimmer
+                            videoUrl={previewVideoUrl}
+                            startTime={previewCut.videoTrim?.start ?? 0}
+                            endTime={previewCut.videoTrim?.end ?? videoDuration}
+                            duration={videoDuration}
+                            onChange={handleTrimChange}
+                            hideVideo={true}
+                            onSeek={(time) => {
+                                if (videoRef.current) {
+                                    videoRef.current.currentTime = time;
+                                    // Optional: pause if seeking
+                                    // videoRef.current.pause(); 
+                                }
+                            }}
+                        />
+                    </div>
+
+                    {/* 3. Audio Controls (Stacked Rows) */}
+                    <div className="p-6 bg-[var(--color-surface)] flex flex-col gap-4">
+
+                        {/* Row A: Original Video Audio */}
+                        <div className={`flex items-center gap-4 p-4 rounded-xl border transition-all ${selectedAudioSource === 'video' ? 'bg-blue-500/10 border-blue-500/50' : 'bg-white/5 border-white/5 opacity-70 hover:opacity-100'}`}>
+                            {/* Source Select Button */}
+                            <button
+                                onClick={() => handleSourceChange('video')}
+                                className="flex items-center gap-3 min-w-[180px]"
+                            >
+                                <div className={`p-2.5 rounded-full ${selectedAudioSource === 'video' ? 'bg-blue-500 text-white' : 'bg-gray-700 text-gray-400'}`}>
+                                    <Volume2 size={20} />
+                                </div>
+                                <div className="text-left">
+                                    <div className={`font-bold ${selectedAudioSource === 'video' ? 'text-white' : 'text-gray-400'}`}>Original Video</div>
+                                    <div className="text-[10px] text-[var(--color-text-muted)]">Use video sound</div>
+                                </div>
+                            </button>
+
+                            {/* Divider */}
+                            <div className="w-px h-8 bg-white/10" />
+
+                            {/* Volume Control */}
+                            <div className="flex-1 flex items-center gap-3">
+                                <span className="text-xs text-gray-400 font-medium w-12 text-right">Volume</span>
+                                <input
+                                    type="range"
+                                    min={0}
+                                    max={1}
+                                    step={0.1}
+                                    value={volumes.video}
+                                    onChange={(e) => handleVolumeChange('video', parseFloat(e.target.value))}
+                                    className="flex-1 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                                />
+                                <span className="text-xs text-white w-8 text-right font-mono">{Math.round(volumes.video * 100)}%</span>
+                            </div>
+
+                            {/* Active Badge */}
+                            {selectedAudioSource === 'video' && <div className="hidden sm:block text-[10px] px-2 py-0.5 bg-blue-500 text-white rounded-full font-bold tracking-wider">ACTIVE</div>}
+                        </div>
+
+                        {/* Row B: TTS Audio */}
+                        <div className={`flex items-center gap-4 p-4 rounded-xl border transition-all ${selectedAudioSource === 'tts' ? 'bg-green-500/10 border-green-500/50' : 'bg-white/5 border-white/5 opacity-70 hover:opacity-100'}`}>
+                            {/* Source Select Button */}
+                            <button
+                                onClick={() => handleSourceChange('tts')}
+                                className="flex items-center gap-3 min-w-[180px]"
+                            >
+                                <div className={`p-2.5 rounded-full ${selectedAudioSource === 'tts' ? 'bg-green-500 text-white' : 'bg-gray-700 text-gray-400'}`}>
+                                    <Mic size={20} />
+                                </div>
+                                <div className="text-left">
+                                    <div className={`font-bold ${selectedAudioSource === 'tts' ? 'text-white' : 'text-gray-400'}`}>AI Voice (TTS)</div>
+                                    <div className="text-[10px] text-[var(--color-text-muted)]">Use character voice</div>
+                                </div>
+                            </button>
+
+                            {/* Divider */}
+                            <div className="w-px h-8 bg-white/10" />
+
+                            {/* Volume Control */}
+                            <div className="flex-1 flex items-center gap-3">
+                                <span className="text-xs text-gray-400 font-medium w-12 text-right">Volume</span>
+                                <input
+                                    type="range"
+                                    min={0}
+                                    max={1}
+                                    step={0.1}
+                                    value={volumes.tts}
+                                    onChange={(e) => handleVolumeChange('tts', parseFloat(e.target.value))}
+                                    className="flex-1 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-green-500"
+                                />
+                                <span className="text-xs text-white w-8 text-right font-mono">{Math.round(volumes.tts * 100)}%</span>
+                            </div>
+
+                            {/* Active Badge */}
+                            {selectedAudioSource === 'tts' && <div className="hidden sm:block text-[10px] px-2 py-0.5 bg-green-500 text-white rounded-full font-bold tracking-wider">ACTIVE</div>}
+                        </div>
+
+                    </div>
                 </div>
 
-                {/* Audio Comparison Controls - Scrollable */}
-                <div className="p-6 space-y-6 overflow-y-auto flex-1">
-                    {/* TTS Audio Player (hidden but functional) */}
-                    {resolvedTtsUrl && (
-                        <audio
-                            ref={ttsAudioRef}
-                            src={resolvedTtsUrl}
-                            preload="auto"
-                            onEnded={() => setIsTtsPlaying(false)}
-                        />
-                    )}
+                {/* Hidden Audio for TTS */}
+                {resolvedTtsUrl && (
+                    <audio
+                        ref={ttsAudioRef}
+                        src={resolvedTtsUrl}
+                        preload="auto"
+                        onEnded={() => { }}
+                    // Controls handled via sync logic
+                    />
+                )}
 
-                    {/* Main Controls Row - Single Line */}
-                    <div className="flex items-center gap-4 bg-[var(--color-bg)] p-2 rounded-xl border border-[var(--color-border)]">
-
-                        {/* 1. Audio Source Selection (Compact) */}
-                        <div className="flex bg-black/40 rounded-lg p-1 gap-1 shrink-0">
-                            {/* Video Option */}
-                            <button
-                                onClick={() => {
-                                    setSelectedAudioSource('video');
-                                    handleVideoAudioToggle(false);
-                                }}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all ${selectedAudioSource === 'video'
-                                    ? 'bg-blue-500 text-white shadow-sm'
-                                    : 'text-gray-400 hover:text-white hover:bg-white/5'
-                                    }`}
-                            >
-                                <Volume2 size={16} />
-                                <span className="text-sm font-medium">Video</span>
-                            </button>
-
-                            {/* TTS Option */}
-                            <button
-                                onClick={() => {
-                                    setSelectedAudioSource('tts');
-                                    handleVideoAudioToggle(true);
-                                }}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all ${selectedAudioSource === 'tts'
-                                    ? 'bg-green-500 text-white shadow-sm'
-                                    : 'text-gray-400 hover:text-white hover:bg-white/5'
-                                    }`}
-                            >
-                                <VolumeX size={16} />
-                                <span className="text-sm font-medium">TTS</span>
-                            </button>
-                        </div>
-
-                        {/* Divider */}
-                        <div className="w-px h-8 bg-[var(--color-border)] opacity-50 shrink-0" />
-
-                        {/* 2. Duration Input (Compact & Wide as requested) */}
-                        <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-xs text-gray-500 font-medium">Duration</span>
-                            <div className="relative w-24">
-                                <input
-                                    type="number"
-                                    min="0.5"
-                                    max="60"
-                                    step="0.1"
-                                    value={customDuration.toFixed(1)}
-                                    onChange={(e) => setCustomDuration(parseFloat(e.target.value) || 0.5)}
-                                    className="w-full pl-2 pr-5 py-1.5 bg-black/40 border border-[var(--color-border)] rounded-md text-white font-mono text-center text-sm focus:border-[var(--color-primary)] outline-none transition-colors"
-                                />
-                                <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-500 pointer-events-none">s</span>
-                            </div>
-                        </div>
-
-                        {/* Divider */}
-                        <div className="w-px h-8 bg-[var(--color-border)] opacity-50 shrink-0" />
-
-                        {/* 3. Sync Preview Button (Narrower as requested & Original Logic) */}
-                        <button
-                            /**
-                             * ORIGINAL LOGIC RESTORED
-                             */
-                            onClick={async () => {
-                                if (!videoRef.current) return;
-
-                                // Stop any previous playback
-                                videoRef.current.pause();
-                                videoRef.current.currentTime = 0;
-                                if (ttsAudioRef.current) {
-                                    ttsAudioRef.current.pause();
-                                    ttsAudioRef.current.currentTime = 0;
-                                }
-
-                                // Set audio based on selection
-                                if (selectedAudioSource === 'tts') {
-                                    videoRef.current.muted = true;
-                                    if (ttsAudioRef.current && resolvedTtsUrl) {
-                                        ttsAudioRef.current.muted = false;
-                                        ttsAudioRef.current.volume = 1;
-                                    }
-                                } else {
-                                    videoRef.current.muted = false;
-                                    videoRef.current.volume = 1;
-                                }
-
-                                // Start playback
-                                try {
-                                    await videoRef.current.play();
-                                    if (selectedAudioSource === 'tts' && ttsAudioRef.current && resolvedTtsUrl) {
-                                        await ttsAudioRef.current.play();
-                                        setIsTtsPlaying(true);
-                                    }
-                                } catch (e) {
-                                    console.warn('Sync preview play failed:', e);
-                                }
-
-                                // Stop after customDuration
-                                setTimeout(() => {
-                                    if (videoRef.current) {
-                                        videoRef.current.pause();
-                                        videoRef.current.currentTime = 0;
-                                    }
-                                    if (ttsAudioRef.current) {
-                                        ttsAudioRef.current.pause();
-                                        ttsAudioRef.current.currentTime = 0;
-                                        setIsTtsPlaying(false);
-                                    }
-                                }, customDuration * 1000);
-                            }}
-                            className="px-6 h-10 bg-purple-500/20 border border-purple-500/50 text-purple-300 rounded-lg hover:bg-purple-500/30 transition-colors flex items-center justify-center gap-2 font-semibold text-sm group"
-                        >
-                            <Play size={16} className="fill-purple-500/50 group-hover:fill-purple-500 transition-colors" />
-                            <span>Preview Sync</span>
-                        </button>
-                    </div>
-
-                    {/* Dialogue Preview (Below controls) */}
-                    {previewCut.dialogue && (
-                        <div className="px-3 py-2 border-l-2 border-[var(--color-border)] ml-1">
-                            <div className="text-xs text-gray-500 mb-0.5">{previewCut.speaker}</div>
-                            <div className="text-sm text-gray-300 italic">"{previewCut.dialogue}"</div>
-                        </div>
-                    )}
-
-                    {/* Action Buttons */}
-                    <div className="flex justify-end gap-3 pt-2">
-                        <button
-                            onClick={onClose}
-                            className="px-5 py-2.5 bg-[var(--color-bg)] text-gray-400 rounded-lg hover:text-white transition-colors"
-                        >
-                            취소
-                        </button>
-                        <button
-                            onClick={() => onSave(selectedAudioSource === 'video', customDuration > 0 ? customDuration : undefined)}
-                            className="px-5 py-2.5 bg-[var(--color-primary)] text-black font-semibold rounded-lg hover:bg-[var(--color-primary-hover)] transition-colors flex items-center gap-2"
-                        >
-                            <Check size={18} />
-                            저장
-                        </button>
-                    </div>
+                {/* Footer Actions */}
+                <div className="flex justify-end gap-3 p-4 border-t border-[var(--color-border)] bg-[var(--color-surface)]">
+                    <button
+                        onClick={onClose}
+                        className="px-5 py-2.5 bg-[var(--color-bg)] text-gray-400 rounded-lg hover:text-white transition-colors"
+                    >
+                        취소
+                    </button>
+                    <button
+                        onClick={() => onSave(selectedAudioSource === 'video', undefined)}
+                        className="px-5 py-2.5 bg-[var(--color-primary)] text-black font-semibold rounded-lg hover:bg-[var(--color-primary-hover)] transition-colors flex items-center gap-2"
+                    >
+                        <Check size={18} />
+                        저장
+                    </button>
                 </div>
             </div>
-
-
-            {/* Modals */}
-            {/* ... existing modals ... */}
         </div>
     );
 };
-
 export const Step4_5_VideoComposition: React.FC = () => {
     const navigate = useNavigate();
     const {
@@ -1651,10 +1636,7 @@ export const Step4_5_VideoComposition: React.FC = () => {
                                 const newScript = script.map(c => c.id === cut.id ? { ...c, isVideoConfirmed: false } : c);
                                 setScript(newScript);
                             }}
-                            onUpdateCut={(updates) => {
-                                const newScript = script.map(c => c.id === cut.id ? { ...c, ...updates } : c);
-                                setScript(newScript);
-                            }}
+
                         />
                     ))}
                 </div>
@@ -1789,6 +1771,14 @@ export const Step4_5_VideoComposition: React.FC = () => {
                             previewCut={previewCut}
                             previewVideoUrl={previewVideoUrl}
                             onClose={() => setPreviewCutId(null)}
+                            onUpdateCut={(updates) => {
+                                if (previewCut) {
+                                    const updatedScript = script.map(c =>
+                                        c.id === previewCut.id ? { ...c, ...updates } : c
+                                    );
+                                    setScript(updatedScript);
+                                }
+                            }}
                             onSave={(useVideoAudio, videoDuration) => {
                                 if (previewCut) {
                                     const updatedScript = script.map(c =>

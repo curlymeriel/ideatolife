@@ -138,6 +138,49 @@ export const Step3_Production: React.FC = () => {
         return koreanRegex.test(text) ? 'ko-KR' : 'en-US';
     };
 
+    // --- BATCH GENERATION LOGIC (Moved from Step 4) ---
+    const [batchLoading, setBatchLoading] = useState(false);
+
+    const handleBatchGenerate = async () => {
+        if (!confirm('아직 생성되지 않은 모든 오디오와 이미지를 일괄 생성하시겠습니까?')) return;
+
+        setBatchLoading(true);
+        const cuts = localScriptRef.current;
+        const missingAudio = cuts.filter(c => (!c.audioUrl || c.audioUrl === 'mock:beep') && c.speaker !== 'SILENT' && c.dialogue);
+        const missingImages = cuts.filter(c => !c.finalImageUrl && c.visualPrompt);
+
+        console.log(`[Batch] Starting batch generation. Missing Audio: ${missingAudio.length}, Missing Images: ${missingImages.length}`);
+
+        try {
+            // 1. Generate Missing Audio
+            for (const cut of missingAudio) {
+                try {
+                    console.log(`[Batch Audio] Generating for cut ${cut.id}`);
+                    await handleGenerateAudio(cut.id, cut.dialogue);
+                } catch (e) {
+                    console.error(`[Batch Audio] Failed for cut ${cut.id}`, e);
+                }
+            }
+
+            // 2. Generate Missing Images
+            for (const cut of missingImages) {
+                try {
+                    console.log(`[Batch Image] Generating for cut ${cut.id}`);
+                    await handleGenerateFinalImage(cut.id, cut.visualPrompt || '');
+                } catch (e) {
+                    console.error(`[Batch Image] Failed for cut ${cut.id}`, e);
+                }
+            }
+
+            alert('일괄 생성이 완료되었습니다!');
+        } catch (error) {
+            console.error('Batch generation error:', error);
+            alert('일괄 생성 중 일부 오류가 발생했습니다.');
+        } finally {
+            setBatchLoading(false);
+        }
+    };
+
     // Helper: Get default voice for language, gender, and TTS model
     const getDefaultVoiceForLanguage = (
         language: 'en-US' | 'ko-KR',
@@ -1255,6 +1298,18 @@ export const Step3_Production: React.FC = () => {
                                     )}
                                 </div>
                             </div>
+
+                            {/* Batch Generation Button */}
+                            {localScript.length > 0 && (progressPercent < 100) && (
+                                <button
+                                    onClick={handleBatchGenerate}
+                                    disabled={batchLoading || loading}
+                                    className="w-full mt-2 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2 shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {batchLoading ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
+                                    미생성 자산 일괄 생성하기 ({localScript.filter(c => (!c.audioUrl && c.speaker !== 'SILENT') || !c.finalImageUrl).length})
+                                </button>
+                            )}
 
                             {/* Bulk Lock Buttons - Inside header for visibility before regeneration */}
                             {localScript.length > 0 && (

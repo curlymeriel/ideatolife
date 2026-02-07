@@ -7,6 +7,8 @@ interface VideoTrimmerProps {
     endTime: number;
     duration?: number; // Optional: Provide if known, otherwise loaded from video
     onChange: (start: number, end: number) => void;
+    hideVideo?: boolean;
+    onSeek?: (time: number) => void;
 }
 
 export const VideoTrimmer: React.FC<VideoTrimmerProps> = ({
@@ -14,7 +16,9 @@ export const VideoTrimmer: React.FC<VideoTrimmerProps> = ({
     startTime,
     endTime,
     duration: externalDuration,
-    onChange
+    onChange,
+    hideVideo = false,
+    onSeek
 }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const [isPlaying, setIsPlaying] = useState(false);
@@ -33,6 +37,15 @@ export const VideoTrimmer: React.FC<VideoTrimmerProps> = ({
             }
         }
     };
+
+    // Update duration if provided externally
+    useEffect(() => {
+        if (externalDuration && externalDuration > 0) {
+            setVideoDuration(externalDuration);
+            if (localEnd === 0) setLocalEnd(externalDuration);
+        }
+    }, [externalDuration]);
+
 
     // Sync external props (debounced logic is handled by parent, here we sync to local)
     // NOTE: We only sync if props change significantly to avoid loop
@@ -77,11 +90,13 @@ export const VideoTrimmer: React.FC<VideoTrimmerProps> = ({
             setLocalStart(newStart);
             onChange(newStart, localEnd);
             if (videoRef.current) videoRef.current.currentTime = newStart;
+            if (onSeek) onSeek(newStart);
         } else {
             const newEnd = Math.max(val, localStart + 0.5);
             setLocalEnd(newEnd);
             onChange(localStart, newEnd);
             if (videoRef.current) videoRef.current.currentTime = newEnd; // Preview end frame
+            if (onSeek) onSeek(newEnd);
         }
     };
 
@@ -102,25 +117,27 @@ export const VideoTrimmer: React.FC<VideoTrimmerProps> = ({
                 </span>
             </div>
 
-            {/* Video Preview */}
-            <div className="relative rounded-md overflow-hidden bg-black aspect-video mb-3 group">
-                <video
-                    ref={videoRef}
-                    src={videoUrl}
-                    className="w-full h-full object-contain"
-                    onLoadedMetadata={handleLoadedMetadata}
-                    onTimeUpdate={handleTimeUpdate}
-                    onEnded={() => setIsPlaying(false)}
-                />
+            {/* Video Preview (Conditional) */}
+            {!hideVideo && (
+                <div className="relative rounded-md overflow-hidden bg-black aspect-video mb-3 group">
+                    <video
+                        ref={videoRef}
+                        src={videoUrl}
+                        className="w-full h-full object-contain"
+                        onLoadedMetadata={handleLoadedMetadata}
+                        onTimeUpdate={handleTimeUpdate}
+                        onEnded={() => setIsPlaying(false)}
+                    />
 
-                {/* Play Overlay */}
-                <button
-                    onClick={togglePlay}
-                    className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/10 transition-colors group-hover:opacity-100 opacity-0"
-                >
-                    {isPlaying ? <Pause className="fill-white text-white drop-shadow-lg" /> : <Play className="fill-white text-white drop-shadow-lg" />}
-                </button>
-            </div>
+                    {/* Play Overlay */}
+                    <button
+                        onClick={togglePlay}
+                        className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/10 transition-colors group-hover:opacity-100 opacity-0"
+                    >
+                        {isPlaying ? <Pause className="fill-white text-white drop-shadow-lg" /> : <Play className="fill-white text-white drop-shadow-lg" />}
+                    </button>
+                </div>
+            )}
 
             {/* Dual Range Slider */}
             <div className="relative h-6 w-full touch-none select-none">
@@ -131,8 +148,8 @@ export const VideoTrimmer: React.FC<VideoTrimmerProps> = ({
                 <div
                     className="absolute top-1/2 h-1 bg-cyan-500 rounded-full -translate-y-1/2"
                     style={{
-                        left: `${(localStart / videoDuration) * 100}%`,
-                        width: `${((localEnd - localStart) / videoDuration) * 100}%`
+                        left: `${(localStart / Math.max(videoDuration, 1)) * 100}%`,
+                        width: `${((localEnd - localStart) / Math.max(videoDuration, 1)) * 100}%`
                     }}
                 ></div>
 
@@ -140,7 +157,7 @@ export const VideoTrimmer: React.FC<VideoTrimmerProps> = ({
                 <input
                     type="range"
                     min="0"
-                    max={videoDuration}
+                    max={videoDuration || 10} // Fallback to avoid division by zero
                     step="0.1"
                     value={localStart}
                     onChange={(e) => handleSliderChange('min', parseFloat(e.target.value))}
@@ -151,7 +168,7 @@ export const VideoTrimmer: React.FC<VideoTrimmerProps> = ({
                 <input
                     type="range"
                     min="0"
-                    max={videoDuration}
+                    max={videoDuration || 10}
                     step="0.1"
                     value={localEnd}
                     onChange={(e) => handleSliderChange('max', parseFloat(e.target.value))}
