@@ -9,6 +9,7 @@ import { resolveUrl, isIdbUrl } from '../utils/imageStorage';
 import { exportProjectToZip } from '../utils/zipExporter';
 import { recordCanvasVideo, isCanvasRecordingSupported, type RecordingCut } from '../utils/canvasVideoRecorder';
 import { exportWithFFmpeg, isFFmpegSupported } from '../utils/ffmpegExporter';
+import { fixProjectScriptUrls } from '../utils/fixStorageUrls';
 
 // Helper to get audio duration
 const getAudioDuration = (url: string): Promise<number> => {
@@ -34,7 +35,8 @@ export const Step6_Final = () => {
         thumbnailUrl,
         storylineTable,
         aspectRatio, // Destructure aspectRatio
-        bgmTracks // Destructure bgmTracks
+        bgmTracks, // Destructure bgmTracks
+        setScript, // Add setScript for migration
     } = useWorkflowStore();
 
     // Custom CC Icon Component - Defined inside is okay, or move outside if no props dependency
@@ -103,6 +105,17 @@ export const Step6_Final = () => {
         }
     }, [script]);
 
+    // url REPAIR Fix (Auto-run: Reverts .appspot.com -> .firebasestorage.app)
+    useEffect(() => {
+        if (script && script.length > 0) {
+            const fixedScript = fixProjectScriptUrls(script);
+            if (fixedScript) {
+                console.log("[Step6] 🛠️ REPAIR: Fixing Invalid .appspot.com URLs back to .firebasestorage.app...");
+                setScript(fixedScript);
+            }
+        }
+    }, [script, setScript]);
+
     // Check for Presentation Mode from URL
     useEffect(() => {
         const searchParams = new URLSearchParams(location.search);
@@ -122,7 +135,8 @@ export const Step6_Final = () => {
 
     const isBufferingRef = useRef(false);
 
-    console.log(`[Step6 Render] State Check: assetsLoaded=${assetsLoaded}, showThumbnail=${showThumbnail}, isPlaying=${isPlayingState}`);
+    // DEBUG: Comment out to reduce console spam
+    // console.log(`[Step6 Render] State Check: assetsLoaded=${assetsLoaded}, showThumbnail=${showThumbnail}, isPlaying=${isPlayingState}`);
     const lastFrameTimeRef = useRef(0);
     const audioARef = useRef<HTMLAudioElement>(null);
     const audioBRef = useRef<HTMLAudioElement>(null);
@@ -135,6 +149,7 @@ export const Step6_Final = () => {
 
     // CRITICAL: Reset state when project changes to prevent showing old project data
     useEffect(() => {
+        if (!projectId) return;
         console.log(`[Step6] Project changed to ${projectId} - resetting cached state`);
         setCurrentCutIndex(0);
         setShowThumbnail(true);
@@ -160,7 +175,14 @@ export const Step6_Final = () => {
     const [playbackMode, setPlaybackMode] = useState<'hybrid' | 'still'>('hybrid');
     const [exportHybrid, setExportHybrid] = useState(true);
     const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
-    const resolvingRef = useRef<Set<string>>(new Set());
+
+
+    // DUAL BUFFER SYNC LOGIC (Matches Video Element Logic)
+    // Declared at top-level so it is accessible to useEffect and JSX
+    const isEven = currentCutIndex % 2 === 0;
+    const activeSlot = isEven ? 'A' : 'B';
+    const indexA = isEven ? currentCutIndex : currentCutIndex + 1;
+    const indexB = isEven ? currentCutIndex + 1 : currentCutIndex;
 
     // ========================
     // BGM LOGIC
@@ -316,21 +338,14 @@ export const Step6_Final = () => {
 
             const processUrl = async (url: string) => {
                 // Optimization: If it's already a playable format, return as is.
-                // We skip separate Blob conversion for Data URLs to prevent hanging on large projects,
-                // aligning behavior with Step 4 which works reliably.
+                // We skip separate Blob conversion for Data URLs to prevent hanging on large projects.
                 if (!url || url.startsWith('blob:') || url.startsWith('http') || url.startsWith('data:')) return url;
 
                 // Handle idb:// URLs - resolve from IndexedDB first
                 if (isIdbUrl(url)) {
-                    // Use asBlob: true for efficient handling of large files (Step 6 optimization)
+                    // Use asBlob: true for efficient handling of large files
                     const resolved = await resolveUrl(url, { asBlob: true });
-
-                    if (!resolved) {
-                        console.warn(`[Step6] Failed to resolve IDB URL (returned empty): ${url}`);
-                        return undefined;
-                    }
-
-                    console.log(`[Step6] Resolved IDB URL: ${url} -> ${resolved.substring(0, 30)}...`);
+                    if (!resolved) return undefined;
                     return resolved;
                 }
 
@@ -412,26 +427,9 @@ export const Step6_Final = () => {
 
                     // 4. Video
                     if (cut.videoUrl) {
+                        // FIX: Do NOT convert Data URL to Blob eagerly.
+                        // Browsers can play Data URLs fine, and converting them causes massive main-thread freeze.
                         let vidUrl = await processUrl(cut.videoUrl);
-                        // FIX: Convert Data URL to Blob URL for Video as well
-                        // Use Blob URL to prevent "too large attribute" errors
-                        if (vidUrl && vidUrl.startsWith('data:')) {
-                            try {
-                                const res = await fetch(vidUrl);
-                                const blob = await res.blob();
-
-                                // FORCE MIME TYPE for proper playback
-                                let finalBlob = blob;
-                                if (blob.type === 'application/octet-stream' || !blob.type) {
-                                    finalBlob = new Blob([blob], { type: 'video/mp4' });
-                                }
-
-                                vidUrl = URL.createObjectURL(finalBlob);
-                            } catch (e) {
-                                console.error('[Step6] Video blob conversion failed, using raw Data URL', e);
-                                // Fallback to data URL is automatic since we didn't update vidUrl
-                            }
-                        }
                         addToCache(cut.videoUrl, vidUrl);
                     }
 
@@ -533,6 +531,12 @@ export const Step6_Final = () => {
 
         // Safety: Unresolved IDB URLs cannot be displayed/played
         if (url.startsWith('idb://')) return undefined;
+
+        // DEBUG: Log video URLs to check for corruption
+        if (originalUrl.includes('video') || originalUrl.includes('mp4') || originalUrl.includes('webm')) {
+            console.log('[DEBUG VIDEO URL]', { originalUrl, resolvedUrl: url });
+        }
+
         return url;
     };
 
@@ -541,28 +545,32 @@ export const Step6_Final = () => {
         const cut = script[index];
         if (!cut) return 0;
 
-        // NEW: Prioritize custom videoDuration if set (from Step 4.5 popup)
-        // This allows video clips to have their own timing independent of TTS
-        if (cut.videoDuration && cut.videoDuration > 0) {
-            return cut.videoDuration;
+        let videoDur = 0;
+        // Priority 1: If valid videoTrim exists, calculate duration from it directly
+        if (cut.videoTrim) {
+            const { start, end } = cut.videoTrim;
+            const trimDuration = end - start;
+            if (trimDuration > 0) videoDur = trimDuration;
+        }
+        // Fallback: Custom video duration
+        else if (cut.videoDuration && cut.videoDuration > 0) {
+            videoDur = cut.videoDuration;
         }
 
         const audioDur = audioDurations[index] || 0;
-        // Prioritize actual audio duration if available
-        if (audioDur > 0) {
-            // Use user-defined padding, defaulting to 0.5s if not set
-            return audioDur + (cut.audioPadding ?? 0.5);
+        const audioTotalParams = audioDur > 0 ? audioDur + (cut.audioPadding ?? 0.5) : 0;
+
+        // HYBRID SYNC LOGIC:
+        // Case A: Video Audio is USED (Authentic Video Mode) -> Video dictates timing
+        if (cut.useVideoAudio) {
+            return videoDur > 0 ? videoDur : (audioTotalParams || cut.estimatedDuration || 5);
         }
 
-        // Fallback: If no audio duration yet, use estimated duration from script
-        // CRITICAL: Ensure minimum duration to prevent rapid skipping
-        // If there is dialogue, assume at least 2 seconds (safe read time)
-        if (cut.dialogue && cut.dialogue.length > 5) {
-            return Math.max(cut.estimatedDuration || 0, 2.0);
-        }
-
-        // Fallback to estimated or default 5s only if no audio duration
-        return cut.estimatedDuration || 5;
+        // Case B: TTS/Mix Mode (Hybrid) -> Audio (Dialogue) dictates timing ("중심이 됨")
+        // If TTS is present, it should determine the cut end so we "move on" when speech ends.
+        // This ensures the video fills the audio duration but doesn't linger after speech is done.
+        if (audioTotalParams > 0) return audioTotalParams;
+        return Math.max(videoDur, cut.estimatedDuration || 5);
     };
 
     // Calculate actual duration from script (Dynamic)
@@ -629,9 +637,61 @@ export const Step6_Final = () => {
 
             if (foundIndex !== -1) {
                 if (foundIndex !== currentCutIndex) {
-                    console.log(`[Step6] Cut Transition: ${currentCutIndex} -> ${foundIndex} at ${totalElapsed.toFixed(3)}s`);
+                    // console.log(`[Step6] Cut Transition: ${currentCutIndex} -> ${foundIndex}`);
                     setCurrentCutIndex(foundIndex);
                 }
+
+                // STRICT VIDEO SYNC (Drift Correction)
+                if (playbackMode === 'hybrid') {
+                    const cut = script[foundIndex];
+                    const cutStartTime = accumulatedTime - getCutDuration(foundIndex);
+                    const localTime = totalElapsed - cutStartTime;
+                    const videoEl = videoRefs.current[foundIndex];
+
+                    if (videoEl) {
+                        const shouldUseVideoAudio = cut?.useVideoAudio && cut?.videoUrl;
+
+                        // VIDEO MASTER MODE:
+                        // If using video audio, the VIDEO is the master clock.
+                        // We must sync the Global Timer TO the video, not vice versa.
+                        if (shouldUseVideoAudio && !videoEl.paused && !videoEl.seeking && videoEl.readyState >= 2) {
+                            // Calculate where we SHOULD be based on video time
+                            // effectiveElapsed = cutStartTime + videoTime
+                            let videoTimeInGlobal = cutStartTime + videoEl.currentTime;
+
+                            // Adjust StartTimeRef to match Video Time
+                            // This effectively "slows down" or "speeds up" the global timer to match video playback speed
+                            const drift = Math.abs(totalElapsed - videoTimeInGlobal);
+                            if (drift > 0.1) {
+                                // console.log(`[Sync] Resyncing Timer to Video Master. Drift: ${drift.toFixed(3)}s`);
+                                startTimeRef.current = Date.now() - (videoTimeInGlobal * 1000);
+                            }
+                        }
+                        // WALL CLOCK MASTER MODE:
+                        // If NOT using video audio (e.g. TTS + Background Video), the Timer is master.
+                        // We force the video to match the timer.
+                        else if (!videoEl.paused && !videoEl.seeking && videoEl.readyState >= 2) {
+                            // CALC TARGET TIME WITH TRIM AWARENESS
+                            let targetTime = localTime;
+                            if (cut?.videoTrim) {
+                                const { start, end } = cut.videoTrim;
+                                const trimDuration = end - start;
+                                if (trimDuration > 0) {
+                                    targetTime = (localTime % trimDuration) + start;
+                                }
+                            } else if (videoEl.duration && Number.isFinite(videoEl.duration)) {
+                                targetTime = localTime % videoEl.duration;
+                            }
+
+                            const drift = Math.abs(videoEl.currentTime - targetTime);
+                            // Relaxed threshold from 0.3 to 0.5 to prevent micro-stutters
+                            if (drift > 0.5) {
+                                videoEl.currentTime = targetTime;
+                            }
+                        }
+                    }
+                }
+
                 animationFrameId = requestAnimationFrame(updateLoop);
             } else {
                 // End of script
@@ -662,28 +722,23 @@ export const Step6_Final = () => {
 
 
 
-    const handleAudioResume = (e: React.SyntheticEvent<HTMLAudioElement>) => {
+    const handleMediaResume = (e: React.SyntheticEvent<HTMLMediaElement>) => {
         isBufferingRef.current = false;
-        const player = e.currentTarget;
-        console.log(`[Audio] Resumed. Duration: ${player.duration}`);
+        const media = e.currentTarget;
+        const isVideo = media instanceof HTMLVideoElement;
+        console.log(`[Media] ${isVideo ? 'Video' : 'Audio'} Resumed. Duration: ${media.duration}`);
 
-        // Self-heal duration: If playing and we have finite duration but state is missing/zero
-        if (Number.isFinite(player.duration) && player.duration > 0) {
-            const isA = player === audioARef.current;
+        if (media instanceof HTMLAudioElement && Number.isFinite(media.duration) && media.duration > 0) {
+            const isA = media === audioARef.current;
             const isEven = currentCutIndex % 2 === 0;
 
-            // Only update if this player corresponds to the current cut
             if (isA === isEven) {
-                // If duration is missing, zero, or significantly different (e.g. placeholder)
-                // We use a small epsilon for float comparison logic if needed, but mostly 'missing' is key.
                 const cachedDur = audioDurations[currentCutIndex];
                 if (!cachedDur || cachedDur === 0) {
-                    console.log(`[Step6] Self-healing duration for Cut ${currentCutIndex}: ${player.duration}`);
-                    // Use functional update to avoid dependency cycles
+                    console.log(`[Step6] Self-healing duration for Cut ${currentCutIndex}: ${media.duration}`);
                     setAudioDurations(prev => {
-                        // Double check inside setter
-                        if (prev[currentCutIndex] === player.duration) return prev;
-                        return { ...prev, [currentCutIndex]: player.duration };
+                        if (prev[currentCutIndex] === media.duration) return prev;
+                        return { ...prev, [currentCutIndex]: media.duration };
                     });
                 }
             }
@@ -702,15 +757,45 @@ export const Step6_Final = () => {
         });
     };
 
+
+    // DUAL BUFFER SYNC LOGIC (Matches Video Element Logic)
+
+
     // Unmount cleanup ONLY
+
     useEffect(() => {
         return () => stopAll();
     }, []);
 
+
+    // NEW: Handle Audio State transitions cleanly (Moved out of updateLoop)
+    useEffect(() => {
+        if (!playbackMode || playbackMode !== 'hybrid') return;
+
+        const curIndex = currentCutIndex;
+        const cut = script[curIndex];
+        const videoEl = videoRefs.current[curIndex];
+
+        if (videoEl && cut) {
+            const shouldUseVideoAudio = cut.useVideoAudio && cut.videoUrl;
+            // console.log(`[Step6 Audio] Transition to Cut ${curIndex}. UseVideoAudio: ${shouldUseVideoAudio}`);
+
+            if (shouldUseVideoAudio) {
+                // Ensure unmutes
+                videoEl.muted = false;
+                videoEl.volume = 1.0;
+            } else {
+                // Ensure muted if we're using TTS (to avoid bg noise)
+                videoEl.muted = true;
+            }
+        }
+    }, [currentCutIndex, script, playbackMode]);
+
     useEffect(() => {
         if (!assetsLoaded) return;
 
-        console.log(`[PlaybackEffect] Running. Cut:${currentCutIndex} Playing:${isPlaying} Thumb:${showThumbnail}`);
+        // Don't log on every render if playing
+        // console.log(`[PlaybackEffect] Running. Cut:${currentCutIndex} Playing:${isPlaying} Thumb:${showThumbnail}`);
 
         if (isPlaying && !showThumbnail) {
             const currentCut = script[currentCutIndex];
@@ -730,126 +815,108 @@ export const Step6_Final = () => {
                 // This prevents audio stopping when background assets load
                 const rawUrl = currentCut?.audioUrl;
                 let url: string | undefined = undefined;
-
                 if (rawUrl) {
-                    url = blobCacheRef.current[rawUrl] || blobCache[rawUrl] || rawUrl;
-
-                    // JIT RESOLUTION
-                    if (url.startsWith('idb://')) {
-                        if (!resolvingRef.current.has(rawUrl)) {
-                            console.log(`[Step6] JIT Resolution triggering for ${rawUrl}`);
-                            resolvingRef.current.add(rawUrl);
-                            isBufferingRef.current = true; // Pause Timer
-
-                            resolveUrl(rawUrl, { asBlob: true }).then(resolved => {
-                                if (resolved) {
-                                    console.log(`[Step6] JIT Resolved: ${resolved.substring(0, 30)}...`);
-                                    blobCacheRef.current[rawUrl] = resolved;
-                                    setBlobCache(prev => ({ ...prev, [rawUrl]: resolved }));
-                                }
-                                resolvingRef.current.delete(rawUrl);
-                                isBufferingRef.current = false; // Resume Timer
-                            });
-                        }
-                        url = undefined; // Don't play yet
-                    }
+                    url = blobCacheRef.current[rawUrl] || rawUrl;
+                    if (url.startsWith('idb://')) url = undefined;
                 }
 
                 if (url) {
-                    // Critical Check: Prevent redundant play calls causing stutter
-                    // Only skip if:
-                    // 1. We already started playing this exact cut index
-                    // 2. AND the player is actually playing (not paused/stalled)
-                    const isRedundant = lastPlayedCutIndexRef.current === currentCutIndex && !currentPlayer.paused && currentPlayer.src === url;
+                    // Define local async player function (re-defined to ensure scope access)
+                    const playAudio = async (retryCount = 0) => {
+                        try {
+                            if (!currentPlayer) return;
 
-                    if (isRedundant) {
-                        console.log(`[Audio ${currentCutIndex}] Already playing, skipping redundant call.`);
-                        // Do NOT return here, just skip the audio play block so we can proceed to SFX
-                    } else {
-                        lastPlayedCutIndexRef.current = currentCutIndex;
+                            // Prevent redundant play calls causing stutter
+                            // Only skip if:
+                            // 1. We already started playing this exact cut index
+                            // 2. AND the player is actually playing (not paused/stalled)
+                            // 3. AND the source hasn't changed
+                            const isRedundant = lastPlayedCutIndexRef.current === currentCutIndex && !currentPlayer.paused && currentPlayer.src === url;
 
-                        // Only set src if it changed
-                        if (currentPlayer.src !== url) {
-                            console.log(`[Audio ${currentCutIndex}] Setting source to:`, url.substring(0, 50));
-                            currentPlayer.src = url;
-                        }
-
-                        // Play
-                        const playAudio = async (retryCount = 0) => {
-                            try {
-                                // If we have a pending play, wait for it
-                                if (playPromiseRef.current) {
-                                    try {
-                                        await playPromiseRef.current;
-                                    } catch (e) { /* Ignore previous aborts */ }
-                                }
-
-                                // Ensure the OTHER player is paused AND reset
-                                if (nextPlayer) {
-                                    nextPlayer.pause();
-                                    nextPlayer.currentTime = 0;
-                                }
-
-                                // FORCE RESET: Load explicitly if starting fresh
-                                if (currentPlayer.currentTime > 0 || currentPlayer.ended) {
-                                    currentPlayer.currentTime = 0;
-                                }
-
-                                // FORCE RESET VOLUME/MUTE to ensure audible playback
-                                currentPlayer.volume = 1;
-                                currentPlayer.muted = false;
-
-                                console.log(`[Audio ${currentCutIndex}] Playing on ${currentCutIndex % 2 === 0 ? 'A' : 'B'} (Vol:${currentPlayer.volume}, Ready:${currentPlayer.readyState}, Dur:${currentPlayer.duration})`);
-
-                                // Explicitly load if not ready (HAVE_NOTHING or HAVE_METADATA)
-                                if (currentPlayer.readyState < 2) {
-                                    console.log(`[Audio ${currentCutIndex}] Player not ready, forcing load()`);
-                                    currentPlayer.load();
-                                }
-
-                                playPromiseRef.current = currentPlayer.play();
-                                await playPromiseRef.current;
-                            } catch (e: any) {
-                                isBufferingRef.current = false; // Release buffering lock on error
-
-                                console.warn(`[Audio ${currentCutIndex}] Play failed (Attempt ${retryCount + 1}):`, e);
-
-                                // RETRY LOGIC for NotSupportedError or similar transient issues
-                                if (retryCount < 1 && (e.name === 'NotSupportedError' || e.name === 'AbortError')) {
-                                    console.log(`[Audio ${currentCutIndex}] Retrying playback...`);
-                                    setTimeout(() => playAudio(retryCount + 1), 50);
-                                    return;
-                                }
-
-                                if (e.name !== 'AbortError') {
-                                    // Additional detail for debugging
-                                    if (currentPlayer.error) {
-                                        console.error(`[Audio ${currentCutIndex}] Media Error Code:`, currentPlayer.error.code, currentPlayer.error.message);
-                                    }
-                                }
+                            if (isRedundant) {
+                                // console.log(`[Audio ${currentCutIndex}] Already playing, skipping redundant call.`);
+                                return;
                             }
-                        };
-                        playAudio();
-                    }
 
+                            lastPlayedCutIndexRef.current = currentCutIndex;
 
+                            // Only set src if it changed to avoid reloading
+                            if (currentPlayer.src !== url) {
+                                console.log(`[Audio ${currentCutIndex}] Setting source to:`, url.substring(0, 50));
+                                currentPlayer.src = url;
+                            }
+
+                            // If we have a pending play, wait for it
+                            if (playPromiseRef.current) {
+                                try {
+                                    await playPromiseRef.current;
+                                } catch (e) { /* Ignore previous aborts */ }
+                            }
+
+                            // Ensure the OTHER player is paused AND reset
+                            if (nextPlayer) {
+                                nextPlayer.pause();
+                                nextPlayer.currentTime = 0;
+                            }
+
+                            // FORCE RESET: Load explicitly if starting fresh or if previous ended
+                            if (currentPlayer.currentTime > 0 || currentPlayer.ended) {
+                                currentPlayer.currentTime = 0;
+                            }
+
+                            // FORCE RESET VOLUME/MUTE to ensure audible playback
+                            currentPlayer.volume = 1;
+                            currentPlayer.muted = false;
+
+                            // console.log(`[Audio ${currentCutIndex}] Playing on ${currentCutIndex % 2 === 0 ? 'A' : 'B'} (Vol:${currentPlayer.volume})`);
+
+                            // Explicitly load if not ready (HAVE_NOTHING or HAVE_METADATA)
+                            if (currentPlayer.readyState < 2) {
+                                // console.log(`[Audio ${currentCutIndex}] Player not ready, forcing load()`);
+                                currentPlayer.load();
+                            }
+
+                            playPromiseRef.current = currentPlayer.play();
+                            await playPromiseRef.current;
+                        } catch (e: any) {
+                            if (!currentPlayer) return;
+
+                            // RETRY LOGIC for NotSupportedError or similar transient issues
+                            if (retryCount < 1 && (e.name === 'NotSupportedError' || e.name === 'AbortError')) {
+                                console.log(`[Audio ${currentCutIndex}] Retrying playback...`);
+                                setTimeout(() => playAudio(retryCount + 1), 50);
+                                return;
+                            }
+
+                            if (e.name !== 'AbortError') {
+                                console.warn(`[Audio ${currentCutIndex}] Play failed:`, e);
+                            }
+                        }
+                    };
+
+                    // Execute the player
+                    playAudio();
                 }
+            } else if (currentPlayer) {
+                // Mute/Pause if not supposed to play TTS
+                currentPlayer.pause();
             }
 
 
             // 2. SFX PLAYBACK
             if (sfxRef.current) {
-                if (currentCut?.sfxUrl) {
-                    const sfxUrl = getOptimizedUrl(currentCut.sfxUrl);
+                const sfxRawUrl = currentCut?.sfxUrl;
+                if (sfxRawUrl) {
+                    const sfxUrl = getOptimizedUrl(sfxRawUrl); // Resolve basic URL or blob
 
                     if (sfxUrl) {
-                        // Only start if not already playing this URL (basic check)
-                        // But SFX usually restarts on cut change, so we force it.
+                        // Only set src if changed
                         if (sfxRef.current.src !== sfxUrl) {
                             sfxRef.current.src = sfxUrl;
                         }
 
                         sfxRef.current.volume = currentCut.sfxVolume ?? 0.3;
+                        // Reset to start for every new cut to ensure it plays
                         sfxRef.current.currentTime = 0;
                         sfxRef.current.muted = false;
 
@@ -879,23 +946,35 @@ export const Step6_Final = () => {
                 const currentVideo = isEven ? videoRefs.current[indexA] : videoRefs.current[indexB];
 
                 if (currentVideo) {
-                    // Reset if new cut
-                    if (Math.abs(currentVideo.currentTime) > 0.5) currentVideo.currentTime = 0;
+                    // Reset if new cut - RESPECT TRIM
+                    const trimStart = currentCut?.videoTrim?.start || 0;
+                    if (Math.abs(currentVideo.currentTime - trimStart) > 0.5) {
+                        currentVideo.currentTime = trimStart;
+                    }
 
                     // NEW: Control video mute based on useVideoAudio flag
                     const shouldUseVideoAudio = currentCut?.useVideoAudio && currentCut?.videoUrl;
+                    console.log(`[DEBUG Video ${currentCutIndex}] BEFORE: muted=${currentVideo.muted}, volume=${currentVideo.volume}, useVideoAudio=${currentCut?.useVideoAudio}`);
                     currentVideo.muted = !shouldUseVideoAudio;
+                    currentVideo.volume = 1; // Always set volume
+                    console.log(`[DEBUG Video ${currentCutIndex}] AFTER SET: muted=${currentVideo.muted}, volume=${currentVideo.volume}`);
                     if (shouldUseVideoAudio) {
-                        currentVideo.volume = 1;
-                        console.log(`[Video ${currentCutIndex}] Using VIDEO AUDIO (unmuted)`);
+                        console.log(`[Video ${currentCutIndex}] Using VIDEO AUDIO (unmuted, vol=1)`);
                     }
 
                     const playVideo = async () => {
                         try {
                             // Ensure it's not paused
                             if (currentVideo.paused) {
+                                // Force unmute again right before play for safety
+                                if (shouldUseVideoAudio) {
+                                    currentVideo.muted = false;
+                                    currentVideo.volume = 1;
+                                    console.log(`[DEBUG Video ${currentCutIndex}] RIGHT BEFORE PLAY: muted=${currentVideo.muted}`);
+                                }
                                 console.log(`[Video ${currentCutIndex}] Starting video playback force`);
                                 await currentVideo.play();
+                                console.log(`[DEBUG Video ${currentCutIndex}] AFTER PLAY: muted=${currentVideo.muted}, paused=${currentVideo.paused}`);
                             }
                         } catch (e) {
                             console.warn(`[Video ${currentCutIndex}] Play failed:`, e);
@@ -955,6 +1034,22 @@ export const Step6_Final = () => {
             }
         }
     }, [currentCutIndex, blobCache]);
+
+    const handleVideoTimeUpdate = (e: React.SyntheticEvent<HTMLVideoElement>, index: number) => {
+        const video = e.currentTarget;
+        const cut = script[index];
+        // Only apply trim constraints if videoTrim exists AND has valid end > start
+        if (!cut || !cut.videoTrim) return;
+
+        const { start, end } = cut.videoTrim;
+        // Skip invalid trim values (e.g., {start: 0, end: 0} from buggy save)
+        if (end <= start || end <= 0) return;
+
+        if (video.currentTime < start - 0.5 || video.currentTime > end) {
+            console.log(`[Step6] Video ${index} out of trim bounds (${video.currentTime.toFixed(2)}s). Reseeking to ${start}s`);
+            video.currentTime = start;
+        }
+    };
 
     const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
         const rect = e.currentTarget.getBoundingClientRect();
@@ -1179,12 +1274,23 @@ export const Step6_Final = () => {
         console.log("[Step6] Start Episode Triggered");
 
         // 1. Initialize Video (Cut 0) - Pre-roll behind thumbnail
-        if (videoRefs.current[0]) {
+        const cut0 = script[0];
+        const video0 = videoRefs.current[0];
+        if (video0 && cut0) {
             console.log("[Step6] Pre-rolling Cut 0 Video...");
-            videoRefs.current[0].currentTime = 0;
+            // RESPECT TRIM
+            const trimStart = cut0.videoTrim?.start || 0;
+            video0.currentTime = trimStart;
+
+            // FORCE UNMUTE at USER GESTURE for autoplay policy
+            if (cut0.useVideoAudio && cut0.videoUrl) {
+                console.log("[Step6] Forcing Video Audio ON for Cut 0");
+                video0.muted = false;
+                video0.volume = 1;
+            }
+
             try {
-                // Ensure video is playing
-                await videoRefs.current[0].play();
+                await video0.play();
             } catch (e) {
                 console.error("[Step6] Video Play Failed", e);
             }
@@ -1209,6 +1315,7 @@ export const Step6_Final = () => {
         const cuts: RecordingCut[] = script.map((cut, index) => ({
             imageUrl: getOptimizedUrl(cut.finalImageUrl || cut.draftImageUrl) || '',
             videoUrl: includeVideo ? getOptimizedUrl(cut.videoUrl) : undefined,
+            videoTrim: cut.videoTrim, // [FIX] Pass trim data to exporters
             audioUrl: getOptimizedUrl(cut.audioUrl),
             sfxUrl: getOptimizedUrl(cut.sfxUrl),
             sfxVolume: cut.sfxVolume,
@@ -1431,13 +1538,14 @@ export const Step6_Final = () => {
             }
         }
 
-        // 2. Next Video: Preload
-        // Ensure the next slot is buffering
-        const nextIndex = currentCutIndex + 1;
-        if (nextIndex < script.length) {
-            const nextVideo = videoRefs.current[nextIndex];
-            if (nextVideo) {
-                if (nextVideo.readyState === 0) {
+        // 2. Preload next 3 videos for smooth transitions
+        const PRELOAD_AHEAD = 3;
+        for (let offset = 1; offset <= PRELOAD_AHEAD; offset++) {
+            const nextIndex = currentCutIndex + offset;
+            if (nextIndex < script.length) {
+                const nextVideo = videoRefs.current[nextIndex];
+                if (nextVideo && nextVideo.readyState === 0) {
+                    // console.log(`[Step6] Preloading video ${nextIndex}`);
                     nextVideo.load();
                 }
             }
@@ -1449,33 +1557,29 @@ export const Step6_Final = () => {
     // while the user is viewing the thumbnail title card.
     // Fix for Cut 0 (First Cut) Cold Start Issue
     useEffect(() => {
-        if (assetsLoaded && showThumbnail && script.length > 0) {
+        if (assetsLoaded && showThumbnail && script.length > 0 && playbackMode === 'hybrid') {
             // Give React a moment to mount the video refs after assetsLoaded becomes true
             const timer = setTimeout(() => {
-                const video0 = videoRefs.current[0];
-                if (video0) {
-                    console.log("[Step6] Force preloading Cut 0 video (Thumbnail State)");
-                    if (video0.readyState === 0) video0.load();
-                    // Ensure it is reset to start
-                    video0.currentTime = 0;
+                // Preload first 3 cuts for a smooth start
+                for (let i = 0; i < Math.min(3, script.length); i++) {
+                    const video = videoRefs.current[i];
+                    if (video) {
+                        console.log(`[Step6] Preloading Cut ${i} video (Thumbnail State)`);
+                        if (video.readyState === 0) video.load();
+                        // Also set initial time for trimmed videos
+                        const trimStart = script[i].videoTrim?.start || 0;
+                        video.currentTime = trimStart;
+                    }
                 }
-
-                // Also preload Cut 1 to be safe
-                const video1 = videoRefs.current[1];
-                if (video1 && video1.readyState === 0) {
-                    video1.load();
-                }
-            }, 500); // Increased from 100 to 500 to ensure DOM stable
+            }, 300);
             return () => clearTimeout(timer);
         }
-    }, [assetsLoaded, showThumbnail, script]);
+    }, [assetsLoaded, showThumbnail, script, playbackMode]);
 
     // Double Buffering Indices (Current + Next Strategy)
     // Even cuts use Slot A, Odd cuts use Slot B.
     // The INACTIVE slot always preloads the NEXT cut in its sequence.
-    const activeSlot = currentCutIndex % 2 === 0 ? 'A' : 'B';
-    const indexA = activeSlot === 'A' ? currentCutIndex : currentCutIndex + 1;
-    const indexB = activeSlot === 'B' ? currentCutIndex : currentCutIndex + 1;
+
 
     // Helper for responsive subtitle positioning
     // Since the player container is fixed to 16:9, we must restrict width for vertical ratios
@@ -1539,13 +1643,30 @@ export const Step6_Final = () => {
                                                 ref={(el) => { if (el) videoRefs.current[indexA] = el; }}
                                                 src={getOptimizedUrl(script[indexA].videoUrl)}
                                                 className="absolute inset-0 w-full h-full object-contain z-10"
-                                                muted
                                                 loop
                                                 playsInline
+                                                preload="auto"
+                                                onLoadedMetadata={(e) => {
+                                                    // Set initial muted state based on useVideoAudio
+                                                    const shouldUnmute = script[indexA].useVideoAudio && script[indexA].videoUrl;
+                                                    e.currentTarget.muted = !shouldUnmute;
+                                                    if (shouldUnmute) e.currentTarget.volume = 1;
+                                                }}
+                                                onTimeUpdate={(e) => handleVideoTimeUpdate(e, indexA)}
+                                                onWaiting={() => { isBufferingRef.current = true; console.log(`[Video ${indexA}] Buffering...`); }}
+                                                onSeeking={() => { isBufferingRef.current = true; console.log(`[Video ${indexA}] Seeking...`); }}
+                                                onPlaying={handleMediaResume}
+                                                onCanPlay={handleMediaResume}
+                                                onSeeked={handleMediaResume}
                                                 onError={(e) => {
                                                     const err = e.currentTarget.error;
                                                     console.error(`[Step6] Video play failed for Cut ${indexA}. Code: ${err?.code}, Message: ${err?.message}`);
-                                                    // e.currentTarget.style.display = 'none'; 
+
+                                                    // Fallback mechanism:
+                                                    // 1. Hide video to show underlying image
+                                                    e.currentTarget.style.display = 'none';
+                                                    // 2. Clear buffering flag so timer continues
+                                                    isBufferingRef.current = false;
                                                 }}
                                             />
                                         )}
@@ -1571,16 +1692,29 @@ export const Step6_Final = () => {
                                                 ref={(el) => { if (el) videoRefs.current[indexB] = el; }}
                                                 src={getOptimizedUrl(script[indexB].videoUrl)}
                                                 className="absolute inset-0 w-full h-full object-contain z-10"
-                                                muted
                                                 loop
                                                 playsInline
+                                                preload="auto"
+                                                onLoadedMetadata={(e) => {
+                                                    const shouldUnmute = script[indexB].useVideoAudio && script[indexB].videoUrl;
+                                                    e.currentTarget.muted = !shouldUnmute;
+                                                    if (shouldUnmute) e.currentTarget.volume = 1;
+                                                }}
+                                                onTimeUpdate={(e) => handleVideoTimeUpdate(e, indexB)}
+                                                onWaiting={() => { isBufferingRef.current = true; console.log(`[Video ${indexB}] Buffering...`); }}
+                                                onSeeking={() => { isBufferingRef.current = true; console.log(`[Video ${indexB}] Seeking...`); }}
+                                                onPlaying={handleMediaResume}
+                                                onCanPlay={handleMediaResume}
+                                                onSeeked={handleMediaResume}
                                                 onError={(e) => {
                                                     const err = e.currentTarget.error;
                                                     console.error(`[Step6] Video play failed for Cut ${indexB}. Code: ${err?.code}, Message: ${err?.message}`);
-                                                    // Remove display:none to allow debugging visible feedback if needed, 
-                                                    // but for now we keep it hidden to fall back to image seamlessly. 
-                                                    // However, to debug "Static Image" issue, we might want to know if it failed.
-                                                    // e.currentTarget.style.display = 'none'; 
+
+                                                    // Fallback mechanism:
+                                                    // 1. Hide video to show underlying image
+                                                    e.currentTarget.style.display = 'none';
+                                                    // 2. Clear buffering flag so timer continues
+                                                    isBufferingRef.current = false;
                                                 }}
                                             />
                                         )}
@@ -1593,7 +1727,29 @@ export const Step6_Final = () => {
                             <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent pointer-events-none z-20" />
                         </div>
 
+                        {/* HIDDEN PRELOAD LAYER: Render upcoming videos invisibly for preloading */}
+                        {playbackMode === 'hybrid' && (
+                            <div className="absolute opacity-0 w-0 h-0 overflow-hidden pointer-events-none" style={{ left: '-9999px' }}>
+                                {script.map((cut, idx) => {
+                                    // Skip current and already-rendered indices (indexA and indexB)
+                                    if (idx === indexA || idx === indexB) return null;
+                                    // Only preload next 2 cuts for performance (Reduced from 5)
+                                    if (idx < currentCutIndex || idx > currentCutIndex + 2) return null;
+                                    if (!cut.videoUrl || !getOptimizedUrl(cut.videoUrl)) return null;
 
+                                    return (
+                                        <video
+                                            key={`preload-video-${cut.id}`}
+                                            ref={(el) => { if (el) videoRefs.current[idx] = el; }}
+                                            src={getOptimizedUrl(cut.videoUrl)}
+                                            preload="auto"
+                                            muted
+                                            playsInline
+                                        />
+                                    );
+                                })}
+                            </div>
+                        )}
 
                         {/* Layer 3: Thumbnail Overlay (if Active) */}
                         {showThumbnail && (
@@ -1960,7 +2116,7 @@ export const Step6_Final = () => {
                 playsInline
                 muted={false}
                 onWaiting={() => { isBufferingRef.current = true; console.log("[Audio A] Buffering..."); }}
-                onPlaying={handleAudioResume}
+                onPlaying={handleMediaResume}
                 onError={(e) => console.error("Audio A error:", e.currentTarget.error)}
             />
             <audio
@@ -1971,7 +2127,7 @@ export const Step6_Final = () => {
                 playsInline
                 muted={false}
                 onWaiting={() => { isBufferingRef.current = true; console.log("[Audio B] Buffering..."); }}
-                onPlaying={handleAudioResume}
+                onPlaying={handleMediaResume}
                 onError={(e) => console.error("Audio B error:", e.currentTarget.error)}
             />
             <audio

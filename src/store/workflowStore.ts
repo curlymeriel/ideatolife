@@ -5,7 +5,21 @@ import { get as idbGet, set as idbSet, del as idbDel, keys as idbKeys } from 'id
 // seriesUtils are imported dynamically in createProject for tree-shaking
 
 // Import types and slices
-import type { ProjectData, ProjectMetadata } from './types';
+import type {
+    ProjectData,
+    ProjectMetadata,
+    ApiKeys,
+    ThumbnailSettings,
+    MasterStyle,
+    StyleAnchor,
+    TtsModel,
+    ImageModel,
+    Asset,
+    TrendSnapshot,
+    CompetitorSnapshot,
+    StrategyInsight
+} from './types';
+import type { ScriptCut, ChatMessage } from '../services/gemini';
 import { createProjectSlice, type ProjectSlice } from './projectSlice';
 import { createIntelligenceSlice, type IntelligenceSlice } from './intelligenceSlice';
 import { createUISlice, type UISlice } from './uiSlice';
@@ -456,7 +470,7 @@ const storage: StateStorage = {
                         pendingResolve = null;
                     }
                 }
-            }, 500);
+            }, 1000); // Increased to 1s for better performance during active editing
         });
     },
     removeItem: async (name: string): Promise<void> => {
@@ -848,53 +862,53 @@ export const useWorkflowStore = create<WorkflowStore>()(
             },
 
             // Wrap project actions to trigger save
-            setProjectInfo: (info) => {
-                set((state) => ({ ...state, ...info }));
+            setProjectInfo: (info: Partial<ProjectData>) => {
+                set((state: any) => ({ ...state, ...info }));
                 get().saveProject();
             },
-            setApiKeys: (keys) => {
+            setApiKeys: (keys: Partial<ApiKeys>) => {
                 set((state: any) => ({ apiKeys: { ...state.apiKeys, ...keys } }));
                 get().saveProject(); // Ensure keys are persisted immediately
             },
-            setChatHistory: (history) => {
+            setChatHistory: (history: ChatMessage[]) => {
                 set({ chatHistory: history });
             },
-            setProductionChatHistory: (history) => {
+            setProductionChatHistory: (history: ChatMessage[]) => {
                 set({ productionChatHistory: history });
             },
-            setThumbnail: (url) => {
+            setThumbnail: (url: string | null) => {
                 set({ thumbnailUrl: url });
                 get().saveProject();
             },
-            setThumbnailSettings: (settings) => {
+            setThumbnailSettings: (settings: Partial<ThumbnailSettings>) => {
                 set((state: any) => ({ thumbnailSettings: { ...state.thumbnailSettings, ...settings } }));
                 get().saveProject();
             },
-            setMasterStyle: (style) => {
+            setMasterStyle: (style: Partial<MasterStyle>) => {
                 set((state: any) => ({ masterStyle: { ...state.masterStyle, ...style } }));
                 get().saveProject();
             },
-            setStyleAnchor: (style) => {
+            setStyleAnchor: (style: Partial<StyleAnchor>) => {
                 set((state: any) => ({ styleAnchor: { ...state.styleAnchor, ...style } }));
                 get().saveProject();
             },
-            setScript: (script) => {
+            setScript: (script: ScriptCut[]) => {
                 set({ script });
                 get().saveProject();
             },
-            setTtsModel: (model) => {
+            setTtsModel: (model: TtsModel) => {
                 set({ ttsModel: model });
                 get().saveProject();
             },
-            setImageModel: (model) => {
+            setImageModel: (model: ImageModel) => {
                 set({ imageModel: model });
                 get().saveProject();
             },
-            setAssets: (assets) => {
+            setAssets: (assets: Record<string, any[]>) => {
                 set({ assets });
                 get().saveProject();
             },
-            updateAsset: (cutId, asset) => {
+            updateAsset: (cutId: string | number, asset: Partial<Asset>) => {
                 set((state: any) => ({
                     assets: {
                         ...state.assets,
@@ -903,7 +917,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
                 }));
                 get().saveProject();
             },
-            setStep: (step) => {
+            setStep: (step: number) => {
                 set({ currentStep: step });
             },
             nextStep: () => {
@@ -914,71 +928,71 @@ export const useWorkflowStore = create<WorkflowStore>()(
             },
 
             // OVERRIDE Intelligence Actions for PC Sync
-            saveTrendSnapshot: (snapshot) => {
+            saveTrendSnapshot: (snapshot: TrendSnapshot) => {
                 set((state: any) => ({
                     trendSnapshots: { ...state.trendSnapshots, [snapshot.id]: snapshot }
                 }));
                 const { localFolder } = get();
-                if (localFolder?.handle) syncIntelligenceLayerToPC(get(), localFolder.handle);
+                if (localFolder?.handle) (get() as any).syncIntelligenceLayerToPC(get(), localFolder.handle);
             },
-            deleteTrendSnapshot: (id) => {
+            deleteTrendSnapshot: (id: string) => {
                 set((state: any) => {
                     const { [id]: deleted, ...rest } = state.trendSnapshots;
                     return { trendSnapshots: rest };
                 });
                 const { localFolder } = get();
-                if (localFolder?.handle) syncIntelligenceLayerToPC(get(), localFolder.handle);
+                if (localFolder?.handle) (get() as any).syncIntelligenceLayerToPC(get(), localFolder.handle);
             },
-            saveCompetitorSnapshot: (snapshot) => {
+            saveCompetitorSnapshot: (snapshot: CompetitorSnapshot) => {
                 set((state: any) => ({
                     competitorSnapshots: { ...state.competitorSnapshots, [snapshot.id]: snapshot }
                 }));
                 const { localFolder } = get();
-                if (localFolder?.handle) syncIntelligenceLayerToPC(get(), localFolder.handle);
+                if (localFolder?.handle) (get() as any).syncIntelligenceLayerToPC(get(), localFolder.handle);
             },
-            deleteCompetitorSnapshot: (id) => {
+            deleteCompetitorSnapshot: (id: string) => {
                 set((state: any) => {
                     const { [id]: deleted, ...rest } = state.competitorSnapshots;
                     return { competitorSnapshots: rest };
                 });
                 const { localFolder } = get();
-                if (localFolder?.handle) syncIntelligenceLayerToPC(get(), localFolder.handle);
+                if (localFolder?.handle) (get() as any).syncIntelligenceLayerToPC(get(), localFolder.handle);
             },
-            saveStrategyInsight: (insight) => {
+            saveStrategyInsight: (insight: StrategyInsight) => {
                 set((state: any) => ({
                     strategyInsights: { ...state.strategyInsights, [insight.id]: insight }
                 }));
                 const { localFolder } = get();
-                if (localFolder?.handle) syncIntelligenceLayerToPC(get(), localFolder.handle);
+                if (localFolder?.handle) (get() as any).syncIntelligenceLayerToPC(get(), localFolder.handle);
             },
-            deleteStrategyInsight: (id) => {
+            deleteStrategyInsight: (id: string) => {
                 set((state: any) => {
                     const { [id]: deleted, ...rest } = state.strategyInsights;
                     return { strategyInsights: rest };
                 });
                 const { localFolder } = get();
-                if (localFolder?.handle) syncIntelligenceLayerToPC(get(), localFolder.handle);
+                if (localFolder?.handle) (get() as any).syncIntelligenceLayerToPC(get(), localFolder.handle);
             },
-            addIdeaToPool: (idea) => {
+            addIdeaToPool: (idea: any) => {
                 set((state: any) => ({
-                    ideaPool: [...state.ideaPool, idea]
+                    ideaPool: [...(state.ideaPool || []), idea]
                 }));
                 const { localFolder } = get();
-                if (localFolder?.handle) syncIntelligenceLayerToPC(get(), localFolder.handle);
+                if (localFolder?.handle) (get() as any).syncIntelligenceLayerToPC(get(), localFolder.handle);
             },
-            updateIdeaStatus: (id, status) => {
+            updateIdeaStatus: (id: string, status: string) => {
                 set((state: any) => ({
-                    ideaPool: state.ideaPool.map((i: any) => i.id === id ? { ...i, status } : i)
+                    ideaPool: (state.ideaPool || []).map((i: any) => i.id === id ? { ...i, status } : i)
                 }));
                 const { localFolder } = get();
-                if (localFolder?.handle) syncIntelligenceLayerToPC(get(), localFolder.handle);
+                if (localFolder?.handle) (get() as any).syncIntelligenceLayerToPC(get(), localFolder.handle);
             },
-            deleteIdeaFromPool: (id) => {
+            deleteIdeaFromPool: (id: string) => {
                 set((state: any) => ({
-                    ideaPool: state.ideaPool.filter((i: any) => i.id !== id)
+                    ideaPool: (state.ideaPool || []).filter((i: any) => i.id !== id)
                 }));
                 const { localFolder } = get();
-                if (localFolder?.handle) syncIntelligenceLayerToPC(get(), localFolder.handle);
+                if (localFolder?.handle) (get() as any).syncIntelligenceLayerToPC(get(), localFolder.handle);
             },
 
             // Multi-project Actions
@@ -1036,9 +1050,15 @@ export const useWorkflowStore = create<WorkflowStore>()(
                             finalImageUrl: cut.finalImageUrl || existingCut.finalImageUrl,
                             draftImageUrl: cut.draftImageUrl || existingCut.draftImageUrl,
                             audioUrl: cut.audioUrl || existingCut.audioUrl,
+                            videoUrl: cut.videoUrl || existingCut.videoUrl, // [CRITICAL FIX]
+                            videoSource: cut.videoSource || existingCut.videoSource,
+                            videoTrim: cut.videoTrim || existingCut.videoTrim,
+                            useVideoAudio: cut.useVideoAudio !== undefined ? cut.useVideoAudio : existingCut.useVideoAudio,
+                            audioVolumes: cut.audioVolumes || existingCut.audioVolumes,
                             // Preserve confirmed flags if existing has true but current has false/undefined
                             isImageConfirmed: cut.isImageConfirmed || existingCut.isImageConfirmed,
                             isAudioConfirmed: cut.isAudioConfirmed || existingCut.isAudioConfirmed,
+                            isVideoConfirmed: cut.isVideoConfirmed || existingCut.isVideoConfirmed,
                         };
                     });
                 }
@@ -1393,10 +1413,9 @@ export const useWorkflowStore = create<WorkflowStore>()(
                     });
 
                     // Start with an empty state to ensure no leftovers from previously loaded project
-                    const baseState = getEmptyProjectState(id, projectData.apiKeys || currentState.apiKeys);
-
+                    const freshBaseState = getEmptyProjectState(id, projectData.apiKeys || currentState.apiKeys);
                     set({
-                        ...baseState, // Overwrite with clean template
+                        ...freshBaseState, // Overwrite with clean template
                         ...projectData, // Then apply loaded project data
                         storylineTable: projectData.storylineTable || [], // Ensure table is cleared if missing in saved data
                         savedProjects: preservedSavedProjects, // Keep existing savedProjects dashboard list
@@ -1490,28 +1509,24 @@ export const useWorkflowStore = create<WorkflowStore>()(
                 // CRITICAL: Deep Copy IndexedDB Blobs
                 // We must iterate all idb:// references and copy the underlying blobs to new keys.
                 // Otherwise, deleting the original project will delete these blobs, breaking the copy.
-                const { resolveUrl, saveToIdb, generateAudioKey, generateCutImageKey, generateAssetImageKey } = await import('../utils/imageStorage');
+                const { resolveUrl, saveToIdb, generateAudioKey, generateVideoKey, generateCutImageKey, generateAssetImageKey } = await import('../utils/imageStorage');
 
                 // Helper to copy a single blob
-                const copyBlob = async (oldUrl: string | undefined | null, type: 'images' | 'audio' | 'assets', newKey: string): Promise<string | undefined> => {
+                const copyMedia = async (oldUrl: string | undefined | null, type: 'images' | 'audio' | 'assets' | 'video', newKey: string): Promise<string | undefined> => {
                     if (!oldUrl || !oldUrl.startsWith('idb://')) return oldUrl || undefined;
                     try {
-                        const blobUrl = await resolveUrl(oldUrl);
+                        // resolveUrl with asBlob: true to get the underlying file/blob
+                        const blobUrl = await resolveUrl(oldUrl, { asBlob: true });
                         if (!blobUrl) return undefined;
+
                         const response = await fetch(blobUrl);
                         const blob = await response.blob();
-                        const reader = new FileReader();
 
-                        return new Promise((resolve) => {
-                            reader.onloadend = async () => {
-                                const base64 = reader.result as string;
-                                const newIdbUrl = await saveToIdb(type, newKey, base64);
-                                resolve(newIdbUrl);
-                            };
-                            reader.readAsDataURL(blob);
-                        });
+                        // Save the raw blob directly to avoid Base64 corruption/truncation
+                        const newIdbUrl = await saveToIdb(type, newKey, blob);
+                        return newIdbUrl;
                     } catch (e) {
-                        console.error(`[Duplicate] Failed to copy blob ${oldUrl} to ${newKey}`, e);
+                        console.error(`[Duplicate] Failed to copy ${type} ${oldUrl} to ${newKey}`, e);
                         return undefined;
                     }
                 };
@@ -1523,13 +1538,16 @@ export const useWorkflowStore = create<WorkflowStore>()(
                         const cutId = cut.id;
 
                         if (cut.audioUrl) {
-                            cut.audioUrl = await copyBlob(cut.audioUrl, 'audio', generateAudioKey(newId, cutId)) || undefined;
+                            cut.audioUrl = await copyMedia(cut.audioUrl, 'audio', generateAudioKey(newId, cutId)) || undefined;
+                        }
+                        if (cut.videoUrl) {
+                            cut.videoUrl = await copyMedia(cut.videoUrl, 'video', generateVideoKey(newId, cutId)) || undefined;
                         }
                         if (cut.finalImageUrl) {
-                            cut.finalImageUrl = await copyBlob(cut.finalImageUrl, 'images', generateCutImageKey(newId, cutId, 'final')) || undefined;
+                            cut.finalImageUrl = await copyMedia(cut.finalImageUrl, 'images', generateCutImageKey(newId, cutId, 'final')) || undefined;
                         }
                         if (cut.draftImageUrl) {
-                            cut.draftImageUrl = await copyBlob(cut.draftImageUrl, 'images', generateCutImageKey(newId, cutId, 'draft')) || undefined;
+                            cut.draftImageUrl = await copyMedia(cut.draftImageUrl, 'images', generateCutImageKey(newId, cutId, 'draft')) || undefined;
                         }
                     }
                 }
@@ -1538,20 +1556,20 @@ export const useWorkflowStore = create<WorkflowStore>()(
                 if (newProject.assetDefinitions) {
                     const entries = Object.entries(newProject.assetDefinitions);
                     for (const [assetId, asset] of entries) {
-                        asset.referenceImage = await copyBlob(asset.referenceImage, 'assets', generateAssetImageKey(newId, assetId, 'ref')) || undefined;
-                        asset.masterImage = await copyBlob(asset.masterImage, 'assets', generateAssetImageKey(newId, assetId, 'master')) || undefined;
-                        asset.draftImage = await copyBlob(asset.draftImage, 'assets', generateAssetImageKey(newId, assetId, 'draft')) || undefined;
+                        asset.referenceImage = await copyMedia(asset.referenceImage, 'assets', generateAssetImageKey(newId, assetId, 'ref')) || undefined;
+                        asset.masterImage = await copyMedia(asset.masterImage, 'assets', generateAssetImageKey(newId, assetId, 'master')) || undefined;
+                        asset.draftImage = await copyMedia(asset.draftImage, 'assets', generateAssetImageKey(newId, assetId, 'draft')) || undefined;
                     }
                 }
 
                 // C. Copy Master Style
                 if (newProject.masterStyle?.referenceImage) {
-                    newProject.masterStyle.referenceImage = await copyBlob(newProject.masterStyle.referenceImage, 'assets', `${newId}-master-style-ref`) || null;
+                    newProject.masterStyle.referenceImage = await copyMedia(newProject.masterStyle.referenceImage, 'assets', `${newId}-master-style-ref`) || null;
                 }
 
                 // D. Copy Thumbnail
                 if (newProject.thumbnailUrl) {
-                    newProject.thumbnailUrl = await copyBlob(newProject.thumbnailUrl, 'images', `${newId}-thumbnail`) || null;
+                    newProject.thumbnailUrl = await copyMedia(newProject.thumbnailUrl, 'images', `${newId}-thumbnail`) || null;
                 }
 
                 // 4. Save to Disk
@@ -1874,7 +1892,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
 
                         // INLINE MIGRATION: Convert Base64 to idb:// immediately to reduce memory
                         // Import saveToIdb dynamically
-                        const { saveToIdb, generateCutImageKey, generateAudioKey, generateAssetImageKey } = await import('../utils/imageStorage');
+                        const { saveToIdb, generateCutImageKey, generateAudioKey, generateVideoKey, generateAssetImageKey } = await import('../utils/imageStorage');
                         let migratedCount = 0;
 
                         // Helper to check if URL is Base64
@@ -1887,18 +1905,23 @@ export const useWorkflowStore = create<WorkflowStore>()(
                                 const cut = stateToLoad.script[i];
 
                                 if (isBase64(cut.finalImageUrl)) {
-                                    const idbUrl = await saveToIdb('images', generateCutImageKey(validProjectId, cut.id, 'final'), cut.finalImageUrl);
+                                    const idbUrl = await saveToIdb('images', generateCutImageKey(validProjectId, cut.id, 'final' as any), cut.finalImageUrl);
                                     cut.finalImageUrl = idbUrl;
                                     migratedCount++;
                                 }
                                 if (isBase64(cut.draftImageUrl)) {
-                                    const idbUrl = await saveToIdb('images', generateCutImageKey(validProjectId, cut.id, 'draft'), cut.draftImageUrl);
+                                    const idbUrl = await saveToIdb('images', generateCutImageKey(validProjectId, cut.id, 'draft' as any), cut.draftImageUrl);
                                     cut.draftImageUrl = idbUrl;
                                     migratedCount++;
                                 }
                                 if (isBase64(cut.audioUrl)) {
                                     const idbUrl = await saveToIdb('audio', generateAudioKey(validProjectId, cut.id), cut.audioUrl);
                                     cut.audioUrl = idbUrl;
+                                    migratedCount++;
+                                }
+                                if (isBase64(cut.videoUrl)) {
+                                    const idbUrl = await saveToIdb('video', generateVideoKey(validProjectId, cut.id), cut.videoUrl);
+                                    cut.videoUrl = idbUrl;
                                     migratedCount++;
                                 }
 
@@ -2093,8 +2116,23 @@ export const useWorkflowStore = create<WorkflowStore>()(
             name: 'idea-lab-storage',
             storage: createJSONStorage(() => storage),
             version: 7,
-            partialize: (state) => {
-                const { saveStatus, isHydrated, localFolder, isSyncingLibrary, ...rest } = state as any;
+            partialize: (state: any) => {
+                // EXCLUDE heavy or transient fields from global persistence
+                // Individual project data is saved separately in saveProject() to IndexedDB
+                // This 'idea-lab-storage' key mainly holds metadata and settings.
+                const {
+                    chatHistory,
+                    productionChatHistory,
+                    script,
+                    assets,
+                    visualAssets,
+                    assetDefinitions,
+                    saveStatus,
+                    isHydrated,
+                    localFolder,
+                    isSyncingLibrary,
+                    ...rest
+                } = state;
 
                 // Strip large Base64 data from script to prevent persist bloat
                 // The full data is saved in individual project files (project-{id})

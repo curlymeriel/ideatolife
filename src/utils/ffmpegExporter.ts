@@ -3,7 +3,18 @@
  * Uses FFmpeg compiled to WebAssembly for high-quality MP4 export
  */
 
-import type { RecordingCut } from './canvasVideoRecorder';
+export interface RecordingCut {
+    imageUrl: string;
+    videoUrl?: string;
+    videoTrim?: { start: number; end: number };
+    audioUrl?: string;
+    sfxUrl?: string;
+    sfxVolume?: number;
+    useVideoAudio?: boolean;
+    duration: number;
+    dialogue?: string;
+    speaker?: string;
+}
 
 let ffmpegInstance: any = null;
 let isFFmpegLoaded = false;
@@ -220,6 +231,11 @@ export async function exportWithFFmpeg(
 
             // Input 0: Video or Image
             if (hasVideo) {
+                // [FIX] Support Video Trimming with -ss
+                const trimStart = (cut as any).videoTrim?.start || 0;
+                if (trimStart > 0) {
+                    inputs.push('-ss', String(trimStart));
+                }
                 inputs.push('-stream_loop', '-1', '-i', `video_${padNum}.mp4`);
             } else {
                 inputs.push('-loop', '1', '-i', `img_${padNum}.jpg`);

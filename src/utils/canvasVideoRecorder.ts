@@ -6,6 +6,7 @@
 export interface RecordingCut {
     imageUrl: string;
     videoUrl?: string;    // Supported if playbackMode is hybrid
+    videoTrim?: { start: number; end: number }; // [NEW] Support trimming
     audioUrl?: string;
     sfxUrl?: string;      // Sound effect URL
     sfxVolume?: number;   // SFX volume (0.0 to 1.0, default 0.3)
@@ -203,7 +204,9 @@ export async function recordCanvasVideo(
 
         // B-3. Start Video Playback
         if (video) {
-            video.currentTime = 0;
+            // [FIX] Respect Trim Start
+            const trimStart = cut.videoTrim?.start || 0;
+            video.currentTime = trimStart;
             if (!shouldUseVideoAudio) video.muted = true;
             try { await video.play(); } catch (e) { console.warn('Record video play failed', e); }
         }
@@ -222,7 +225,13 @@ export async function recordCanvasVideo(
             let srcW = img.naturalWidth;
             let srcH = img.naturalHeight;
 
-            if (video && !video.paused && video.videoWidth > 0) {
+            if (video && video.videoWidth > 0) {
+                // [FIX] Loop video if it ends before the cut duration is over
+                if (video.ended || (video.duration > 0 && video.currentTime >= video.duration - 0.1)) {
+                    console.log(`[Recorder] Looping video for Cut ${cutIndex}`);
+                    video.currentTime = 0;
+                    video.play().catch(() => { });
+                }
                 drawSource = video;
                 srcW = video.videoWidth;
                 srcH = video.videoHeight;

@@ -89,7 +89,7 @@ const sampleProjectDefaults = {
     bgmTracks: [],
 };
 
-export const createProjectSlice: StateCreator<ProjectSlice> = (set) => ({
+export const createProjectSlice: StateCreator<ProjectSlice> = (set, get) => ({
     ...sampleProjectDefaults,
 
     setProjectInfo: (info) => set((state) => ({ ...state, ...info })),
@@ -114,7 +114,54 @@ export const createProjectSlice: StateCreator<ProjectSlice> = (set) => ({
         styleAnchor: { ...state.styleAnchor, ...style }
     })),
 
-    setScript: (script) => set({ script }),
+    setScript: async (script) => {
+        // PROACTIVE OPTIMIZATION: Scan for large Base64 strings and move to IDB before they hit the store
+        // This prevents main-thread blocking during JSON serialization of the global state
+        const sanitizedScript = [...script];
+        let wasModified = false;
+        const currentId = (get() as any).id;
+
+        const { saveToIdb, generateAudioKey, generateCutImageKey } = await import('../utils/imageStorage');
+
+        for (let i = 0; i < sanitizedScript.length; i++) {
+            const cut = sanitizedScript[i];
+            const cutId = cut.id;
+
+            // 1. Audio
+            if (cut.audioUrl?.startsWith('data:') && cut.audioUrl.length > 50000) {
+                try {
+                    const idbUrl = await saveToIdb('audio', generateAudioKey(currentId, cutId), cut.audioUrl);
+                    sanitizedScript[i] = { ...sanitizedScript[i], audioUrl: idbUrl };
+                    wasModified = true;
+                } catch (e) { console.error("[Sanitizer] Audio failed", e); }
+            }
+
+            // 2. Final Image
+            if (cut.finalImageUrl?.startsWith('data:') && cut.finalImageUrl.length > 50000) {
+                try {
+                    const idbUrl = await saveToIdb('images', generateCutImageKey(currentId, cutId, 'final' as any), cut.finalImageUrl);
+                    sanitizedScript[i] = { ...sanitizedScript[i], finalImageUrl: idbUrl };
+                    wasModified = true;
+                } catch (e) { console.error("[Sanitizer] Final image failed", e); }
+            }
+
+            // 3. Draft Image
+            if (cut.draftImageUrl?.startsWith('data:') && cut.draftImageUrl.length > 50000) {
+                try {
+                    const idbUrl = await saveToIdb('images', generateCutImageKey(currentId, cutId, 'draft' as any), cut.draftImageUrl);
+                    sanitizedScript[i] = { ...sanitizedScript[i], draftImageUrl: idbUrl };
+                    wasModified = true;
+                } catch (e) { console.error("[Sanitizer] Draft image failed", e); }
+            }
+        }
+
+        set({ script: sanitizedScript });
+
+        // If we moved things to IDB, trigger a save to reflect optimized state
+        if (wasModified) {
+            (get() as any).saveProject?.();
+        }
+    },
 
     setTtsModel: (model) => set({ ttsModel: model }),
 
@@ -122,12 +169,39 @@ export const createProjectSlice: StateCreator<ProjectSlice> = (set) => ({
 
     setAssets: (assets) => set({ assets }),
 
-    updateAsset: (cutId, asset) => set((state) => ({
-        assets: {
-            ...state.assets,
-            [cutId]: { ...state.assets[cutId], ...asset }
+    updateAsset: async (cutId, asset) => {
+        // PROACTIVE OPTIMIZATION: If adding a large image/audio to a cut asset, move to IDB first
+        let sanitizedAsset = { ...asset };
+        const currentId = (get() as any).id;
+        let wasModified = false;
+
+        const { saveToIdb, generateAudioKey, generateCutImageKey } = await import('../utils/imageStorage');
+
+        // Check for common asset image fields
+        const imageFields: (keyof Asset & string)[] = ['imageUrl', 'audioUrl'];
+        for (const field of imageFields) {
+            const val = sanitizedAsset[field];
+            if (typeof val === 'string' && val.startsWith('data:') && val.length > 50000) {
+                try {
+                    const idbUrl = await saveToIdb(field === 'imageUrl' ? 'images' : 'audio',
+                        field === 'imageUrl' ? generateCutImageKey(currentId, cutId, 'final' as any) : generateAudioKey(currentId, cutId), val);
+                    sanitizedAsset[field] = idbUrl;
+                    wasModified = true;
+                } catch (e) { console.error(`[Sanitizer] Asset ${field} failed`, e); }
+            }
         }
-    })),
+
+        set((state) => ({
+            assets: {
+                ...state.assets,
+                [cutId]: { ...state.assets[cutId], ...sanitizedAsset }
+            }
+        }));
+
+        if (wasModified) {
+            (get() as any).saveProject?.();
+        }
+    },
 
     setProductionChatHistory: (history) => set({ productionChatHistory: history }),
 

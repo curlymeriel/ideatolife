@@ -235,11 +235,14 @@ export const compressVideoBlob = async (
             recorder.start();
 
             // 비디오 재생 및 캔버스에 그리기
-            video.play();
+            video.play().catch(e => {
+                console.error('[Compressor] Video play failed:', e);
+                recorder.stop();
+            });
 
             const drawFrame = () => {
                 if (video.ended || video.paused) {
-                    recorder.stop();
+                    if (recorder.state === 'recording') recorder.stop();
                     return;
                 }
 
@@ -258,12 +261,32 @@ export const compressVideoBlob = async (
 
         video.onerror = () => {
             URL.revokeObjectURL(url);
-            reject(new Error('Failed to load video'));
+            // [FIX] Fallback to original blob on error
+            console.warn('[Compressor] Failed to load video for compression. Using original.');
+            resolve(blob);
         };
 
         video.src = url;
     });
 };
+
+/**
+ * 헬퍼: 압축 결과가 너무 작으면(1KB 미만) 원본 반환 (안전장치)
+ */
+const safeCompressVideoBlob = async (blob: Blob, options?: VideoCompressionOptions, onProgress?: (p: number) => void): Promise<Blob> => {
+    try {
+        const compressed = await compressVideoBlob(blob, options, onProgress);
+        if (compressed.size < 1024) {
+            console.warn(`[Compressor] Compressed video is too small (${compressed.size} bytes). Reverting to original.`);
+            return blob;
+        }
+        return compressed;
+    } catch (e) {
+        console.error('[Compressor] Compression failed:', e);
+        return blob;
+    }
+};
+
 
 /**
  * 비디오 압축이 필요한지 확인

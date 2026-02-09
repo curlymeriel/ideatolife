@@ -151,7 +151,15 @@ export async function saveToIdb(
         try {
             const [header, base64] = dataToSave.split(',');
             if (base64) {
-                const mime = header.match(/:(.*?);/)?.[1] || 'application/octet-stream';
+                let mime = header.match(/:(.*?);/)?.[1] || 'application/octet-stream';
+
+                // [FIX] MIME healing for empty/unknown types based on extension
+                if (mime === 'application/octet-stream' || !mime) {
+                    const ext = key.split('.').pop()?.toLowerCase();
+                    if (ext === 'webm') mime = 'video/webm';
+                    else if (ext === 'mp4') mime = 'video/mp4';
+                }
+
                 const binary = atob(base64);
                 const array = new Uint8Array(binary.length);
                 for (let i = 0; i < binary.length; i++) {
@@ -164,11 +172,38 @@ export async function saveToIdb(
         }
     }
 
+    // [FIX] Check Magic Bytes but DO NOT Force Override if it breaks playback
+    // User reported that sometimes forced 'video/webm' causes silence on Windows if the file is actually mp4 wrappped.
+    if (type === 'video' && dataToSave instanceof Blob) {
+        const magicMime = await getMimeFromMagicBytes(dataToSave);
+        if (magicMime && magicMime !== dataToSave.type) {
+            console.warn(`[ImageStorage:SAVE] MIME Mismatch detected: Provided=${dataToSave.type}, Actual=${magicMime}. Keeping Provided.`);
+            // dataToSave = new Blob([dataToSave], { type: magicMime }); // DISABLED: Causing silence issues
+        }
+    }
+
+
+    // [FIX] If already a Blob but missing type, heal it
+    if (dataToSave instanceof Blob && (dataToSave.type === 'application/octet-stream' || !dataToSave.type)) {
+        const ext = key.split('.').pop()?.toLowerCase();
+        if (ext === 'webm') dataToSave = new Blob([dataToSave], { type: 'video/webm' });
+        else if (ext === 'mp4') dataToSave = new Blob([dataToSave], { type: 'video/mp4' });
+        else if (ext === 'webp') dataToSave = new Blob([dataToSave], { type: 'image/webp' });
+    }
+
+
     const storageKey = `${STORAGE_PREFIX}${type}-${key}`;
+
+    // [DEBUG] Log MIME type being saved
+    if (dataToSave instanceof Blob) {
+        console.log(`[ImageStorage:SAVE] Key: ${key}, MIME: ${dataToSave.type}, Size: ${Math.round(dataToSave.size / 1024)}KB`);
+    }
+
     await set(storageKey, dataToSave);
     const idbUrl = generateIdbUrl(type, key);
     console.log(`[ImageStorage] Saved ${type}/${key} (${typeof dataToSave === 'string' ? Math.round(dataToSave.length / 1024) : Math.round((dataToSave as Blob).size / 1024)}KB)`);
     return idbUrl;
+
 }
 
 /**
@@ -199,6 +234,46 @@ export async function deleteFromIdb(idbUrl: string): Promise<void> {
 }
 
 /**
+ * Identify real MIME type from file header
+ */
+async function getMimeFromMagicBytes(blob: Blob): Promise<string | null> {
+    try {
+        const buffer = await blob.slice(0, 1024).arrayBuffer(); // Check larger chunk for fragmented files
+        const view = new Uint8Array(buffer);
+
+        // EBML (WebM / MKV): 1A 45 DF A3
+        if (view[0] === 0x1A && view[1] === 0x45 && view[2] === 0xDF && view[3] === 0xA3) return 'video/webm';
+
+        // MP4 / MOV signatures: find 'ftyp' or 'moov' atom
+        const str = String.fromCharCode(...view.slice(0, 100));
+        if (str.includes('ftyp') || str.includes('moov')) {
+            if (str.includes('qt  ')) return 'video/quicktime'; // MOV
+            return 'video/mp4';
+        }
+
+        // Final fallback: if first 4 bytes are 00 00 00, likely an MP4/MOV box
+        if (view[0] === 0 && view[1] === 0 && view[2] === 0) return 'video/mp4';
+
+        return null;
+    } catch (e) { return null; }
+}
+
+// Singleton cache for Blob URLs to prevent redundant re-loading of large media
+const blobUrlCache = new Map<string, { url: string; blob: Blob }>();
+
+/**
+ * Clear the Blob URL cache and revoke all object URLs
+ * Highly important for repairs to force re-loading from IDB
+ */
+export function clearBlobUrlCache() {
+    console.log(`[ImageStorage] Clearing ${blobUrlCache.size} cached Blob URLs`);
+    blobUrlCache.forEach(val => {
+        try { URL.revokeObjectURL(val.url); } catch (e) { }
+    });
+    blobUrlCache.clear();
+}
+
+/**
  * Resolve any URL to a displayable format
  * - If it's an idb:// URL, loads from IndexedDB
  * - If it's already a data: URL or http URL, returns as-is
@@ -213,20 +288,62 @@ export async function resolveUrl(
     if (!url) return '';
     if (!isIdbUrl(url)) return url;
 
+    // [OPTIMIZATION] Check cache first for Blob URLs
+    if (options.asBlob && blobUrlCache.has(url)) {
+        return blobUrlCache.get(url)!.url;
+    }
+
     try {
         const rawData = await loadFromIdb(url);
         if (!rawData) return '';
 
         // Case 1: Already a Blob (modern storage)
         if (rawData instanceof Blob) {
-            // Fix audio MIME type if stored incorrectly as octet-stream
             let blobToUse = rawData;
             const parsed = parseIdbUrl(url);
-            if (parsed?.type === 'audio' && rawData.type === 'application/octet-stream') {
+
+            if (parsed?.type === 'video') {
+                const ext = parsed.key.split('.').pop()?.toLowerCase();
+                const magicMime = await getMimeFromMagicBytes(rawData);
+                const originalMime = rawData.type;
+
+                // [DEBUG] Log what we loaded
+                console.log(`[ImageStorage:LOAD] Key: ${parsed.key}, OriginalMIME: ${originalMime}, MagicMIME: ${magicMime}, Ext: ${ext}`);
+
+
+                // [FIX] Preserve valid original MIME types
+                // Only heal if: 1) No MIME, 2) Generic octet-stream, 3) Magic bytes explicitly indicate different format
+                let targetMime: string | null = null;
+
+                if (!originalMime || originalMime === 'application/octet-stream') {
+                    // Original MIME is invalid, need to heal
+                    targetMime = magicMime;
+                    if (!targetMime) {
+                        if (ext === 'webm' || ext === 'mkv') targetMime = 'video/webm';
+                        else if (ext === 'mov') targetMime = 'video/quicktime';
+                        else targetMime = 'video/mp4';
+                    }
+                } else if (magicMime && magicMime !== originalMime) {
+                    // Magic bytes detected a different format (trust magic bytes over original)
+                    console.log(`[ImageStorage:Resolve] Magic bytes override: ${originalMime} -> ${magicMime}`);
+                    targetMime = magicMime;
+                }
+                // If originalMime is valid and matches magic bytes (or magic bytes is null), keep original
+
+                if (targetMime && targetMime !== originalMime) {
+                    console.log(`[ImageStorage:Resolve] Healing Video MIME: ${originalMime} -> ${targetMime} for ${parsed.key}`);
+                    blobToUse = new Blob([rawData], { type: targetMime });
+                }
+            } else if (parsed?.type === 'audio' && (rawData.type === 'application/octet-stream' || !rawData.type)) {
                 blobToUse = new Blob([rawData], { type: 'audio/mpeg' });
             }
 
-            if (options.asBlob) return URL.createObjectURL(blobToUse);
+
+            if (options.asBlob) {
+                const bUrl = URL.createObjectURL(blobToUse);
+                blobUrlCache.set(url, { url: bUrl, blob: blobToUse });
+                return bUrl;
+            }
 
             // Convert to Data URL if needed as string
             return new Promise((resolve) => {
@@ -234,8 +351,12 @@ export async function resolveUrl(
                 reader.onloadend = () => {
                     let result = reader.result as string;
                     // Fix MIME type in data URL if needed
-                    if (parsed?.type === 'audio' && result.startsWith('data:application/octet-stream')) {
-                        result = result.replace('data:application/octet-stream', 'data:audio/mpeg');
+                    if (result.startsWith('data:application/octet-stream')) {
+                        if (parsed?.type === 'audio') {
+                            result = result.replace('data:application/octet-stream', 'data:audio/mpeg');
+                        } else if (parsed?.type === 'video') {
+                            result = result.replace('data:application/octet-stream', 'data:video/mp4');
+                        }
                     }
                     resolve(result);
                 };
@@ -258,8 +379,13 @@ export async function resolveUrl(
                     for (let i = 0; i < binary.length; i++) {
                         array[i] = binary.charCodeAt(i);
                     }
-                    return URL.createObjectURL(new Blob([array], { type: mime }));
+                    const blobToCache = new Blob([array], { type: mime });
+                    const bUrl = URL.createObjectURL(blobToCache);
+                    blobUrlCache.set(url, { url: bUrl, blob: blobToCache });
+                    return bUrl;
                 }
+                // If it's not a data: URL but asBlob is true, we should probably return an empty string or throw
+                // For now, returning the string itself, but this might not be a valid Blob URL.
                 return dataStr;
             } catch (e) {
                 console.error("[ImageStorage] resolveUrl manual conversion failed:", e);
@@ -271,6 +397,17 @@ export async function resolveUrl(
     } catch (e) {
         console.error(`[ImageStorage] Failed to resolve URL ${url}:`, e);
         return '';
+    }
+}
+
+/**
+ * Revoke a specific idb:// URL's cached Blob URL to free memory
+ */
+export function revokeIdbUrl(url: string): void {
+    if (blobUrlCache.has(url)) {
+        const cached = blobUrlCache.get(url)!;
+        URL.revokeObjectURL(cached.url);
+        blobUrlCache.delete(url);
     }
 }
 

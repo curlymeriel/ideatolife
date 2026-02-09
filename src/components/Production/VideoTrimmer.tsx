@@ -82,22 +82,42 @@ export const VideoTrimmer: React.FC<VideoTrimmerProps> = ({
         }
     };
 
+    const lastUpdateRef = useRef<number>(0);
     const handleSliderChange = (type: 'min' | 'max', value: number) => {
         const val = Math.max(0, Math.min(value, videoDuration));
 
         if (type === 'min') {
             const newStart = Math.min(val, localEnd - 0.5); // Min gap 0.5s
             setLocalStart(newStart);
-            onChange(newStart, localEnd);
+
+            // Throttle parent update to 100ms
+            const now = Date.now();
+            if (now - lastUpdateRef.current > 100) {
+                onChange(newStart, localEnd);
+                lastUpdateRef.current = now;
+            }
+
             if (videoRef.current) videoRef.current.currentTime = newStart;
             if (onSeek) onSeek(newStart);
         } else {
             const newEnd = Math.max(val, localStart + 0.5);
             setLocalEnd(newEnd);
-            onChange(localStart, newEnd);
+
+            const now = Date.now();
+            if (now - lastUpdateRef.current > 100) {
+                onChange(localStart, newEnd);
+                lastUpdateRef.current = now;
+            }
+
             if (videoRef.current) videoRef.current.currentTime = newEnd; // Preview end frame
             if (onSeek) onSeek(newEnd);
         }
+    };
+
+    // Ensure final state is sent on mouse up/drag end
+    const handleSliderCommit = () => {
+        onChange(localStart, localEnd);
+        lastUpdateRef.current = Date.now();
     };
 
     const formatTime = (seconds: number) => {
@@ -108,7 +128,7 @@ export const VideoTrimmer: React.FC<VideoTrimmerProps> = ({
     };
 
     return (
-        <div className="bg-black/40 rounded-lg p-3 border border-white/5">
+        <div className="bg-black/40 rounded-lg p-3 border border-white/5 w-full max-w-full overflow-hidden">
             <div className="flex items-center gap-2 mb-2">
                 <Scissors size={14} className="text-cyan-400" />
                 <span className="text-xs font-bold text-gray-300">TRIM VIDEO</span>
@@ -161,6 +181,8 @@ export const VideoTrimmer: React.FC<VideoTrimmerProps> = ({
                     step="0.1"
                     value={localStart}
                     onChange={(e) => handleSliderChange('min', parseFloat(e.target.value))}
+                    onMouseUp={handleSliderCommit}
+                    onKeyUp={handleSliderCommit}
                     className="absolute inset-0 w-full appearance-none pointer-events-none bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:relative [&::-webkit-slider-thumb]:z-20"
                 />
 
@@ -172,6 +194,8 @@ export const VideoTrimmer: React.FC<VideoTrimmerProps> = ({
                     step="0.1"
                     value={localEnd}
                     onChange={(e) => handleSliderChange('max', parseFloat(e.target.value))}
+                    onMouseUp={handleSliderCommit}
+                    onKeyUp={handleSliderCommit}
                     className="absolute inset-0 w-full appearance-none pointer-events-none bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:relative [&::-webkit-slider-thumb]:z-20"
                 />
             </div>

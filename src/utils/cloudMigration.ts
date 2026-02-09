@@ -71,6 +71,11 @@ const uploadMediaUrl = async (
 ): Promise<string | null> => {
     if (!url) return null;
 
+    // Skip if already a Firebase Storage URL
+    if (url.includes('firebasestorage.googleapis.com')) {
+        return url;
+    }
+
     try {
         let blob: Blob;
 
@@ -103,12 +108,23 @@ const uploadMediaUrl = async (
 
         // 압축
         if (compress) {
-            if (mediaType === 'images' && shouldCompressImage(blob)) {
-                blob = await compressImageBlob(blob);
-            } else if (mediaType === 'videos' && shouldCompressVideo(blob)) {
-                blob = await compressVideoBlob(blob);
+            try {
+                if (mediaType === 'images' && shouldCompressImage(blob)) {
+                    blob = await compressImageBlob(blob);
+                } else if (mediaType === 'videos' && shouldCompressVideo(blob)) {
+                    const compressed = await compressVideoBlob(blob);
+                    // [FIX] Safety check: If compressed video is too small (<1KB), it's likely corrupted/empty.
+                    if (compressed.size > 1024) {
+                        blob = compressed;
+                    } else {
+                        console.warn(`[CloudMigration] Compressed video too small (${compressed.size} bytes). Using original.`);
+                    }
+                }
+            } catch (e) {
+                console.error('[CloudMigration] Compression error, using original:', e);
             }
         }
+
 
         // 업로드
         const result = await cloudStorage.uploadFile(
@@ -120,8 +136,12 @@ const uploadMediaUrl = async (
         );
 
         return result.downloadUrl;
-    } catch (error) {
+    } catch (error: any) {
         console.error(`Failed to upload media ${fileName}:`, error);
+        // Firebase Storage Unauthorized error code
+        if (error?.code === 'storage/unauthorized' || error?.status === 403) {
+            return 'UNAUTHORIZED';
+        }
         return null;
     }
 };
@@ -136,8 +156,21 @@ export const migrateProjectToCloud = async (
 ): Promise<ProjectData> => {
     const migratedProject = { ...project };
 
+    // [FIX] Deep Copy sensitive arrays/objects to prevent mutating the active store state
+    // If we modify migratedProject.script directly, it updates the UI state because shallow copy shares references.
+    if (migratedProject.script) {
+        migratedProject.script = migratedProject.script.map(cut => ({ ...cut }));
+    }
+    if (migratedProject.assetDefinitions) {
+        migratedProject.assetDefinitions = {};
+        for (const [key, val] of Object.entries(project.assetDefinitions)) {
+            migratedProject.assetDefinitions[key] = { ...val };
+        }
+    }
+
     // 1. 스크립트 미디어 업로드
     if (migratedProject.script) {
+
         for (let i = 0; i < migratedProject.script.length; i++) {
             const cut = migratedProject.script[i];
             const cutId = cut.id ?? i;
@@ -161,6 +194,7 @@ export const migrateProjectToCloud = async (
                     `cut_${String(cutId).padStart(3, '0')}_final.webp`,
                     cut.finalImageUrl
                 );
+                if (cloudUrl === 'UNAUTHORIZED') break;
                 if (cloudUrl) migratedProject.script[i].finalImageUrl = cloudUrl;
             }
 
@@ -171,6 +205,7 @@ export const migrateProjectToCloud = async (
                     `cut_${String(cutId).padStart(3, '0')}_draft.webp`,
                     cut.draftImageUrl
                 );
+                if (cloudUrl === 'UNAUTHORIZED') break;
                 if (cloudUrl) migratedProject.script[i].draftImageUrl = cloudUrl;
             }
 
@@ -182,6 +217,7 @@ export const migrateProjectToCloud = async (
                     cut.audioUrl,
                     false // 오디오는 압축하지 않음
                 );
+                if (cloudUrl === 'UNAUTHORIZED') break;
                 if (cloudUrl) migratedProject.script[i].audioUrl = cloudUrl;
             }
 
@@ -190,8 +226,13 @@ export const migrateProjectToCloud = async (
                 const cloudUrl = await uploadMediaUrl(
                     userId, project.id, 'videos',
                     `cut_${String(cutId).padStart(3, '0')}_video.webm`,
-                    cut.videoUrl
+                    cut.videoUrl,
+                    false // [FIX] Disable compression for videos to prevent memory issues and 110-byte errors
                 );
+                if (cloudUrl === 'UNAUTHORIZED') {
+                    console.error('[CloudMigration] Unauthorized upload. Aborting migration.');
+                    return project; // Return original project without saving changes
+                }
                 if (cloudUrl) migratedProject.script[i].videoUrl = cloudUrl;
             }
 
@@ -203,6 +244,10 @@ export const migrateProjectToCloud = async (
                     cut.sfxUrl,
                     false
                 );
+                if (cloudUrl === 'UNAUTHORIZED') {
+                    console.error('[CloudMigration] Unauthorized upload. Aborting migration.');
+                    return project;
+                }
                 if (cloudUrl) migratedProject.script[i].sfxUrl = cloudUrl;
             }
         }
@@ -219,6 +264,7 @@ export const migrateProjectToCloud = async (
                     `asset_${safeName}_ref.webp`,
                     asset.referenceImage
                 );
+                if (cloudUrl === 'UNAUTHORIZED') return project;
                 if (cloudUrl) migratedProject.assetDefinitions[assetId].referenceImage = cloudUrl;
             }
 
@@ -228,6 +274,7 @@ export const migrateProjectToCloud = async (
                     `asset_${safeName}_draft.webp`,
                     asset.draftImage
                 );
+                if (cloudUrl === 'UNAUTHORIZED') return project;
                 if (cloudUrl) migratedProject.assetDefinitions[assetId].draftImage = cloudUrl;
             }
 
@@ -237,6 +284,7 @@ export const migrateProjectToCloud = async (
                     `asset_${safeName}_master.webp`,
                     asset.masterImage
                 );
+                if (cloudUrl === 'UNAUTHORIZED') return project;
                 if (cloudUrl) migratedProject.assetDefinitions[assetId].masterImage = cloudUrl;
             }
         }
@@ -249,6 +297,7 @@ export const migrateProjectToCloud = async (
             'thumbnail.webp',
             migratedProject.thumbnailUrl
         );
+        if (cloudUrl === 'UNAUTHORIZED') return project;
         if (cloudUrl) migratedProject.thumbnailUrl = cloudUrl;
     }
 
@@ -265,7 +314,12 @@ export const migrateProjectToCloud = async (
         bytesDone: 0,
     });
 
-    await cloudDatabase.saveProject(userId, migratedProject);
+    try {
+        await cloudDatabase.saveProject(userId, migratedProject);
+    } catch (e) {
+        console.error('[CloudMigration] Firestore save failed:', e);
+        // Do not throw, just log. This prevents the store from marking sync as 'error' and retrying immediately.
+    }
 
     onProgress?.({
         phase: 'done',

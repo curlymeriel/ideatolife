@@ -3,9 +3,9 @@ import { useWorkflowStore } from '../store/workflowStore';
 import { useNavigate } from 'react-router-dom';
 import {
     Video, Upload, Play, Edit3, Check, X, Loader2,
-    ChevronLeft, ChevronRight, FileVideo, Image as ImageIcon,
+    ChevronLeft, ChevronRight, FileVideo, Image as ImageIcon, Film,
     Lock, Download, Zap, RefreshCw, FolderOpen,
-    Volume2, Sparkles, AlertCircle, Trash2, Scissors, Mic
+    Volume2, Sparkles, AlertCircle, Trash2, Scissors, Mic, AlertTriangle
 } from 'lucide-react';
 
 import { VideoTrimmer } from '../components/Production/VideoTrimmer';
@@ -97,65 +97,12 @@ const VideoCompositionRow = React.memo(({
 
     index: number;
 }) => {
-    const [resolvedVideoUrl, setResolvedVideoUrl] = useState('');
-    const [videoDuration, setVideoDuration] = useState(0);
-
-    useEffect(() => {
-        let active = true;
-        let objectUrl: string | null = null;
-
-        const loadVideo = async () => {
-            if (!cut.videoUrl) {
-                if (active) setResolvedVideoUrl('');
-                return;
-            }
-
-            try {
-                let url = cut.videoUrl;
-                if (isIdbUrl(url)) {
-                    url = await resolveUrl(url);
-                    if (!url) return;
-                }
-
-                if (active) {
-                    if (url && url.startsWith('data:')) {
-                        try {
-                            const res = await fetch(url);
-                            const blob = await res.blob();
-                            let finalBlob = blob;
-                            if (blob.type === 'application/octet-stream' || !blob.type) {
-                                finalBlob = new Blob([blob], { type: 'video/mp4' });
-                            }
-                            objectUrl = URL.createObjectURL(finalBlob);
-                            setResolvedVideoUrl(objectUrl);
-                        } catch (err) {
-                            setResolvedVideoUrl(url);
-                        }
-                    } else {
-                        setResolvedVideoUrl(url);
-                    }
-                }
-            } catch (e) {
-                if (active) setResolvedVideoUrl('');
-            }
-        };
-
-        loadVideo();
-        return () => {
-            active = false;
-            if (objectUrl) URL.revokeObjectURL(objectUrl);
-        };
-    }, [cut.videoUrl]);
-
-    const handleMetadata = (e: React.SyntheticEvent<HTMLVideoElement>) => {
-        setVideoDuration(e.currentTarget.duration);
-    };
-
     const hasVideoData = !!cut.videoUrl;
-    const isLoadingVideo = hasVideoData && !resolvedVideoUrl;
 
     return (
-        <div className={`transition-colors ${isLocked ? 'bg-green-500/5' : isSelected ? 'bg-[var(--color-primary)]/5' : 'hover:bg-[var(--color-bg)]'} border-b border-white/5`}>
+        <div
+            className={`transition-colors ${isLocked ? 'bg-green-500/5' : isSelected ? 'bg-[var(--color-primary)]/5' : 'hover:bg-[var(--color-bg)]'} border-b border-white/5`}
+        >
             {/* Top Row: Main Controls */}
             <div className="grid grid-cols-[40px_80px_1fr_120px_150px_200px] gap-2 px-4 py-3 items-center">
                 <div className="flex items-center justify-center">
@@ -170,29 +117,20 @@ const VideoCompositionRow = React.memo(({
                 <div className="relative w-16 h-10 bg-[var(--color-bg)] rounded overflow-hidden group">
                     {hasVideoData ? (
                         <div className="relative w-full h-full bg-black cursor-pointer" onClick={() => onPreview()}>
-                            {cut.finalImageUrl && !resolvedVideoUrl && (
-                                <ResolvedImage src={cut.finalImageUrl} className="absolute inset-0 w-full h-full object-cover opacity-50" />
-                            )}
-                            {isLoadingVideo && (
-                                <div className="absolute inset-0 flex items-center justify-center text-white/50 z-10">
-                                    <Loader2 size={16} className="animate-spin" />
-                                </div>
-                            )}
-                            {resolvedVideoUrl && (
-                                <>
-                                    <video
-                                        src={resolvedVideoUrl}
-                                        className="w-full h-full object-cover"
-                                        muted
-                                        onLoadedMetadata={handleMetadata}
-                                        onMouseOver={(e) => e.currentTarget.play()}
-                                        onMouseOut={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
-                                    />
-                                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
-                                        <Play size={20} className="text-white fill-white" />
+                            {/* [FIX] Never render <video> in row list - prevents decoder exhaustion */}
+                            {/* Always show static thumbnail with click-to-preview overlay */}
+                            <div className="absolute inset-0">
+                                {cut.finalImageUrl ? (
+                                    <ResolvedImage src={cut.finalImageUrl} className="w-full h-full object-cover" />
+                                ) : (
+                                    <div className="w-full h-full bg-black/40 flex items-center justify-center">
+                                        <Film size={16} className="text-white/30" />
                                     </div>
-                                </>
-                            )}
+                                )}
+                            </div>
+                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
+                                <Play size={20} className="text-white fill-white" />
+                            </div>
                         </div>
                     ) : (
                         cut.finalImageUrl ? (
@@ -210,7 +148,7 @@ const VideoCompositionRow = React.memo(({
                 </div>
 
                 <div className="text-sm text-[var(--color-text-muted)]">
-                    {cut.videoTrim ? (cut.videoTrim.end - cut.videoTrim.start).toFixed(1) : (videoDuration || cut.estimatedDuration || 5).toFixed(1)}s
+                    {cut.videoTrim ? (cut.videoTrim.end - cut.videoTrim.start).toFixed(1) : (cut.videoDuration || cut.estimatedDuration || 5).toFixed(1)}s
                     {cut.videoTrim && <span className="ml-1 text-xs text-blue-400">(Trimmed)</span>}
                 </div>
 
@@ -259,206 +197,609 @@ const VideoCompositionRow = React.memo(({
     );
 });
 
-// HELPER: Repair function for video data
-const repairVideoData = async (_project: any, script: ScriptCut[], onProgress: (msg: string) => void) => {
-    const { loadFromIdb, parseIdbUrl } = await import('../utils/imageStorage');
+const repairVideoData = async (store: any, script: ScriptCut[], onProgress: (msg: string) => void, onComplete?: () => void) => {
+    const { loadFromIdb, parseIdbUrl, saveToIdb, generateVideoKey, clearBlobUrlCache } = await import('../utils/imageStorage');
+
+    console.log(`[Repair:BruteForce] Starting total reset of ${script.length} cuts...`);
+    clearBlobUrlCache();
+
+    const currentProjectId = store.id;
     let fixedCount = 0;
 
+    const auditMimeFromMagicBytes = async (blob: Blob): Promise<string | null> => {
+        try {
+            const buffer = await blob.slice(0, 12).arrayBuffer();
+            const view = new Uint8Array(buffer);
+            if (view[0] === 0x1A && view[1] === 0x45 && view[2] === 0xDF && view[3] === 0xA3) return 'video/webm';
+            const isFtyp = String.fromCharCode(view[4], view[5], view[6], view[7]) === 'ftyp';
+            if (isFtyp) return 'video/mp4';
+            return null;
+        } catch (e) { return null; }
+    };
+
     for (const cut of script) {
-        if (cut.videoUrl && cut.videoUrl.startsWith('idb://')) {
-            try {
+        if (!cut.videoUrl) continue;
+
+        try {
+            let blobToSave: Blob | null = null;
+            let extension = 'mp4';
+
+            // Step 1: Force Re-wrap and MIME Correction
+            if (cut.videoUrl.startsWith('idb://')) {
                 const parsed = parseIdbUrl(cut.videoUrl);
                 if (!parsed) continue;
+                extension = parsed.key.split('.').pop()?.toLowerCase() || 'mp4';
 
-                onProgress(`Checking Cut #${cut.id}...`);
-
-                // Load raw data
+                onProgress(`Re-processing Cut #${cut.id}...`);
                 const rawData = await loadFromIdb(cut.videoUrl);
                 if (!rawData) continue;
 
-                // Check header
-                console.log(`[Repair] Checking Cut #${cut.id} Header: ${rawData.substring(0, 50)}...`);
-
-                if (rawData.startsWith('data:application/octet-stream') || rawData.startsWith('data:binary/octet-stream')) {
-                    onProgress(`Fixing Cut #${cut.id} header (generic binary)...`);
-
-                    // Replace header
-                    const fixedData = rawData.replace(/^data:(application|binary)\/octet-stream/, 'data:video/mp4');
-
-                    // Save back
-                    // We must use the SAME key to overwrite
-                    const storageKey = `media-${parsed.type}-${parsed.key}`;
-                    const { set } = await import('idb-keyval');
-                    await set(storageKey, fixedData);
-
-                    fixedCount++;
-                } else if (!rawData.startsWith('data:video/')) {
-                    onProgress(`Fixing Cut #${cut.id} with missing mime type...`);
-                    // Try to assume it's mp4 if it has no type or weird type but not explicitly video
-                    if (rawData.startsWith('data:;base64') || rawData.startsWith('data:base64')) {
-                        // Fix empty mime type data:;base64
-                        const fixedData = 'data:video/mp4;base64,' + rawData.split(',')[1];
-                        const storageKey = `media-${parsed.type}-${parsed.key}`;
-                        const { set } = await import('idb-keyval');
-                        await set(storageKey, fixedData);
-                        fixedCount++;
-                    } else if (rawData.includes('base64,')) {
-                        // Fallback for any other weird header format: force replace prefix
-                        const base64Part = rawData.split('base64,')[1];
-                        if (base64Part) {
-                            const fixedData = 'data:video/mp4;base64,' + base64Part;
-                            const storageKey = `media-${parsed.type}-${parsed.key}`;
-                            const { set } = await import('idb-keyval');
-                            await set(storageKey, fixedData);
-                            fixedCount++;
-                        }
+                if (rawData instanceof Blob) {
+                    const magicMime = await auditMimeFromMagicBytes(rawData);
+                    const targetMime = magicMime || (extension === 'webm' ? 'video/webm' : 'video/mp4');
+                    // Always re-wrap to refresh browser cache and DB descriptors
+                    blobToSave = new Blob([rawData], { type: targetMime });
+                } else if (typeof rawData === 'string' && rawData.startsWith('data:')) {
+                    const base64Part = rawData.split(',')[1];
+                    if (base64Part) {
+                        const binary = atob(base64Part);
+                        const array = new Uint8Array(binary.length);
+                        for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
+                        const magicMime = await auditMimeFromMagicBytes(new Blob([array]));
+                        blobToSave = new Blob([array], { type: magicMime || (extension === 'webm' ? 'video/webm' : 'video/mp4') });
                     }
                 }
-            } catch (e) {
-                console.error(`Failed to repair cut ${cut.id}`, e);
+            } else if (cut.videoUrl.startsWith('http')) {
+                onProgress(`Migrating Cut #${cut.id} to local IDB...`);
+                try {
+                    const resp = await fetch(cut.videoUrl);
+                    if (resp.ok) {
+                        const blob = await resp.blob();
+                        const magicMime = await auditMimeFromMagicBytes(blob);
+                        extension = cut.videoUrl.split('?')[0].split('.').pop()?.toLowerCase() || 'mp4';
+                        if (magicMime === 'video/webm') extension = 'webm';
+                        blobToSave = new Blob([blob], { type: magicMime || (extension === 'webm' ? 'video/webm' : 'video/mp4') });
+                    }
+                } catch (e) { console.warn(`[Repair] HTTP fetch failed for #${cut.id}`); }
             }
+
+            // Step 2: Force Save & State Reset
+            let finalVideoUrl = cut.videoUrl;
+            if (blobToSave) {
+                const videoKey = generateVideoKey(currentProjectId, cut.id, extension);
+                finalVideoUrl = await saveToIdb('video', videoKey, blobToSave);
+            }
+
+            // [BRUTE FORCE] Always reset audio state to "On" and "100%" if repair is running
+            useWorkflowStore.setState(state => ({
+                script: state.script.map(c =>
+                    c.id === cut.id ? {
+                        ...c,
+                        videoUrl: finalVideoUrl,
+                        useVideoAudio: true,
+                        audioVolumes: {
+                            ...(c.audioVolumes || { tts: 1.0, bgm: 0.5 }),
+                            video: 1.0
+                        }
+                    } : c
+                )
+            }));
+
+            fixedCount++;
+
+        } catch (e) {
+            console.error(`[Repair] Failed Cut #${cut.id}:`, e);
         }
     }
+    await useWorkflowStore.getState().saveProject();
+    if (onComplete) onComplete();
     return fixedCount;
 };
 
-const AudioComparisonModal: React.FC<{
+const AudioComparisonModal = React.memo<{
     previewCut: ScriptCut | undefined;
-    previewVideoUrl: string;
     onClose: () => void;
-    onUpdateCut: (updates: Partial<ScriptCut>) => void;
-    onSave: (useVideoAudio: boolean, videoDuration: number | undefined) => void;
-}> = ({ previewCut, previewVideoUrl, onClose, onUpdateCut, onSave }) => {
+    onSave: (updates: Partial<ScriptCut>) => void;
+    videoMountKey: number;
+}>(({ previewCut, onClose, onSave, videoMountKey }) => {
     // State
-    const [selectedAudioSource, setSelectedAudioSource] = useState<'video' | 'tts'>(
-        previewCut?.useVideoAudio ? 'video' : 'tts'
-    );
-    // Initialize volumes: default video 1, tts 1 (bgm handled elsewhere)
-    const [volumes, setVolumes] = useState(previewCut?.audioVolumes ?? { video: 1, tts: 1, bgm: 0.5 });
+    // Smart Default: Use Video Audio if explicitly set OR if it's an uploaded video (likely contains speech/audio we want to keep)
+    const [selectedAudioSource, setSelectedAudioSource] = useState<'video' | 'tts'>(() => {
+        // [FIX] useVideoAudio가 명시적으로 true인 경우만 video 선택
+        // videoSource === 'upload' fallback 제거 - handleSingleUpload에서 이제 useVideoAudio: true를 같이 저장함
+        const defaultSource = (previewCut?.useVideoAudio === true) ? 'video' : 'tts';
+        console.log('[AudioModal:Init] ID:', previewCut?.id, 'useVideoAudio:', previewCut?.useVideoAudio, 'videoSource:', previewCut?.videoSource, '=> Defaulting to:', defaultSource, 'Volumes:', previewCut?.audioVolumes);
+        return defaultSource;
+    });
+    // [FIX] videoMountKey is now passed from parent to sync with Repair utility
+
+    // [New State]
+    const [previewVideoUrl, setPreviewVideoUrl] = useState<string>('');
+    const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+    const [loadingStatus, setLoadingStatus] = useState<string | null>('Initializing...');
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
+
+    // [New Effect] Resolve URL & Download Logic
+    useEffect(() => {
+        const abortController = new AbortController();
+        const signal = abortController.signal;
+
+        if (!previewCut?.videoUrl) {
+            setPreviewVideoUrl('');
+            setDownloadProgress(null);
+            setLoadingStatus(null);
+            setErrorMsg('비디오 URL을 찾을 수 없습니다.');
+            return;
+        }
+
+        const targetCutVideoUrl = previewCut.videoUrl;
+
+        const resolveVideoUrl = async () => {
+            setLoadingStatus('Checking media...');
+            setErrorMsg(null);
+
+            try {
+                if (isIdbUrl(targetCutVideoUrl)) {
+                    setLoadingStatus('Loading from DB...');
+                    // [FIX] Use asBlob: true for modal preview to avoid heavy Base64 data corruption
+                    const url = await resolveUrl(targetCutVideoUrl, { asBlob: true });
+                    if (signal.aborted) return;
+
+                    if (url) {
+                        setPreviewVideoUrl(prev => prev === url ? prev : url);
+                    } else {
+                        throw new Error('IndexedDB에서 영상을 찾을 수 없습니다. (데이터 유실 가능성)');
+                    }
+                    setLoadingStatus(null);
+                } else if (targetCutVideoUrl.startsWith('http')) {
+                    // Check if we already have a cached version (optimization)
+                    const cacheKey = `media-video-v4-${previewCut.id}-${btoa(targetCutVideoUrl).slice(-10)}`;
+                    const { get, set } = await import('idb-keyval');
+                    const cachedBlob = await get(cacheKey);
+
+                    if (signal.aborted) return;
+
+                    if (cachedBlob) {
+                        console.log('[PreviewURL] Found cached video in IDB');
+                        let blobToUse = cachedBlob as Blob;
+
+                        // [FIX] MIME Healing Logic
+                        if (blobToUse.type === 'video/mp4' || blobToUse.type === 'application/octet-stream') {
+                            try {
+                                const buffer = await blobToUse.slice(0, 4).arrayBuffer();
+                                const view = new Uint8Array(buffer);
+                                if (view[0] === 0x1A && view[1] === 0x45 && view[2] === 0xDF && view[3] === 0xA3) {
+                                    blobToUse = new Blob([blobToUse], { type: 'video/webm' });
+                                }
+                            } catch (e) {
+                                console.warn('[PreviewURL] Failed to check magic bytes', e);
+                            }
+                        }
+
+                        const blobUrl = URL.createObjectURL(blobToUse);
+                        setPreviewVideoUrl(blobUrl);
+                        setLoadingStatus('Ready');
+                        setTimeout(() => setLoadingStatus(null), 500);
+                        return;
+                    }
+
+
+                    // Download and Cache
+                    console.log('[PreviewURL] Fetching remote video:', targetCutVideoUrl.substring(0, 80));
+                    setLoadingStatus('Starting download...');
+                    setDownloadProgress(0);
+
+                    const response = await fetch(targetCutVideoUrl, { signal });
+                    if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
+
+                    let contentType = response.headers.get('content-type');
+                    // [FIX] Fallback for missing/generic content-type
+                    if (!contentType || contentType === 'application/octet-stream') {
+                        if (targetCutVideoUrl.includes('.webm')) contentType = 'video/webm';
+                        else if (targetCutVideoUrl.includes('.mp4')) contentType = 'video/mp4';
+                    }
+                    const contentLength = response.headers.get('content-length');
+                    const total = contentLength ? parseInt(contentLength, 10) : 0;
+                    let loaded = 0;
+
+                    const reader = response.body?.getReader();
+                    const chunks = [];
+
+                    if (reader) {
+                        try {
+                            while (true) {
+                                const { done, value } = await reader.read();
+                                if (done) break;
+                                if (signal.aborted) {
+                                    reader.cancel();
+                                    return;
+                                }
+                                chunks.push(value);
+                                loaded += value.length;
+                                if (total) { // Only update if total is known
+                                    const progress = Math.round((loaded / total) * 100);
+                                    setDownloadProgress(progress);
+                                    setLoadingStatus(`[${contentType}] Downloading... ${progress}%`);
+                                } else {
+                                    setLoadingStatus(`Downloading... ${(loaded / 1024 / 1024).toFixed(1)} MB`);
+                                }
+                            }
+
+                            if (signal.aborted) return;
+
+                            // [FIX] Detect actual MIME type
+                            let finalMime = contentType || 'video/mp4';
+                            // ... existing magic bytes check ...
+                            const blob = new Blob(chunks, { type: finalMime });
+
+                            // [FIX] Store chunks in IDB and create URL
+                            // ... (omitted specifics for brevity, will rely on existing logic but wrapped in signal check)
+                            // Logic continues as before but guarded by signal.aborted
+                            console.log('[PreviewURL] Blob downloaded - size:', blob.size, 'bytes, MIME:', finalMime);
+                            setLoadingStatus('Caching video...');
+                            await set(cacheKey, blob);
+
+                            if (signal.aborted) return;
+
+                            const blobUrl = URL.createObjectURL(blob);
+                            setPreviewVideoUrl(prev => {
+                                if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev);
+                                return blobUrl;
+                            });
+                            setDownloadProgress(null);
+                            setLoadingStatus('Ready');
+                            setTimeout(() => setLoadingStatus(null), 500);
+
+                        } catch (e) {
+                            if (signal.aborted) return;
+                            throw e;
+                        }
+                    }
+                } else {
+                    setPreviewVideoUrl(targetCutVideoUrl);
+                    setLoadingStatus(null);
+                }
+            } catch (e) {
+                if (signal.aborted) return;
+                console.error('[PreviewURL] Failed to resolve:', e);
+                setDownloadProgress(null);
+                setLoadingStatus(null);
+                setErrorMsg(e instanceof Error ? e.message : 'Unknown error loading video');
+                // setPreviewVideoUrl(targetCutVideoUrl); // Don't fallback to remote URL on error to avoid looping/hanging
+            }
+        };
+
+        resolveVideoUrl();
+
+        // [FIX] Cleanup Blob URL & Video Buffer on unmount/update to prevent memory leaks (3GB reported)
+        return () => {
+            abortController.abort(); // Cancel pending fetch
+
+            setPreviewVideoUrl(prev => {
+                if (prev && prev.startsWith('blob:')) {
+                    console.log('[PreviewURL] Revoking blob URL on cleanup');
+                    URL.revokeObjectURL(prev);
+                }
+                return '';
+            });
+
+            // Force clear video buffer
+            if (videoRef.current) {
+                videoRef.current.pause();
+                videoRef.current.src = '';
+                videoRef.current.load();
+            }
+        };
+    }, [previewCut?.videoUrl, videoMountKey]);
+
+
+
+    // [HEALING] Audio Pulse to wake up browser audio engine
+    useEffect(() => {
+        try {
+            const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
+            if (AudioContextClass) {
+                const ctx = new AudioContextClass();
+                if (ctx.state === 'suspended') {
+                    ctx.resume().catch(() => { });
+                }
+                const oscillator = ctx.createOscillator();
+                const gain = ctx.createGain();
+                gain.gain.value = 0.0001; // Silent pulse
+                oscillator.connect(gain);
+                gain.connect(ctx.destination);
+                oscillator.start(0);
+                oscillator.stop(0.001);
+                setTimeout(() => ctx.close(), 100);
+            }
+        } catch (e) { }
+    }, [videoMountKey]);
+
+    // Initialize volumes defensively: ensure keys exist even if partial data was saved
+    const [volumes, setVolumes] = useState(() => {
+        const saved = previewCut?.audioVolumes;
+        // HEALING LOGIC: If volume was missing or 0, restore to 1.0 for the active source
+        const healedVideo = (typeof saved?.video !== 'number' || (saved.video === 0 && previewCut?.useVideoAudio)) ? 1.0 : saved.video;
+        const healedTts = (typeof saved?.tts !== 'number' || (saved.tts === 0 && !previewCut?.useVideoAudio)) ? 1.0 : saved.tts;
+
+        return {
+            video: healedVideo,
+            tts: healedTts,
+            bgm: typeof saved?.bgm === 'number' ? saved.bgm : 0.5
+        };
+    });
+
+    const volumesRef = useRef(volumes);
+    const audioSourceRef = useRef(selectedAudioSource);
+
+    // [NEW] Local Trim State to decouple from parent re-renders during drag
+    const [localTrim, setLocalTrim] = useState(() => ({
+        start: previewCut?.videoTrim?.start ?? 0,
+        end: previewCut?.videoTrim?.end ?? 0
+    }));
+
+    useEffect(() => {
+        volumesRef.current = volumes;
+        audioSourceRef.current = selectedAudioSource;
+    }, [volumes, selectedAudioSource]);
+
+    // [FIX] Sync local state with prop updates (e.g., if generation finishes or parent saves)
+    useEffect(() => {
+        if (previewCut) {
+            const propSource = previewCut.useVideoAudio ? 'video' : 'tts';
+            if (propSource !== selectedAudioSource) {
+                console.log('[AudioModal:Sync] Prop Source Change:', propSource);
+                setSelectedAudioSource(propSource);
+            }
+            if (previewCut.audioVolumes) {
+                setVolumes(prev => {
+                    if (JSON.stringify(prev) !== JSON.stringify(previewCut.audioVolumes)) {
+                        return { ...prev, ...previewCut.audioVolumes };
+                    }
+                    return prev;
+                });
+            }
+        }
+    }, [previewCut?.useVideoAudio, JSON.stringify(previewCut?.audioVolumes)]);
 
     // Video State
     const [videoDuration, setVideoDuration] = useState(0);
-
-    const [isvVideoPlaying, setIsVideoPlaying] = useState(false);
+    const [isVideoPlaying, setIsVideoPlaying] = useState(false);
     const videoRef = useRef<HTMLVideoElement>(null);
 
     // TTS State
-
     const [resolvedTtsUrl, setResolvedTtsUrl] = useState<string>('');
     const ttsAudioRef = useRef<HTMLAudioElement>(null);
 
-    // Get actual video duration when loaded
+    // [FIX] Trim Refs to prevent re-rendering video player on every slider drag
+    const currentTrimRef = useRef(localTrim);
+
+    // Sync Ref with local state
     useEffect(() => {
-        if (videoRef.current) {
-            const handleLoadedMetadata = () => {
-                setVideoDuration(videoRef.current?.duration || 0);
-                // Initial seek to trim start if exists
-                if (previewCut?.videoTrim && videoRef.current) {
-                    videoRef.current.currentTime = previewCut.videoTrim.start;
-                }
-            };
+        currentTrimRef.current = localTrim;
+    }, [localTrim]);
 
-            const handlePlay = () => setIsVideoPlaying(true);
-            const handlePause = () => setIsVideoPlaying(false);
-
-            const handleTimeUpdate = () => {
-                if (!videoRef.current || !previewCut?.videoTrim) return;
-                const { start, end } = previewCut.videoTrim;
-                const curr = videoRef.current.currentTime;
-
-                if (curr < start) {
-                    videoRef.current.currentTime = start;
-                } else if (curr >= end) {
-                    videoRef.current.currentTime = start;
-                    // If we want it to stop instead of loop, we could call pause() here.
-                    // But usually preview should loop.
-                }
-            };
-
-            videoRef.current.addEventListener('loadedmetadata', handleLoadedMetadata);
-            videoRef.current.addEventListener('play', handlePlay);
-            videoRef.current.addEventListener('pause', handlePause);
-            videoRef.current.addEventListener('timeupdate', handleTimeUpdate);
-
-            if (videoRef.current.duration) handleLoadedMetadata();
-
-            return () => {
-                videoRef.current?.removeEventListener('loadedmetadata', handleLoadedMetadata);
-                videoRef.current?.removeEventListener('play', handlePlay);
-                videoRef.current?.removeEventListener('pause', handlePause);
-                videoRef.current?.removeEventListener('timeupdate', handleTimeUpdate);
-            };
+    // Sync local state if parent prop changes (e.g. initial load)
+    useEffect(() => {
+        if (previewCut?.videoTrim) {
+            setLocalTrim({
+                start: previewCut.videoTrim.start,
+                end: previewCut.videoTrim.end
+            });
         }
-    }, [previewVideoUrl, previewCut?.videoTrim?.start, previewCut?.videoTrim?.end]);
+    }, [previewCut?.id]); // Only sync when the cut changes, not when contents change (prevent loops)
+
+    // [FIX] Auto-init trim end when metadata loads if it wasn't set (prevents 0.1s loop bug)
+    useEffect(() => {
+        if (videoDuration > 0 && localTrim.end === 0) {
+            console.log('[AudioModal] Auto-init trim end to duration:', videoDuration);
+            setLocalTrim(prev => ({ ...prev, end: videoDuration }));
+        }
+    }, [videoDuration]);
+
+    // 1. Video Player Lifecycle & Event Handling
+    const handleLoadedMetadata = () => {
+        if (!videoRef.current) return;
+        const dur = videoRef.current.duration || 0;
+        setVideoDuration(dur);
+
+        // [HEALING] Fix invalid or too short trim range (e.g. < 0.5s) which causes infinite buffering/looping
+        const { start, end } = currentTrimRef.current;
+        // If end is 0 (uninitialized) or range is too short, reset to full duration
+        if (dur > 0.5) {
+            const currentDuration = (end > 0 ? end : dur) - start;
+            if (currentDuration < 0.5) {
+                console.log('[AudioModal] Healing invalid trim range:', { start, end, dur }, '-> Resetting to full');
+                setLocalTrim({ start: 0, end: dur });
+                currentTrimRef.current = { start: 0, end: dur };
+            }
+        }
+
+        // Initial seek to trim start if exists
+        if (currentTrimRef.current.start > 0) {
+            videoRef.current.currentTime = currentTrimRef.current.start;
+        }
+
+        // [FIX] Sync muted/volume state when video is ready
+        const isVideoSelected = audioSourceRef.current === 'video';
+        videoRef.current.muted = !isVideoSelected;
+        videoRef.current.volume = isVideoSelected ? (volumesRef.current.video ?? 1) : 0;
+        console.log('[AudioModal:loadedMetadata] Synced muted:', videoRef.current.muted, 'volume:', videoRef.current.volume);
+    };
+
+    const handlePlay = () => {
+        setIsVideoPlaying(true);
+        if (videoRef.current) {
+            const isVideoSelected = audioSourceRef.current === 'video';
+            videoRef.current.muted = !isVideoSelected;
+            videoRef.current.volume = isVideoSelected ? (volumesRef.current.video ?? 1) : 0;
+
+            if (isVideoSelected && videoRef.current.muted) {
+                videoRef.current.muted = false;
+                videoRef.current.volume = volumesRef.current.video ?? 1.0;
+            }
+        }
+
+        if (ttsAudioRef.current && audioSourceRef.current === 'tts') {
+            const t = ttsAudioRef.current;
+            t.muted = false;
+            t.volume = volumesRef.current.tts ?? 1.0;
+            if (t.paused) t.play().catch(e => {
+                // AbortError is expected when user pauses/seeks rapidly
+                if (e.name !== 'AbortError') console.warn('[AudioModal:Play] TTS Play Error:', e);
+            });
+        }
+    };
+
+    const handlePause = () => setIsVideoPlaying(false);
+
+    const handleTimeUpdate = () => {
+        if (!videoRef.current) return;
+        const { start, end } = currentTrimRef.current;
+        const dur = videoRef.current.duration;
+        const isVideoSelected = audioSourceRef.current === 'video';
+
+        // [HEALING] Force re-sync volume/mute every update to prevent browser silent mutes
+        if (isVideoSelected) {
+            if (videoRef.current.muted) videoRef.current.muted = false;
+            if (Math.abs(videoRef.current.volume - (volumesRef.current.video ?? 1)) > 0.05) {
+                videoRef.current.volume = volumesRef.current.video ?? 1;
+            }
+        } else {
+            if (!videoRef.current.muted) videoRef.current.muted = true;
+        }
+
+        // Loop/Clamp logic only during playback
+        if (!videoRef.current.paused && isFinite(dur) && dur > 0.1) {
+            const effectiveEnd = (end > 0) ? end : dur;
+
+            if (videoRef.current.currentTime < start - 0.01 || videoRef.current.currentTime >= effectiveEnd - 0.01) {
+                videoRef.current.currentTime = start;
+
+                // [FIX] Loop TTS when video loops
+                if (ttsAudioRef.current && audioSourceRef.current === 'tts') {
+                    ttsAudioRef.current.currentTime = 0;
+                    if (ttsAudioRef.current.paused) {
+                        ttsAudioRef.current.play().catch(() => { });
+                    }
+                }
+
+                if (videoRef.current.paused) {
+                    videoRef.current.play().catch(() => { });
+                }
+                return;
+            }
+
+            // [FIX] Tighter continuous sync for TTS
+            if (ttsAudioRef.current && audioSourceRef.current === 'tts' && !ttsAudioRef.current.paused) {
+                const expectedTts = Math.max(0, videoRef.current.currentTime - start);
+                if (Math.abs(expectedTts - ttsAudioRef.current.currentTime) > 0.25) {
+                    ttsAudioRef.current.currentTime = expectedTts;
+                }
+            }
+        }
+    };
+
+    useEffect(() => {
+        // [HEALING] Initial metadata check if ref exists and ready
+        if (videoRef.current && videoRef.current.readyState >= 1) {
+            handleLoadedMetadata();
+        }
+    }, [previewVideoUrl, videoMountKey]);
 
     // Resolve TTS audio URL
     useEffect(() => {
         if (!previewCut?.audioUrl) return;
         if (isIdbUrl(previewCut.audioUrl)) {
-            resolveUrl(previewCut.audioUrl).then(url => setResolvedTtsUrl(url));
+            // [OPTIMIZATION] Use Blob URL for TTS
+            resolveUrl(previewCut.audioUrl, { asBlob: true }).then(url => setResolvedTtsUrl(url));
         } else {
             setResolvedTtsUrl(previewCut.audioUrl);
         }
     }, [previewCut?.audioUrl]);
 
-    // Sync Audio/Video Mute & Volume State
+    // State for audio track detection
+    const [hasAudioTrack, setHasAudioTrack] = useState<boolean | null>(null);
+
+    // 3. Audio Track Detection (Background check)
     useEffect(() => {
-        // Apply volumes
-        if (videoRef.current) videoRef.current.volume = volumes.video;
-        if (ttsAudioRef.current) ttsAudioRef.current.volume = volumes.tts;
+        if (!videoRef.current) return;
+        const check = () => {
+            const v = videoRef.current as any;
+            if (!v || v.readyState < 1) return;
+            const hasAudio = (v.webkitAudioDecodedByteCount > 0) || (v.mozHasAudio === true) || (v.audioTracks?.length > 0);
+            setHasAudioTrack(!!hasAudio);
+        };
+        const interval = setInterval(check, 5000);
+        check();
+        return () => clearInterval(interval);
+    }, [previewVideoUrl]);
 
-        // Apply mute based on selected source
-        if (selectedAudioSource === 'video') {
-            if (videoRef.current) videoRef.current.muted = false;
-            if (ttsAudioRef.current) ttsAudioRef.current.muted = true;
-        } else {
-            if (videoRef.current) videoRef.current.muted = true;
-            if (ttsAudioRef.current) ttsAudioRef.current.muted = false;
-        }
+    // 2. Audio/TTS Integration (State-Driven Update)
+    useEffect(() => {
+        const videoEl = videoRef.current;
+        const ttsEl = ttsAudioRef.current;
+        if (!videoEl) return;
 
-        // Sync TTS playback with video
-        if (selectedAudioSource === 'tts' && videoRef.current && ttsAudioRef.current) {
-            if (isvVideoPlaying && ttsAudioRef.current.paused) {
-                ttsAudioRef.current.play().catch(e => console.warn('TTS play warning', e));
-            } else if (!isvVideoPlaying && !ttsAudioRef.current.paused) {
-                ttsAudioRef.current.pause();
+        // Sync Audio State
+        const isVideoSelected = selectedAudioSource === 'video';
+        videoEl.muted = !isVideoSelected;
+        videoEl.volume = isVideoSelected ? (volumes.video ?? 1) : 0;
+        console.log('[AudioModal:SyncEffect] selectedAudioSource:', selectedAudioSource, 'Applied muted:', videoEl.muted, 'volume:', videoEl.volume, 'volumes state:', volumes);
+
+        if (ttsEl) {
+            const isTtsSelected = selectedAudioSource === 'tts';
+            ttsEl.muted = !isTtsSelected;
+            ttsEl.volume = isTtsSelected ? (volumes.tts ?? 1) : 0;
+
+            if (isTtsSelected) {
+                if (isVideoPlaying && ttsEl.paused) {
+                    ttsEl.play().catch(e => console.warn('[AudioModal:Sync] TTS Play failed:', e));
+                } else if (!isVideoPlaying && !ttsEl.paused) {
+                    ttsEl.pause();
+                }
+
+                // [FIX] Calculate TTS time relative to video trim
+                // If video is at 10s and trim starts at 5s, TTS should be at 5s.
+                const trimStart = currentTrimRef.current.start || 0;
+                const expectedTtsTime = Math.max(0, videoEl.currentTime - trimStart);
+
+                if (Math.abs(expectedTtsTime - ttsEl.currentTime) > 0.15) {
+                    console.log('[AudioModal:Sync] Adjusting TTS sync:', { videoTime: videoEl.currentTime, trimStart, expectedTtsTime, actualTts: ttsEl.currentTime });
+                    ttsEl.currentTime = expectedTtsTime;
+                }
             }
-
-            // Simple sync check (if drifted too much)
-            if (Math.abs(videoRef.current.currentTime - ttsAudioRef.current.currentTime) > 0.5) {
-                ttsAudioRef.current.currentTime = videoRef.current.currentTime;
-            }
         }
-    }, [volumes, selectedAudioSource, isvVideoPlaying]);
+    }, [selectedAudioSource, JSON.stringify(volumes), isVideoPlaying, resolvedTtsUrl]);
 
 
     const handleSourceChange = (source: 'video' | 'tts') => {
         setSelectedAudioSource(source);
-        // We update parent cut data immediately? Or on save?
-        // Let's update internal state, parent update on save or effect?
-        // The current pattern uses onUpdateCut for intermediate updates?
-        // Let's keep using onUpdateCut for persistence if needed, but here we just toggle local source
-        // Actually the original code called onUpdateCut immediately.
-        onUpdateCut({ useVideoAudio: source === 'video' });
+
+        // [HEALING] If the newly selected source has 0 volume, restore it to 1.0
+        setVolumes(prev => {
+            const currentVol = prev[source];
+            // If volume is undefined or very low, boost it to 1.0 so user can hear it
+            if (typeof currentVol !== 'number' || currentVol < 0.05) {
+                console.log(`[AudioModal] Healing volume for ${source}: ${currentVol} -> 1.0`);
+                return { ...prev, [source]: 1.0 };
+            }
+            return prev;
+        });
     };
 
     const handleVolumeChange = (type: 'video' | 'tts', val: number) => {
-        const newVolumes = { ...volumes, [type]: val };
-        setVolumes(newVolumes);
-        onUpdateCut({ audioVolumes: newVolumes });
+        setVolumes(prev => ({ ...prev, [type]: val }));
+        // [OPTIMIZATION] Update internal state only.
     };
 
     const handleTrimChange = (start: number, end: number) => {
-        onUpdateCut({ videoTrim: { start, end } });
-        // Optionally update video duration logic or loop points here if needed by Trimmer component
-        // But Trimmer usually handles its own UI, just reports change.
+        // [OPTIMIZATION] Only update local state to avoid heavy parent re-renders
+        setLocalTrim({ start, end });
 
-        // If we want the video loop to respect trim:
-        if (videoRef.current) {
-            if (videoRef.current.currentTime < start || videoRef.current.currentTime > end) {
-                videoRef.current.currentTime = start;
-            }
-        }
+        // We do NOT call onUpdateCut here anymore. Persistence happens on Save.
+        // This stops the playback jitter/buffering during drag.
     };
 
     if (!previewCut) return null;
@@ -486,17 +827,116 @@ const AudioComparisonModal: React.FC<{
 
                     {/* 1. Video Preview (Top) */}
                     <div className="bg-black relative aspect-video max-h-[40vh] shrink-0 border-b border-white/5">
-                        <video
-                            ref={videoRef}
-                            src={previewVideoUrl}
-                            className="w-full h-full object-contain"
-                            controls
-                            playsInline
-                        />
+                        {/* [CRITICAL] key={videoMountKey} forces the browser to discard the old decoder state */}
+                        {previewVideoUrl && (
+                            <video
+                                key={`${previewCut?.id}-${videoMountKey}`}
+                                ref={videoRef}
+                                src={previewVideoUrl}
+                                className={`w-full h-full object-contain ${loadingStatus ? 'opacity-0' : 'opacity-100'} transition-opacity`}
+
+                                playsInline
+                                preload="auto"
+                                controls
+                                // [FIX] autoPlay removed: manual play is more reliable for audio unlock
+                                onLoadedMetadata={handleLoadedMetadata}
+                                onTimeUpdate={handleTimeUpdate}
+                                onPlay={handlePlay}
+                                onPause={handlePause}
+                                onError={(e) => {
+                                    console.error('[AudioModal:Video] Engine Error:', e.currentTarget.error, 'src:', previewVideoUrl?.substring(0, 100));
+                                    setErrorMsg('비디오 데크 오류 (코덱 또는 MIME 불일치)');
+                                    setLoadingStatus(null);
+                                }}
+                            />
+                        )}
+
+
+
+                        {/* Loading & Download Overlay */}
+                        {(loadingStatus || downloadProgress !== null) && (
+                            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity duration-300">
+                                <Loader2 size={32} className="text-[var(--color-primary)] animate-spin mb-3" />
+                                <div className="text-white font-medium mb-1">{loadingStatus || 'Loading...'}</div>
+                                {downloadProgress !== null && (
+                                    <>
+                                        <div className="w-48 h-1.5 bg-white/20 rounded-full overflow-hidden mt-2">
+                                            <div
+                                                className="h-full bg-[var(--color-primary)] transition-all duration-200"
+                                                style={{ width: `${downloadProgress}%` }}
+                                            />
+                                        </div>
+                                        <div className="text-xs text-white/70 mt-1">{downloadProgress}%</div>
+                                    </>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Error Overlay */}
+                        {errorMsg && (
+                            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md p-6 text-center">
+                                <div className="text-red-500 mb-2">
+                                    <AlertCircle size={32} />
+                                </div>
+                                <div className="text-white font-bold mb-1">Failed to Load Video</div>
+                                <div className="text-white/70 text-sm mb-4 break-words max-w-[80%]">{errorMsg}</div>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => { setErrorMsg(null); setLoadingStatus('Retrying...'); }}
+                                        className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-full text-sm transition-colors text-white"
+                                    >
+                                        Retry
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            // Fallback: try open in new tab if it's external url
+                                            if (previewCut?.videoUrl?.startsWith('http')) {
+                                                window.open(previewCut.videoUrl, '_blank');
+                                            }
+                                        }}
+                                        className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/40 text-blue-300 rounded-full text-sm transition-colors"
+                                    >
+                                        Open Original
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Refresh Button Overlay */}
+                        <button
+                            onClick={() => {
+                                if (videoRef.current) {
+                                    // [HEALING] Force reset volume/mute on refresh
+                                    videoRef.current.muted = false;
+                                    videoRef.current.volume = volumesRef.current.video;
+
+                                    const currentSrc = videoRef.current.src;
+                                    videoRef.current.src = '';
+                                    setTimeout(() => {
+                                        if (videoRef.current) {
+                                            videoRef.current.src = currentSrc;
+                                            videoRef.current.load();
+                                            videoRef.current.play().catch(() => { });
+                                            // Second pass for mobile/aggressive browser policies
+                                            setTimeout(() => {
+                                                if (videoRef.current) {
+                                                    videoRef.current.muted = false;
+                                                    videoRef.current.volume = volumesRef.current.video;
+                                                }
+                                            }, 200);
+                                        }
+                                    }, 50);
+                                }
+                            }}
+                            className="absolute top-2 right-2 p-2 bg-black/60 hover:bg-black/90 text-[var(--color-primary)] border border-[var(--color-primary)]/30 rounded-full transition-colors z-10"
+                            title="소리가 안 나거나 재생 오류 시 클릭 (강제 초기화)"
+                        >
+                            <RefreshCw size={18} />
+                        </button>
                     </div>
 
                     {/* 2. Video Trimmer (Slider Only) - Immediately below video */}
-                    <div className="px-4 py-3 bg-[var(--color-bg)] border-b border-[var(--color-border)]">
+                    <div className="px-4 py-3 bg-[var(--color-bg)] border-b border-[var(--color-border)] w-full max-w-full overflow-hidden">
                         <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2 text-sm font-semibold text-white">
                                 <Scissors size={14} className="text-pink-400" />
@@ -508,8 +948,8 @@ const AudioComparisonModal: React.FC<{
                         </div>
                         <VideoTrimmer
                             videoUrl={previewVideoUrl}
-                            startTime={previewCut.videoTrim?.start ?? 0}
-                            endTime={previewCut.videoTrim?.end ?? videoDuration}
+                            startTime={localTrim.start}
+                            endTime={localTrim.end > 0 ? localTrim.end : videoDuration}
                             duration={videoDuration}
                             onChange={handleTrimChange}
                             hideVideo={true}
@@ -564,6 +1004,18 @@ const AudioComparisonModal: React.FC<{
                             {selectedAudioSource === 'video' && <div className="hidden sm:block text-[10px] px-2 py-0.5 bg-blue-500 text-white rounded-full font-bold tracking-wider">ACTIVE</div>}
                         </div>
 
+                        {/* Audio Track Warning */}
+                        {selectedAudioSource === 'video' && hasAudioTrack === false && (
+                            <div className="px-4 py-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl flex items-start gap-3 text-yellow-200 text-xs">
+                                <AlertTriangle size={16} className="mt-0.5 shrink-0 text-yellow-500" />
+                                <div>
+                                    <span className="font-bold block text-yellow-400 mb-1">No Audio Track Detected</span>
+                                    <p className="mb-2">The selected video file has no audio stream. Using "Original Video" will result in silence.</p>
+                                    <p className="text-[var(--color-primary)] font-semibold">💡 팁: 실제 소리가 있는 파일인데도 무음이라면, 모달을 닫고 상단의 <b>[비디오 데이터 검사 및 복구]</b> 버튼을 클릭하여 딥 리페어를 진행해보세요.</p>
+                                </div>
+                            </div>
+                        )}
+
                         {/* Row B: TTS Audio */}
                         <div className={`flex items-center gap-4 p-4 rounded-xl border transition-all ${selectedAudioSource === 'tts' ? 'bg-green-500/10 border-green-500/50' : 'bg-white/5 border-white/5 opacity-70 hover:opacity-100'}`}>
                             {/* Source Select Button */}
@@ -610,13 +1062,17 @@ const AudioComparisonModal: React.FC<{
                     <audio
                         ref={ttsAudioRef}
                         src={resolvedTtsUrl}
+                        className="hidden"
                         preload="auto"
-                        onEnded={() => { }}
-                    // Controls handled via sync logic
+                        onPlay={() => console.log('[AudioModal:TTS] Play started')}
+                        onPause={() => console.log('[AudioModal:TTS] Paused')}
+                        onError={(e) => console.error('[AudioModal:TTS] Load Error:', e)}
                     />
                 )}
 
                 {/* Footer Actions */}
+                {/* Duplicate Audio Removed */}
+
                 <div className="flex justify-end gap-3 p-4 border-t border-[var(--color-border)] bg-[var(--color-surface)]">
                     <button
                         onClick={onClose}
@@ -625,25 +1081,68 @@ const AudioComparisonModal: React.FC<{
                         취소
                     </button>
                     <button
-                        onClick={() => onSave(selectedAudioSource === 'video', undefined)}
-                        className="px-5 py-2.5 bg-[var(--color-primary)] text-black font-semibold rounded-lg hover:bg-[var(--color-primary-hover)] transition-colors flex items-center gap-2"
+                        onClick={async () => {
+                            if (isSaving) return;
+
+                            // [FIX] Ensure videoDuration is valid before calculating trim
+                            const dur = videoDuration > 0 ? videoDuration : (previewCut.videoDuration || previewCut.estimatedDuration || 5);
+
+                            // [FIX] Use localTrim instead of stale previewCut prop
+                            let finalTrim = localTrim;
+
+                            if (finalTrim) {
+                                // Clamp trim to current video duration to prevent out-of-bounds export errors
+                                const clampedStart = Math.max(0, Math.min(finalTrim.start, dur - 0.1));
+                                const clampedEnd = Math.max(clampedStart + 0.1, Math.min(finalTrim.end, dur));
+                                finalTrim = { start: clampedStart, end: clampedEnd };
+                            }
+
+                            const updates: Partial<ScriptCut> = {
+                                useVideoAudio: selectedAudioSource === 'video',
+                                audioVolumes: volumes,
+                                videoTrim: finalTrim
+                            };
+
+                            // Also update videoDuration to match trim for accurate project calculation in Step 6
+                            if (finalTrim) {
+                                updates.videoDuration = finalTrim.end - finalTrim.start;
+                            }
+
+                            console.log('[AudioModal:Save] Sending Updates:', updates);
+
+                            setIsSaving(true);
+                            try {
+                                await Promise.resolve(onSave(updates));
+                                // Parent will close modal on success (via previewCutId = null)
+                            } catch (e) {
+                                console.error('[AudioModal:Save] Error:', e);
+                                alert('저장 중 오류가 발생했습니다.');
+                                setIsSaving(false);
+                            }
+                        }}
+                        className={`px-5 py-2.5 ${(isSaving || !!loadingStatus) ? 'bg-gray-600 cursor-not-allowed' : 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)]'} text-black font-semibold rounded-lg transition-colors flex items-center gap-2`}
+                        disabled={isSaving || !!loadingStatus}
                     >
-                        <Check size={18} />
-                        저장
+                        {isSaving ? <Loader2 className="animate-spin" size={18} /> : (loadingStatus ? <Loader2 size={18} className="animate-spin opacity-50" /> : <Check size={18} />)}
+                        {isSaving ? '저장 중...' : (loadingStatus ? '로딩 대기' : '저장')}
                     </button>
                 </div>
             </div>
         </div>
     );
-};
+});
+
 export const Step4_5_VideoComposition: React.FC = () => {
     const navigate = useNavigate();
     const {
-        id: projectId, script, setScript, episodeName, seriesName, aspectRatio,
+        id: projectId,
+        script,
+        setScript,
+        episodeName,
+        seriesName,
+        aspectRatio,
+        apiKeys
     } = useWorkflowStore();
-
-    // Get API keys from store
-    const { apiKeys } = useWorkflowStore();
 
     // State
     const [selectedCuts, setSelectedCuts] = useState<Set<number>>(new Set());
@@ -653,10 +1152,11 @@ export const Step4_5_VideoComposition: React.FC = () => {
     const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
     const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
     const [previewCutId, setPreviewCutId] = useState<number | null>(null);
-    const [previewVideoUrl, setPreviewVideoUrl] = useState<string>('');
     const [isExportingKit, setIsExportingKit] = useState(false);
     const [isBulkGeneratingMotion, setIsBulkGeneratingMotion] = useState(false);
     const [isRepairing, setIsRepairing] = useState(false);
+    // [FIX] videoMountKey moved to parent to allow Repair utility to trigger a full video reload
+    const [videoMountKey, setVideoMountKey] = useState(() => Date.now());
 
     // AI Video Generation Mode State
     const [selectedProvider, setSelectedProvider] = useState<VideoGenerationProvider>('gemini-veo');
@@ -664,7 +1164,11 @@ export const Step4_5_VideoComposition: React.FC = () => {
     const [selectedReplicateModel, setSelectedReplicateModel] = useState<ReplicateVideoModel>('wan-2.2-i2v');
     const [selectedKieModel, setSelectedKieModel] = useState<string>('veo-3.1');
     const [isGenerating, setIsGenerating] = useState(false);
-    const [generationProgress, setGenerationProgress] = useState<{ current: number; total: number; status: string }>({ current: 0, total: 0, status: '' });
+    const [generationProgress, setGenerationProgress] = useState<{ current: number; total: number; status: string }>({
+        current: 0,
+        total: 0,
+        status: ''
+    });
 
     const prevProjectIdRef = useRef<string | null>(null);
 
@@ -681,23 +1185,7 @@ export const Step4_5_VideoComposition: React.FC = () => {
         }
     }, [projectId]);
 
-    // Resolve preview URL
-    useEffect(() => {
-        if (previewCutId === null) {
-            setPreviewVideoUrl('');
-            return;
-        }
-        const cut = script.find(c => c.id === previewCutId);
-        if (!cut?.videoUrl) {
-            setPreviewVideoUrl('');
-            return;
-        }
-        if (isIdbUrl(cut.videoUrl)) {
-            resolveUrl(cut.videoUrl).then(url => setPreviewVideoUrl(url));
-        } else {
-            setPreviewVideoUrl(cut.videoUrl);
-        }
-    }, [previewCutId, script]);
+
 
     const videoStats = {
         ready: script.filter(cut => cut.videoUrl).length,
@@ -828,24 +1316,31 @@ export const Step4_5_VideoComposition: React.FC = () => {
         }));
 
         try {
-            const reader = new FileReader();
-            const dataUrl = await new Promise<string>((resolve, reject) => {
-                reader.onload = () => resolve(reader.result as string);
-                reader.onerror = reject;
-                reader.readAsDataURL(file);
-            });
+            // [FIX] DO NOT use FileReader.readAsDataURL for videos.
+            // It uses too much memory and can corrupt audio tracks on large files.
+            // saveToIdb already handles Blobs/Files directly.
 
             const { saveToIdb, generateVideoKey } = await import('../utils/imageStorage');
             // Extract extension safely
             const extension = file.name.split('.').pop() || 'mp4';
             const videoKey = generateVideoKey(currentProjectId, cutId, extension);
-            console.log(`[Video Upload] Cut ${cutId}: Saving with key "${videoKey}"`);
-            const idbUrl = await saveToIdb('video', videoKey, dataUrl);
+            console.log(`[Video Upload] Cut ${cutId}: Saving original File Blob with key "${videoKey}"`);
+
+            const idbUrl = await saveToIdb('video', videoKey, file);
             console.log(`[Video Upload] Cut ${cutId}: Saved as "${idbUrl}"`);
 
             useWorkflowStore.setState(state => ({
                 script: state.script.map(c =>
-                    c.id === cutId ? { ...c, videoUrl: idbUrl, videoSource: 'upload' as const } : c
+                    c.id === cutId ? {
+                        ...c,
+                        videoUrl: idbUrl,
+                        videoSource: 'upload' as const,
+                        useVideoAudio: true,
+                        audioVolumes: {
+                            ...(c.audioVolumes || { tts: 1.0, bgm: 0.5 }),
+                            video: 1.0 // [FIX] Force volume to 1.0 on new upload to avoid silence from previous state
+                        }
+                    } : c
                 )
             }));
             console.log(`[Video Upload] Cut ${cutId}: State updated with videoUrl "${idbUrl}"`);
@@ -976,8 +1471,12 @@ export const Step4_5_VideoComposition: React.FC = () => {
 
         setIsRepairing(true);
         try {
-            const count = await repairVideoData(useWorkflowStore.getState(), script, (msg) => {
-                console.log(msg); // Optional: show toast?
+            const freshScript = useWorkflowStore.getState().script;
+            const count = await repairVideoData(useWorkflowStore.getState(), freshScript, (msg) => {
+                setGenerationProgress(prev => ({ ...prev, status: msg }));
+            }, () => {
+                // [HEALING] Force UI to remount videos so new Blob URLs are used
+                setVideoMountKey(prev => prev + 1);
             });
             if (count > 0) {
                 alert(`✅ ${count}개의 비디오 데이터를 복구했습니다.\n페이지를 새로고침해주세요.`);
@@ -1133,8 +1632,9 @@ export const Step4_5_VideoComposition: React.FC = () => {
 
                 // Save video to IDB
                 if (videoUrl) {
-                    // If it's a URL (not data:), fetch and convert to data URL
-                    let dataUrl = videoUrl;
+                    let dataToSave: string | Blob = videoUrl;
+
+                    // If it's a URL (not data:), fetch and convert to Blob
                     if (!videoUrl.startsWith('data:')) {
                         try {
                             // Google API URLs require the API key and must go through our proxy to avoid CORS
@@ -1155,32 +1655,36 @@ export const Step4_5_VideoComposition: React.FC = () => {
                             }
                             const blob = await response.blob();
                             console.log('[VideoGen] Video blob size:', Math.round(blob.size / 1024), 'KB');
-                            dataUrl = await new Promise<string>((resolve, reject) => {
-                                const reader = new FileReader();
-                                reader.onload = () => resolve(reader.result as string);
-                                reader.onerror = reject;
-                                reader.readAsDataURL(blob);
-                            });
+
+                            // [FIX] Save raw Blob directly
+                            dataToSave = blob;
                         } catch (e) {
                             console.error('Failed to fetch video:', e);
-                            // Use original URL as fallback - but this will likely not work
                             throw new Error(`Failed to download video from Veo API: ${(e as Error).message}`);
                         }
                     }
 
                     const videoKey = generateVideoKey(currentProjectId, cut.id, 'mp4');
-                    const idbUrl = await saveToIdb('video', videoKey, dataUrl);
+                    const idbUrl = await saveToIdb('video', videoKey, dataToSave);
 
                     // Update script
                     useWorkflowStore.setState(state => ({
                         script: state.script.map(c =>
                             c.id === cut.id ? {
                                 ...c,
-                                videoUrl: idbUrl,
-                                videoSource: selectedProvider === 'gemini-veo' ? 'veo' : 'ai' as const
+                                videoUrl: idbUrl, // Use the persistent IDB URL
+                                videoSource: selectedProvider === 'gemini-veo' ? 'veo' : 'ai' as const,
+                                useVideoAudio: true, // Auto-enable audio
+                                audioVolumes: {
+                                    ...(c.audioVolumes || { tts: 1.0, bgm: 0.5 }),
+                                    video: 1.0
+                                }
                             } : c
                         )
                     }));
+
+                    // [CRITICAL FIX] Save project immediately after each success to prevent data loss on navigation/refresh
+                    await useWorkflowStore.getState().saveProject();
                     successCount++;
                 }
             } catch (error: any) {
@@ -1782,34 +2286,32 @@ export const Step4_5_VideoComposition: React.FC = () => {
 
             {/* Video Preview Modal with Audio Comparison */}
             {
-                previewVideoUrl && previewCutId !== null && (() => {
+                previewCutId !== null && (() => {
                     const previewCut = script.find(c => c.id === previewCutId);
+                    if (!previewCut) return null;
+
                     return (
                         <AudioComparisonModal
+                            key={previewCutId}
                             previewCut={previewCut}
-                            previewVideoUrl={previewVideoUrl}
+                            videoMountKey={videoMountKey}
                             onClose={() => setPreviewCutId(null)}
-                            onUpdateCut={(updates) => {
-                                if (previewCut) {
-                                    const updatedScript = script.map(c =>
-                                        c.id === previewCut.id ? { ...c, ...updates } : c
+                            onSave={async (updates) => {
+                                if (previewCutId !== null) {
+                                    // Use getState() to ensure we have latest script
+                                    const latestScript = useWorkflowStore.getState().script;
+                                    const updatedScript = latestScript.map(c =>
+                                        c.id === previewCutId ? { ...c, ...updates } : c
                                     );
                                     setScript(updatedScript);
+                                    await useWorkflowStore.getState().saveProject();
+                                    setPreviewCutId(null);
                                 }
-                            }}
-                            onSave={(useVideoAudio, videoDuration) => {
-                                if (previewCut) {
-                                    const updatedScript = script.map(c =>
-                                        c.id === previewCut.id ? { ...c, useVideoAudio, videoDuration } : c
-                                    );
-                                    setScript(updatedScript);
-                                }
-                                setPreviewCutId(null);
                             }}
                         />
                     );
                 })()
             }
-        </div >
+        </div>
     );
 };

@@ -133,6 +133,34 @@ async function generateWithSingleModel(
                     mimeType: mimeMatch ? mimeMatch[1] : 'image/png'
                 };
             }
+        } else if (options.imageUrl.startsWith('blob:') || options.imageUrl.startsWith('http')) {
+            // [FIX] Convert blob: or http URLs to Base64 bytes since Veo 3.1 preview doesn't support gcsUri for direct local blobs
+            try {
+                console.log(`[Veo] Converting ${options.imageUrl.substring(0, 10)}... to Base64 bytes for model ${model}`);
+                const response = await fetch(options.imageUrl);
+                const blob = await response.blob();
+
+                const base64 = await new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        const res = reader.result as string;
+                        resolve(res.split(',')[1]);
+                    };
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+
+                requestBody.instances[0].image = {
+                    bytesBase64Encoded: base64,
+                    mimeType: blob.type || 'image/png'
+                };
+            } catch (e) {
+                console.error(`[Veo] Failed to convert image to Base64:`, e);
+                // Fallback to gcsUri just in case, though it will likely fail again based on current logs
+                requestBody.instances[0].image = {
+                    gcsUri: options.imageUrl
+                };
+            }
         } else {
             requestBody.instances[0].image = {
                 gcsUri: options.imageUrl
