@@ -654,6 +654,25 @@ const AudioComparisonModal = React.memo<{
 
     const handlePause = () => setIsVideoPlaying(false);
 
+    // [FIX] Shared loop logic to handle both long video and long audio
+    const triggerLoop = () => {
+        if (!videoRef.current) return;
+        const { start } = currentTrimRef.current;
+
+        console.log('[AudioModal] Loop Triggered');
+        videoRef.current.currentTime = start;
+
+        // Ensure both resume from start
+        if (ttsAudioRef.current && audioSourceRef.current === 'tts') {
+            ttsAudioRef.current.currentTime = 0;
+            ttsAudioRef.current.play().catch(() => { });
+        }
+
+        if (videoRef.current.paused) {
+            videoRef.current.play().catch(() => { });
+        }
+    };
+
     const handleTimeUpdate = () => {
         if (!videoRef.current) return;
         const { start, end } = currentTrimRef.current;
@@ -673,29 +692,54 @@ const AudioComparisonModal = React.memo<{
         // Loop/Clamp logic only during playback
         if (!videoRef.current.paused && isFinite(dur) && dur > 0.1) {
             const effectiveEnd = (end > 0) ? end : dur;
+            const videoTrimDuration = effectiveEnd - start;
 
-            if (videoRef.current.currentTime < start - 0.01 || videoRef.current.currentTime >= effectiveEnd - 0.01) {
+            // [FIX] Calculate Loop End based on MAX(VideoTrim, AudioDuration)
+            // If TTS is selected, we want to hear the full audio even if video is short.
+            let loopDuration = videoTrimDuration;
+            if (audioSourceRef.current === 'tts' && ttsAudioRef.current) {
+                const audioDur = ttsAudioRef.current.duration;
+                if (isFinite(audioDur) && audioDur > videoTrimDuration) {
+                    loopDuration = audioDur;
+                }
+            }
+
+            const currentPlayTime = videoRef.current.currentTime - start;
+
+            // CHECK LOOP CONDITION
+            // Note: We use a small buffer (0.1s) to prevent stutter at exact end
+            if (currentPlayTime >= loopDuration - 0.1) {
+                // RESET TO START (Loop)
                 videoRef.current.currentTime = start;
 
-                // [FIX] Loop TTS when video loops
                 if (ttsAudioRef.current && audioSourceRef.current === 'tts') {
                     ttsAudioRef.current.currentTime = 0;
-                    if (ttsAudioRef.current.paused) {
-                        ttsAudioRef.current.play().catch(() => { });
-                    }
+                    if (ttsAudioRef.current.paused) ttsAudioRef.current.play().catch(() => { });
                 }
 
-                if (videoRef.current.paused) {
-                    videoRef.current.play().catch(() => { });
-                }
+                if (videoRef.current.paused) videoRef.current.play().catch(() => { });
                 return;
             }
 
-            // [FIX] Tighter continuous sync for TTS
+            // [FIX] Freeze Video if it exceeds trim end but loop hasn't triggered (Audio still playing)
+            // If we are past the video trim end, but waiting for audio...
+            if (currentPlayTime >= videoTrimDuration && !videoRef.current.paused) {
+                videoRef.current.pause();
+                videoRef.current.currentTime = effectiveEnd; // Snap to visual end
+            } else if (currentPlayTime < videoTrimDuration && videoRef.current.paused) {
+                // Resume video if we looped back and it was paused
+                videoRef.current.play().catch(() => { });
+            }
+
+            // [FIX] Tighter continuous sync for TTS (Only if video is playing/moving)
             if (ttsAudioRef.current && audioSourceRef.current === 'tts' && !ttsAudioRef.current.paused) {
-                const expectedTts = Math.max(0, videoRef.current.currentTime - start);
-                if (Math.abs(expectedTts - ttsAudioRef.current.currentTime) > 0.25) {
-                    ttsAudioRef.current.currentTime = expectedTts;
+                // If video is frozen, we don't sync TTS to video time (TTS drives itself)
+                // If video is moving, we sync
+                if (!videoRef.current.paused) {
+                    const expectedTts = Math.max(0, videoRef.current.currentTime - start);
+                    if (Math.abs(expectedTts - ttsAudioRef.current.currentTime) > 0.25) {
+                        ttsAudioRef.current.currentTime = expectedTts;
+                    }
                 }
             }
         }
@@ -843,6 +887,7 @@ const AudioComparisonModal = React.memo<{
                                 onTimeUpdate={handleTimeUpdate}
                                 onPlay={handlePlay}
                                 onPause={handlePause}
+                                onEnded={triggerLoop}
                                 onError={(e) => {
                                     console.error('[AudioModal:Video] Engine Error:', e.currentTarget.error, 'src:', previewVideoUrl?.substring(0, 100));
                                     setErrorMsg('비디오 데크 오류 (코덱 또는 MIME 불일치)');
@@ -1066,6 +1111,11 @@ const AudioComparisonModal = React.memo<{
                         preload="auto"
                         onPlay={() => console.log('[AudioModal:TTS] Play started')}
                         onPause={() => console.log('[AudioModal:TTS] Paused')}
+                        onEnded={() => {
+                            // Only trigger loop from audio if TTS is the source and it was longer than video
+                            // (Because if video is longer, video's timeupdate/onEnded will handle it)
+                            if (selectedAudioSource === 'tts') triggerLoop();
+                        }}
                         onError={(e) => console.error('[AudioModal:TTS] Load Error:', e)}
                     />
                 )}

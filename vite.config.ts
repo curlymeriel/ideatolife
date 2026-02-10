@@ -17,6 +17,10 @@ export default defineConfig({
   //   },
   //   proxy: { ... }
   server: {
+    headers: {
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Embedder-Policy": "credentialless",
+    },
     proxy: {
       '/api/replicate': {
         target: 'https://api.replicate.com',
