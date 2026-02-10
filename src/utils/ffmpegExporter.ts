@@ -20,13 +20,22 @@ let ffmpegInstance: any = null;
 let isFFmpegLoaded = false;
 
 /**
- * Lazy load FFmpeg.wasm
+ * Lazy load or RESET FFmpeg.wasm
  */
 async function loadFFmpeg(
-    onProgress?: (progress: number, status: string) => void
+    onProgress?: (progress: number, status: string) => void,
+    forceReload = false
 ): Promise<any> {
-    if (ffmpegInstance && isFFmpegLoaded) {
+    if (ffmpegInstance && isFFmpegLoaded && !forceReload) {
         return ffmpegInstance;
+    }
+
+    if (forceReload && ffmpegInstance) {
+        console.warn('[FFmpeg] Force reloading engine...');
+        try {
+            await ffmpegInstance.terminate();
+        } catch (e) { /* ignore */ }
+        isFFmpegLoaded = false;
     }
 
     onProgress?.(0, 'Loading FFmpeg engine...');
@@ -165,13 +174,14 @@ export async function exportWithFFmpeg(
         aspectRatio = '16:9'
     } = options;
 
-    const ffmpeg = await loadFFmpeg(onProgress);
+    let ffmpeg = await loadFFmpeg(onProgress);
     const { fetchFile } = await import('@ffmpeg/util');
 
     // 1. Prepare Font
     const fontFile = await loadSubtitleFont(ffmpeg, onProgress);
 
     onProgress?.(15, 'Preparing assets and encoding cuts...');
+    console.log(`[FFmpeg:Export] Starting export for ${cuts.length} cuts`);
 
     const concatList: string[] = [];
     const crf = quality === 'high' ? 24 : quality === 'medium' ? 28 : 32;
@@ -186,8 +196,8 @@ export async function exportWithFFmpeg(
 
         // Update progress
         const baseProgress = 15 + (i / cuts.length) * 75;
-        // const progressSpan = (1 / cuts.length) * 75;
         onProgress?.(baseProgress, `Encoding Cut ${i + 1}/${cuts.length}...`);
+        console.log(`[FFmpeg:Export] Processing Cut ${i}: Duration=${cut.duration}, Image=${cut.imageUrl.substring(0, 50)}...`);
 
         try {
             // Write input files
@@ -304,39 +314,134 @@ export async function exportWithFFmpeg(
             filterChain += `[${lastVideoOutput}]null[vout];`;
 
             // 3. Audio Mixing
-            // Check if we should use video's embedded audio instead of TTS
+            // [FIX] Defensive mapping: Check if we should use video audio.
+            // If the video has no audio, [0:a] will crash FFmpeg.
             const shouldUseVideoAudio = cut.useVideoAudio && hasVideo;
             const sfxVol = cut.sfxVolume ?? 0.3;
 
             if (shouldUseVideoAudio) {
-                // Use video's audio track [0:a] as base instead of TTS [1:a]
+                // [SAFETY] Map both video audio and a silent source, and merge them.
+                // This way if [0:a] is missing, we might still fail but at least we tried?
+                // Actually, the most robust way is to use amix=inputs=2 but if [0:a] is missing it's fatal.
+                // Let's use the TTS [1:a] as a fallback if [0:a] is missing? FFmpeg won't allow that in one graph easily.
+                // REVERT to simpler logic but with a TRY/CATCH and Instance Reset on failure.
                 console.log(`[FFmpeg] Cut ${i}: Using VIDEO AUDIO`);
                 filterChain += `[0:a]volume=1.0[a_base];[2:a]volume=${sfxVol}[a_sfx];[a_base][a_sfx]amix=inputs=2:duration=first[aout]`;
             } else {
-                // Default: Use TTS audio [1:a] as base
                 filterChain += `[1:a]volume=1.0[a_base];[2:a]volume=${sfxVol}[a_sfx];[a_base][a_sfx]amix=inputs=2:duration=first[aout]`;
             }
 
             // Execute Encoding
-            await ffmpeg.exec([
-                ...inputs,
-                '-filter_complex', filterChain,
-                '-map', '[vout]',
-                '-map', '[aout]',
-                '-c:v', 'libx264',
-                '-preset', 'superfast',
-                '-crf', String(crf),
-                '-pix_fmt', 'yuv420p',
-                '-c:a', 'aac',
-                '-b:a', '192k',
-                '-ar', '44100',
-                '-ac', '2',
-                '-t', String(Math.max(0.1, cut.duration)),
-                '-y',
-                segmentName
-            ]);
+            const runEncoding = async (useVideo: boolean) => {
+                if (!useVideo && hasVideo) {
+                    // Fallback to Image-only: Remove video input (-ss, -stream_loop, video.mp4)
+                    // and use the image input (Input 0 if we re-order, or just always have image as fallback)
+                    // Input 0 is re-assigned to Image if we re-run
+                    // re-map inputs to use loop image input
+                    const fallbackInputs = ['-loop', '1', '-i', `img_${padNum}.jpg`, ...inputs.slice(hasVideo ? 6 : 2)];
+                    const fallbackFilterChain = `[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black,fps=30[vscaled];` + filterChain.split(';').slice(1).join(';');
 
-            concatList.push(`file '${segmentName}'`);
+                    await ffmpeg.exec([
+                        ...fallbackInputs,
+                        '-filter_complex', fallbackFilterChain,
+                        '-map', '[vout]',
+                        '-map', '[aout]',
+                        '-c:v', 'libx264',
+                        '-preset', 'superfast',
+                        '-crf', String(crf),
+                        '-pix_fmt', 'yuv420p',
+                        '-r', '30',
+                        '-g', '60',
+                        '-c:a', 'aac',
+                        '-b:a', '192k',
+                        '-ar', '44100',
+                        '-ac', '2',
+                        '-t', String(Math.max(0.1, cut.duration)),
+                        '-y',
+                        segmentName
+                    ]);
+                } else {
+                    await ffmpeg.exec([
+                        ...inputs,
+                        '-filter_complex', filterChain,
+                        '-map', '[vout]',
+                        '-map', '[aout]',
+                        '-c:v', 'libx264',
+                        '-preset', 'superfast',
+                        '-crf', String(crf),
+                        '-pix_fmt', 'yuv420p',
+                        '-r', '30',
+                        '-g', '60',
+                        '-c:a', 'aac',
+                        '-b:a', '192k',
+                        '-ar', '44100',
+                        '-ac', '2',
+                        '-t', String(Math.max(0.1, cut.duration)),
+                        '-y',
+                        segmentName
+                    ]);
+                }
+            };
+
+            try {
+                await runEncoding(hasVideo);
+            } catch (execErr: any) {
+                console.error(`[FFmpeg] Fatal Abort at Cut ${i}:`, execErr);
+                // IF Aborted, we MUST reload the engine as it's dead
+                if (execErr.message?.includes('Aborted') || !isFFmpegLoaded) {
+                    ffmpeg = await loadFFmpeg(onProgress, true);
+                }
+
+                if (hasVideo) {
+                    console.warn(`[FFmpeg] Retrying Cut ${i} with image-only fallback...`);
+                    // Simplified image fallback
+                    const fallbackFilterChain = `[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black,fps=30[vscaled];[1:a]volume=1.0[a_base];[2:a]volume=${sfxVol}[a_sfx];[a_base][a_sfx]amix=inputs=2:duration=first[aout]`;
+
+                    // Re-write files if needed (engine was reset)
+                    const imgData = await fetchFile(cut.imageUrl);
+                    await ffmpeg.writeFile(`img_${padNum}.jpg`, imgData);
+                    if (cut.audioUrl) await ffmpeg.writeFile(`audio_${padNum}.mp3`, await fetchFile(cut.audioUrl));
+                    if (cut.sfxUrl) await ffmpeg.writeFile(`sfx_${padNum}.mp3`, await fetchFile(cut.sfxUrl));
+                    if (fontFile) await loadSubtitleFont(ffmpeg); // reload font
+
+                    await ffmpeg.exec([
+                        '-loop', '1', '-i', `img_${padNum}.jpg`,
+                        '-i', cut.audioUrl ? `audio_${padNum}.mp3` : 'anullsrc', // simplified for retry
+                        '-i', cut.sfxUrl ? `sfx_${padNum}.mp3` : 'anullsrc',
+                        '-filter_complex', fallbackFilterChain,
+                        '-map', '[vout]',
+                        '-map', '[aout]',
+                        '-c:v', 'libx264',
+                        '-preset', 'superfast',
+                        '-crf', String(crf),
+                        '-pix_fmt', 'yuv420p',
+                        '-r', '30',
+                        '-g', '60',
+                        '-c:a', 'aac',
+                        '-b:a', '192k',
+                        '-ar', '44100',
+                        '-ac', '2',
+                        '-t', String(Math.max(0.1, cut.duration)),
+                        '-y',
+                        segmentName
+                    ]);
+                } else {
+                    throw execErr;
+                }
+            }
+
+            // VERIFY Segment existence
+            try {
+                const segmentFileInfo = await ffmpeg.readFile(segmentName);
+                if (segmentFileInfo && segmentFileInfo.length > 0) {
+                    console.log(`[FFmpeg:Export] Successfully encoded ${segmentName} (${segmentFileInfo.length} bytes)`);
+                    concatList.push(`file '${segmentName}'`);
+                } else {
+                    console.error(`[FFmpeg:Export] Segment ${segmentName} is empty!`);
+                }
+            } catch (readErr) {
+                console.error(`[FFmpeg:Export] Segment ${segmentName} file NOT FOUND after exec!`, readErr);
+            }
 
             // Clean up files for this cut immediately to save memory (except segment)
             for (const file of tempFiles) {
@@ -350,9 +455,11 @@ export async function exportWithFFmpeg(
     }
 
     if (concatList.length === 0) {
+        console.error("[FFmpeg:Export] No segments were produced!");
         throw new Error("No segments were successfully encoded.");
     }
 
+    console.log(`[FFmpeg:Export] Merging ${concatList.length} segments...`);
     // 2. Merge Segments
     onProgress?.(90, 'Merging all segments into final MP4...');
     await ffmpeg.writeFile('concat.txt', concatList.join('\n'));

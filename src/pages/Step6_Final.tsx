@@ -137,7 +137,9 @@ export const Step6_Final = () => {
 
     const isPresentationMode = new URLSearchParams(location.search).get('mode') === 'presentation';
 
-    const [assetsLoaded, setAssetsLoaded] = useState(false);
+    const [assetsLoaded, setAssetsLoaded] = useState(false); // Priority assets for player
+    const [isAllAssetsLoaded, setIsAllAssetsLoaded] = useState(false); // All assets for export
+    const [loadingProgress, setLoadingProgress] = useState({ current: 0, total: 0 });
     const [blobCache, setBlobCache] = useState<Record<string, string>>({});
     const [audioDurations, setAudioDurations] = useState<Record<number, number>>({});
     const [resolvedThumbnail, setResolvedThumbnail] = useState<string | null>(null);
@@ -369,6 +371,7 @@ export const Step6_Final = () => {
             console.log(`[Step6] Optimizing assets for ${script.length} cuts`);
             console.log(`[Step6] First few audio URLs:`, script.slice(0, 3).map(c => c.audioUrl));
 
+            setLoadingProgress({ current: 0, total: script.length });
             const newCache: Record<string, string> = {};
 
             const processUrl = async (url: string) => {
@@ -497,10 +500,10 @@ export const Step6_Final = () => {
             blobCacheRef.current = { ...blobCacheRef.current, ...priorityCache };
             setAudioDurations(prev => ({ ...prev, ...priorityDurations }));
 
-            // CRITICAL FIX: Only show player after priority assets are actually loaded and cached
+            // CRITICAL: Priority assets (first 5) are loaded. Player can start.
             setAssetsLoaded(true);
-
-            console.log('[Step6] Priority assets loaded!');
+            setLoadingProgress(prev => ({ ...prev, current: PRIORITY_COUNT }));
+            console.log('[Step6] Priority assets loaded! Player ready.');
 
             // IMMEDIATE PRELOAD FOR CUT 0
             if (script.length > 0 && script[0].audioUrl) {
@@ -540,10 +543,17 @@ export const Step6_Final = () => {
                         setAudioDurations(prev => ({ ...prev, ...batchDurations }));
                     }
 
+                    setLoadingProgress(prev => ({ ...prev, current: Math.min(prev.total, PRIORITY_COUNT + i + batch.length) }));
+
                     // Small yield to UI thread
                     await new Promise(r => setTimeout(r, 10));
                 }
-                console.log('[Step6] All assets loaded!');
+
+                setIsAllAssetsLoaded(true);
+                console.log('[Step6] All assets loaded! Export ready.');
+            } else {
+                // If there were no rest cuts, then all assets are loaded
+                setIsAllAssetsLoaded(true);
             }
         };
 
@@ -1320,30 +1330,44 @@ export const Step6_Final = () => {
 
     // Prepare recording cuts helper
     const prepareRecordingCuts = (includeVideo: boolean): RecordingCut[] => {
-        const cuts: RecordingCut[] = script.map((cut, index) => ({
-            imageUrl: getOptimizedUrl(cut.finalImageUrl || cut.draftImageUrl) || '',
-            videoUrl: includeVideo ? getOptimizedUrl(cut.videoUrl) : undefined,
-            videoTrim: cut.videoTrim, // [FIX] Pass trim data to exporters
-            audioUrl: getOptimizedUrl(cut.audioUrl),
-            sfxUrl: getOptimizedUrl(cut.sfxUrl),
-            sfxVolume: cut.sfxVolume,
-            useVideoAudio: cut.useVideoAudio, // NEW: Pass audio source preference
-            duration: getCutDuration(index),
-            dialogue: cut.dialogue,
-            speaker: cut.speaker
-        })).filter(c => c.imageUrl);
+        console.log(`[Step6:Prepare] Preparing cuts with includeVideo=${includeVideo}. Script length: ${script.length}`);
+
+        const mappedCuts = script.map((cut, index) => {
+            const imgUrl = getOptimizedUrl(cut.finalImageUrl || cut.draftImageUrl);
+            if (!imgUrl) {
+                console.warn(`[Step6:Prepare] Cut ${index} has no resolved image URL!`, {
+                    final: cut.finalImageUrl,
+                    draft: cut.draftImageUrl,
+                    id: cut.id
+                });
+            }
+
+            return {
+                imageUrl: imgUrl || '',
+                videoUrl: includeVideo ? getOptimizedUrl(cut.videoUrl) : undefined,
+                videoTrim: cut.videoTrim,
+                audioUrl: getOptimizedUrl(cut.audioUrl),
+                sfxUrl: getOptimizedUrl(cut.sfxUrl),
+                sfxVolume: cut.sfxVolume,
+                useVideoAudio: cut.useVideoAudio,
+                duration: getCutDuration(index),
+                dialogue: cut.dialogue,
+                speaker: cut.speaker
+            };
+        });
+
+        const cuts = mappedCuts.filter(c => c.imageUrl);
+        console.log(`[Step6:Prepare] Filtered cuts: ${cuts.length}/${script.length}`);
 
         // Add 2s Thumbnail Intro if available
         const optimizedThumbnail = getOptimizedUrl(thumbnailUrl || undefined);
         if (optimizedThumbnail) {
-            console.log("[Step6] Adding thumbnail intro to export");
+            console.log("[Step6:Prepare] Adding thumbnail intro to export");
             cuts.unshift({
                 imageUrl: optimizedThumbnail,
                 duration: 2.0,
                 dialogue: '',
             });
-        } else {
-            console.warn("[Step6] No optimized thumbnail found for export intro!");
         }
 
         return cuts;
@@ -1427,6 +1451,7 @@ export const Step6_Final = () => {
                 recordingCuts,
                 { width: 1920, height: 1080, quality: 'high', aspectRatio: aspectRatio || '16:9', showSubtitles: exportSubtitles },
                 (progress, status) => {
+                    console.log(`[Step6:HQExport] ${status} (${progress}%)`);
                     setExportProgress(Math.round(progress));
                     setExportStatus(status);
                 }
@@ -1939,10 +1964,16 @@ export const Step6_Final = () => {
                         </button>
                         <button
                             onClick={handleExportVideo}
-                            disabled={isExportingVideo || !assetsLoaded}
+                            disabled={isExportingVideo || !isAllAssetsLoaded}
                             className="px-4 py-2 rounded-lg bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black text-sm font-bold transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ml-2"
                         >
-                            <Film size={16} /> {isExportingVideo ? 'Exporting...' : assetsLoaded ? 'Video Kit' : 'Loading Assets...'}
+                            <Film size={16} />
+                            {isExportingVideo
+                                ? 'Exporting...'
+                                : isAllAssetsLoaded
+                                    ? 'Video Kit'
+                                    : `Loading Assets (${loadingProgress.current}/${loadingProgress.total})`
+                            }
                         </button>
 
                     </div>
