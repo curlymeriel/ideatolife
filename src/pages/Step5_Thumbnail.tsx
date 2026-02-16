@@ -23,7 +23,21 @@ export const Step5_Thumbnail: React.FC = () => {
     } = useWorkflowStore();
     const navigate = useNavigate();
 
-    // Ref for the content to be captured (1920x1080, no scale)
+    // Standard Resolutions based on Aspect Ratio
+    const RESOLUTIONS: Record<string, { width: number, height: number }> = {
+        '16:9': { width: 1920, height: 1080 },
+        '9:16': { width: 1080, height: 1920 },
+        '1:1': { width: 1080, height: 1080 },
+        '4:3': { width: 1440, height: 1080 },
+        '21:9': { width: 2560, height: 1080 },
+        '2.35:1': { width: 1920, height: 817 }, // CinemaScope
+        '4:5': { width: 1080, height: 1350 },   // Instagram Portrait
+        '3:4': { width: 1080, height: 1440 }
+    };
+
+    const targetResolution = RESOLUTIONS[aspectRatio] || RESOLUTIONS['16:9'];
+
+    // Ref for the content to be captured (Dynamic Resolution, no scale)
     const contentRef = useRef<HTMLDivElement>(null);
 
     // Ref for the container wrapper to calculate scale
@@ -209,17 +223,17 @@ export const Step5_Thumbnail: React.FC = () => {
     }, [mode, aiPrompt, aiTitle, selectedReferenceIds, styleReferenceId, scale, position, textPosition, titleSize, seriesTitle, seriesTitleSize, textAlign, textColor, titleFont, frameImage, customTitle, setThumbnailSettings, isHydrated]);
 
 
-    // Calculate scale factor on resize
+    // Calculate scale factor on resize (Dynamic based on targetResolution)
     useEffect(() => {
         const updateScale = () => {
             if (containerRef.current) {
                 const { width, height } = containerRef.current.getBoundingClientRect();
-                // Subtract padding (p-8 = 32px * 2 = 64px) to ensure it fits inside the padded area
-                const availableWidth = width - 64;
-                const availableHeight = height - 64;
+                // Subtract padding (p-12 = 48px * 2 = 96px) to ensure it fits inside the padded area
+                const availableWidth = width - 96;
+                const availableHeight = height - 96;
 
-                const scaleX = availableWidth / 1920;
-                const scaleY = availableHeight / 1080;
+                const scaleX = availableWidth / targetResolution.width;
+                const scaleY = availableHeight / targetResolution.height;
                 // Use the smaller scale to ensure it fits entirely
                 setPreviewScale(Math.min(scaleX, scaleY));
             }
@@ -228,7 +242,7 @@ export const Step5_Thumbnail: React.FC = () => {
         updateScale();
         window.addEventListener('resize', updateScale);
         return () => window.removeEventListener('resize', updateScale);
-    }, []);
+    }, [targetResolution]); // Re-calculate when resolution changes
 
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -297,6 +311,8 @@ export const Step5_Thumbnail: React.FC = () => {
         if (!contentRef.current) return;
 
         setIsSaving(true);
+        console.log('[Step5] Starting save. Target Resolution:', targetResolution);
+        console.log('[Step5] Content Ref:', contentRef.current);
 
         try {
             // 1. Wait for all fonts to be fully loaded
@@ -305,11 +321,11 @@ export const Step5_Thumbnail: React.FC = () => {
             // 2. Additional delay to ensure rendering
             await new Promise(resolve => setTimeout(resolve, 300));
 
-            // 3. Capture the unscaled content div at 1920x1080
+            // 3. Capture the unscaled content div at Target Resolution
             const canvas = await html2canvas(contentRef.current, {
                 scale: 1,
-                width: 1920,
-                height: 1080,
+                width: targetResolution.width,
+                height: targetResolution.height,
                 backgroundColor: '#000000',
                 logging: false,
                 useCORS: true,
@@ -358,11 +374,15 @@ export const Step5_Thumbnail: React.FC = () => {
             // 7. Also create a small preview for Dashboard (in-store, compressed)
             // This is tiny and safe to keep in the main store
             const previewCanvas = document.createElement('canvas');
-            previewCanvas.width = 320;
-            previewCanvas.height = 180;
+            // Calculate preview height maintaining aspect ratio based on width 320
+            const previewWidth = 320;
+            const previewHeight = Math.round(320 * (targetResolution.height / targetResolution.width));
+
+            previewCanvas.width = previewWidth;
+            previewCanvas.height = previewHeight;
             const ctx = previewCanvas.getContext('2d');
             if (ctx) {
-                ctx.drawImage(canvas, 0, 0, 320, 180);
+                ctx.drawImage(canvas, 0, 0, previewWidth, previewHeight);
                 const previewUrl = previewCanvas.toDataURL('image/jpeg', 0.6);
                 // Save preview as thumbnailPreview for Dashboard cards
                 useWorkflowStore.setState({ thumbnailPreview: previewUrl } as any);
@@ -381,9 +401,14 @@ export const Step5_Thumbnail: React.FC = () => {
             // 10. User Feedback
             alert('✅ Thumbnail saved successfully!\n\n📥 Downloaded to your computer\n💾 Saved to project (full quality)');
 
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error saving thumbnail:', error);
-            alert('Failed to save thumbnail. Please try again.');
+            // Detailed error logging
+            if (error instanceof Error) {
+                console.error('Error message:', error.message);
+                console.error('Error stack:', error.stack);
+            }
+            alert(`Failed to save thumbnail. Error: ${error.message || 'Unknown error'}`);
         } finally {
             setIsSaving(false);
         }
@@ -428,11 +453,15 @@ TECHNICAL: High contrast, 4K quality, professional composition. The typography s
 
             if (result.urls && result.urls.length > 0) {
                 const generatedUrl = result.urls[0];
-                setSelectedImage(generatedUrl);
 
-                // 4. Save to IDB
+                // 4. Save to IDB immediately
                 const idbUrl = await saveToIdb('images', `${projectId}-thumbnail-bg-ai`, generatedUrl);
                 setThumbnail(idbUrl);
+
+                // 4b. Resolve to Blob URL for UI Display (Prevents CORS issues with html2canvas)
+                // If generatedUrl is remote, html2canvas might fail. IDB blob is safe.
+                const resolvedBlobUrl = await resolveUrl(idbUrl);
+                setSelectedImage(resolvedBlobUrl || generatedUrl);
 
                 // 5. Reset transform (not used in AI mode but good to have)
                 setScale(1);
@@ -1029,7 +1058,7 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                     <div
                         ref={contentRef}
                         className="fixed top-0 left-[-9999px] pointer-events-none"
-                        style={{ width: '1920px', height: '1080px' }}
+                        style={{ width: `${targetResolution.width}px`, height: `${targetResolution.height}px` }}
                     >
                         <ThumbnailContent forCapture={true} />
                     </div>
@@ -1041,8 +1070,8 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                     >
                         <div
                             style={{
-                                width: '1920px',
-                                height: '1080px',
+                                width: `${targetResolution.width}px`,
+                                height: `${targetResolution.height}px`,
                                 position: 'absolute',
                                 top: '50%',
                                 left: '50%',

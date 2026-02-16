@@ -14,6 +14,7 @@ export interface RecordingCut {
     duration: number; // seconds
     dialogue?: string;
     speaker?: string;
+    id?: string | number; // Critical for BGM sync
 }
 
 export interface RecordingOptions {

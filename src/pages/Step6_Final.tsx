@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useWorkflowStore } from '../store/workflowStore';
-import { Play, Pause, Download, FileText, Monitor, Layout, Film, Zap, X, Image as ImageIcon } from 'lucide-react';
+import { Play, Pause, Download, FileText, Monitor, Layout, Film, Zap, X, Image as ImageIcon, AlertTriangle, CheckCircle } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { exportVideo, type VideoCut } from '../utils/videoExporter';
@@ -183,6 +183,24 @@ export const Step6_Final = () => {
     const [exportStatus, setExportStatus] = useState('');
     const [showExportModal, setShowExportModal] = useState(false);
     const [exportType, setExportType] = useState<'quick' | 'hq' | 'kit' | null>(null);
+    const [exportError, setExportError] = useState<string | null>(null);
+    const [exportDone, setExportDone] = useState(false);
+    const [tabHiddenWarning, setTabHiddenWarning] = useState(false);
+    const exportAbortRef = useRef<AbortController | null>(null);
+
+    // Tab visibility warning during export
+    useEffect(() => {
+        const handleVisibility = () => {
+            if (document.hidden && isExportingVideo) {
+                setTabHiddenWarning(true);
+                console.warn('[Step6] Tab hidden during export! Risk of OOM crash.');
+            } else if (!document.hidden && tabHiddenWarning) {
+                // Tab came back - keep warning visible until export ends
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibility);
+        return () => document.removeEventListener('visibilitychange', handleVisibility);
+    }, [isExportingVideo, tabHiddenWarning]);
 
     // NEW: Playback Mode (Hybrid vs Still) and Video Refs
     const [playbackMode, setPlaybackMode] = useState<'hybrid' | 'still'>('hybrid');
@@ -1342,9 +1360,28 @@ export const Step6_Final = () => {
                 });
             }
 
+            // [DIAGNOSTIC] Detailed video URL logging for debugging black screen issues
+            const resolvedVideoUrl = includeVideo ? getOptimizedUrl(cut.videoUrl) : undefined;
+            if (includeVideo && cut.videoUrl) {
+                const cachedUrl = blobCacheRef.current[cut.videoUrl] || blobCache[cut.videoUrl];
+                console.log(`[Step6:Prepare] Cut ${index} VIDEO DIAGNOSTIC:`, {
+                    originalUrl: cut.videoUrl?.substring(0, 80),
+                    cachedInBlobCache: !!cachedUrl,
+                    cachedUrlPrefix: cachedUrl?.substring(0, 30),
+                    resolvedUrl: resolvedVideoUrl?.substring(0, 50),
+                    isResolved: !!resolvedVideoUrl,
+                    videoTrim: cut.videoTrim,
+                    useVideoAudio: cut.useVideoAudio,
+                    videoSource: (cut as any).videoSource,
+                });
+                if (!resolvedVideoUrl) {
+                    console.error(`[Step6:Prepare] ❌ Cut ${index} VIDEO URL LOST! Original: "${cut.videoUrl?.substring(0, 80)}". This cut will render as IMAGE-ONLY in export!`);
+                }
+            }
+
             return {
                 imageUrl: imgUrl || '',
-                videoUrl: includeVideo ? getOptimizedUrl(cut.videoUrl) : undefined,
+                videoUrl: resolvedVideoUrl,
                 videoTrim: cut.videoTrim,
                 audioUrl: getOptimizedUrl(cut.audioUrl),
                 sfxUrl: getOptimizedUrl(cut.sfxUrl),
@@ -1352,7 +1389,8 @@ export const Step6_Final = () => {
                 useVideoAudio: cut.useVideoAudio,
                 duration: getCutDuration(index),
                 dialogue: cut.dialogue,
-                speaker: cut.speaker
+                speaker: cut.speaker,
+                id: cut.id // Critical for BGM sync
             };
         });
 
@@ -1367,6 +1405,7 @@ export const Step6_Final = () => {
                 imageUrl: optimizedThumbnail,
                 duration: 2.0,
                 dialogue: '',
+                id: 'thumbnail-intro'
             });
         }
 
@@ -1387,12 +1426,14 @@ export const Step6_Final = () => {
         setIsExportingVideo(true);
         setExportProgress(0);
         setExportStatus('Initializing...');
+        setExportError(null);
+        setExportDone(false);
+        setTabHiddenWarning(false);
 
         try {
             const recordingCuts = prepareRecordingCuts(exportHybrid);
             if (recordingCuts.length === 0) {
-                alert("No images found to export!");
-                setIsExportingVideo(false);
+                setExportError('내보낼 이미지가 없습니다.');
                 return;
             }
 
@@ -1409,27 +1450,28 @@ export const Step6_Final = () => {
             const url = URL.createObjectURL(result.blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = getSafeFilename(result.format); // Use safe filename
+            a.download = getSafeFilename(result.format);
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
-        } catch (error) {
+            setExportDone(true);
+            setExportStatus('내보내기 완료! 파일이 다운로드됩니다.');
+            setExportProgress(100);
+
+        } catch (error: any) {
             console.error("Quick export failed:", error);
-            alert("Failed to export video. Check console for details.");
-        } finally {
-            setIsExportingVideo(false);
-            setExportProgress(0);
-            setExportStatus('');
-            setExportType(null);
+            setExportError(error?.message || '알 수 없는 오류로 내보내기에 실패했습니다.');
         }
+        // NOTE: No finally cleanup - user manually closes the modal
     };
 
     // High Quality Export (MP4 via FFmpeg.wasm)
     const handleHQExport = async () => {
         if (!isFFmpegSupported()) {
-            alert("High quality export is not supported in this browser. SharedArrayBuffer is required.\n\nPlease try Quick Export instead, or use a different browser (Chrome/Edge recommended).");
+            setExportError('이 브라우저에서는 고화질 내보내기를 지원하지 않습니다.\nSharedArrayBuffer가 필요합니다. Quick Export를 사용하세요.');
+            setIsExportingVideo(true);
             return;
         }
 
@@ -1437,45 +1479,76 @@ export const Step6_Final = () => {
         setExportType('hq');
         setIsExportingVideo(true);
         setExportProgress(0);
-        setExportStatus('Loading FFmpeg...');
+        setExportStatus('FFmpeg 로딩 중...');
+        setExportError(null);
+        setExportDone(false);
+        setTabHiddenWarning(false);
+
+        // Create AbortController for cancellation
+        const abortController = new AbortController();
+        exportAbortRef.current = abortController;
 
         try {
             const recordingCuts = prepareRecordingCuts(exportHybrid);
             if (recordingCuts.length === 0) {
-                alert("No images found to export!");
-                setIsExportingVideo(false);
+                setExportError('내보낼 이미지가 없습니다.');
                 return;
             }
 
+            // Calculate start times for BGM resolution in FFmpeg
+            let currentTime = 0;
+            const cutStartTimeMap = recordingCuts.map(c => {
+                const start = currentTime;
+                currentTime += c.duration;
+                return start;
+            });
+
             const result = await exportWithFFmpeg(
                 recordingCuts,
-                { width: 1920, height: 1080, quality: 'high', aspectRatio: aspectRatio || '16:9', showSubtitles: exportSubtitles },
+                {
+                    width: 1920,
+                    height: 1080,
+                    quality: 'high',
+                    aspectRatio: aspectRatio || '16:9',
+                    showSubtitles: exportSubtitles,
+                    bgmTracks: bgmTracks,
+                    cutStartTimeMap: cutStartTimeMap
+                },
                 (progress, status) => {
                     console.log(`[Step6:HQExport] ${status} (${progress}%)`);
                     setExportProgress(Math.round(progress));
                     setExportStatus(status);
-                }
+                },
+                abortController.signal
             );
 
             // Trigger download
             const url = URL.createObjectURL(result.blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = getSafeFilename(result.format); // Use safe filename
+            a.download = getSafeFilename(result.format);
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
-        } catch (error) {
+            setExportDone(true);
+            setExportStatus('내보내기 완료! MP4 파일이 다운로드됩니다.');
+            setExportProgress(100);
+
+        } catch (error: any) {
             console.error("HQ export failed:", error);
-            alert("Failed to export video. Check console for details.\n\nTip: If SharedArrayBuffer is not available, try Quick Export.");
+            if (error?.name === 'AbortError') {
+                setExportError('사용자에 의해 내보내기가 취소되었습니다.');
+            } else if (error?.message?.includes('Aborted') || error?.message?.includes('OOM')) {
+                setExportError('메모리 부족으로 내보내기가 중단되었습니다.\n\n💡 다른 탭을 모두 닫고, 이 탭을 활성 상태로 유지한 채 다시 시도해 주세요.\n또는 Quick Export(WebM)를 사용해 보세요.');
+            } else {
+                setExportError(error?.message || '알 수 없는 오류로 내보내기에 실패했습니다.\n\n💡 Quick Export를 사용해 보세요.');
+            }
         } finally {
-            setIsExportingVideo(false);
-            setExportProgress(0);
-            setExportStatus('');
-            setExportType(null);
+            exportAbortRef.current = null;
         }
+        // NOTE: No state reset in finally - user manually closes the modal
     };
 
     // Video Kit Export (ZIP with images, audio, and FFmpeg script)
@@ -1485,6 +1558,9 @@ export const Step6_Final = () => {
         setIsExportingVideo(true);
         setExportProgress(0);
         setExportStatus('Preparing assets...');
+        setExportError(null);
+        setExportDone(false);
+        setTabHiddenWarning(false);
 
         try {
             const videoCuts: VideoCut[] = script.map((cut, index) => ({
@@ -1501,8 +1577,7 @@ export const Step6_Final = () => {
             })).filter(c => c.imageUrl);
 
             if (videoCuts.length === 0) {
-                alert("No images found to export!");
-                setIsExportingVideo(false);
+                setExportError('내보낼 이미지가 없습니다.');
                 return;
             }
 
@@ -1533,15 +1608,15 @@ export const Step6_Final = () => {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
-        } catch (error) {
+            setExportDone(true);
+            setExportStatus('내보내기 완료! Video Kit(ZIP) 파일이 다운로드됩니다.');
+            setExportProgress(100);
+
+        } catch (error: any) {
             console.error("Export failed:", error);
-            alert("Failed to export video kit. Check console for details.");
-        } finally {
-            setIsExportingVideo(false);
-            setExportProgress(0);
-            setExportStatus('');
-            setExportType(null);
+            setExportError(error?.message || '알 수 없는 오류로 Video Kit 내보내기에 실패했습니다.');
         }
+        // NOTE: No finally cleanup - user manually closes the modal
     };
 
 
@@ -2126,16 +2201,118 @@ export const Step6_Final = () => {
             {
                 isExportingVideo && (
                     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100000]">
-                        <div className="glass-panel p-8 max-w-md w-full">
-                            <h3 className="text-2xl font-bold text-white mb-4">비디오 내보내기</h3>
-                            <div className="w-full bg-white/10 rounded-full h-3 mb-4 overflow-hidden">
-                                <div
-                                    className="bg-[var(--color-primary)] h-full transition-all duration-300"
-                                    style={{ width: `${exportProgress}%` }}
-                                />
-                            </div>
-                            <p className="text-gray-300 text-center">{exportStatus}</p>
-                            <p className="text-gray-400 text-sm text-center mt-2">{exportProgress}%</p>
+                        <div className="glass-panel p-8 max-w-md w-full relative">
+                            {/* Close button - always visible */}
+                            {(exportError || exportDone) && (
+                                <button
+                                    onClick={() => {
+                                        setIsExportingVideo(false);
+                                        setExportProgress(0);
+                                        setExportStatus('');
+                                        setExportType(null);
+                                        setExportError(null);
+                                        setExportDone(false);
+                                        setTabHiddenWarning(false);
+                                    }}
+                                    className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
+                                >
+                                    <X size={20} />
+                                </button>
+                            )}
+
+                            {/* ERROR STATE */}
+                            {exportError ? (
+                                <>
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className="p-2 rounded-lg bg-red-500/20">
+                                            <AlertTriangle size={28} className="text-red-400" />
+                                        </div>
+                                        <h3 className="text-xl font-bold text-white">내보내기 실패</h3>
+                                    </div>
+                                    <p className="text-gray-300 text-sm whitespace-pre-line mb-6">{exportError}</p>
+                                    <button
+                                        onClick={() => {
+                                            setIsExportingVideo(false);
+                                            setExportProgress(0);
+                                            setExportStatus('');
+                                            setExportType(null);
+                                            setExportError(null);
+                                            setExportDone(false);
+                                            setTabHiddenWarning(false);
+                                        }}
+                                        className="w-full py-3 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold transition-colors"
+                                    >
+                                        닫기
+                                    </button>
+                                </>
+                            ) : exportDone ? (
+                                /* SUCCESS STATE */
+                                <>
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className="p-2 rounded-lg bg-green-500/20">
+                                            <CheckCircle size={28} className="text-green-400" />
+                                        </div>
+                                        <h3 className="text-xl font-bold text-white">내보내기 완료!</h3>
+                                    </div>
+                                    <p className="text-gray-300 text-center mb-6">{exportStatus}</p>
+                                    <button
+                                        onClick={() => {
+                                            setIsExportingVideo(false);
+                                            setExportProgress(0);
+                                            setExportStatus('');
+                                            setExportType(null);
+                                            setExportDone(false);
+                                            setTabHiddenWarning(false);
+                                        }}
+                                        className="w-full py-3 rounded-lg bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-bold transition-colors"
+                                    >
+                                        확인
+                                    </button>
+                                </>
+                            ) : (
+                                /* PROGRESS STATE */
+                                <>
+                                    <h3 className="text-2xl font-bold text-white mb-4">비디오 내보내기</h3>
+
+                                    {/* Tab Hidden Warning */}
+                                    {tabHiddenWarning && (
+                                        <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex items-start gap-2">
+                                            <AlertTriangle size={18} className="text-yellow-400 mt-0.5 flex-shrink-0" />
+                                            <p className="text-yellow-300 text-xs">
+                                                ⚠️ 탭이 비활성화되었습니다! 메모리 부족 시 브라우저가 자동 중단할 수 있습니다.
+                                                <br />이 탭을 활성 상태로 유지해 주세요.
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    <div className="w-full bg-white/10 rounded-full h-3 mb-4 overflow-hidden">
+                                        <div
+                                            className="bg-[var(--color-primary)] h-full transition-all duration-300"
+                                            style={{ width: `${exportProgress}%` }}
+                                        />
+                                    </div>
+                                    <p className="text-gray-300 text-center">{exportStatus}</p>
+                                    <p className="text-gray-400 text-sm text-center mt-2">{exportProgress}%</p>
+
+                                    {/* Notice */}
+                                    <p className="text-gray-500 text-xs text-center mt-4">
+                                        💡 이 탭을 활성 상태로 유지해 주세요. 다른 탭으로 이동하면 실패할 수 있습니다.
+                                    </p>
+
+                                    {/* Cancel Button */}
+                                    <button
+                                        onClick={() => {
+                                            if (exportAbortRef.current) {
+                                                exportAbortRef.current.abort();
+                                            }
+                                            setExportError('사용자에 의해 내보내기가 취소되었습니다.');
+                                        }}
+                                        className="w-full mt-4 py-2 rounded-lg bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 text-sm font-medium transition-colors border border-white/5 hover:border-red-500/30"
+                                    >
+                                        내보내기 취소
+                                    </button>
+                                </>
+                            )}
                         </div>
                     </div>
                 )

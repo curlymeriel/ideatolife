@@ -1,436 +1,377 @@
-/**
- * FFmpeg.wasm Video Exporter
- * Uses FFmpeg compiled to WebAssembly for high-quality MP4 export
- */
+import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { fetchFile, toBlobURL } from '@ffmpeg/util';
+import type { AspectRatio } from '../store/types';
 
-export interface RecordingCut {
-    imageUrl: string;
-    videoUrl?: string;
-    videoTrim?: { start: number; end: number };
-    audioUrl?: string;
-    sfxUrl?: string;
-    sfxVolume?: number;
-    useVideoAudio?: boolean;
-    duration: number;
-    dialogue?: string;
-    speaker?: string;
+let ffmpegInstance: FFmpeg | null = null;
+
+export interface ExportOptions {
+    width: number;
+    height: number;
+    quality: 'high' | 'medium' | 'low';
+    aspectRatio: AspectRatio;
+    showSubtitles?: boolean;
+    bgmTracks?: any[];
+    cutStartTimeMap?: number[];
 }
 
-let ffmpegInstance: any = null;
-let isFFmpegLoaded = false;
-
 /**
- * Lazy load or RESET FFmpeg.wasm
+ * Load FFmpeg.wasm
  */
-async function loadFFmpeg(
+export async function loadFFmpeg(
     onProgress?: (progress: number, status: string) => void,
-    forceReload = false
-): Promise<any> {
-    if (ffmpegInstance && isFFmpegLoaded && !forceReload) {
-        return ffmpegInstance;
-    }
+    forceReload: boolean = false
+): Promise<FFmpeg> {
+    if (ffmpegInstance && !forceReload) return ffmpegInstance;
+
+    onProgress?.(0, 'Initializing FFmpeg engine...');
 
     if (forceReload && ffmpegInstance) {
-        console.warn('[FFmpeg] Force reloading engine...');
         try {
             await ffmpegInstance.terminate();
-        } catch (e) { /* ignore */ }
-        isFFmpegLoaded = false;
+        } catch (e) {
+            console.warn("Failed to terminate existing ffmpeg instance", e);
+        }
+        ffmpegInstance = null;
     }
 
-    onProgress?.(0, 'Loading FFmpeg engine...');
+    const ffmpeg = new FFmpeg();
+
+    ffmpeg.on('log', ({ message }) => {
+        // Filter out too verbose logs if needed
+        if (message.includes('frame=') || message.includes('speed=')) {
+            // progress logs
+        } else {
+            console.log('[FFmpeg Log]', message);
+        }
+    });
+
+    // Load FFmpeg core from CDN
+    // Use a specific version for stability
+    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+
+    // Check SharedArrayBuffer support
+    if (typeof SharedArrayBuffer === 'undefined') {
+        throw new Error('SharedArrayBuffer is not available. Please ensure COOP/COEP headers are set.');
+    }
 
     try {
-        const { FFmpeg } = await import('@ffmpeg/ffmpeg');
-        const { toBlobURL } = await import('@ffmpeg/util');
-
-        ffmpegInstance = new FFmpeg();
-
-        // Restore logging for debugging
-        ffmpegInstance.on('log', ({ message }: { message: string }) => {
-            console.log('[FFmpeg]', message);
-        });
-
-        // Load FFmpeg core from CDN
-        const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
-        await ffmpegInstance.load({
+        await ffmpeg.load({
             coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
             wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
         });
-
-        isFFmpegLoaded = true;
-        onProgress?.(15, 'FFmpeg ready!');
-
-        return ffmpegInstance;
-    } catch (error) {
-        console.error('Failed to load FFmpeg:', error);
-        throw new Error('Failed to load FFmpeg. Make sure SharedArrayBuffer is enabled.');
+    } catch (e) {
+        console.error("FFmpeg load failed:", e);
+        throw new Error('Failed to load FFmpeg engine. Please check your internet connection or browser compatibility.');
     }
+
+    ffmpegInstance = ffmpeg;
+    return ffmpeg;
 }
 
 /**
- * Download a font for subtitles (Korean support)
+ * Load Noto Sans KR font
  */
-async function loadSubtitleFont(ffmpeg: any, onProgress?: (progress: number, status: string) => void) {
+async function loadSubtitleFont(ffmpeg: FFmpeg) {
     try {
-        onProgress?.(10, 'Loading Korean font for subtitles...');
-        // Stable Noto Sans KR from jsDelivr (avoid raw.githubusercontent 404/throttling)
-        const fontURL = 'https://cdn.jsdelivr.net/gh/googlefonts/noto-cjk@main/Sans/OTF/Korean/NotoSansCJKkr-Bold.otf';
-        const response = await fetch(fontURL);
-        if (!response.ok) throw new Error(`Font download failed: ${response.status}`);
-        const fontData = await response.arrayBuffer();
-        await ffmpeg.writeFile('font.otf', new Uint8Array(fontData));
-        console.log('[FFmpeg] Korean font loaded successfully as font.otf');
-        return 'font.otf';
+        // Use a lightweight Korean font
+        // Using a CDN that allows CORS. Noto Sans KR is heavy, but necessary.
+        const fontData = await fetchFile('https://cdn.jsdelivr.net/gh/googlefonts/noto-cjk@main/Sans/Variable/KR/NotoSansCJKkr-VF.ttf');
+        await ffmpeg.writeFile('/tmp/font.ttf', fontData);
+        return '/tmp/font.ttf';
     } catch (e) {
-        console.warn('[FFmpeg] Failed to load Korean font:', e);
+        console.warn("Failed to load custom font, subtitles might look generic.", e);
         return null;
     }
 }
 
-
-
 /**
- * Estimate pixel width of a string for Noto Sans KR Bold at 48px
+ * Helper to wrap text
  */
-function estimatePixelWidth(text: string, fontSize: number = 48): number {
-    let width = 0;
-    for (let i = 0; i < text.length; i++) {
-        const charCode = text.charCodeAt(i);
-        // Rough estimation: CJK characters are usually full-width
-        if (charCode > 255) {
-            width += fontSize; // 48px
-        } else if (charCode === 32) {
-            width += fontSize * 0.3; // Space ~14px
+function wrapTextDynamic(text: string, maxCharsPerLine: number) {
+    const words = text.split(' ');
+    const lines: { text: string, width: number }[] = [];
+    let currentLine = words[0];
+
+    for (let i = 1; i < words.length; i++) {
+        if (currentLine.length + 1 + words[i].length <= maxCharsPerLine) {
+            currentLine += ' ' + words[i];
         } else {
-            width += fontSize * 0.55; // Latin ~26px
+            lines.push({ text: currentLine, width: currentLine.length * 10 }); // Approx width
+            currentLine = words[i];
         }
     }
-    return width;
-}
-
-/**
- * Wrap text and return lines with their estimated widths
- */
-function wrapTextDynamic(text: string, maxCharsPerLine: number = 48): { text: string; width: number }[] {
-    if (!text) return [];
-
-    const lines: { text: string; width: number }[] = [];
-    const paragraphs = text.split('\n');
-
-    paragraphs.forEach(para => {
-        const words = para.trim().split(/\s+/);
-        let currentLine = '';
-
-        words.forEach(word => {
-            if ((currentLine.length + word.length + 1) > maxCharsPerLine) {
-                if (currentLine) {
-                    lines.push({ text: currentLine, width: estimatePixelWidth(currentLine) });
-                    currentLine = word;
-                } else {
-                    lines.push({ text: word, width: estimatePixelWidth(word) });
-                    currentLine = '';
-                }
-            } else {
-                currentLine = currentLine ? `${currentLine} ${word}` : word;
-            }
-        });
-
-        if (currentLine) {
-            lines.push({ text: currentLine, width: estimatePixelWidth(currentLine) });
-        }
-    });
-
+    lines.push({ text: currentLine, width: currentLine.length * 10 });
     return lines;
 }
 
-export interface FFmpegExportOptions {
-    width?: number;
-    height?: number;
-    fps?: number;
-    quality?: 'low' | 'medium' | 'high';
-    aspectRatio?: string;
-    showSubtitles?: boolean;
-}
-
-export interface FFmpegExportResult {
-    blob: Blob;
-    format: 'mp4';
-    duration: number;
-}
-
 /**
- * Export video using FFmpeg.wasm (High Quality MP4)
+ * Main Export Function
  */
 export async function exportWithFFmpeg(
-    cuts: RecordingCut[],
-    options: FFmpegExportOptions = {},
-    onProgress?: (progress: number, status: string) => void
-): Promise<FFmpegExportResult> {
-    const {
-        width = 1920,
-        height = 1080,
-        quality = 'high',
-        aspectRatio = '16:9'
-    } = options;
-
+    cuts: any[],
+    options: ExportOptions,
+    onProgress?: (progress: number, status: string) => void,
+    signal?: AbortSignal
+): Promise<{ blob: Blob, format: string, duration: number }> {
     let ffmpeg = await loadFFmpeg(onProgress);
-    const { fetchFile } = await import('@ffmpeg/util');
+    const { width, height, quality, aspectRatio } = options;
 
-    // 1. Prepare Font
-    const fontFile = await loadSubtitleFont(ffmpeg, onProgress);
-
-    onProgress?.(15, 'Preparing assets and encoding cuts...');
-    console.log(`[FFmpeg:Export] Starting export for ${cuts.length} cuts`);
+    // Quality settings (CRF)
+    const crf = quality === 'high' ? 18 : quality === 'medium' ? 23 : 28;
 
     const concatList: string[] = [];
-    const crf = quality === 'high' ? 24 : quality === 'medium' ? 28 : 32;
-
-    // Track temporary files for cleanup
     const tempFiles: string[] = [];
 
+    let isFFmpegLoaded = true;
+
+    // Load Font (once)
+    onProgress?.(5, 'Loading fonts...');
+    const fontFile = await loadSubtitleFont(ffmpeg);
+
+    // Process each cut
     for (let i = 0; i < cuts.length; i++) {
+        if (signal?.aborted) {
+            throw new DOMException('Export cancelled', 'AbortError');
+        }
+
         const cut = cuts[i];
-        const padNum = String(i).padStart(4, '0');
+        const progressPerCut = 80 / cuts.length;
+        const currentProgress = 10 + (i * progressPerCut);
+
+        onProgress?.(currentProgress, `Processing cut ${i + 1}/${cuts.length}...`);
+
+        const padNum = String(i).padStart(3, '0');
         const segmentName = `segment_${padNum}.mp4`;
 
-        // Update progress
-        const baseProgress = 15 + (i / cuts.length) * 75;
-        onProgress?.(baseProgress, `Encoding Cut ${i + 1}/${cuts.length}...`);
-        console.log(`[FFmpeg:Export] Processing Cut ${i}: Duration=${cut.duration}, Image=${cut.imageUrl.substring(0, 50)}...`);
+        let hasVideo = !!cut.videoUrl;
+        let hasAudio = !!cut.audioUrl;
+        let hasSfx = !!cut.sfxUrl;
 
         try {
-            // Write input files
+            // Write input files with size validation
             const imgData = await fetchFile(cut.imageUrl);
             await ffmpeg.writeFile(`img_${padNum}.jpg`, imgData);
             tempFiles.push(`img_${padNum}.jpg`);
+            console.log(`[FFmpeg] Cut ${i}: img=${imgData.length}B`);
 
-            let hasVideo = false;
-            if (cut.videoUrl) {
-                try {
-                    const videoData = await fetchFile(cut.videoUrl);
-                    await ffmpeg.writeFile(`video_${padNum}.mp4`, videoData);
-                    hasVideo = true;
-                    tempFiles.push(`video_${padNum}.mp4`);
-                } catch { /* ignore */ }
-            }
-
-            let hasAudio = false;
-            if (cut.audioUrl) {
-                try {
-                    const audioData = await fetchFile(cut.audioUrl);
-                    await ffmpeg.writeFile(`audio_${padNum}.mp3`, audioData);
-                    hasAudio = true;
-                    tempFiles.push(`audio_${padNum}.mp3`);
-                } catch { /* ignore */ }
-            }
-
-            let hasSfx = false;
-            if (cut.sfxUrl) {
-                try {
-                    const sfxData = await fetchFile(cut.sfxUrl);
-                    await ffmpeg.writeFile(`sfx_${padNum}.mp3`, sfxData);
-                    hasSfx = true;
-                    tempFiles.push(`sfx_${padNum}.mp3`);
-                } catch { /* ignore */ }
-            }
-
-            // Setup inputs and filters
-            const inputs: string[] = [];
-            let filterChain = '';
-
-            // Input 0: Video or Image
             if (hasVideo) {
-                // [FIX] Support Video Trimming with -ss
-                const trimStart = (cut as any).videoTrim?.start || 0;
-                if (trimStart > 0) {
-                    inputs.push('-ss', String(trimStart));
+                const vidData = await fetchFile(cut.videoUrl!);
+                console.log(`[FFmpeg] Cut ${i}: video=${vidData.length}B, url=${cut.videoUrl?.substring(0, 60)}`);
+                if (vidData.length < 1000) {
+                    console.warn(`[FFmpeg] Cut ${i}: Video file suspiciously small (${vidData.length}B)! May cause black screen.`);
                 }
-                inputs.push('-stream_loop', '-1', '-i', `video_${padNum}.mp4`);
-            } else {
-                inputs.push('-loop', '1', '-i', `img_${padNum}.jpg`);
-            }
 
-            // Input 1 & 2: Audio & SFX
-            if (hasAudio) inputs.push('-i', `audio_${padNum}.mp3`);
-            else inputs.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100');
-
-            if (hasSfx) inputs.push('-i', `sfx_${padNum}.mp3`);
-            else inputs.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100');
-
-            // Build Filter Complex
-            // 1. Video scaling and padding (Unified)
-            filterChain += `[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black,fps=30[vscaled];`;
-
-            // 2. Add Subtitles (Only if showSubtitles is true)
-            let lastVideoOutput = 'vscaled';
-            const shouldAddSubtitles = options.showSubtitles !== false; // Default to true if undefined
-
-            if (cut.dialogue && fontFile && shouldAddSubtitles) {
-                const isVertical = aspectRatio === '9:16';
-                const fontSize = isVertical ? 34 : 48; // ~30% reduction (48 * 0.7 = 33.6)
-                const lineHeight = isVertical ? 46 : 65; // ~30% reduction (65 * 0.7 = 45.5)
-                const maxCharsPerLine = isVertical ? 25 : 48; // Narrower wrap for vertical
-
-                const lines = wrapTextDynamic(cut.dialogue, maxCharsPerLine);
-                const bottomMargin = isVertical ? 240 : 140; // Position relatively higher for shorts/reels
-                const totalHeight = lines.length * lineHeight;
-                const startY = height - bottomMargin - totalHeight;
-
-                if (lines.length > 0) {
-                    // Calculate dynamic box width based on the longest line
-                    const maxLineWidth = Math.max(...lines.map(l => l.width));
-                    const boxPaddingH = 60; // Horizontal padding
-                    const boxPaddingV = 25; // Vertical padding
-                    const boxWidth = Math.min(width * 0.9, maxLineWidth + (boxPaddingH * 2));
-                    const boxHeight = totalHeight + (boxPaddingV * 2);
-                    const boxX = (width - boxWidth) / 2;
-                    const boxY = startY - boxPaddingV;
-
-                    const boxOutput = 'vbox';
-                    filterChain += `[${lastVideoOutput}]drawbox=x=${boxX}:y=${boxY}:w=${boxWidth}:h=${boxHeight}:color=black@0.6:t=fill[${boxOutput}];`;
-                    lastVideoOutput = boxOutput;
-
-                    // Use for...of to handle awaits cleanly if needed, though map/Promise.all is faster. 
-                    // Since ffmpeg.writeFile is async, we need to be careful inside filter generation.
-                    // We'll prepare files first.
-                    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-                        const lineObj = lines[lineIdx];
-                        const nextOutput = `vsub_${lineIdx}`;
-                        const lineY = Math.round(startY + (lineIdx * lineHeight));
-
-                        // v10.0: Robust Text Handling using textfile
-                        // Prevents any escaping issues with special chars like %, ', :, etc.
-                        const subFileName = `sub_${padNum}_${lineIdx}.txt`;
-                        await ffmpeg.writeFile(subFileName, lineObj.text);
-                        tempFiles.push(subFileName);
-
-                        // Expansion=none is CRITICAL here to prevent % from being interpreted
-                        filterChain += `[${lastVideoOutput}]drawtext=fontfile=${fontFile}:textfile=${subFileName}:expansion=none:fontcolor=white:fontsize=${fontSize}:x=(w-text_w)/2:y=${lineY}[${nextOutput}];`;
-                        lastVideoOutput = nextOutput;
+                // [FIX] Auto-detect video format via magic bytes to prevent demuxer mismatch
+                // WebM files written as .mp4 will cause FFmpeg to fail silently → black screen
+                let videoExt = 'mp4';
+                if (vidData.length >= 4) {
+                    const header = new Uint8Array(vidData instanceof ArrayBuffer ? vidData : (vidData as any).buffer || vidData);
+                    if (header[0] === 0x1A && header[1] === 0x45 && header[2] === 0xDF && header[3] === 0xA3) {
+                        videoExt = 'webm';
+                        console.log(`[FFmpeg] Cut ${i}: Detected WebM format via magic bytes`);
+                    } else {
+                        // Check for MP4 (ftyp box at offset 4)
+                        const ftyp = String.fromCharCode(header[4] || 0, header[5] || 0, header[6] || 0, header[7] || 0);
+                        if (ftyp === 'ftyp') {
+                            videoExt = 'mp4';
+                        } else {
+                            console.warn(`[FFmpeg] Cut ${i}: Unknown video format, magic bytes: [${header[0]?.toString(16)}, ${header[1]?.toString(16)}, ${header[2]?.toString(16)}, ${header[3]?.toString(16)}]`);
+                        }
                     }
                 }
-            }
-            filterChain += `[${lastVideoOutput}]null[vout];`;
 
-            // 3. Audio Mixing
-            // [FIX] Defensive mapping: Check if we should use video audio.
-            // If the video has no audio, [0:a] will crash FFmpeg.
-            const shouldUseVideoAudio = cut.useVideoAudio && hasVideo;
-            const sfxVol = cut.sfxVolume ?? 0.3;
-
-            if (shouldUseVideoAudio) {
-                // [SAFETY] Map both video audio and a silent source, and merge them.
-                // This way if [0:a] is missing, we might still fail but at least we tried?
-                // Actually, the most robust way is to use amix=inputs=2 but if [0:a] is missing it's fatal.
-                // Let's use the TTS [1:a] as a fallback if [0:a] is missing? FFmpeg won't allow that in one graph easily.
-                // REVERT to simpler logic but with a TRY/CATCH and Instance Reset on failure.
-                console.log(`[FFmpeg] Cut ${i}: Using VIDEO AUDIO`);
-                filterChain += `[0:a]volume=1.0[a_base];[2:a]volume=${sfxVol}[a_sfx];[a_base][a_sfx]amix=inputs=2:duration=first[aout]`;
-            } else {
-                filterChain += `[1:a]volume=1.0[a_base];[2:a]volume=${sfxVol}[a_sfx];[a_base][a_sfx]amix=inputs=2:duration=first[aout]`;
+                const videoFileName = `video_${padNum}.${videoExt}`;
+                await ffmpeg.writeFile(videoFileName, vidData);
+                tempFiles.push(videoFileName);
+                // Store the detected filename for later use in encoding
+                (cut as any)._videoFileName = videoFileName;
             }
 
-            // Execute Encoding
-            const runEncoding = async (useVideo: boolean) => {
-                if (!useVideo && hasVideo) {
-                    // Fallback to Image-only: Remove video input (-ss, -stream_loop, video.mp4)
-                    // and use the image input (Input 0 if we re-order, or just always have image as fallback)
-                    // Input 0 is re-assigned to Image if we re-run
-                    // re-map inputs to use loop image input
-                    const fallbackInputs = ['-loop', '1', '-i', `img_${padNum}.jpg`, ...inputs.slice(hasVideo ? 6 : 2)];
-                    const fallbackFilterChain = `[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black,fps=30[vscaled];` + filterChain.split(';').slice(1).join(';');
-
-                    await ffmpeg.exec([
-                        ...fallbackInputs,
-                        '-filter_complex', fallbackFilterChain,
-                        '-map', '[vout]',
-                        '-map', '[aout]',
-                        '-c:v', 'libx264',
-                        '-preset', 'superfast',
-                        '-crf', String(crf),
-                        '-pix_fmt', 'yuv420p',
-                        '-r', '30',
-                        '-g', '60',
-                        '-c:a', 'aac',
-                        '-b:a', '192k',
-                        '-ar', '44100',
-                        '-ac', '2',
-                        '-t', String(Math.max(0.1, cut.duration)),
-                        '-y',
-                        segmentName
-                    ]);
+            if (hasAudio) {
+                const audData = await fetchFile(cut.audioUrl!);
+                console.log(`[FFmpeg] Cut ${i}: audio=${audData.length}B`);
+                // [FIX] 0-byte audio file crashes FFmpeg entirely (Aborted()).
+                // Override hasAudio to false so anullsrc is used instead.
+                if (audData.length < 100) {
+                    console.warn(`[FFmpeg] Cut ${i}: ⚠️ Audio file is empty/corrupt (${audData.length}B). Using silence instead.`);
+                    hasAudio = false;
                 } else {
+                    await ffmpeg.writeFile(`audio_${padNum}.mp3`, audData);
+                    tempFiles.push(`audio_${padNum}.mp3`);
+                }
+            }
+            if (hasSfx) {
+                const sfxData = await fetchFile(cut.sfxUrl!);
+                if (sfxData.length < 100) {
+                    console.warn(`[FFmpeg] Cut ${i}: ⚠️ SFX file is empty/corrupt (${sfxData.length}B). Using silence instead.`);
+                    hasSfx = false;
+                } else {
+                    await ffmpeg.writeFile(`sfx_${padNum}.mp3`, sfxData);
+                    tempFiles.push(`sfx_${padNum}.mp3`);
+                }
+            }
+
+            // Execute Encoding with Smart Rescue
+            const runEncoding = async (attempt: number = 0): Promise<void> => {
+                const isVideo = hasVideo && attempt < 3;  // Keep video mode for attempts 0, 1, 2
+                const useTranscode = attempt >= 1 && attempt < 3;  // Transcode on attempts 1 and 2
+
+                // Final fallback: Black Screen (Attempt 3)
+                if (attempt >= 3) {
+                    console.warn(`[FFmpeg] Cut ${i}: Fatal error, using BLACK SCREEN fallback.`);
                     await ffmpeg.exec([
-                        ...inputs,
-                        '-filter_complex', filterChain,
+                        '-f', 'lavfi', '-i', `color=c=black:s=${width}x${height}:r=30`,
+                        '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
+                        '-c:v', 'libx264', '-t', String(Math.max(0.1, cut.duration)),
+                        '-c:a', 'aac', '-t', String(Math.max(0.1, cut.duration)),
+                        '-pix_fmt', 'yuv420p', '-y', segmentName
+                    ]);
+                    return;
+                }
+
+                try {
+                    let currentInputs: string[] = [];
+                    let currentFilters = '';
+                    // [FIX] Use the format-detected filename instead of hardcoded .mp4
+                    let vidInputFile = (cut as any)._videoFileName || `video_${padNum}.mp4`;
+
+                    // Video Input Setup
+                    if (isVideo) {
+                        if (useTranscode) {
+                            console.log(`[FFmpeg] Cut ${i}: Retrying with Safe Transcode (Attempt ${attempt})...`);
+                            const cleanVid = `clean_${padNum}.mp4`;
+                            // [FIX] All inputs MUST be declared before any output options.
+                            // Previous bug: codec options were placed between two -i inputs,
+                            // causing FFmpeg to misinterpret the command structure.
+                            await ffmpeg.exec([
+                                // --- INPUTS first ---
+                                '-i', vidInputFile,
+                                '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
+                                // --- MAPPING ---
+                                '-map', '0:v', '-map', '1:a',
+                                // --- OUTPUT options ---
+                                '-c:v', 'libx264', '-preset', 'ultrafast',
+                                '-vf', `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black,fps=30`,
+                                '-r', '30',
+                                '-c:a', 'aac', '-ar', '44100', '-ac', '2',
+                                '-shortest',
+                                '-y', cleanVid
+                            ]);
+                            vidInputFile = cleanVid;
+                            tempFiles.push(cleanVid);
+                        }
+
+                        // [HEALING] Robust Seek & Loop: Put -ss before -i for accuracy in short clips
+                        const trimStart = (cut as any).videoTrim?.start || 0;
+                        if (trimStart > 0) {
+                            currentInputs.push('-ss', String(trimStart));
+                        }
+                        currentInputs.push('-stream_loop', '-1', '-i', vidInputFile);
+                    } else {
+                        // Image Mode
+                        currentInputs.push('-loop', '1', '-i', `img_${padNum}.jpg`);
+                    }
+
+                    // Audio Inputs
+                    // Input 1: TTS/Audio
+                    if (hasAudio) currentInputs.push('-i', `audio_${padNum}.mp3`);
+                    else currentInputs.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100');
+
+                    // Input 2: SFX
+                    if (hasSfx) currentInputs.push('-i', `sfx_${padNum}.mp3`);
+                    else currentInputs.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100');
+
+                    // Filter Construction
+                    currentFilters += `[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black,fps=30[vscaled];`;
+
+                    // Subtitles
+                    let lastVid = 'vscaled';
+                    const shouldAddSubtitles = options.showSubtitles !== false;
+                    if (cut.dialogue && fontFile && shouldAddSubtitles) {
+                        const isVertical = aspectRatio === '9:16';
+                        const fontSize = isVertical ? 34 : 48;
+                        const lineHeight = isVertical ? 46 : 65;
+                        const maxChars = isVertical ? 25 : 48;
+                        const lines = wrapTextDynamic(cut.dialogue, maxChars);
+                        if (lines.length > 0) {
+                            const totalHeight = lines.length * lineHeight;
+                            const bottomMargin = isVertical ? 240 : 140;
+                            const startY = height - bottomMargin - totalHeight;
+                            const maxW = Math.max(...lines.map(l => l.width));
+                            const boxW = Math.min(width * 0.9, maxW + 120);
+                            const boxH = totalHeight + 50;
+                            const boxX = (width - boxW) / 2;
+                            const boxY = startY - 25;
+                            currentFilters += `[${lastVid}]drawbox=x=${boxX}:y=${boxY}:w=${boxW}:h=${boxH}:color=black@0.6:t=fill[vbox];`;
+                            lastVid = 'vbox';
+                            for (let l = 0; l < lines.length; l++) {
+                                const subFile = `sub_${padNum}_${l}.txt`;
+                                await ffmpeg.writeFile(subFile, lines[l].text);
+                                tempFiles.push(subFile);
+                                const lineY = Math.round(startY + (l * lineHeight));
+                                currentFilters += `[${lastVid}]drawtext=fontfile=${fontFile}:textfile=${subFile}:expansion=none:fontcolor=white:fontsize=${fontSize}:x=(w-text_w)/2:y=${lineY}[vsub_${l}];`;
+                                lastVid = `vsub_${l}`;
+                            }
+                        }
+                    }
+                    currentFilters += `[${lastVid}]null[vout];`;
+
+                    // Audio Mixing with Resilience
+                    const sfxVol = cut.sfxVolume ?? 0.3;
+                    const shouldUseVideoAudio = cut.useVideoAudio && isVideo && hasVideo && !useTranscode;
+
+                    if (shouldUseVideoAudio) {
+                        // Use a complex map that falls back to silence if 0:a is missing
+                        // In Attempt 0, we try to use 0:a. If it fails due to missing track, Attempt 1 (Transcode) will provide a reliable track.
+                        currentFilters += `[0:a]volume=1.0[a_base];[2:a]volume=${sfxVol}[a_sfx];[a_base][a_sfx]amix=inputs=2:duration=first[aout]`;
+                    } else {
+                        currentFilters += `[1:a]volume=1.0[a_base];[2:a]volume=${sfxVol}[a_sfx];[a_base][a_sfx]amix=inputs=2:duration=first[aout]`;
+                    }
+
+                    // EXEC
+                    await ffmpeg.exec([
+                        ...currentInputs,
+                        '-filter_complex', currentFilters,
                         '-map', '[vout]',
                         '-map', '[aout]',
                         '-c:v', 'libx264',
-                        '-preset', 'superfast',
-                        '-crf', String(crf),
-                        '-pix_fmt', 'yuv420p',
-                        '-r', '30',
-                        '-g', '60',
-                        '-c:a', 'aac',
-                        '-b:a', '192k',
-                        '-ar', '44100',
-                        '-ac', '2',
+                        '-preset', attempt === 0 ? 'superfast' : 'ultrafast',
+                        '-crf', String(crf + (attempt * 2)),
+                        '-pix_fmt', 'yuv420p', '-r', '30', '-g', '60',
+                        '-c:a', 'aac', '-b:a', '192k', '-ar', '44100', '-ac', '2',
                         '-t', String(Math.max(0.1, cut.duration)),
-                        '-y',
-                        segmentName
+                        '-y', segmentName
                     ]);
+
+                    // [CRITICAL FIX] Verify file existence immediately inside recursion
+                    try {
+                        const checkFile = await ffmpeg.readFile(segmentName);
+                        if (!checkFile || checkFile.length === 0) {
+                            throw new Error("Encoded file is empty");
+                        }
+                    } catch (verifyErr) {
+                        throw new Error("Output file missing or empty after exec");
+                    }
+
+                } catch (err: any) {
+                    console.error(`[FFmpeg] Cut ${i} attempt ${attempt} failed:`, err);
+
+                    if (err.message?.includes('Aborted')) {
+                        throw err; // Stop completely on abort
+                    }
+
+                    if (err.message?.includes('OOM') || !isFFmpegLoaded) {
+                        console.warn('[FFmpeg] Reloading engine...');
+                        try { ffmpeg = await loadFFmpeg(onProgress, true); } catch (e) { }
+                    }
+                    // Trigger next attempt
+                    await runEncoding(attempt + 1);
                 }
             };
 
-            try {
-                await runEncoding(hasVideo);
-            } catch (execErr: any) {
-                console.error(`[FFmpeg] Fatal Abort at Cut ${i}:`, execErr);
-                // IF Aborted, we MUST reload the engine as it's dead
-                if (execErr.message?.includes('Aborted') || !isFFmpegLoaded) {
-                    ffmpeg = await loadFFmpeg(onProgress, true);
-                }
+            await runEncoding(0);
 
-                if (hasVideo) {
-                    console.warn(`[FFmpeg] Retrying Cut ${i} with image-only fallback...`);
-                    // Simplified image fallback
-                    const fallbackFilterChain = `[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black,fps=30[vscaled];[1:a]volume=1.0[a_base];[2:a]volume=${sfxVol}[a_sfx];[a_base][a_sfx]amix=inputs=2:duration=first[aout]`;
-
-                    // Re-write files if needed (engine was reset)
-                    const imgData = await fetchFile(cut.imageUrl);
-                    await ffmpeg.writeFile(`img_${padNum}.jpg`, imgData);
-                    if (cut.audioUrl) await ffmpeg.writeFile(`audio_${padNum}.mp3`, await fetchFile(cut.audioUrl));
-                    if (cut.sfxUrl) await ffmpeg.writeFile(`sfx_${padNum}.mp3`, await fetchFile(cut.sfxUrl));
-                    if (fontFile) await loadSubtitleFont(ffmpeg); // reload font
-
-                    await ffmpeg.exec([
-                        '-loop', '1', '-i', `img_${padNum}.jpg`,
-                        '-i', cut.audioUrl ? `audio_${padNum}.mp3` : 'anullsrc', // simplified for retry
-                        '-i', cut.sfxUrl ? `sfx_${padNum}.mp3` : 'anullsrc',
-                        '-filter_complex', fallbackFilterChain,
-                        '-map', '[vout]',
-                        '-map', '[aout]',
-                        '-c:v', 'libx264',
-                        '-preset', 'superfast',
-                        '-crf', String(crf),
-                        '-pix_fmt', 'yuv420p',
-                        '-r', '30',
-                        '-g', '60',
-                        '-c:a', 'aac',
-                        '-b:a', '192k',
-                        '-ar', '44100',
-                        '-ac', '2',
-                        '-t', String(Math.max(0.1, cut.duration)),
-                        '-y',
-                        segmentName
-                    ]);
-                } else {
-                    throw execErr;
-                }
-            }
-
-            // VERIFY Segment existence
+            // Double Check (Should pass if runEncoding succeeded)
             try {
                 const segmentFileInfo = await ffmpeg.readFile(segmentName);
                 if (segmentFileInfo && segmentFileInfo.length > 0) {
@@ -443,28 +384,84 @@ export async function exportWithFFmpeg(
                 console.error(`[FFmpeg:Export] Segment ${segmentName} file NOT FOUND after exec!`, readErr);
             }
 
-            // Clean up files for this cut immediately to save memory (except segment)
+            // Cleanup
             for (const file of tempFiles) {
                 try { await ffmpeg.deleteFile(file); } catch { }
             }
-            tempFiles.length = 0; // Clear list
+            tempFiles.length = 0;
 
         } catch (e) {
             console.error(`[FFmpeg] Failed to encode cut ${i}:`, e);
+            // If runEncoding threw a real error (Abort), stop loop.
+            if ((e as any).message === 'Export cancelled' || (e as any).name === 'AbortError') {
+                throw e;
+            }
+
+            // [FIX] Guarantee segment exists to prevent cut from being skipped entirely.
+            // Generate a black screen fallback so the timeline stays in sync.
+            try {
+                console.warn(`[FFmpeg] Cut ${i}: All attempts failed. Generating emergency black screen segment.`);
+                await ffmpeg.exec([
+                    '-f', 'lavfi', '-i', `color=c=black:s=${width}x${height}:r=30`,
+                    '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
+                    '-c:v', 'libx264', '-t', String(Math.max(0.1, cut.duration)),
+                    '-c:a', 'aac', '-t', String(Math.max(0.1, cut.duration)),
+                    '-pix_fmt', 'yuv420p', '-y', segmentName
+                ]);
+                const emergencyCheck = await ffmpeg.readFile(segmentName);
+                if (emergencyCheck && emergencyCheck.length > 0) {
+                    concatList.push(`file '${segmentName}'`);
+                    console.log(`[FFmpeg] Cut ${i}: Emergency segment created (${emergencyCheck.length}B)`);
+                }
+            } catch (emergencyErr) {
+                console.error(`[FFmpeg] Cut ${i}: Even emergency fallback failed!`, emergencyErr);
+            }
         }
     }
 
+    // CHECK ABORT before merge
+    if (signal?.aborted) {
+        throw new DOMException('Export cancelled by user', 'AbortError');
+    }
+
     if (concatList.length === 0) {
-        console.error("[FFmpeg:Export] No segments were produced!");
         throw new Error("No segments were successfully encoded.");
     }
 
+    // ... Merge logic ...
     console.log(`[FFmpeg:Export] Merging ${concatList.length} segments...`);
-    // 2. Merge Segments
+    console.log(`[FFmpeg:Export] ConcatList:`, concatList);
     onProgress?.(90, 'Merging all segments into final MP4...');
     await ffmpeg.writeFile('concat.txt', concatList.join('\n'));
 
     try {
+        // [FIX] Always re-encode during concat to normalize timestamps and codec params.
+        // Previous `-c copy` approach caused black frames when segments had different
+        // timebase (e.g., 12288 tbn vs 15360 tbn) or slightly different codec settings.
+        // Re-encode is slower but guarantees consistent output.
+        console.log(`[FFmpeg:Export] Using re-encode merge for timestamp normalization...`);
+        await ffmpeg.exec([
+            '-f', 'concat',
+            '-safe', '0',
+            '-i', 'concat.txt',
+            '-c:v', 'libx264',
+            '-crf', String(crf),
+            '-preset', 'superfast',
+            '-pix_fmt', 'yuv420p',
+            '-r', '30',
+            '-g', '60',
+            '-c:a', 'aac',
+            '-b:a', '192k',
+            '-ar', '44100',
+            '-ac', '2',
+            '-movflags', '+faststart',
+            '-y',
+            'output.mp4'
+        ]);
+    } catch (e) {
+        console.error("[FFmpeg] Re-encode merge failed:", e);
+        // Fallback: try stream copy as last resort
+        console.warn("[FFmpeg] Attempting stream copy merge as fallback...");
         await ffmpeg.exec([
             '-f', 'concat',
             '-safe', '0',
@@ -474,38 +471,107 @@ export async function exportWithFFmpeg(
             '-y',
             'output.mp4'
         ]);
-    } catch (e) {
-        console.warn("[FFmpeg] Fast merge failed, attempting re-encode merge...", e);
-        await ffmpeg.exec([
-            '-f', 'concat',
-            '-safe', '0',
-            '-i', 'concat.txt',
-            '-c:v', 'libx264',
-            '-crf', String(crf),
-            '-preset', 'medium',
-            '-pix_fmt', 'yuv420p',
-            '-c:a', 'aac',
-            '-b:a', '192k',
-            '-movflags', '+faststart',
-            '-y',
-            'output.mp4'
-        ]);
     }
 
-    // 3. Final Output
+    // 4. BGM Mixing Pass
+    const bgmTracks = options.bgmTracks || [];
+    const cutStartTimeMap = options.cutStartTimeMap || [];
+
+    if (bgmTracks.length > 0 && cutStartTimeMap.length > 0) {
+        onProgress?.(95, 'Mixing background music...');
+
+        try {
+            // Rename Manual (read -> write -> delete)
+            const videoData = await ffmpeg.readFile('output.mp4');
+            await ffmpeg.writeFile('output_temp.mp4', videoData);
+
+            const bgmInputs: string[] = ['-i', 'output_temp.mp4'];
+            let mixFilter = '';
+            const mixLabels: string[] = ['[0:a]'];
+
+            for (let b = 0; b < bgmTracks.length; b++) {
+                const track = bgmTracks[b];
+                const trackName = `bgm_${b}.mp3`;
+                try {
+                    const bgmData = await fetchFile(track.url);
+                    await ffmpeg.writeFile(trackName, bgmData);
+
+                    bgmInputs.push('-i', trackName);
+                    const inputIdx = b + 1;
+
+                    const startIndex = cuts.findIndex((c: any) => String(c.id) === String(track.startCutId));
+                    if (startIndex === -1) {
+                        console.warn(`[FFmpeg:BGM] Start Cut ID not found: ${track.startCutId}. Available IDs:`, cuts.map((c: any) => c.id));
+                    }
+                    const startTime = startIndex !== -1 ? cutStartTimeMap[startIndex] : 0;
+                    const delayMs = Math.round(startTime * 1000);
+
+                    const label = `bgm_ready_${b}`;
+                    mixFilter += `[${inputIdx}:a]volume=${track.volume || 0.5},adelay=${delayMs}|${delayMs}[${label}];`;
+                    mixLabels.push(`[${label}]`);
+
+                    tempFiles.push(trackName);
+                } catch (bgmErr) {
+                    console.warn(`[FFmpeg:BGM] Failed to load BGM track ${b}:`, bgmErr);
+                }
+            }
+
+            if (mixLabels.length > 1) {
+                // Determine duration based on inputs to prevent cutting short 
+                // duration=first: Since input 0 is the video, this keeps video length.
+                // dropout_transition=2: Smooth transition
+                mixFilter += `${mixLabels.join('')}amix=inputs=${mixLabels.length}:duration=first:dropout_transition=2[final_a]`;
+
+                await ffmpeg.exec([
+                    ...bgmInputs,
+                    '-filter_complex', mixFilter,
+                    '-map', '0:v',
+                    '-map', '[final_a]',
+                    '-c:v', 'copy',
+                    '-c:a', 'aac', '-b:a', '192k',
+                    '-y', 'output.mp4'
+                ]);
+                try { await ffmpeg.deleteFile('output_temp.mp4'); } catch { }
+            }
+
+        } catch (mixErr) {
+            console.error('[FFmpeg:BGM] BGM Mixing failed:', mixErr);
+            try { await ffmpeg.deleteFile('output_temp.mp4'); } catch { }
+        }
+    }
+
+    // 5. Final Output (Validated)
     onProgress?.(98, 'Reading final project file...');
-    const data = await ffmpeg.readFile('output.mp4');
-    const blob = new Blob([data], { type: 'video/mp4' });
+
+    // Validate Output Check before reading
+    try {
+        const dir = await ffmpeg.listDir('.');
+        const outFile = dir.find(d => d.name === 'output.mp4');
+        if (!outFile) {
+            // Last ditch effort check
+        }
+    } catch (e) { /* ignore listDir error */ }
+
+    let data: any;
+    try {
+        data = await ffmpeg.readFile('output.mp4');
+    } catch (e) {
+        throw new Error('최종 비디오 파일(output.mp4)을 읽을 수 없습니다. 인코딩 또는 병합에 실패했습니다.');
+    }
+
+    if (!data || data.length < 1000) {
+        throw new Error(`생성된 비디오 파일이 유효하지 않습니다 (${data ? data.length : 0} bytes).`);
+    }
+
+    // Blob Casting
+    const blob = new Blob([(data as any).buffer || data], { type: 'video/mp4' });
 
     // Global Cleanup
     try {
-        for (const line of concatList) {
-            const fileName = line.match(/'([^']+)'/)?.[1];
-            if (fileName) await ffmpeg.deleteFile(fileName);
-        }
+        if (fontFile) await ffmpeg.deleteFile(fontFile);
+        for (const f of tempFiles) await ffmpeg.deleteFile(f);
         await ffmpeg.deleteFile('concat.txt');
         await ffmpeg.deleteFile('output.mp4');
-        if (fontFile) await ffmpeg.deleteFile(fontFile);
     } catch (e) { /* ignore */ }
 
     onProgress?.(100, 'Complete!');
@@ -517,20 +583,10 @@ export async function exportWithFFmpeg(
     };
 }
 
-/**
- * Check if FFmpeg.wasm is supported
- */
 export function isFFmpegSupported(): boolean {
-    try {
-        return typeof SharedArrayBuffer !== 'undefined';
-    } catch {
-        return false;
-    }
+    return typeof SharedArrayBuffer !== 'undefined';
 }
 
-/**
- * Pre-load FFmpeg for faster export later
- */
 export async function preloadFFmpeg(
     onProgress?: (progress: number, status: string) => void
 ): Promise<boolean> {
