@@ -85,6 +85,9 @@ export const Step1_Setup: React.FC = () => {
     const [availableSeries, setAvailableSeries] = useState<string[]>([]);
     const [isInheritedFromSeries, setIsInheritedFromSeries] = useState(false);
 
+    // Trend Insights Panel State
+    const [isTrendInsightsOpen, setIsTrendInsightsOpen] = useState(false);
+
 
 
     const chatEndRef = useRef<HTMLDivElement>(null);
@@ -1403,7 +1406,7 @@ export const Step1_Setup: React.FC = () => {
                                             {store.masterStyle?.description && (
                                                 <div>
                                                     <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-1">Master Visual Style</label>
-                                                    <p className="text-[var(--color-primary)] text-sm bg-[var(--color-bg)] border border-[var(--color-primary)]/30 rounded-lg p-3">
+                                                    <p className="text-gray-300 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-3">
                                                         {store.masterStyle.description}
                                                     </p>
                                                 </div>
@@ -1478,6 +1481,44 @@ export const Step1_Setup: React.FC = () => {
                                                                 </div>
                                                             </div>
                                                         ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Trend Insights (View Mode) */}
+                                            {store.trendInsights && (
+                                                <div className="space-y-2 pt-2 border-t border-[var(--color-border)]">
+                                                    <label className="text-xs text-[var(--color-text-muted)] uppercase block mb-2 flex items-center gap-2">
+                                                        <Sparkles size={14} className="text-[var(--color-primary)]" />
+                                                        Trend Insights
+                                                    </label>
+                                                    <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-3 space-y-3">
+                                                        {store.trendInsights.target && (
+                                                            <div>
+                                                                <span className="text-xs font-bold text-[var(--color-primary)] block mb-1">Target Audience</span>
+                                                                <p className="text-sm text-gray-300">{store.trendInsights.target}</p>
+                                                            </div>
+                                                        )}
+                                                        {store.trendInsights.vibe && (
+                                                            <div>
+                                                                <span className="text-xs font-bold text-[var(--color-primary)] block mb-1">Vibe & Mood</span>
+                                                                <p className="text-sm text-gray-300">{store.trendInsights.vibe}</p>
+                                                            </div>
+                                                        )}
+                                                        {/* Handle storytelling as string (which it is) */}
+                                                        {typeof store.trendInsights.storytelling === 'string' && store.trendInsights.storytelling && (
+                                                            <div>
+                                                                <span className="text-xs font-bold text-[var(--color-primary)] block mb-1">Storytelling Notes</span>
+                                                                <p className="text-sm text-gray-300 whitespace-pre-wrap">{store.trendInsights.storytelling}</p>
+                                                            </div>
+                                                        )}
+                                                        {/* Fallback for legacy object structure if ever needed */}
+                                                        {typeof store.trendInsights.storytelling === 'object' && (
+                                                            <div>
+                                                                <span className="text-xs font-bold text-[var(--color-primary)] block mb-1">Storytelling Recommendations</span>
+                                                                <p className="text-xs text-gray-400 italic">Complex insights data available in Edit Mode.</p>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             )}
@@ -1889,7 +1930,7 @@ export const Step1_Setup: React.FC = () => {
                                             {renderLabel("Master Visual Style", !!localMasterStyleDescription)}
                                             <textarea
                                                 placeholder="Describe the overall visual style for your series (e.g., 'Ghibli watercolor style with soft lighting', 'Cyberpunk neon aesthetic', 'Realistic cinematic look with high contrast')"
-                                                className="w-full bg-[var(--color-bg)] border border-[var(--color-primary)]/50 rounded-lg p-3 text-[var(--color-primary)] focus:border-[var(--color-primary)] outline-none resize-none h-24 placeholder-[var(--color-primary)]/40"
+                                                className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg p-3 text-gray-300 focus:border-[var(--color-primary)] outline-none resize-none h-24 placeholder-gray-600"
                                                 value={localMasterStyleDescription}
                                                 onChange={(e) => setLocalMasterStyleDescription(e.target.value)}
                                             />
@@ -1945,62 +1986,85 @@ export const Step1_Setup: React.FC = () => {
                                         </div>
 
                                         {/* Trend Insights Reference Panel (edit mode only) */}
-                                        {(store as any).trendInsights?.storytelling && (
-                                            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 overflow-hidden">
+                                        {store.trendInsights && (
+                                            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden">
                                                 <button
-                                                    onClick={() => {
-                                                        const el = document.getElementById('trend-insights-panel');
-                                                        if (el) el.classList.toggle('hidden');
-                                                    }}
-                                                    className="w-full flex items-center justify-between p-3 hover:bg-amber-500/10 transition-colors"
+                                                    onClick={() => setIsTrendInsightsOpen(!isTrendInsightsOpen)}
+                                                    className="w-full flex items-center justify-between p-3 hover:bg-[var(--color-surface-hover)] transition-colors"
                                                 >
                                                     <div className="flex items-center gap-2">
-                                                        <Sparkles size={16} className="text-amber-400" />
-                                                        <span className="text-sm font-bold text-amber-300">트렌드 인사이트</span>
-                                                        <span className="text-xs text-amber-400/60">참고용 · 스토리 기획 시 활용하세요</span>
+                                                        <Sparkles size={16} className="text-[var(--color-primary)]" />
+                                                        <span className="text-sm font-bold text-[var(--color-primary)]">트렌드 인사이트</span>
+                                                        <span className="text-xs text-[var(--color-text-muted)]">참고용 · 스토리 기획 시 활용하세요</span>
                                                     </div>
-                                                    <ChevronDown size={14} className="text-amber-400/60" />
+                                                    {isTrendInsightsOpen ? (
+                                                        <ChevronDown size={14} className="text-[var(--color-text-muted)]" />
+                                                    ) : (
+                                                        <ChevronRight size={14} className="text-[var(--color-text-muted)]" />
+                                                    )}
                                                 </button>
-                                                <div id="trend-insights-panel" className="hidden px-4 pb-4 space-y-3">
-                                                    {(store as any).trendInsights.storytelling.hookMethods && (
-                                                        <div>
-                                                            <p className="text-xs font-bold text-amber-300/80 mb-1">🎯 후킹 기법</p>
-                                                            <p className="text-xs text-gray-300 leading-relaxed">{(store as any).trendInsights.storytelling.hookMethods}</p>
-                                                        </div>
-                                                    )}
-                                                    {(store as any).trendInsights.storytelling.narrativeStructure && (
-                                                        <div>
-                                                            <p className="text-xs font-bold text-amber-300/80 mb-1">📖 스토리 구성</p>
-                                                            <p className="text-xs text-gray-300 leading-relaxed">{(store as any).trendInsights.storytelling.narrativeStructure}</p>
-                                                        </div>
-                                                    )}
-                                                    {(store as any).trendInsights.storytelling.cameraWorkPatterns && (
-                                                        <div>
-                                                            <p className="text-xs font-bold text-amber-300/80 mb-1">🎬 카메라 워크</p>
-                                                            <p className="text-xs text-gray-300 leading-relaxed">{(store as any).trendInsights.storytelling.cameraWorkPatterns}</p>
-                                                        </div>
-                                                    )}
-                                                    {(store as any).trendInsights.storytelling.recommendations?.length > 0 && (
-                                                        <div>
-                                                            <p className="text-xs font-bold text-amber-300/80 mb-1">💡 추천</p>
-                                                            <ul className="text-xs text-gray-300 space-y-1">
-                                                                {(store as any).trendInsights.storytelling.recommendations.map((rec: string, i: number) => (
-                                                                    <li key={i} className="flex gap-1.5"><span className="text-amber-400">•</span>{rec}</li>
-                                                                ))}
-                                                            </ul>
-                                                        </div>
-                                                    )}
-                                                    {(store as any).trendInsights.title?.recommendations?.length > 0 && (
-                                                        <div className="pt-2 border-t border-amber-500/10">
-                                                            <p className="text-xs font-bold text-amber-300/80 mb-1">📝 제목 팁</p>
-                                                            <ul className="text-xs text-gray-300 space-y-1">
-                                                                {(store as any).trendInsights.title.recommendations.map((rec: string, i: number) => (
-                                                                    <li key={i} className="flex gap-1.5"><span className="text-amber-400">•</span>{rec}</li>
-                                                                ))}
-                                                            </ul>
-                                                        </div>
-                                                    )}
-                                                </div>
+
+                                                {isTrendInsightsOpen && (
+                                                    <div className="px-4 pb-4 space-y-4 animate-fade-in border-t border-[var(--color-border)] pt-4">
+                                                        {/* Target Audience */}
+                                                        {store.trendInsights.target && (
+                                                            <div>
+                                                                <p className="text-xs font-bold text-[var(--color-primary)]/80 mb-1">🎯 타겟 오디언스</p>
+                                                                <p className="text-xs text-gray-300 leading-relaxed bg-black/20 p-2 rounded border border-[var(--color-border)]">
+                                                                    {store.trendInsights.target}
+                                                                </p>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Vibe */}
+                                                        {store.trendInsights.vibe && (
+                                                            <div>
+                                                                <p className="text-xs font-bold text-[var(--color-primary)]/80 mb-1">✨ 분위기 & 바이브</p>
+                                                                <p className="text-xs text-gray-300 leading-relaxed bg-black/20 p-2 rounded border border-[var(--color-border)]">
+                                                                    {store.trendInsights.vibe}
+                                                                </p>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Storytelling Notes (String) */}
+                                                        {typeof store.trendInsights.storytelling === 'string' && store.trendInsights.storytelling && (
+                                                            <div>
+                                                                <p className="text-xs font-bold text-[var(--color-primary)]/80 mb-1">📖 스토리텔링 메모</p>
+                                                                <p className="text-xs text-gray-300 leading-relaxed bg-black/20 p-2 rounded border border-[var(--color-border)] whitespace-pre-wrap">
+                                                                    {store.trendInsights.storytelling}
+                                                                </p>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Robust handling for legacy object structure or future expansions */}
+                                                        {typeof store.trendInsights.storytelling === 'object' && (
+                                                            <div className="space-y-3">
+                                                                {(store.trendInsights.storytelling as any).hookMethods && (
+                                                                    <div>
+                                                                        <p className="text-xs font-bold text-[var(--color-primary)]/80 mb-1">🪝 후킹 기법</p>
+                                                                        <p className="text-xs text-gray-300 leading-relaxed">{(store.trendInsights.storytelling as any).hookMethods}</p>
+                                                                    </div>
+                                                                )}
+                                                                {(store.trendInsights.storytelling as any).narrativeStructure && (
+                                                                    <div>
+                                                                        <p className="text-xs font-bold text-[var(--color-primary)]/80 mb-1">📚 스토리 구조</p>
+                                                                        <p className="text-xs text-gray-300 leading-relaxed">{(store.trendInsights.storytelling as any).narrativeStructure}</p>
+                                                                    </div>
+                                                                )}
+                                                                {(store.trendInsights.storytelling as any).recommendations?.length > 0 && (
+                                                                    <div>
+                                                                        <p className="text-xs font-bold text-[var(--color-primary)]/80 mb-1">💡 추천</p>
+                                                                        <ul className="text-xs text-gray-300 space-y-1">
+                                                                            {(store.trendInsights.storytelling as any).recommendations.map((rec: string, i: number) => (
+                                                                                <li key={i} className="flex gap-1.5"><span className="text-[var(--color-primary)]">•</span>{rec}</li>
+                                                                            ))}
+                                                                        </ul>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
 

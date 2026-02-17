@@ -37,6 +37,7 @@ export const Step6_Final = () => {
     // State for subtitle toggles - Moved to top to avoid hoisting issues
     const [showSubtitles, setShowSubtitles] = useState(true);
     const [exportSubtitles, setExportSubtitles] = useState(true);
+    const [exportThumbnail, setExportThumbnail] = useState(false); // Default: false for explicit opt-in
 
     const {
         id: projectId,
@@ -1506,6 +1507,46 @@ export const Step6_Final = () => {
             });
 
             const hqRes = getResolution(aspectRatio);
+
+            // Prepare thumbnail as JPEG Uint8Array for max compatibility
+            let thumbnailData: Uint8Array | undefined;
+            if (exportThumbnail && thumbnailUrl) {
+                try {
+                    setExportProgress(1);
+                    setExportStatus('Preparing thumbnail...');
+                    const urlToFetch = isIdbUrl(thumbnailUrl) ? await resolveUrl(thumbnailUrl) : thumbnailUrl;
+                    if (urlToFetch) {
+                        // Load image to convert to JPEG
+                        const img = new Image();
+                        img.crossOrigin = 'anonymous';
+                        await new Promise((resolve, reject) => {
+                            img.onload = resolve;
+                            img.onerror = reject;
+                            img.src = urlToFetch;
+                        });
+
+                        const canvas = document.createElement('canvas');
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        const ctx = canvas.getContext('2d');
+                        if (ctx) {
+                            ctx.fillStyle = '#FFFFFF'; // White background for transparency
+                            ctx.fillRect(0, 0, canvas.width, canvas.height);
+                            ctx.drawImage(img, 0, 0);
+
+                            // Convert to JPEG
+                            const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+                            const res = await fetch(jpegDataUrl);
+                            const buf = await res.arrayBuffer();
+                            thumbnailData = new Uint8Array(buf);
+                            console.log(`[Step6] Converted thumbnail to JPEG: ${thumbnailData.length} bytes`);
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Failed to prepare thumbnail data:", e);
+                }
+            }
+
             const result = await exportWithFFmpeg(
                 recordingCuts,
                 {
@@ -1515,7 +1556,9 @@ export const Step6_Final = () => {
                     aspectRatio: aspectRatio || '16:9',
                     showSubtitles: exportSubtitles,
                     bgmTracks: bgmTracks,
-                    cutStartTimeMap: cutStartTimeMap
+                    cutStartTimeMap: cutStartTimeMap,
+                    attachThumbnail: exportThumbnail,
+                    thumbnailData: thumbnailData
                 },
                 (progress, status) => {
                     console.log(`[Step6:HQExport] ${status} (${progress}%)`);
@@ -2114,6 +2157,24 @@ export const Step6_Final = () => {
                                     </div>
                                 </label>
                             </div>
+                            {/* New Thumbnail Option */}
+                            <div className="mb-2 p-1">
+                                <label className="flex items-center gap-3 p-3 bg-white/5 rounded-lg cursor-pointer hover:bg-white/10 transition-colors">
+                                    <input
+                                        type="checkbox"
+                                        checked={exportThumbnail}
+                                        onChange={(e) => setExportThumbnail(e.target.checked)}
+                                        className="w-5 h-5 rounded border-gray-600 bg-black/40 text-[var(--color-primary)] focus:ring-[var(--color-primary)] focus:ring-offset-0"
+                                    />
+                                    <div>
+                                        <div className="text-white text-sm font-bold flex items-center gap-2">
+                                            <ImageIcon size={16} /> 썸네일 포함 (Cover Art)
+                                        </div>
+                                        <div className="text-xs text-gray-400">MP4 파일의 커버 이미지로 썸네일을 삽입합니다.</div>
+                                    </div>
+                                </label>
+                            </div>
+
                             <p className="text-[10px] text-gray-500 italic">
                                 {exportHybrid
                                     ? "비디오 클립이 있는 컷은 비디오로 포함됩니다."

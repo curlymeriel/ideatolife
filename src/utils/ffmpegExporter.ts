@@ -12,6 +12,8 @@ export interface ExportOptions {
     showSubtitles?: boolean;
     bgmTracks?: any[];
     cutStartTimeMap?: number[];
+    attachThumbnail?: boolean;
+    thumbnailData?: Uint8Array;
 }
 
 /**
@@ -540,7 +542,49 @@ export async function exportWithFFmpeg(
         }
     }
 
-    // 5. Final Output (Validated)
+    // 5. Attach Thumbnail (Cover Art)
+    if (options.attachThumbnail && options.thumbnailData) {
+        onProgress?.(97, 'Attaching thumbnail as cover art...');
+        try {
+            console.log('[FFmpeg:Thumbnail] Writing cover art to FS...');
+            await ffmpeg.writeFile('cover.jpg', options.thumbnailData);
+
+            // Rename current output to temp
+            await ffmpeg.exec(['-mv', 'output.mp4', 'output_pre_cover.mp4']);
+
+            // Merge cover
+            // -c:v:1 mjpeg: Encode cover as MJPEG (standard for ID3 tags)
+            // -disposition:v:1 attached_pic: Mark as attached picture
+            // -id3v2_version 3: Max compatibility for Windows
+            await ffmpeg.exec([
+                '-i', 'output_pre_cover.mp4',
+                '-i', 'cover.jpg',
+                '-map', '0',
+                '-map', '1',
+                '-c', 'copy',
+                '-c:v:1', 'mjpeg',
+                '-disposition:v:1', 'attached_pic',
+                '-metadata:s:v:1', 'title="Cover (Front)"',
+                '-metadata:s:v:1', 'comment="Cover (Front)"',
+                '-y', 'output.mp4'
+            ]);
+
+            // Clean up
+            tempFiles.push('cover.jpg');
+            try { await ffmpeg.deleteFile('output_pre_cover.mp4'); } catch { }
+        } catch (thumbErr) {
+            console.warn('[FFmpeg:Thumbnail] Failed to attach thumbnail:', thumbErr);
+            // Attempt restore
+            try {
+                const dir = await ffmpeg.listDir('.');
+                if (!dir.find(d => d.name === 'output.mp4') && dir.find(d => d.name === 'output_pre_cover.mp4')) {
+                    await ffmpeg.exec(['-mv', 'output_pre_cover.mp4', 'output.mp4']);
+                }
+            } catch { }
+        }
+    }
+
+    // 6. Final Output (Validated)
     onProgress?.(98, 'Reading final project file...');
 
     // Validate Output Check before reading

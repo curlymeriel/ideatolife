@@ -872,9 +872,11 @@ export const useWorkflowStore = create<WorkflowStore>()(
             },
             setChatHistory: (history: ChatMessage[]) => {
                 set({ chatHistory: history });
+                get().saveProject();
             },
             setProductionChatHistory: (history: ChatMessage[]) => {
                 set({ productionChatHistory: history });
+                get().saveProject();
             },
             setThumbnail: (url: string | null) => {
                 set({ thumbnailUrl: url });
@@ -915,6 +917,10 @@ export const useWorkflowStore = create<WorkflowStore>()(
                         [cutId]: { ...state.assets[cutId], ...asset }
                     }
                 }));
+                get().saveProject();
+            },
+            setBGMTracks: (tracks: any[]) => {
+                set({ bgmTracks: tracks });
                 get().saveProject();
             },
             setStep: (step: number) => {
