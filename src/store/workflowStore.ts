@@ -36,7 +36,7 @@ interface MultiProjectActions {
     // Project Management
     id: string;
     lastModified: number;
-    createProject: (sourceSeries?: string) => Promise<void>;
+    createProject: (sourceSeriesOrOptions?: string | { sourceSeries?: string; ideaPromote?: { episodeName?: string; episodePlot?: string; seriesStory?: string; trendInsights?: any } }) => Promise<void>;
     loadProject: (id: string) => Promise<void>;
     saveProject: () => Promise<void>;
     deleteProject: (id: string) => Promise<void>;
@@ -1320,10 +1320,16 @@ export const useWorkflowStore = create<WorkflowStore>()(
                 }
             },
 
-            createProject: async (sourceSeries?: string) => {
+            createProject: async (sourceSeriesOrOptions?: string | { sourceSeries?: string; ideaPromote?: { episodeName?: string; episodePlot?: string; seriesStory?: string; trendInsights?: any } }) => {
                 await get().saveProject();
                 const newId = generateId();
                 const state = get() as any;
+
+                // Normalize input: string → backward-compatible, object → new options
+                const options = typeof sourceSeriesOrOptions === 'string'
+                    ? { sourceSeries: sourceSeriesOrOptions }
+                    : (sourceSeriesOrOptions || {});
+                const { sourceSeries, ideaPromote } = options;
 
                 // Base template for new project - ensures a clean slate
                 const newProject = getEmptyProjectState(newId, state.apiKeys);
@@ -1355,6 +1361,21 @@ export const useWorkflowStore = create<WorkflowStore>()(
                                 ...seriesData.thumbnailSettings
                             }
                         });
+                    } else if (ideaPromote?.seriesStory) {
+                        // No existing series found → new series from idea metadata
+                        newProject.seriesName = sourceSeries;
+                        newProject.seriesStory = ideaPromote.seriesStory;
+                    }
+                }
+
+                // Merge ideaPromote episode-level data (overrides "Episode N" defaults)
+                if (ideaPromote) {
+                    if (ideaPromote.episodeName) newProject.episodeName = ideaPromote.episodeName;
+                    if (ideaPromote.episodePlot) newProject.episodePlot = ideaPromote.episodePlot;
+                    if (ideaPromote.trendInsights) newProject.trendInsights = ideaPromote.trendInsights;
+                    // seriesStory only applied for NEW series (handled above)
+                    if (!sourceSeries && ideaPromote.seriesStory) {
+                        newProject.seriesStory = ideaPromote.seriesStory;
                     }
                 }
 

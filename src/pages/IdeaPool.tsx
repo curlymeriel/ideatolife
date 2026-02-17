@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWorkflowStore } from '../store/workflowStore';
 import {
@@ -10,7 +10,11 @@ import {
     Plus,
     CheckCircle2,
     LayoutGrid,
-    Target
+    Target,
+    ArrowRight,
+    FolderOpen,
+    Sparkles,
+    X
 } from 'lucide-react';
 import type { IdeaPoolItem } from '../store/types';
 
@@ -28,11 +32,24 @@ const formatText = (text: string) => {
 
 export const IdeaPool: React.FC = () => {
     const navigate = useNavigate();
-    const { ideaPool, setProjectInfo, setScript, saveProject } = useWorkflowStore();
+    const { ideaPool, createProject, savedProjects } = useWorkflowStore();
     const [searchQuery, setSearchQuery] = useState('');
     const [filterSource, setFilterSource] = useState<string>('all');
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [newIdea, setNewIdea] = useState({ title: '', description: '', category: '' });
+
+    // Series Selection Modal state
+    const [pendingPromoteIdea, setPendingPromoteIdea] = useState<IdeaPoolItem | null>(null);
+    const [showSeriesModal, setShowSeriesModal] = useState(false);
+
+    // Extract unique series names from saved projects
+    const existingSeriesNames = useMemo(() => {
+        const names = new Set<string>();
+        Object.values(savedProjects).forEach(p => {
+            if (p.seriesName) names.add(p.seriesName);
+        });
+        return Array.from(names).sort();
+    }, [savedProjects]);
 
     const filteredIdeas = ideaPool.filter(idea => {
         const matchesSearch = idea.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -64,41 +81,35 @@ export const IdeaPool: React.FC = () => {
     };
 
     const handlePromote = (idea: IdeaPoolItem) => {
-        // Workflow Bridge: Transfer strategic data to actual project state
-        // ALWAYS create a NEW project for a new production line
-        const newProjectId = `project-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-        const currentApiKeys = useWorkflowStore.getState().apiKeys;
+        // Open series selection modal instead of directly promoting
+        setPendingPromoteIdea(idea);
+        setShowSeriesModal(true);
+    };
 
-        const { resetToDefault } = useWorkflowStore.getState();
-        resetToDefault();
+    const handleConfirmPromote = async (selectedSeries: string) => {
+        if (!pendingPromoteIdea) return;
+        const idea = pendingPromoteIdea;
 
         const hasSeriesInfo = !!(idea.metadata?.seriesTitle || (idea.source === 'Phase3' && idea.category));
 
-        setProjectInfo({
-            id: newProjectId,
-            apiKeys: currentApiKeys,
-            // Promote series-level info from metadata, fallback to category for Phase3 ideas, then idea title
-            seriesName: idea.metadata?.seriesTitle || (idea.source === 'Phase3' ? idea.category : '') || idea.title,
-            seriesStory: idea.metadata?.seriesDescription || '',
-
-            // If we have series info, promote the idea itself to the episode level.
-            // Otherwise, it was already used for the series level, so create a default "New Episode".
-            episodeName: hasSeriesInfo ? idea.title : 'New Episode',
-            episodePlot: hasSeriesInfo ? idea.description : '',
-
-            characters: idea.metadata?.characters || [],
-            lastModified: Date.now(),
-            currentStep: 1,
-            trendInsights: {
-                target: idea.metadata?.targetAudience || '',
-                vibe: idea.metadata?.angle || '',
-                references: [],
-                storytelling: idea.metadata?.notes || '',
-                appliedAt: Date.now()
+        await createProject({
+            sourceSeries: selectedSeries,
+            ideaPromote: {
+                episodeName: hasSeriesInfo ? idea.title : 'New Episode',
+                episodePlot: hasSeriesInfo ? idea.description : '',
+                seriesStory: idea.metadata?.seriesDescription || '',
+                trendInsights: {
+                    target: idea.metadata?.targetAudience || '',
+                    vibe: idea.metadata?.angle || '',
+                    references: [],
+                    storytelling: idea.metadata?.notes || '',
+                    appliedAt: Date.now()
+                }
             }
         });
-        setScript([]);
-        saveProject(); // Ensure it's on disk
+
+        setPendingPromoteIdea(null);
+        setShowSeriesModal(false);
         navigate('/step/1');
     };
 
@@ -299,6 +310,131 @@ export const IdeaPool: React.FC = () => {
                                     onClick={handleAddIdea}
                                 >
                                     아이디어 저장
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Series Selection Modal for Promote */}
+            {showSeriesModal && pendingPromoteIdea && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { setShowSeriesModal(false); setPendingPromoteIdea(null); }} />
+                    <div className="relative bg-[var(--color-surface)] w-full max-w-lg rounded-3xl border border-[var(--color-border)] shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="p-8 space-y-6">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                                    <FolderOpen className="text-[var(--color-primary)]" />
+                                    시리즈 선택
+                                </h2>
+                                <button
+                                    onClick={() => { setShowSeriesModal(false); setPendingPromoteIdea(null); }}
+                                    className="p-2 text-[var(--color-text-secondary)] hover:text-white hover:bg-white/10 rounded-xl transition-all"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            <p className="text-[var(--color-text-secondary)] text-sm">
+                                <strong className="text-white">"{pendingPromoteIdea.title}"</strong>을(를) 어떤 시리즈로 제작하시겠습니까?
+                            </p>
+
+                            <div className="space-y-3 max-h-[50vh] overflow-y-auto">
+                                {/* Option: Use Idea's own series info */}
+                                {pendingPromoteIdea.metadata?.seriesTitle && (
+                                    <button
+                                        onClick={() => handleConfirmPromote(
+                                            pendingPromoteIdea!.metadata?.seriesTitle ||
+                                            (pendingPromoteIdea!.source === 'Phase3' ? pendingPromoteIdea!.category : '') ||
+                                            pendingPromoteIdea!.title
+                                        )}
+                                        className="w-full text-left p-4 rounded-2xl border-2 border-[var(--color-primary)]/30 bg-[var(--color-primary)]/5 hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 transition-all group"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl bg-[var(--color-primary)]/20 flex items-center justify-center">
+                                                <Sparkles className="text-[var(--color-primary)]" size={20} />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-bold text-white group-hover:text-[var(--color-primary)] transition-colors">
+                                                        {pendingPromoteIdea.metadata.seriesTitle}
+                                                    </span>
+                                                    <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--color-primary)]/20 text-[var(--color-primary)]">
+                                                        아이디어 시리즈
+                                                    </span>
+                                                    {existingSeriesNames.includes(pendingPromoteIdea.metadata.seriesTitle) && (
+                                                        <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400">
+                                                            기존 에셋 자동 상속
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {pendingPromoteIdea.metadata.seriesDescription && (
+                                                    <p className="text-xs text-[var(--color-text-muted)] mt-1 truncate">
+                                                        {pendingPromoteIdea.metadata.seriesDescription}
+                                                    </p>
+                                                )}
+                                            </div>
+                                            <ArrowRight className="text-[var(--color-text-muted)] group-hover:text-[var(--color-primary)] transition-colors" size={18} />
+                                        </div>
+                                    </button>
+                                )}
+
+                                {/* Divider if both options exist */}
+                                {pendingPromoteIdea.metadata?.seriesTitle && existingSeriesNames.length > 0 && (
+                                    <div className="flex items-center gap-3 py-1">
+                                        <div className="flex-1 h-px bg-[var(--color-border)]" />
+                                        <span className="text-xs text-[var(--color-text-muted)]">또는 대시보드 시리즈</span>
+                                        <div className="flex-1 h-px bg-[var(--color-border)]" />
+                                    </div>
+                                )}
+
+                                {/* Existing dashboard series */}
+                                {existingSeriesNames
+                                    .filter(name => name !== pendingPromoteIdea?.metadata?.seriesTitle)
+                                    .map(seriesName => (
+                                        <button
+                                            key={seriesName}
+                                            onClick={() => handleConfirmPromote(seriesName)}
+                                            className="w-full text-left p-4 rounded-2xl border border-[var(--color-border)] hover:border-[var(--color-primary)]/50 hover:bg-[var(--color-primary)]/5 transition-all group"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 rounded-xl bg-[var(--color-bg)] flex items-center justify-center">
+                                                    <FolderOpen className="text-[var(--color-text-secondary)]" size={18} />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <span className="font-bold text-white group-hover:text-[var(--color-primary)] transition-colors">
+                                                        {seriesName}
+                                                    </span>
+                                                    <span className="text-xs text-emerald-400 ml-2">에셋 자동 상속</span>
+                                                </div>
+                                                <ArrowRight className="text-[var(--color-text-muted)] group-hover:text-[var(--color-primary)] transition-colors opacity-0 group-hover:opacity-100" size={18} />
+                                            </div>
+                                        </button>
+                                    ))}
+
+                                {/* New series option */}
+                                <button
+                                    onClick={() => handleConfirmPromote(
+                                        pendingPromoteIdea!.metadata?.seriesTitle ||
+                                        (pendingPromoteIdea!.source === 'Phase3' ? pendingPromoteIdea!.category : '') ||
+                                        pendingPromoteIdea!.title
+                                    )}
+                                    className="w-full text-left p-4 rounded-2xl border border-dashed border-[var(--color-border)] hover:border-[var(--color-primary)]/50 hover:bg-[var(--color-primary)]/5 transition-all group"
+                                    style={{ display: pendingPromoteIdea.metadata?.seriesTitle ? 'none' : undefined }}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-[var(--color-bg)] flex items-center justify-center">
+                                            <Plus className="text-[var(--color-text-secondary)]" size={18} />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <span className="font-bold text-white group-hover:text-[var(--color-primary)] transition-colors">
+                                                새 시리즈로 시작
+                                            </span>
+                                            <p className="text-xs text-[var(--color-text-muted)] mt-0.5">빈 시리즈에서 새로 제작</p>
+                                        </div>
+                                        <ArrowRight className="text-[var(--color-text-muted)] group-hover:text-[var(--color-primary)] transition-colors opacity-0 group-hover:opacity-100" size={18} />
+                                    </div>
                                 </button>
                             </div>
                         </div>
