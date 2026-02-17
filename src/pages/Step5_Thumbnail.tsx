@@ -19,8 +19,9 @@ export const Step5_Thumbnail: React.FC = () => {
         apiKeys,
         imageModel,
         assetDefinitions,
-        aspectRatio
-    } = useWorkflowStore();
+        aspectRatio,
+        trendInsights
+    } = useWorkflowStore() as any;
     const navigate = useNavigate();
 
     // Standard Resolutions based on Aspect Ratio
@@ -440,6 +441,7 @@ export const Step5_Thumbnail: React.FC = () => {
             const fullPrompt = `TASK: Create a professional cinematic masterpiece thumbnail.
 ${aiTitle ? `TEXT TO INCLUDE: Render the title "${aiTitle}" as bold, stylistic typography integrated into the scene. DO NOT render episode numbers.` : ''}
 USER VISION: ${aiPrompt}
+${trendInsights?.thumbnail ? `TREND BENCHMARKS: Color scheme: ${trendInsights.thumbnail.colorScheme || 'N/A'}. Composition: ${trendInsights.thumbnail.composition || 'N/A'}. Recommendations: ${(trendInsights.thumbnail.recommendations || []).join('; ') || 'N/A'}.` : ''}
 TECHNICAL: High contrast, 4K quality, professional composition. The typography should be legible and artistic.`;
 
             // 3. Generate Image
@@ -550,7 +552,7 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                 if (url) resolvedRefs.push(url);
             }
 
-            const visualPrompt = await generateVisualPrompt(context, resolvedRefs, apiKeys.gemini);
+            const visualPrompt = await generateVisualPrompt(context, resolvedRefs, apiKeys.gemini, trendInsights);
             setAiPrompt(visualPrompt);
 
         } catch (error) {

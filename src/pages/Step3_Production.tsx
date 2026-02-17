@@ -39,6 +39,7 @@ export const Step3_Production: React.FC = () => {
         masterStyle: state.masterStyle,
         aspectRatio: state.aspectRatio,
         storylineTable: state.storylineTable,
+        trendInsights: (state as any).trendInsights,
         nextStep: state.nextStep,
     })));
 
@@ -47,7 +48,7 @@ export const Step3_Production: React.FC = () => {
         seriesName, episodeName, targetDuration, styleAnchor, apiKeys,
         script, ttsModel, imageModel, assetDefinitions,
         episodePlot, characters, episodeCharacters, seriesLocations, episodeLocations, masterStyle, aspectRatio,
-        storylineTable, nextStep
+        storylineTable, trendInsights, nextStep
     } = projectData;
 
     const setScript = useWorkflowStore(state => state.setScript);
@@ -301,7 +302,8 @@ export const Step3_Production: React.FC = () => {
                 assetDefinitions,  // NEW: Pass Step 2 asset definitions
                 customInstructions, // NEW: Custom instructions
                 localScript, // NEW: Pass existing script for context-aware regeneration
-                imageModel // NEW: Pass the currently selected model from state
+                imageModel, // NEW: Pass the currently selected model from state
+                trendInsights // NEW: Pass trend insights for prompt enrichment
             );
 
             // Link cuts to storyline scenes

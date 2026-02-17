@@ -139,6 +139,7 @@ export interface ProjectContext {
     targetDuration: number;
     aspectRatio: string;
     masterStyle?: string;
+    trendInsights?: any; // NEW: Trend analysis insights from Step 0
 }
 
 const GEMINI_3_0_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-pro:generateContent';
@@ -377,7 +378,8 @@ export const generateScript = async (
     assetDefinitions?: Record<string, any>,  // NEW: Step 2 asset definitions
     customInstructions?: string, // NEW: Allow overriding instructions
     existingScript?: ScriptCut[], // NEW: Pass existing script for context-aware regeneration
-    preferredModel?: string // NEW: Optional preferred model name
+    preferredModel?: string, // NEW: Optional preferred model name
+    trendInsights?: any // NEW: Trend analysis insights from Step 0
 ): Promise<ScriptCut[]> => {
     if (!apiKey) {
         // Mock response
@@ -548,6 +550,14 @@ ${sceneStructure}
 ${lockedCutsContext}
 
 ${customInstructions || DEFAULT_SCRIPT_INSTRUCTIONS}
+${trendInsights?.storytelling ? `
+[TREND INSIGHTS - 현재 트렌드 벤치마크 (참고용)]
+- 후킹 기법: ${trendInsights.storytelling.hookMethods || '정보 없음'}
+- 스토리 구성: ${trendInsights.storytelling.narrativeStructure || '정보 없음'}
+- 카메라 워크: ${trendInsights.storytelling.cameraWorkPatterns || '정보 없음'}
+- 추천: ${(trendInsights.storytelling.recommendations || []).join(', ') || '없음'}
+→ 위 트렌드 분석을 참고하여 후킹과 스토리 전개를 구성하세요.
+` : ''}
 `;
 
         // Base model list (fallback order)
@@ -1128,6 +1138,18 @@ export const consultStory = async (
             .replace('{{aspectRatio}}', context.aspectRatio)
             .replace('{{masterStyle}}', (context as any).masterStyle || '');
 
+        // Inject trend insights into system instruction if available
+        if (context.trendInsights?.storytelling) {
+            const ti = context.trendInsights;
+            const trendSection = `\n\n[TREND INSIGHTS - 현재 트렌드 벤치마크 (참고용)]\n` +
+                `- 후킹 기법: ${ti.storytelling.hookMethods || '정보 없음'}\n` +
+                `- 스토리 구성: ${ti.storytelling.narrativeStructure || '정보 없음'}\n` +
+                `- 카메라 워크: ${ti.storytelling.cameraWorkPatterns || '정보 없음'}\n` +
+                `- 추천: ${(ti.storytelling.recommendations || []).join(', ') || '없음'}\n` +
+                `→ 위 트렌드 분석을 참고하여 씬 구성과 후킹을 제안하세요.`;
+            systemInstruction += trendSection;
+        }
+
 
 
         // Import resolveUrl for idb:// handling
@@ -1578,7 +1600,8 @@ export const analyzeImage = async (
 export const generateVisualPrompt = async (
     context: string,
     referenceImages: string[], // Base64 strings
-    apiKey: string
+    apiKey: string,
+    trendInsights?: any // NEW: Trend analysis insights from Step 0
 ): Promise<string> => {
     if (!apiKey) return "Please provide an API key.";
 
@@ -1610,6 +1633,15 @@ TASK:
    - Title: If the benchmarks suggest bold typography, you MAY ask to render the 'Thumbnail Title'.
    - ABSOLUTE PROHIBITION: Do NOT render 'Episode Number'.
 9. Return ONLY the raw prompt string.
+${trendInsights?.thumbnail ? `
+10. TREND BENCHMARKS (Apply these insights):
+    - Color Scheme: ${trendInsights.thumbnail.colorScheme || 'N/A'}
+    - Composition: ${trendInsights.thumbnail.composition || 'N/A'}
+    - Text Style: ${trendInsights.thumbnail.textStyle || 'N/A'}
+    - Face/Expression: ${trendInsights.thumbnail.faceExpression || 'N/A'}
+    - Recommendations: ${(trendInsights.thumbnail.recommendations || []).join('; ') || 'N/A'}
+    → Incorporate these trending thumbnail patterns into the visual prompt.
+` : ''}
 `
         }
     ];

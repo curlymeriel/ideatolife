@@ -513,7 +513,8 @@ export const Step1_Setup: React.FC = () => {
                 episodeProps: isEditing ? localEpisodeProps : episodeProps,
                 targetDuration: isEditing ? localTargetDuration : targetDuration,
                 aspectRatio: isEditing ? localAspectRatio : store.aspectRatio,
-                masterStyle: isEditing ? localMasterStyleDescription : (store.masterStyle?.description || '')
+                masterStyle: isEditing ? localMasterStyleDescription : (store.masterStyle?.description || ''),
+                trendInsights: (store as any).trendInsights
             };
 
             const result = await consultStory(updatedHistory, context, apiKeys.gemini, customInstructions);
@@ -1942,6 +1943,66 @@ export const Step1_Setup: React.FC = () => {
                                                 placeholder="Plot summary for this episode..."
                                             />
                                         </div>
+
+                                        {/* Trend Insights Reference Panel (edit mode only) */}
+                                        {(store as any).trendInsights?.storytelling && (
+                                            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 overflow-hidden">
+                                                <button
+                                                    onClick={() => {
+                                                        const el = document.getElementById('trend-insights-panel');
+                                                        if (el) el.classList.toggle('hidden');
+                                                    }}
+                                                    className="w-full flex items-center justify-between p-3 hover:bg-amber-500/10 transition-colors"
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <Sparkles size={16} className="text-amber-400" />
+                                                        <span className="text-sm font-bold text-amber-300">트렌드 인사이트</span>
+                                                        <span className="text-xs text-amber-400/60">참고용 · 스토리 기획 시 활용하세요</span>
+                                                    </div>
+                                                    <ChevronDown size={14} className="text-amber-400/60" />
+                                                </button>
+                                                <div id="trend-insights-panel" className="hidden px-4 pb-4 space-y-3">
+                                                    {(store as any).trendInsights.storytelling.hookMethods && (
+                                                        <div>
+                                                            <p className="text-xs font-bold text-amber-300/80 mb-1">🎯 후킹 기법</p>
+                                                            <p className="text-xs text-gray-300 leading-relaxed">{(store as any).trendInsights.storytelling.hookMethods}</p>
+                                                        </div>
+                                                    )}
+                                                    {(store as any).trendInsights.storytelling.narrativeStructure && (
+                                                        <div>
+                                                            <p className="text-xs font-bold text-amber-300/80 mb-1">📖 스토리 구성</p>
+                                                            <p className="text-xs text-gray-300 leading-relaxed">{(store as any).trendInsights.storytelling.narrativeStructure}</p>
+                                                        </div>
+                                                    )}
+                                                    {(store as any).trendInsights.storytelling.cameraWorkPatterns && (
+                                                        <div>
+                                                            <p className="text-xs font-bold text-amber-300/80 mb-1">🎬 카메라 워크</p>
+                                                            <p className="text-xs text-gray-300 leading-relaxed">{(store as any).trendInsights.storytelling.cameraWorkPatterns}</p>
+                                                        </div>
+                                                    )}
+                                                    {(store as any).trendInsights.storytelling.recommendations?.length > 0 && (
+                                                        <div>
+                                                            <p className="text-xs font-bold text-amber-300/80 mb-1">💡 추천</p>
+                                                            <ul className="text-xs text-gray-300 space-y-1">
+                                                                {(store as any).trendInsights.storytelling.recommendations.map((rec: string, i: number) => (
+                                                                    <li key={i} className="flex gap-1.5"><span className="text-amber-400">•</span>{rec}</li>
+                                                                ))}
+                                                            </ul>
+                                                        </div>
+                                                    )}
+                                                    {(store as any).trendInsights.title?.recommendations?.length > 0 && (
+                                                        <div className="pt-2 border-t border-amber-500/10">
+                                                            <p className="text-xs font-bold text-amber-300/80 mb-1">📝 제목 팁</p>
+                                                            <ul className="text-xs text-gray-300 space-y-1">
+                                                                {(store as any).trendInsights.title.recommendations.map((rec: string, i: number) => (
+                                                                    <li key={i} className="flex gap-1.5"><span className="text-amber-400">•</span>{rec}</li>
+                                                                ))}
+                                                            </ul>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
 
                                         {/* Storyline Table (Non-Collapsible) */}
                                         <div className="space-y-4">
