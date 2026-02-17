@@ -1,3 +1,5 @@
+import { getResolution } from './aspectRatioUtils';
+
 export interface VideoCut {
     imageUrl: string;
     audioUrl?: string;
@@ -15,6 +17,7 @@ export interface ProjectExportInfo {
     seriesName: string;
     episodeName: string;
     storylineTable?: any[];
+    aspectRatio?: string;
 }
 
 /**
@@ -109,6 +112,7 @@ export async function exportVideo(
     zip.file('metadata.json', JSON.stringify(metadata, null, 2));
 
     // Create FFmpeg script for automatic video creation
+    const res = getResolution(projectInfo?.aspectRatio);
     const ffmpegScript = `# FFmpeg Script to Create Video
 # Install FFmpeg: https://ffmpeg.org/download.html
 # Then run: ffmpeg -f concat -safe 0 -i filelist.txt -c:v libx264 -pix_fmt yuv420p -c:a aac output.mp4
@@ -126,16 +130,16 @@ ${cuts.map((cut, i) => {
         let cmd = '';
         if (cut.sfxUrl && cut.audioUrl) {
             // Mix Audio + SFX
-            cmd = `ffmpeg -loop 1 -t ${duration} -i ${num}_image.jpg -i ${num}_audio.mp3 -i ${num}_sfx.mp3 -filter_complex "[2:a]volume=${sfxVol}[sfx];[1:a][sfx]amix=inputs=2:duration=first[aout]" -map 0:v -map "[aout]" -c:v libx264 -pix_fmt yuv420p -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2" -shortest ${num}_segment.mp4`;
+            cmd = `ffmpeg -loop 1 -t ${duration} -i ${num}_image.jpg -i ${num}_audio.mp3 -i ${num}_sfx.mp3 -filter_complex "[2:a]volume=${sfxVol}[sfx];[1:a][sfx]amix=inputs=2:duration=first[aout]" -map 0:v -map "[aout]" -c:v libx264 -pix_fmt yuv420p -vf "scale=${res.width}:${res.height}:force_original_aspect_ratio=decrease,pad=${res.width}:${res.height}:(ow-iw)/2:(oh-ih)/2" -shortest ${num}_segment.mp4`;
         } else if (cut.audioUrl) {
             // Audio only
-            cmd = `ffmpeg -loop 1 -t ${duration} -i ${num}_image.jpg -i ${num}_audio.mp3 -c:a aac -c:v libx264 -pix_fmt yuv420p -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2" -shortest ${num}_segment.mp4`;
+            cmd = `ffmpeg -loop 1 -t ${duration} -i ${num}_image.jpg -i ${num}_audio.mp3 -c:a aac -c:v libx264 -pix_fmt yuv420p -vf "scale=${res.width}:${res.height}:force_original_aspect_ratio=decrease,pad=${res.width}:${res.height}:(ow-iw)/2:(oh-ih)/2" -shortest ${num}_segment.mp4`;
         } else if (cut.sfxUrl) {
             // SFX only
-            cmd = `ffmpeg -loop 1 -t ${duration} -i ${num}_image.jpg -i ${num}_sfx.mp3 -filter_complex "[1:a]volume=${sfxVol}[aout]" -map 0:v -map "[aout]" -c:v libx264 -pix_fmt yuv420p -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2" -shortest ${num}_segment.mp4`;
+            cmd = `ffmpeg -loop 1 -t ${duration} -i ${num}_image.jpg -i ${num}_sfx.mp3 -filter_complex "[1:a]volume=${sfxVol}[aout]" -map 0:v -map "[aout]" -c:v libx264 -pix_fmt yuv420p -vf "scale=${res.width}:${res.height}:force_original_aspect_ratio=decrease,pad=${res.width}:${res.height}:(ow-iw)/2:(oh-ih)/2" -shortest ${num}_segment.mp4`;
         } else {
             // Image only
-            cmd = `ffmpeg -loop 1 -t ${duration} -i ${num}_image.jpg -c:v libx264 -pix_fmt yuv420p -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2" ${num}_segment.mp4`;
+            cmd = `ffmpeg -loop 1 -t ${duration} -i ${num}_image.jpg -c:v libx264 -pix_fmt yuv420p -vf "scale=${res.width}:${res.height}:force_original_aspect_ratio=decrease,pad=${res.width}:${res.height}:(ow-iw)/2:(oh-ih)/2" ${num}_segment.mp4`;
         }
 
         return `# Cut ${i + 1}: ${duration}s (audio: ${hasAudio}, sfx: ${hasSfx})\n${cmd}`;

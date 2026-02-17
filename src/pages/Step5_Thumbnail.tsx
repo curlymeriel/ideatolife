@@ -6,6 +6,7 @@ import html2canvas from 'html2canvas';
 import { generateImage } from '../services/imageGen';
 import { generateVisualPrompt } from '../services/gemini';
 import { resolveUrl, saveToIdb, isIdbUrl } from '../utils/imageStorage';
+import { getResolution } from '../utils/aspectRatioUtils';
 
 export const Step5_Thumbnail: React.FC = () => {
     const {
@@ -24,19 +25,7 @@ export const Step5_Thumbnail: React.FC = () => {
     } = useWorkflowStore() as any;
     const navigate = useNavigate();
 
-    // Standard Resolutions based on Aspect Ratio
-    const RESOLUTIONS: Record<string, { width: number, height: number }> = {
-        '16:9': { width: 1920, height: 1080 },
-        '9:16': { width: 1080, height: 1920 },
-        '1:1': { width: 1080, height: 1080 },
-        '4:3': { width: 1440, height: 1080 },
-        '21:9': { width: 2560, height: 1080 },
-        '2.35:1': { width: 1920, height: 817 }, // CinemaScope
-        '4:5': { width: 1080, height: 1350 },   // Instagram Portrait
-        '3:4': { width: 1080, height: 1440 }
-    };
-
-    const targetResolution = RESOLUTIONS[aspectRatio] || RESOLUTIONS['16:9'];
+    const targetResolution = getResolution(aspectRatio);
 
     // Ref for the content to be captured (Dynamic Resolution, no scale)
     const contentRef = useRef<HTMLDivElement>(null);

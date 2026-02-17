@@ -10,6 +10,7 @@ import { exportProjectToZip } from '../utils/zipExporter';
 import { recordCanvasVideo, isCanvasRecordingSupported, type RecordingCut } from '../utils/canvasVideoRecorder';
 import { exportWithFFmpeg, isFFmpegSupported } from '../utils/ffmpegExporter';
 import { fixProjectScriptUrls } from '../utils/fixStorageUrls';
+import { getResolution } from '../utils/aspectRatioUtils';
 
 // Helper to get audio duration with a 10s timeout to prevent hanging the asset pipeline
 const getAudioDuration = (url: string): Promise<number> => {
@@ -1437,9 +1438,10 @@ export const Step6_Final = () => {
                 return;
             }
 
+            const exportRes = getResolution(aspectRatio);
             const result = await recordCanvasVideo(
                 recordingCuts,
-                { width: 1920, height: 1080, fps: 30, showSubtitles: exportSubtitles, aspectRatio: aspectRatio || '16:9' },
+                { width: exportRes.width, height: exportRes.height, fps: 30, showSubtitles: exportSubtitles, aspectRatio: aspectRatio || '16:9' },
                 (progress, status) => {
                     setExportProgress(Math.round(progress));
                     setExportStatus(status);
@@ -1503,11 +1505,12 @@ export const Step6_Final = () => {
                 return start;
             });
 
+            const hqRes = getResolution(aspectRatio);
             const result = await exportWithFFmpeg(
                 recordingCuts,
                 {
-                    width: 1920,
-                    height: 1080,
+                    width: hqRes.width,
+                    height: hqRes.height,
                     quality: 'high',
                     aspectRatio: aspectRatio || '16:9',
                     showSubtitles: exportSubtitles,
@@ -1590,7 +1593,8 @@ export const Step6_Final = () => {
                 {
                     seriesName: seriesName || '',
                     episodeName: episodeName || '',
-                    storylineTable: storylineTable || []
+                    storylineTable: storylineTable || [],
+                    aspectRatio: aspectRatio || '16:9'
                 }
             );
 
