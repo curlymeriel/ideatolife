@@ -517,7 +517,11 @@ export const Step1_Setup: React.FC = () => {
                 targetDuration: isEditing ? localTargetDuration : targetDuration,
                 aspectRatio: isEditing ? localAspectRatio : store.aspectRatio,
                 masterStyle: isEditing ? localMasterStyleDescription : (store.masterStyle?.description || ''),
-                trendInsights: (store as any).trendInsights
+                trendInsights: (store as any).trendInsights,
+                mainCharacters: isEditing ? store.mainCharacters : store.mainCharacters, // Summary string
+                storylineTable: isEditing ? localStorylineTable : (store.storylineTable || []),
+                script: store.script || [],
+                assetDefinitions: store.assetDefinitions || {}
             };
 
             const result = await consultStory(updatedHistory, context, apiKeys.gemini, customInstructions);
@@ -1464,7 +1468,7 @@ export const Step1_Setup: React.FC = () => {
                                                                     <div className="flex-1 min-w-0">
                                                                         <div className="flex flex-col sm:flex-row sm:items-baseline gap-2 mb-1">
                                                                             {scene.estimatedTime && (
-                                                                                <span className="flex-shrink-0 font-mono text-yellow-500 text-xs font-bold bg-yellow-500/10 px-1.5 py-0.5 rounded border border-yellow-500/20">
+                                                                                <span className="flex-shrink-0 font-mono text-[var(--color-primary)] text-xs font-bold bg-[var(--color-primary)]/10 px-1.5 py-0.5 rounded border border-[var(--color-primary)]/20">
                                                                                     {scene.estimatedTime}
                                                                                 </span>
                                                                             )}
@@ -2116,7 +2120,7 @@ export const Step1_Setup: React.FC = () => {
                                                                             <input
                                                                                 type="text"
                                                                                 placeholder="Time (e.g. 0:00-1:00)"
-                                                                                className="w-24 bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-2 py-1.5 text-sm font-mono text-yellow-400 focus:border-[var(--color-primary)] outline-none"
+                                                                                className="w-24 bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-2 py-1.5 text-sm font-mono text-[var(--color-primary)] focus:border-[var(--color-primary)] outline-none"
                                                                                 value={scene.estimatedTime}
                                                                                 onChange={(e) => {
                                                                                     const newTable = [...localStorylineTable];

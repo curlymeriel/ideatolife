@@ -9,6 +9,8 @@ interface ReferenceSelectorModalProps {
     projectAssets: Array<{ id: string; name: string; url: string; type: string }>;
     pastCuts: Array<{ id: string; url: string; index: number }>;
     drafts: string[];
+    defaultTab?: 'computer' | 'assets' | 'cuts' | 'drafts';
+    title?: string;
 }
 
 export const ReferenceSelectorModal: React.FC<ReferenceSelectorModalProps> = ({
@@ -17,10 +19,18 @@ export const ReferenceSelectorModal: React.FC<ReferenceSelectorModalProps> = ({
     onSelect,
     projectAssets,
     pastCuts,
-    drafts
+    drafts,
+    defaultTab = 'computer',
+    title = 'Select Reference Image'
 }) => {
-    const [activeTab, setActiveTab] = useState<'assets' | 'cuts' | 'drafts'>('assets');
+    const [activeTab, setActiveTab] = useState<'computer' | 'assets' | 'cuts' | 'drafts'>(defaultTab);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    React.useEffect(() => {
+        if (isOpen) {
+            setActiveTab(defaultTab);
+        }
+    }, [isOpen, defaultTab]);
 
     if (!isOpen) return null;
 
@@ -41,7 +51,7 @@ export const ReferenceSelectorModal: React.FC<ReferenceSelectorModalProps> = ({
                 <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-white/[0.02]">
                     <h2 className="text-xl font-black text-white flex items-center gap-2">
                         <ImageIcon className="text-[var(--color-primary)]" />
-                        Select Reference Image
+                        {title}
                     </h2>
                     <button onClick={onClose} className="p-2 text-gray-500 hover:text-white transition-all rounded-full hover:bg-white/10">
                         <X size={24} />
@@ -50,6 +60,13 @@ export const ReferenceSelectorModal: React.FC<ReferenceSelectorModalProps> = ({
 
                 {/* Tabs */}
                 <div className="flex border-b border-white/5 bg-black/20">
+                    <button
+                        onClick={() => setActiveTab('computer')}
+                        className={`flex-1 py-4 text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${activeTab === 'computer' ? 'bg-[#1a1a1a] text-[var(--color-primary)] border-t-2 border-[var(--color-primary)]' : 'text-gray-500 hover:text-white hover:bg-white/5'
+                            }`}
+                    >
+                        <Upload size={16} /> Computer
+                    </button>
                     <button
                         onClick={() => setActiveTab('assets')}
                         className={`flex-1 py-4 text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${activeTab === 'assets' ? 'bg-[#1a1a1a] text-[var(--color-primary)] border-t-2 border-[var(--color-primary)]' : 'text-gray-500 hover:text-white hover:bg-white/5'
@@ -75,20 +92,22 @@ export const ReferenceSelectorModal: React.FC<ReferenceSelectorModalProps> = ({
 
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto p-6 bg-[#121212] custom-scrollbar">
-                    {/* Upload Banner */}
-                    <div
-                        onClick={() => fileInputRef.current?.click()}
-                        className="mb-8 w-full h-24 border-2 border-dashed border-white/10 rounded-xl flex items-center justify-center gap-4 text-gray-400 hover:text-white hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/5 transition-all cursor-pointer group"
-                    >
-                        <div className="p-3 bg-white/5 rounded-full group-hover:bg-[var(--color-primary)]/20 transition-all">
-                            <Upload size={24} />
+                    {/* Computer Tab - Upload Banner */}
+                    {activeTab === 'computer' && (
+                        <div
+                            onClick={() => fileInputRef.current?.click()}
+                            className="w-full h-full min-h-[300px] border-2 border-dashed border-white/10 rounded-xl flex flex-col items-center justify-center gap-6 text-gray-400 hover:text-white hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/5 transition-all cursor-pointer group"
+                        >
+                            <div className="p-8 bg-white/5 rounded-full group-hover:bg-[var(--color-primary)]/20 transition-all scale-125">
+                                <Upload size={48} />
+                            </div>
+                            <div className="text-center">
+                                <p className="text-xl font-black mb-2">Upload from Computer</p>
+                                <p className="text-sm text-gray-500 font-bold uppercase tracking-widest">Click to browse local files or drag & drop</p>
+                            </div>
+                            <input ref={fileInputRef} type="file" className="hidden" onChange={handleUpload} accept="image/*" />
                         </div>
-                        <div className="text-left">
-                            <p className="text-sm font-bold">Upload from Computer</p>
-                            <p className="text-xs text-gray-500">Click to browse local files</p>
-                        </div>
-                        <input ref={fileInputRef} type="file" className="hidden" onChange={handleUpload} accept="image/*" />
-                    </div>
+                    )}
 
                     {/* Grids */}
                     {activeTab === 'assets' && (

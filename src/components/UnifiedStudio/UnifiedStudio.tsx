@@ -5,13 +5,12 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import ReactDOM from 'react-dom';
 import {
     X, Wand2, Loader2, ImageIcon, Plus, Send,
-    Sparkles, RotateCcw, Film, Image, Trash2, Check, Layers, Bot, Upload
+    Sparkles, RotateCcw, Film, Image, Trash2, Check, Layers, Bot
 } from 'lucide-react';
 import { ImageCropModal } from '../ImageCropModal';
 import { InteractiveImageViewer } from '../InteractiveImageViewer';
 import { ReferenceSelectorModal } from '../ReferenceSelectorModal';
 import { resolveUrl, isIdbUrl } from '../../utils/imageStorage';
-import { analyzeImage } from '../../services/gemini';
 import { useStudioHandlers } from './useStudioHandlers';
 import type { UnifiedStudioProps, TaggedReference, ChatMessage } from './types';
 import { DEFAULT_CATEGORIES, ASSET_CATEGORIES } from './types';
@@ -21,13 +20,13 @@ const CompositionEditorLazy = React.lazy(() =>
     import('../Production/CompositionEditor').then(m => ({ default: m.CompositionEditor }))
 );
 
-export const UnifiedStudio: React.FC<UnifiedStudioProps> = ({
+export const UnifiedStudio = ({
     isOpen,
     onClose,
     apiKey,
     masterStyle = '',
     config,
-}) => {
+}: UnifiedStudioProps) => {
     // ========================================================================
     // STATE
     // ========================================================================
@@ -74,7 +73,7 @@ export const UnifiedStudio: React.FC<UnifiedStudioProps> = ({
 
 
     const [selectorTarget, setSelectorTarget] = useState<'reference' | 'draft'>('reference');
-    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [modalDefaultTab, setModalDefaultTab] = useState<'assets' | 'cuts' | 'drafts' | 'computer'>('assets');
 
     // ========================================================================
     // HANDLERS HOOK
@@ -135,56 +134,6 @@ export const UnifiedStudio: React.FC<UnifiedStudioProps> = ({
     const handleSelectReference = (asset: { url: string; name?: string; type?: string; id?: string }) => {
         setShowRefSelector(false);
         setCropTarget(asset);
-    };
-
-    const handleAnalyzeImage = async () => {
-        const targetImage = selectedDraft || (taggedReferences.length > 0 ? taggedReferences[0].url : null);
-        if (!targetImage) {
-            alert('분석할 이미지가 없습니다. Draft 이미지나 참조 이미지를 선택해주세요.');
-            return;
-        }
-
-        setIsAnalyzing(true);
-        try {
-            // Check if Blob URL and convert/resolve if needed? analyzeImage handles base64 usually.
-            // If it's a blob URL, we might need to fetch it to base64. 
-            // analyzeImage in services/gemini expects base64 data string usually.
-
-            let imageUrl = targetImage;
-            if (targetImage.startsWith('blob:') || targetImage.startsWith('http')) {
-                // Try to fetch key features from description if it was already analyzed? 
-                // Or fetch blob and convert to base64
-                try {
-                    const response = await fetch(targetImage);
-                    const blob = await response.blob();
-                    const reader = new FileReader();
-                    await new Promise((resolve, reject) => {
-                        reader.onloadend = () => {
-                            imageUrl = reader.result as string;
-                            resolve(null);
-                        };
-                        reader.onerror = reject;
-                        reader.readAsDataURL(blob);
-                    });
-                } catch (e) {
-                    console.error("Failed to convert blob to base64 for analysis", e);
-                }
-            }
-
-            const analysis = await analyzeImage(imageUrl, apiKey || '');
-            if (analysis) {
-                setPrompt(prev => {
-                    const marker = "Visual Features:";
-                    const cleanPrev = prev.split(marker)[0].trim();
-                    return cleanPrev ? `${cleanPrev}\n\n${marker} ${analysis}` : `${marker} ${analysis}`;
-                });
-            }
-        } catch (error) {
-            console.error("Analysis failed", error);
-            alert("이미지 분석에 실패했습니다.");
-        } finally {
-            setIsAnalyzing(false);
-        }
     };
 
     const handleUploadCropConfirm = (croppedImg: string) => {
@@ -520,25 +469,21 @@ export const UnifiedStudio: React.FC<UnifiedStudioProps> = ({
                                         ))}
                                         {taggedReferences.length === 0 && <div className="py-10 border border-dashed border-white/10 rounded-2xl flex flex-col items-center justify-center text-gray-600"><ImageIcon size={32} className="mb-2 opacity-10" /><p className="text-[10px] font-bold">참조 이미지가 없습니다.</p></div>}
                                     </div>
-                                    <div className="pt-2 flex flex-col gap-2">
-                                        {mode === 'visual' ? (
-                                            <button onClick={() => setShowRefSelector(true)} className="w-full py-3 border border-dashed border-white/20 rounded-xl flex items-center justify-center gap-2 text-gray-400 hover:text-white hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/5 transition-all text-xs font-bold">
-                                                <Plus size={14} /> ADD REFERENCE
-                                            </button>
-                                        ) : (
-                                            <>
-                                                <input ref={refFileInputRef} type="file" accept="image/*" onChange={handleAddReference} className="hidden" />
-                                                <button onClick={() => refFileInputRef.current?.click()} className="w-full py-3 border border-dashed border-white/20 rounded-xl flex items-center justify-center gap-2 text-gray-400 hover:text-white hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/5 transition-all text-xs font-bold">
-                                                    <Plus size={14} /> UPLOAD IMAGE
-                                                </button>
-
-                                                <div className="flex justify-center">
-                                                    <button onClick={() => { setSelectorTarget('reference'); setShowRefSelector(true); }} className="w-full py-3 border border-dashed border-white/20 rounded-xl flex items-center justify-center gap-2 text-gray-400 hover:text-white hover:border-[var(--color-primary)] hover:bg-[var(--color-primary)]/5 transition-all text-xs font-bold">
-                                                        <Plus size={14} /> SELECT ASSET
-                                                    </button>
-                                                </div>
-                                            </>
-                                        )}
+                                    <div className="pt-2 relative">
+                                        <button
+                                            onClick={() => {
+                                                setSelectorTarget('reference');
+                                                setModalDefaultTab('computer');
+                                                setShowRefSelector(true);
+                                            }}
+                                            className="w-full py-3 bg-white/5 border border-white/10 rounded-xl flex items-center justify-between px-6 hover:bg-white/10 transition-all text-xs font-black text-gray-300 group"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <Plus size={16} className="text-[var(--color-primary)] group-hover:scale-110 transition-transform" strokeWidth={3} />
+                                                <span>가져오기</span>
+                                            </div>
+                                        </button>
+                                        <input ref={refFileInputRef} type="file" accept="image/*" onChange={handleAddReference} className="hidden" />
                                     </div>
                                 </section>
 
@@ -547,9 +492,6 @@ export const UnifiedStudio: React.FC<UnifiedStudioProps> = ({
                                     <div className="flex items-center justify-between">
                                         <h3 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2"><Sparkles size={16} className="text-[var(--color-primary)]" /> Image Prompt</h3>
                                         <div className="flex gap-2">
-                                            <button onClick={handleAnalyzeImage} disabled={isAnalyzing} className="text-[10px] font-black text-purple-400 bg-purple-500/10 px-3 py-1.5 rounded-xl hover:bg-purple-500/20 transition-all flex items-center gap-1.5 shadow-lg">
-                                                {isAnalyzing ? <Loader2 size={12} className="animate-spin" /> : <Bot size={12} />} AI Analyze
-                                            </button>
                                             <button onClick={handlers.handleAIExpand} disabled={handlers.isExpanding} className="text-[10px] font-black text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-3 py-1.5 rounded-xl hover:bg-[var(--color-primary)]/20 transition-all flex items-center gap-2 shadow-lg">
                                                 {handlers.isExpanding ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} AI Reference Expand
                                             </button>
@@ -607,15 +549,20 @@ export const UnifiedStudio: React.FC<UnifiedStudioProps> = ({
                                     {draftHistory.length > 0 && <button onClick={handleClearHistory} className="text-[9px] font-bold text-red-500/70 hover:text-red-500 uppercase leading-none">Clear</button>}
                                 </div>
                                 <div className="grid grid-cols-2 gap-2 pb-2">
-                                    <button onClick={() => draftFileInputRef.current?.click()} className="aspect-square rounded-lg border border-dashed border-white/20 hover:border-white/40 flex items-col items-center justify-center text-gray-500 hover:text-white transition-all relative group/add" title="Upload from Computer">
-                                        <Upload size={18} />
-                                        <span className="text-[8px] mt-1 font-bold">UPLOAD</span>
+                                    <div className="relative col-span-2">
+                                        <button
+                                            onClick={() => {
+                                                setSelectorTarget('draft');
+                                                setModalDefaultTab('computer');
+                                                setShowRefSelector(true);
+                                            }}
+                                            className="w-full py-2 bg-white/5 border border-dashed border-white/20 rounded-xl flex items-center justify-center gap-2 text-gray-500 hover:text-white hover:border-[var(--color-primary)] transition-all group"
+                                        >
+                                            <Plus size={16} className="text-[var(--color-primary)]" />
+                                            <span className="text-[9px] font-black uppercase">가져오기</span>
+                                        </button>
                                         <input ref={draftFileInputRef} type="file" onChange={handleAddDraftManually} className="hidden" />
-                                    </button>
-                                    <button onClick={() => { setSelectorTarget('draft'); setShowRefSelector(true); }} className="aspect-square rounded-lg border border-dashed border-white/20 hover:border-white/40 flex flex-col items-center justify-center text-gray-500 hover:text-white transition-all relative group/add" title="Select from Project Assets">
-                                        <Layers size={18} />
-                                        <span className="text-[8px] mt-1 font-bold">ASSETS</span>
-                                    </button>
+                                    </div>
                                     {draftHistory.map((url, i) => (
                                         <div key={i} className="relative group/draft">
                                             <button onClick={() => setSelectedDraft(url)} className={`w-full aspect-square rounded-lg overflow-hidden border-2 transition-all ${selectedDraft === url ? 'border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/20 shadow-lg scale-[1.05]' : 'border-white/5 hover:border-white/20'}`}>
@@ -725,6 +672,8 @@ export const UnifiedStudio: React.FC<UnifiedStudioProps> = ({
                 projectAssets={resolvedProjectAssets}
                 pastCuts={resolvedCandidates.map(c => ({ ...c, id: String(c.id) }))}
                 drafts={draftHistory}
+                defaultTab={modalDefaultTab}
+                title={selectorTarget === 'draft' ? 'Select Draft Image' : 'Select Reference Image'}
             />
         </div>,
         document.body

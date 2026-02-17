@@ -1,9 +1,8 @@
 
 const SHARED_PROJECT_CONTEXT = `
 CURRENT PROJECT CONTEXT (Use this to inform your suggestions):
-- Series Name: "{{seriesName}}"
-- Series Story: "{{seriesStory}}"
-- Main Characters: {{characters}}
+- Main Characters Summary: "{{mainCharacters}}"
+- Main Characters List: {{characters}}
 - Series Locations: {{seriesLocations}}
 - Episode Name: "{{episodeName}}" (Ep #{{episodeNumber}})
 - Episode Plot: "{{episodePlot}}"
@@ -14,6 +13,10 @@ CURRENT PROJECT CONTEXT (Use this to inform your suggestions):
 - Target Duration: {{targetDuration}}s
 - Aspect Ratio: {{aspectRatio}}
 - Master Visual Style: {{masterStyle}}
+- Current Storyline: {{storylineTable}}
+- Existing Script (Cuts): {{existingScript}}
+- Visual Asset Definitions: {{assetDefinitions}}
+- Market Trend Insights: {{trendInsights}}
 `;
 
 const SHARED_FORMAT_INSTRUCTIONS = `

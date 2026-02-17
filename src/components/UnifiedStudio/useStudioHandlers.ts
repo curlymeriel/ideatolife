@@ -4,7 +4,7 @@
 import { useState, useRef, useCallback } from 'react';
 import type { TaggedReference, ChatMessage, StudioModeConfig } from './types';
 import { resolveUrl } from '../../utils/imageStorage';
-import { generateText, generateVideoMotionPrompt, type VideoMotionContext } from '../../services/gemini';
+import { generateText, generateVideoMotionPrompt, analyzeImage, type VideoMotionContext } from '../../services/gemini';
 
 interface UseStudioHandlersProps {
     config: StudioModeConfig;
@@ -50,6 +50,7 @@ export function useStudioHandlers(props: UseStudioHandlersProps) {
     const [isTranslating, setIsTranslating] = useState(false);
     const [isChatLoading, setIsChatLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [analyzedImageUrl, setAnalyzedImageUrl] = useState<string | null>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
 
     // ========================================================================
@@ -306,11 +307,54 @@ export function useStudioHandlers(props: UseStudioHandlersProps) {
     const handleSave = useCallback(async () => {
         setIsSaving(true);
         try {
+            let finalDescription = prompt;
+
+            if (selectedDraft && selectedDraft !== analyzedImageUrl) {
+                console.log('[UnifiedStudio] Automatically analyzing draft image...', selectedDraft);
+                try {
+                    let analysisImageUrl = selectedDraft;
+
+                    // Handle idb:// URLs
+                    if (selectedDraft.startsWith('idb://')) {
+                        console.log('[UnifiedStudio] Resolving idb:// URL for analysis...');
+                        analysisImageUrl = await resolveUrl(selectedDraft) || selectedDraft;
+                    }
+
+                    if (analysisImageUrl.startsWith('blob:') || analysisImageUrl.startsWith('http')) {
+                        console.log('[UnifiedStudio] Fetching image for analysis:', analysisImageUrl);
+                        const response = await fetch(analysisImageUrl);
+                        const blob = await response.blob();
+                        const reader = new FileReader();
+                        const base64 = await new Promise<string>((resolve, reject) => {
+                            reader.onloadend = () => resolve(reader.result as string);
+                            reader.onerror = reject;
+                            reader.readAsDataURL(blob);
+                        });
+                        analysisImageUrl = base64;
+                    }
+
+                    const analysis = await analyzeImage(analysisImageUrl, apiKey || '');
+                    console.log('[UnifiedStudio] AI Analysis complete:', analysis ? (analysis.substring(0, 50) + '...') : 'FAILED');
+
+                    if (analysis) {
+                        const marker = "Visual Features:";
+                        const cleanPrev = prompt.split(marker)[0].trim();
+                        finalDescription = cleanPrev ? `${cleanPrev}\n\n${marker} ${analysis}` : `${marker} ${analysis}`;
+                        setPrompt(finalDescription);
+                        setAnalyzedImageUrl(selectedDraft);
+                        console.log('[UnifiedStudio] Prompt updated with analysis.');
+                    }
+                } catch (err) {
+                    console.error('Auto-analysis during save failed:', err);
+                }
+            }
+
             if (config.mode === 'channelArt') {
-                config.onSave(selectedDraft || '', prompt);
+                await config.onSave(selectedDraft || '', finalDescription);
             } else if (config.mode === 'asset') {
-                config.onSave({
-                    description: prompt,
+                console.log('[UnifiedStudio] Calling onSave (asset mode) with description:', finalDescription);
+                await config.onSave({
+                    description: finalDescription,
                     taggedReferences: taggedReferences as any,
                     selectedDraft,
                     draftHistory,
@@ -347,14 +391,15 @@ export function useStudioHandlers(props: UseStudioHandlersProps) {
                     }
                 }
 
-                config.onSave({
-                    visualPrompt: prompt,
+                console.log('[UnifiedStudio] Calling onSave (visual mode) with description:', finalDescription);
+                await config.onSave({
+                    visualPrompt: finalDescription,
                     visualPromptKR: promptKR,
                     videoPrompt: finalVideoPrompt,
                     finalImageUrl: selectedDraft,
                     draftHistory,
-                    taggedReferences,
-                });
+                    withBackground: false
+                } as any);
             }
         } finally {
             setIsSaving(false);

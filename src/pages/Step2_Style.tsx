@@ -176,7 +176,7 @@ export const Step2_Style: React.FC = () => {
 
     const handleSaveAsset = async (overrideData?: { description?: string, referenceImage?: string | null, draftImage?: string | null }) => {
         try {
-            console.log('[Step2] Saving Asset:', selectedAssetId);
+            console.log('[Step2] Saving Asset:', selectedAssetId, 'OverrideData:', overrideData);
             if (!setProjectInfo) {
                 console.error('[Step2] setProjectInfo is missing');
                 return;
@@ -188,19 +188,29 @@ export const Step2_Style: React.FC = () => {
             const currentDesc = overrideData?.description !== undefined ? overrideData.description : description;
 
             let finalRefUrl = currentRef;
-            if (currentRef && currentRef.startsWith('data:')) {
+            if (currentRef && (currentRef.startsWith('data:') || currentRef.startsWith('blob:'))) {
                 const key = generateAssetImageKey(projectId, selectedAssetId, 'ref');
-                console.log('[Step2] Saving Reference Image to IDB:', key);
-                // Append timestamp to force state update and bypass cache
-                finalRefUrl = (await saveToIdb('assets', key, currentRef)) + `?t=${Date.now()}`;
+                console.log(`[Step2] Saving Reference Image (${currentRef.startsWith('data:') ? 'base64' : 'blob'}) to IDB:`, key);
+
+                let dataToSave: string | Blob = currentRef;
+                if (currentRef.startsWith('blob:')) {
+                    const response = await fetch(currentRef);
+                    dataToSave = await response.blob();
+                }
+                finalRefUrl = (await saveToIdb('assets', key, dataToSave)) + `?t=${Date.now()}`;
             }
 
             let finalDraftUrl = currentDraft;
-            if (currentDraft && currentDraft.startsWith('data:')) {
+            if (currentDraft && (currentDraft.startsWith('data:') || currentDraft.startsWith('blob:'))) {
                 const key = generateAssetImageKey(projectId, selectedAssetId, 'draft');
-                console.log('[Step2] Saving Draft Image to IDB:', key);
-                // Append timestamp to force state update and bypass cache
-                finalDraftUrl = (await saveToIdb('assets', key, currentDraft)) + `?t=${Date.now()}`;
+                console.log(`[Step2] Saving Draft Image (${currentDraft.startsWith('data:') ? 'base64' : 'blob'}) to IDB:`, key);
+
+                let dataToSave: string | Blob = currentDraft;
+                if (currentDraft.startsWith('blob:')) {
+                    const response = await fetch(currentDraft);
+                    dataToSave = await response.blob();
+                }
+                finalDraftUrl = (await saveToIdb('assets', key, dataToSave)) + `?t=${Date.now()}`;
             }
 
             if (selectedAssetId === 'master_style') {
@@ -563,7 +573,7 @@ export const Step2_Style: React.FC = () => {
                                 <div className="w-1/3 glass-panel p-6 border border-[var(--color-border)] flex flex-col">
                                     <div className="flex items-center gap-2 mb-4">
                                         <ImageIcon size={18} className="text-[var(--color-primary)]" />
-                                        <span className="text-sm font-bold uppercase">Visual Reference</span>
+                                        <span className="text-sm font-bold uppercase">Confirmed Draft</span>
                                     </div>
                                     <div className="flex-1 w-full bg-[var(--color-bg)] border border-[var(--color-border)] relative overflow-hidden group">
                                         {draftImage ? (
@@ -655,8 +665,8 @@ export const Step2_Style: React.FC = () => {
                             });
                             return assets;
                         })(),
-                        onSave: (result: AssetGenerationResult) => {
-                            handleSaveAsset({
+                        onSave: async (result: AssetGenerationResult) => {
+                            await handleSaveAsset({
                                 description: result.description,
                                 referenceImage: result.selectedDraft || referenceImage,
                                 draftImage: result.selectedDraft

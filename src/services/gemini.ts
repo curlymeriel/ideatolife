@@ -140,6 +140,10 @@ export interface ProjectContext {
     aspectRatio: string;
     masterStyle?: string;
     trendInsights?: any; // NEW: Trend analysis insights from Step 0
+    mainCharacters?: string; // NEW
+    storylineTable?: any[]; // NEW
+    script?: any[]; // NEW
+    assetDefinitions?: any; // NEW
 }
 
 const GEMINI_3_0_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-pro:generateContent';
@@ -550,13 +554,22 @@ ${sceneStructure}
 ${lockedCutsContext}
 
 ${customInstructions || DEFAULT_SCRIPT_INSTRUCTIONS}
-${trendInsights?.storytelling ? `
-[TREND INSIGHTS - 현재 트렌드 벤치마크 (참고용)]
-- 후킹 기법: ${trendInsights.storytelling.hookMethods || '정보 없음'}
-- 스토리 구성: ${trendInsights.storytelling.narrativeStructure || '정보 없음'}
-- 카메라 워크: ${trendInsights.storytelling.cameraWorkPatterns || '정보 없음'}
-- 추천: ${(trendInsights.storytelling.recommendations || []).join(', ') || '없음'}
-→ 위 트렌드 분석을 참고하여 후킹과 스토리 전개를 구성하세요.
+${trendInsights ? `
+[REAL MARKET RESEARCH INSIGHTS - 필수 반영 사항]
+- 대상 타겟: ${trendInsights.target || '정보 없음'}
+- 분위기/무드: ${trendInsights.vibe || '정보 없음'}
+${typeof trendInsights.storytelling === 'string' ? `- 스토리텔링 전략: ${trendInsights.storytelling}` : `
+- 후킹 기법: ${trendInsights.storytelling?.hookMethods || '정보 없음'}
+- 스토리 구성: ${trendInsights.storytelling?.narrativeStructure || '정보 없음'}
+- 카메라 워크: ${trendInsights.storytelling?.cameraWorkPatterns || '정보 없음'}
+- 추천 사항: ${(trendInsights.storytelling?.recommendations || []).join(', ') || '없음'}
+`.trim()}
+${trendInsights.thumbnail ? (typeof trendInsights.thumbnail === 'string' ? `- 썸네일 전략: ${trendInsights.thumbnail}` : `
+- 썸네일 색감: ${trendInsights.thumbnail.colorScheme || '정보 없음'}
+- 썸네일 구도: ${trendInsights.thumbnail.composition || '정보 없음'}
+- 썸네일 추천: ${(trendInsights.thumbnail.recommendations || []).join(', ') || '없음'}
+`.trim()) : ''}
+→ 위 시장 분석 데이터를 단순한 예시가 아닌 '실제 연구 결과'로 인지하고, 이를 바탕으로 스토리와 연출을 구성하세요.
 ` : ''}
 `;
 
@@ -1136,19 +1149,28 @@ export const consultStory = async (
             .replace('{{episodeProps}}', JSON.stringify(context.episodeProps))
             .replace('{{targetDuration}}', String(context.targetDuration))
             .replace('{{aspectRatio}}', context.aspectRatio)
-            .replace('{{masterStyle}}', (context as any).masterStyle || '');
+            .replace('{{masterStyle}}', (context as any).masterStyle || '')
+            .replace('{{mainCharacters}}', context.mainCharacters || '')
+            .replace('{{storylineTable}}', JSON.stringify(context.storylineTable || []))
+            .replace('{{existingScript}}', JSON.stringify(context.script || []))
+            .replace('{{assetDefinitions}}', JSON.stringify(context.assetDefinitions || {}));
 
-        // Inject trend insights into system instruction if available
-        if (context.trendInsights?.storytelling) {
+        // Dynamically build trend insights summary if available
+        let trendSummary = "No trend insights provided.";
+        if (context.trendInsights) {
             const ti = context.trendInsights;
-            const trendSection = `\n\n[TREND INSIGHTS - 현재 트렌드 벤치마크 (참고용)]\n` +
-                `- 후킹 기법: ${ti.storytelling.hookMethods || '정보 없음'}\n` +
-                `- 스토리 구성: ${ti.storytelling.narrativeStructure || '정보 없음'}\n` +
-                `- 카메라 워크: ${ti.storytelling.cameraWorkPatterns || '정보 없음'}\n` +
-                `- 추천: ${(ti.storytelling.recommendations || []).join(', ') || '없음'}\n` +
-                `→ 위 트렌드 분석을 참고하여 씬 구성과 후킹을 제안하세요.`;
-            systemInstruction += trendSection;
+            trendSummary = `
+REAL MARKET RESEARCH DATA (Apply these strictly):
+- Target Audience Profiling: ${ti.target || 'Not specified'}
+- Strategic Vibe/Mood: ${ti.vibe || 'Not specified'}
+- Storytelling Framework: ${typeof ti.storytelling === 'string' ? ti.storytelling : JSON.stringify(ti.storytelling)}
+- Visual/Thumbnail Strategy: ${typeof ti.thumbnail === 'string' ? ti.thumbnail : JSON.stringify(ti.thumbnail)}
+- Benchmarks: ${(ti.references || []).join(', ') || 'None'}
+
+IMPORTANT: The above data is REAL market research from Step 0. Do NOT treat it as placeholders. Use this data to inform your creative suggestions and script writing.
+`.trim();
         }
+        systemInstruction = systemInstruction.replace('{{trendInsights}}', trendSummary);
 
 
 
@@ -1348,6 +1370,22 @@ export const consultAssistantDirector = async (
             .replace('{{masterStyle}}', (context as any).masterStyle || '')
             .replace('{{props}}', propInfo) // NEW: Add props tag for templates
             .replace('{{currentScript}}', JSON.stringify(compactScript, null, 2));
+
+        // Add trend insights to Assistant Director as well
+        let trendSummary = "No trend insights provided.";
+        if (context.trendInsights) {
+            const ti = context.trendInsights;
+            trendSummary = `
+REAL MARKET RESEARCH DATA (Apply these strictly):
+- Target Audience: ${ti.target || 'Not specified'}
+- Strategic Vibe/Mood: ${ti.vibe || 'Not specified'}
+- Storytelling Framework: ${typeof ti.storytelling === 'string' ? ti.storytelling : JSON.stringify(ti.storytelling)}
+- Visual/Thumbnail Strategy: ${typeof ti.thumbnail === 'string' ? ti.thumbnail : JSON.stringify(ti.thumbnail)}
+
+IMPORTANT: The above is ACTUAL research data. Ensure all modifications align with these market trends.
+`.trim();
+        }
+        systemInstruction = systemInstruction.replace('{{trendInsights}}', trendSummary);
 
         const { resolveUrl } = await import('../utils/imageStorage');
 

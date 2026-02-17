@@ -1016,12 +1016,13 @@ export const useWorkflowStore = create<WorkflowStore>()(
                 }
 
                 // OPTIMIZATION: Skip disk read if memory state appears valid
-                // We only load from disk if we suspect data loss (empty script) or need metadata
+                // We only load from disk if we suspect data loss (empty state) or need metadata
                 let existingData: ProjectData | null = null;
-                const hasScript = Array.isArray(state.script) && state.script.length > 0;
+                const hasSubstantialData = (Array.isArray(state.script) && state.script.length > 0) ||
+                    (Array.isArray(state.chatHistory) && state.chatHistory.length > 0);
 
-                if (!hasScript) {
-                    // Only check disk if memory script is empty, to prevent overwriting with empty data
+                if (!hasSubstantialData) {
+                    // Only check disk if memory data is empty, to prevent overwriting with empty data
                     // if the load failed or state is partial
                     console.log(`[Store] Memory script empty for ${projectId}, checking disk preservation...`);
                     existingData = await loadProjectFromDisk(projectId);
@@ -2245,6 +2246,10 @@ export const useWorkflowStore = create<WorkflowStore>()(
                                 useWorkflowStore.setState({
                                     script: fullData.script || [],
                                     assetDefinitions: fullData.assetDefinitions || {},
+                                    chatHistory: fullData.chatHistory || [],
+                                    productionChatHistory: fullData.productionChatHistory || [],
+                                    visualAssets: fullData.visualAssets || {},
+                                    assets: fullData.assets || {},
                                     masterStyle: fullData.masterStyle,
                                     thumbnailUrl: fullData.thumbnailUrl,
                                 } as any);
