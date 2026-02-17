@@ -1801,7 +1801,7 @@ export const Step4_5_VideoComposition: React.FC = () => {
                 {/* Stats */}
                 <div className="flex items-center gap-4 text-sm">
                     <div className="text-center">
-                        <div className="text-2xl font-bold text-blue-400">{videoStats.ready}</div>
+                        <div className="text-2xl font-bold text-[var(--color-primary)]">{videoStats.ready}</div>
                         <div className="text-[var(--color-text-muted)] text-xs">Clips Ready</div>
                     </div>
                     <div className="text-center">
@@ -1816,7 +1816,7 @@ export const Step4_5_VideoComposition: React.FC = () => {
                     <button
                         onClick={handleBulkRefreshMotionPrompts}
                         disabled={isBulkGeneratingMotion || isGenerating}
-                        className="px-3 py-2 bg-orange-500/10 hover:bg-orange-500/20 text-orange-300 rounded-lg text-xs flex items-center gap-2 transition-colors border border-orange-500/20"
+                        className="px-3 py-2 bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 text-[var(--color-primary)] rounded-lg text-xs flex items-center gap-2 transition-colors border border-[var(--color-primary)]/20"
                         title="Refresh all motion prompts based on Step 3 data"
                     >
                         {isBulkGeneratingMotion ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
@@ -1840,7 +1840,7 @@ export const Step4_5_VideoComposition: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
                 {/* 1. AI Video Generation Mode (Left) */}
-                <div className="bg-[var(--color-surface)] rounded-xl p-6 border border-[var(--color-border)] hover:border-orange-500/30 transition-colors h-full flex flex-col">
+                <div className="bg-[var(--color-surface)] rounded-xl p-6 border border-[var(--color-border)] hover:border-[var(--color-primary)]/30 transition-colors h-full flex flex-col">
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-bold text-white flex items-center gap-2">
                             <Video size={22} className="text-[var(--color-primary)]" />
@@ -1875,8 +1875,8 @@ export const Step4_5_VideoComposition: React.FC = () => {
                         </button>
                         <button
                             onClick={() => setSelectedProvider('replicate')}
-                            className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${selectedProvider === 'replicate'
-                                ? 'bg-stone-600 text-white shadow-lg shadow-stone-500/20'
+                            className={`flex-1 py-2 px-4 rounded-lg font-bold transition-all flex items-center justify-center gap-2 ${selectedProvider === 'replicate'
+                                ? 'bg-[var(--color-primary)] text-black shadow-lg shadow-[var(--color-primary)]/20'
                                 : 'bg-[var(--color-bg)] text-gray-400 hover:text-white hover:bg-[var(--color-bg)]/80'
                                 }`}
                         >
@@ -1885,7 +1885,7 @@ export const Step4_5_VideoComposition: React.FC = () => {
                         <button
                             onClick={() => setSelectedProvider('kie-ai')}
                             className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${selectedProvider === 'kie-ai'
-                                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'
+                                ? 'bg-[var(--color-primary)] text-black shadow-lg shadow-[var(--color-primary)]/20'
                                 : 'bg-[var(--color-bg)] text-gray-400 hover:text-white hover:bg-[var(--color-bg)]/80'
                                 }`}
                         >
@@ -1941,7 +1941,7 @@ export const Step4_5_VideoComposition: React.FC = () => {
                                         <select
                                             value={selectedKieModel}
                                             onChange={(e) => setSelectedKieModel(e.target.value)}
-                                            className="w-full bg-black/40 border border-[var(--color-border)] rounded-lg px-3 py-2 text-white focus:border-indigo-500 outline-none"
+                                            className="w-full bg-black/40 border border-[var(--color-border)] rounded-lg px-3 py-2 text-white focus:border-[var(--color-primary)] outline-none"
                                         >
                                             {getKieModels().map(model => (
                                                 <option key={model.id} value={model.id}>
@@ -1962,12 +1962,12 @@ export const Step4_5_VideoComposition: React.FC = () => {
 
                                 {/* Feature Badge */}
                                 <div className="flex gap-2 flex-wrap">
-                                    <span className="px-2 py-1 bg-indigo-500/20 text-indigo-300 text-xs rounded-full">Unified API</span>
+                                    <span className="px-2 py-1 bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-xs rounded-full">Unified API</span>
                                     {selectedKieModel === 'grok-vision-video' && (
                                         <span className="px-2 py-1 bg-red-500/20 text-red-300 text-xs rounded-full">Grok Vision</span>
                                     )}
                                     {selectedKieModel.startsWith('kling') && (
-                                        <span className="px-2 py-1 bg-blue-500/20 text-blue-300 text-xs rounded-full">Kling AI</span>
+                                        <span className="px-2 py-1 bg-[var(--color-primary)]/10 text-[var(--color-primary)]/80 text-xs rounded-full">Kling AI</span>
                                     )}
                                     {selectedKieModel === 'veo-3.1' && (
                                         <span className="px-2 py-1 bg-green-500/20 text-green-300 text-xs rounded-full">Premium Quality</span>
@@ -2006,12 +2006,12 @@ export const Step4_5_VideoComposition: React.FC = () => {
                                 {/* Feature Badge */}
                                 <div className="flex gap-2 flex-wrap">
                                     {selectedReplicateModel.includes('wan-2.2') && (
-                                        <span className="px-2 py-1 bg-orange-500/20 text-orange-300 text-xs rounded-full">Alibaba Wan</span>
+                                        <span className="px-2 py-1 bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-xs rounded-full">Alibaba Wan</span>
                                     )}
                                     {getVideoModels().find(m => m.id === selectedReplicateModel)?.isOpenSource ? (
                                         <span className="px-2 py-1 bg-green-500/20 text-green-300 text-xs rounded-full">Open Source</span>
                                     ) : (
-                                        <span className="px-2 py-1 bg-purple-500/20 text-purple-300 text-xs rounded-full">Proprietary</span>
+                                        <span className="px-2 py-1 bg-[var(--color-primary)]/10 text-[var(--color-primary)]/80 text-xs rounded-full">Proprietary</span>
                                     )}
                                     {selectedReplicateModel === 'ltx-2-distilled' && (
                                         <span className="px-2 py-1 bg-yellow-500/20 text-yellow-300 text-xs rounded-full">Real-time (Distilled)</span>
@@ -2020,10 +2020,10 @@ export const Step4_5_VideoComposition: React.FC = () => {
                                         <span className="px-2 py-1 bg-gray-500/20 text-gray-300 text-xs rounded-full">Image-to-Video</span>
                                     ) : null}
                                     {selectedReplicateModel.includes('720p') && (
-                                        <span className="px-2 py-1 bg-blue-500/20 text-blue-300 text-xs rounded-full">720p HD</span>
+                                        <span className="px-2 py-1 bg-[var(--color-primary)]/5 text-[var(--color-primary)]/70 text-xs rounded-full">720p HD</span>
                                     )}
                                     {selectedReplicateModel.includes('kling') && (
-                                        <span className="px-2 py-1 bg-pink-500/20 text-pink-300 text-xs rounded-full">Cinematic</span>
+                                        <span className="px-2 py-1 bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-xs rounded-full">Cinematic</span>
                                     )}
                                 </div>
                             </div>
@@ -2061,9 +2061,9 @@ export const Step4_5_VideoComposition: React.FC = () => {
                             <button
                                 onClick={() => handleAIVideoGeneration('all')}
                                 disabled={isGenerating}
-                                className={`flex-1 py-3 px-4 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${isGenerating
+                                className={`flex-1 py-3 px-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${isGenerating
                                     ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                                    : 'bg-stone-700 text-white hover:bg-stone-600 shadow-lg shadow-stone-500/20'
+                                    : 'bg-white/10 text-white border border-white/10 hover:bg-white/20 shadow-lg'
                                     }`}
                             >
                                 {isGenerating ? <Loader2 className="animate-spin" size={18} /> : <Video size={18} />}
@@ -2280,11 +2280,11 @@ export const Step4_5_VideoComposition: React.FC = () => {
                     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
                         <div className="bg-[var(--color-surface)] rounded-xl p-6 max-w-md w-full border border-[var(--color-border)]">
                             <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                                <FolderOpen size={20} className="text-blue-400" />
+                                <FolderOpen size={20} className="text-orange-400" />
                                 일괄 업로드 - 매칭 방식
                             </h3>
                             <div className="space-y-3 mb-6">
-                                <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg text-sm text-blue-200">
+                                <div className="p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg text-sm text-orange-200">
                                     💡 업로드할 파일의 이름이 <b>숫자</b>를 포함하고 있으면 (예: cut_001.mp4) 순서대로 자동 매칭됩니다.
                                 </div>
                                 <label className="flex items-center gap-3 p-3 bg-[var(--color-bg)] rounded-lg cursor-pointer hover:bg-[var(--color-bg)]/80">

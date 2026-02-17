@@ -391,7 +391,7 @@ export const UnifiedStudio = ({
                         <button onClick={() => setActiveTab('visual')} className={`px-5 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all ${activeTab === 'visual' ? 'bg-[var(--color-primary)] text-black shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
                             <Sparkles size={14} /> 비주얼 설정
                         </button>
-                        <button onClick={() => setActiveTab('composition')} className={`px-5 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all ${activeTab === 'composition' ? 'bg-purple-500 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
+                        <button onClick={() => setActiveTab('composition')} className={`px-5 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all ${activeTab === 'composition' ? 'bg-orange-600 text-black shadow-lg shadow-orange-500/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
                             <Layers size={14} /> 구도 수정
                         </button>
                     </div>

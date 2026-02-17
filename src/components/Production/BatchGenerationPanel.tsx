@@ -78,7 +78,7 @@ export const BatchGenerationPanel: React.FC<BatchGenerationPanelProps> = ({
     return (
         <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4 mb-4">
             <div className="flex items-center gap-2 mb-3">
-                <div className="w-2 h-2 bg-purple-500 rounded-full" />
+                <div className="w-2 h-2 bg-orange-500 rounded-full" />
                 <h3 className="text-sm font-semibold text-white">스마트 배치 생성</h3>
             </div>
 
@@ -97,9 +97,9 @@ export const BatchGenerationPanel: React.FC<BatchGenerationPanelProps> = ({
                                 <button
                                     key={opt.value}
                                     onClick={() => setGenerationType(opt.value)}
-                                    className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${generationType === opt.value
-                                            ? 'bg-purple-600 text-white'
-                                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                    className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors font-bold ${generationType === opt.value
+                                        ? 'bg-orange-500 text-black'
+                                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                                         }`}
                                 >
                                     {opt.icon}
@@ -122,11 +122,11 @@ export const BatchGenerationPanel: React.FC<BatchGenerationPanelProps> = ({
                                     key={opt.value}
                                     onClick={() => !opt.disabled && setTargetType(opt.value)}
                                     disabled={opt.disabled}
-                                    className={`px-2 py-1 rounded text-xs transition-colors ${targetType === opt.value
-                                            ? 'bg-purple-600 text-white'
-                                            : opt.disabled
-                                                ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
-                                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                    className={`px-2 py-1 rounded text-xs transition-colors font-bold ${targetType === opt.value
+                                        ? 'bg-orange-500 text-black'
+                                        : opt.disabled
+                                            ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
+                                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                                         }`}
                                 >
                                     {opt.label}
@@ -157,7 +157,7 @@ export const BatchGenerationPanel: React.FC<BatchGenerationPanelProps> = ({
                         <button
                             onClick={handleStart}
                             disabled={targetCutIds.length === 0}
-                            className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-medium text-white transition-colors"
+                            className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-black text-black transition-colors"
                         >
                             <Play className="w-4 h-4" />
                             배치 생성 시작
@@ -177,7 +177,7 @@ export const BatchGenerationPanel: React.FC<BatchGenerationPanelProps> = ({
                         </div>
                         <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
                             <div
-                                className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300"
+                                className="h-full bg-gradient-to-r from-[var(--color-primary)] to-[#FF9A5C] transition-all duration-300"
                                 style={{ width: `${stats.progress}%` }}
                             />
                         </div>

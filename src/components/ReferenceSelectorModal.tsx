@@ -1,5 +1,6 @@
 
 import React, { useState, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { X, Upload, Image as ImageIcon, Film, Layers, Monitor } from 'lucide-react';
 
 interface ReferenceSelectorModalProps {
@@ -44,7 +45,7 @@ export const ReferenceSelectorModal: React.FC<ReferenceSelectorModalProps> = ({
         reader.readAsDataURL(file);
     };
 
-    return (
+    return ReactDOM.createPortal(
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
             <div className="w-full max-w-5xl h-[80vh] bg-[#1a1a1a] border border-white/10 rounded-2xl flex flex-col shadow-2xl overflow-hidden">
                 {/* Header */}
@@ -155,6 +156,7 @@ export const ReferenceSelectorModal: React.FC<ReferenceSelectorModalProps> = ({
                     )}
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };

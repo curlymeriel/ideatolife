@@ -31,6 +31,7 @@ export const DEFAULT_CATEGORIES = [
     { value: 'costume', label: '의상' },
     { value: 'hair', label: '헤어' },
     { value: 'color', label: '색감' },
+    { value: 'background', label: '배경' },
     { value: 'composition', label: '구도' },
 ];
 
@@ -42,6 +43,7 @@ export const ASSET_CATEGORIES = [
     { value: 'style', label: '스타일 / Style' },
     { value: 'color', label: '색감 / Color' },
     { value: 'pose', label: '포즈 / Pose' },
+    { value: 'background', label: '배경 / Background' },
 ];
 
 // ============================================================================

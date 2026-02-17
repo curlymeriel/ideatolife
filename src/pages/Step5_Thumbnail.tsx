@@ -714,8 +714,8 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                                 </label>
 
                                 <div className="grid grid-cols-2 gap-3">
-                                    <label className="cursor-pointer flex flex-col items-center justify-center p-5 border-2 border-dashed border-white/5 hover:border-blue-500/50 hover:bg-blue-500/5 transition-all rounded-2xl group">
-                                        <Upload size={24} className="mb-2 text-gray-500 group-hover:text-blue-400 group-hover:scale-110 transition-transform" />
+                                    <label className="cursor-pointer flex flex-col items-center justify-center p-5 border-2 border-dashed border-white/5 hover:border-[var(--color-primary)]/50 hover:bg-[var(--color-primary)]/5 transition-all rounded-2xl group">
+                                        <Upload size={24} className="mb-2 text-gray-500 group-hover:text-[var(--color-primary)] group-hover:scale-110 transition-transform" />
                                         <span className="text-[10px] font-bold text-gray-500 group-hover:text-white lowercase">upload file</span>
                                         <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
                                     </label>
@@ -724,7 +724,7 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                                         onClick={() => setShowCutSelector(true)}
                                         className="flex flex-col items-center justify-center p-5 border border-white/5 bg-white/5 hover:bg-white/10 hover:border-white/10 transition-all rounded-2xl group"
                                     >
-                                        <RefreshCw size={24} className="mb-2 text-gray-500 group-hover:text-blue-400 group-hover:rotate-180 transition-all duration-500" />
+                                        <RefreshCw size={24} className="mb-2 text-gray-500 group-hover:text-[var(--color-primary)] group-hover:rotate-180 transition-all duration-500" />
                                         <span className="text-[10px] font-bold text-gray-500 group-hover:text-white lowercase">from library</span>
                                     </button>
                                 </div>
@@ -782,7 +782,7 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                                                 placeholder="Main headline for AI to render"
                                                 value={aiTitle}
                                                 onChange={(e) => setAiTitle(e.target.value)}
-                                                className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm text-white font-bold focus:border-purple-500/50 outline-none transition-all shadow-inner"
+                                                className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm text-white font-bold focus:border-[var(--color-primary)]/50 outline-none transition-all shadow-inner"
                                             />
                                         </div>
                                         <button
@@ -834,7 +834,7 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                                         value={aiPrompt}
                                         onChange={(e) => setAiPrompt(e.target.value)}
                                         placeholder="Describe the visual composition, lighting, and mood..."
-                                        className="w-full h-24 bg-black/40 border border-white/10 rounded-2xl p-4 text-sm text-gray-300 placeholder:text-gray-700 focus:border-purple-500/50 outline-none resize-none transition-all shadow-inner custom-scrollbar"
+                                        className="w-full h-24 bg-black/40 border border-white/10 rounded-2xl p-4 text-sm text-gray-300 placeholder:text-gray-700 focus:border-[var(--color-primary)]/50 outline-none resize-none transition-all shadow-inner custom-scrollbar"
                                     />
                                     <div className="space-y-3">
                                         <div className="flex justify-between items-center px-1">
@@ -1089,8 +1089,8 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                                 </>
                             ) : (
                                 <div className="flex items-center gap-2">
-                                    <Sparkles size={12} className="text-purple-400" />
-                                    <span className="text-purple-400">AI SYNTHESIZED IMAGE</span>
+                                    <Sparkles size={12} className="text-[var(--color-primary)]" />
+                                    <span className="text-[var(--color-primary)]">AI SYNTHESIZED IMAGE</span>
                                 </div>
                             )}
                         </div>
@@ -1130,7 +1130,7 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                         <div className="p-6 border-b border-white/5 flex justify-between items-center bg-[var(--color-bg)]">
                             <div>
                                 <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                    <Sparkles className="text-purple-400" size={20} />
+                                    <Sparkles className="text-[var(--color-primary)]" size={20} />
                                     Select Reference Images
                                 </h3>
                                 <p className="text-xs text-gray-500 mt-1">Guided generation uses these images as visual style and character references</p>
@@ -1143,7 +1143,7 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                         <div className="flex-1 overflow-y-auto p-6 space-y-10 custom-scrollbar">
                             {/* Production Cuts */}
                             <div>
-                                <h4 className="text-xs font-bold text-blue-400 uppercase tracking-widest mb-4 flex items-center gap-2 px-1">
+                                <h4 className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-widest mb-4 flex items-center gap-2 px-1">
                                     <ImageIcon size={14} />
                                     Final Production Cuts ({script.filter(c => c.finalImageUrl).length})
                                 </h4>
@@ -1171,7 +1171,7 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                             {/* Asset Definitions */}
                             {Object.keys(assetDefinitions || {}).length > 0 && (
                                 <div>
-                                    <h4 className="text-xs font-bold text-purple-400 uppercase tracking-widest mb-4 flex items-center gap-2 px-1">
+                                    <h4 className="text-xs font-bold text-orange-400 uppercase tracking-widest mb-4 flex items-center gap-2 px-1">
                                         <Layers size={14} />
                                         Master Character & Location Assets
                                     </h4>
@@ -1205,14 +1205,14 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                         <div className="p-6 border-t border-white/5 bg-[var(--color-bg)] flex justify-between items-center">
                             <div className="text-sm text-gray-400">
                                 {mode === 'ai-gen' ? (
-                                    <p>선택된 <span className="text-purple-400 font-bold">{selectedReferenceIds.length}</span>개 참고 이미지</p>
+                                    <p>선택된 <span className="text-[var(--color-primary)] font-bold">{selectedReferenceIds.length}</span>개 참고 이미지</p>
                                 ) : (
                                     <p>배경으로 사용할 이미지를 선택하세요</p>
                                 )}
                             </div>
                             <button
                                 onClick={() => setShowCutSelector(false)}
-                                className="px-10 py-3 bg-purple-500 hover:bg-purple-600 text-white rounded-xl font-bold transition-all shadow-lg active:scale-95"
+                                className="px-10 py-3 bg-[var(--color-primary)] hover:opacity-90 text-black rounded-xl font-bold transition-all shadow-lg active:scale-95"
                             >
                                 Confirm Selection
                             </button>
@@ -1259,7 +1259,7 @@ const ReferenceSelectorItem = ({ id, label, isSelected, onToggle, isMulti }: { i
         <button
             onClick={() => onToggle(id)}
             className={`group relative aspect-video rounded-xl overflow-hidden border-2 transition-all ${isSelected
-                ? 'border-purple-500 ring-4 ring-purple-500/20'
+                ? 'border-[var(--color-primary)] ring-4 ring-[var(--color-primary)]/20'
                 : 'border-white/5 hover:border-white/20'
                 }`}
         >
@@ -1274,7 +1274,7 @@ const ReferenceSelectorItem = ({ id, label, isSelected, onToggle, isMulti }: { i
             <div className={`absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                 <div className="absolute top-3 right-3">
                     {isSelected ? (
-                        <div className="bg-purple-500 text-white rounded-full p-1 shadow-lg">
+                        <div className="bg-[var(--color-primary)] text-black rounded-full p-1 shadow-lg">
                             <CheckSquare size={16} />
                         </div>
                     ) : isMulti ? (

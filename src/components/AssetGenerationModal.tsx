@@ -812,7 +812,7 @@ SUGGESTED_PROMPT: [your improved English prompt]
                                     <button
                                         onClick={handleAIExpand}
                                         disabled={isExpanding}
-                                        className="flex-1 py-1.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold rounded flex items-center justify-center gap-1 disabled:opacity-50"
+                                        className="flex-1 py-1.5 bg-gradient-to-r from-[var(--color-primary)] to-[#FF9A5C] text-black text-[10px] font-bold rounded flex items-center justify-center gap-1 disabled:opacity-50 hover:brightness-110"
                                     >
                                         {isExpanding ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                                         <span className="text-center leading-tight">

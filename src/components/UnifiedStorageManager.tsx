@@ -436,17 +436,17 @@ export const UnifiedStorageManager: React.FC<UnifiedStorageManagerProps> = ({ on
                                     <span className="text-2xl font-black text-[var(--color-primary)]">{formatSize(stats.total.size)}</span>
                                 </div>
                                 <div className="w-full h-3 bg-black/40 rounded-full overflow-hidden flex">
-                                    <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${(stats.images.size / stats.total.size) * 100}%` }} title="Images" />
-                                    <div className="h-full bg-purple-500 transition-all duration-500" style={{ width: `${(stats.audio.size / stats.total.size) * 100}%` }} title="Audio" />
-                                    <div className="h-full bg-pink-500 transition-all duration-500" style={{ width: `${(stats.video.size / stats.total.size) * 100}%` }} title="Video" />
+                                    <div className="h-full bg-blue-500/60 transition-all duration-500" style={{ width: `${(stats.images.size / stats.total.size) * 100}%` }} title="Images" />
+                                    <div className="h-full bg-[var(--color-primary)] transition-all duration-500" style={{ width: `${(stats.audio.size / stats.total.size) * 100}%` }} title="Audio" />
+                                    <div className="h-full bg-orange-600 transition-all duration-500" style={{ width: `${(stats.video.size / stats.total.size) * 100}%` }} title="Video" />
                                     <div className="h-full bg-green-500 transition-all duration-500" style={{ width: `${(stats.backups.size / stats.total.size) * 100}%` }} title="Backups" />
                                     <div className="h-full bg-orange-500 transition-all duration-500" style={{ width: `${(stats.projects.size / stats.total.size) * 100}%` }} title="Projects" />
                                 </div>
                                 <div className="flex flex-wrap gap-x-6 gap-y-2 pt-2">
                                     {[
-                                        { label: '이미지', size: stats.images.size, color: 'bg-blue-500' },
-                                        { label: '오디오', size: stats.audio.size, color: 'bg-purple-500' },
-                                        { label: '비디오', size: stats.video.size, color: 'bg-pink-500' },
+                                        { label: '이미지', size: stats.images.size, color: 'bg-blue-500/60' },
+                                        { label: '오디오', size: stats.audio.size, color: 'bg-[var(--color-primary)]' },
+                                        { label: '비디오', size: stats.video.size, color: 'bg-orange-600' },
                                         { label: '백업', size: stats.backups.size, color: 'bg-green-500' },
                                         { label: '프로젝트', size: stats.projects.size, color: 'bg-orange-500' },
                                     ].map(l => (
@@ -466,8 +466,8 @@ export const UnifiedStorageManager: React.FC<UnifiedStorageManagerProps> = ({ on
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                     <CategoryCard id="images" label="이미지 자산" icon={Image} colorClass="bg-blue-500" />
-                                    <CategoryCard id="audio" label="오디오 파일" icon={Music} colorClass="bg-purple-500" />
-                                    <CategoryCard id="video" label="비디오 컷" icon={Film} colorClass="bg-pink-500" />
+                                    <CategoryCard id="audio" label="오디오 파일" icon={Music} colorClass="bg-orange-400" />
+                                    <CategoryCard id="video" label="비디오 컷" icon={Film} colorClass="bg-orange-600" />
                                     <CategoryCard id="backups" label="워크플로우 백업" icon={RefreshCw} colorClass="bg-green-500" />
                                     <CategoryCard id="projects" label="진행 프로젝트" icon={FileText} colorClass="bg-orange-500" />
                                 </div>
@@ -529,7 +529,7 @@ export const UnifiedStorageManager: React.FC<UnifiedStorageManagerProps> = ({ on
                                         <div key={idx} className={`grid grid-cols-12 gap-4 items-center p-3 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] transition-all group ${item.isOrphan ? 'border-orange-500/20 bg-orange-500/5' : ''}`}>
                                             <div className="col-span-6 flex items-center gap-3 min-w-0">
                                                 <div className={`p-2 rounded-lg shrink-0 ${item.category === 'images' ? 'bg-blue-500/10 text-blue-400' :
-                                                    item.category === 'audio' ? 'bg-purple-500/10 text-purple-400' :
+                                                    item.category === 'audio' ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]' :
                                                         item.category === 'backups' ? 'bg-green-500/10 text-green-400' :
                                                             'bg-gray-500/10 text-gray-400'
                                                     }`}>

@@ -339,8 +339,9 @@ export function useStudioHandlers(props: UseStudioHandlersProps) {
                     if (analysis) {
                         const marker = "Visual Features:";
                         const cleanPrev = prompt.split(marker)[0].trim();
-                        finalDescription = cleanPrev ? `${cleanPrev}\n\n${marker} ${analysis}` : `${marker} ${analysis}`;
-                        setPrompt(finalDescription);
+                        const newFinalDescription = cleanPrev ? `${cleanPrev}\n\n${marker} ${analysis}` : `${marker} ${analysis}`;
+                        finalDescription = newFinalDescription;
+                        setPrompt(newFinalDescription);
                         setAnalyzedImageUrl(selectedDraft);
                         console.log('[UnifiedStudio] Prompt updated with analysis.');
                     }

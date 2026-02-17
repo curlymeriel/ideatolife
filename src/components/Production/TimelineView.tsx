@@ -169,7 +169,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                         <span className="text-xs font-bold text-white uppercase tracking-wider">Timeline</span>
                     </div>
                     {dragging && (
-                        <span className="text-[10px] bg-pink-500 text-white px-2 py-0.5 rounded-full animate-pulse">
+                        <span className="text-[10px] bg-orange-600 text-black font-bold px-2 py-0.5 rounded-full animate-pulse uppercase tracking-widest">
                             {dragging.edge === 'start' ? 'Start' : 'End'} → Cut #{hoverCutIdx !== null ? hoverCutIdx + 1 : '?'}
                         </span>
                     )}
@@ -190,7 +190,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                     <div className="w-px h-4 bg-white/10 mx-1" />
                     <button
                         onClick={() => setIsLibraryOpen(true)}
-                        className="flex items-center gap-1.5 px-3 py-1 bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 rounded text-xs font-bold transition-all border border-pink-500/20"
+                        className="flex items-center gap-1.5 px-3 py-1 bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 rounded text-xs font-bold transition-all border border-orange-500/20 shadow-lg shadow-orange-500/5"
                     >
                         <Plus size={12} /> Add Audio Track
                     </button>
@@ -266,7 +266,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                                             step="0.1"
                                             value={track.volume ?? 0.5}
                                             onChange={(e) => handleUpdateTrack(track.id, { volume: parseFloat(e.target.value) })}
-                                            className="flex-1 h-1 bg-white/5 rounded-full appearance-none cursor-pointer accent-gray-500 hover:accent-pink-500"
+                                            className="flex-1 h-1 bg-white/5 rounded-full appearance-none cursor-pointer accent-gray-500 hover:accent-orange-500"
                                         />
                                     </div>
                                 </div>
@@ -295,7 +295,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                                     <div
                                         key={cut.id}
                                         className={`flex-shrink-0 cursor-pointer border-r border-white/5 relative group ${isHovered
-                                            ? 'ring-2 ring-pink-500 bg-pink-500/10'
+                                            ? 'ring-2 ring-orange-500 bg-orange-500/10'
                                             : index === currentCutIndex
                                                 ? 'bg-white/5'
                                                 : 'hover:bg-white/5'

@@ -168,8 +168,8 @@ export const SfxSearchModal: React.FC<SfxSearchModalProps> = ({
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)] bg-[var(--color-bg)]">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-purple-500/10 rounded-lg">
-                            <Music className="text-purple-400" size={20} />
+                        <div className="p-2 bg-orange-500/10 rounded-lg">
+                            <Music className="text-orange-400" size={20} />
                         </div>
                         <div>
                             <h2 className="text-lg font-bold text-white">Sound Effect (SFX)</h2>
@@ -191,7 +191,7 @@ export const SfxSearchModal: React.FC<SfxSearchModalProps> = ({
                     <button
                         onClick={() => setActiveTab('search')}
                         className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'search'
-                            ? 'text-purple-400 border-b-2 border-purple-500 bg-purple-500/5'
+                            ? 'text-orange-400 border-b-2 border-orange-500 bg-orange-500/5'
                             : 'text-[var(--color-text-muted)] hover:text-white'
                             }`}
                     >
@@ -201,7 +201,7 @@ export const SfxSearchModal: React.FC<SfxSearchModalProps> = ({
                     <button
                         onClick={() => setActiveTab('upload')}
                         className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${activeTab === 'upload'
-                            ? 'text-purple-400 border-b-2 border-purple-500 bg-purple-500/5'
+                            ? 'text-orange-400 border-b-2 border-orange-500 bg-orange-500/5'
                             : 'text-[var(--color-text-muted)] hover:text-white'
                             }`}
                     >
@@ -232,9 +232,9 @@ export const SfxSearchModal: React.FC<SfxSearchModalProps> = ({
                             step="0.1"
                             value={selectedVolume}
                             onChange={(e) => setSelectedVolume(parseFloat(e.target.value))}
-                            className="flex-1 accent-purple-500"
+                            className="flex-1 accent-orange-500"
                         />
-                        <span className="text-xs text-purple-400 w-12">{Math.round(selectedVolume * 100)}%</span>
+                        <span className="text-xs text-orange-400 w-12">{Math.round(selectedVolume * 100)}%</span>
                     </div>
 
                     {/* Search Tab */}
@@ -248,12 +248,12 @@ export const SfxSearchModal: React.FC<SfxSearchModalProps> = ({
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                                     placeholder="Search sounds... (e.g., rain, footsteps, thunder)"
-                                    className="flex-1 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg px-4 py-2 text-white text-sm focus:border-purple-500 outline-none"
+                                    className="flex-1 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg px-4 py-2 text-white text-sm focus:border-orange-500 outline-none"
                                 />
                                 <button
                                     onClick={handleSearch}
                                     disabled={isSearching || !searchQuery.trim()}
-                                    className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                    className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-black rounded-lg font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                                 >
                                     {isSearching ? (
                                         <Loader2 size={16} className="animate-spin" />
@@ -287,14 +287,14 @@ export const SfxSearchModal: React.FC<SfxSearchModalProps> = ({
                                     {searchResults.map((sound) => (
                                         <div
                                             key={sound.id}
-                                            className="flex items-center gap-3 p-3 bg-[var(--color-bg)] rounded-lg border border-[var(--color-border)] hover:border-purple-500/50 transition-colors group"
+                                            className="flex items-center gap-3 p-3 bg-[var(--color-bg)] rounded-lg border border-[var(--color-border)] hover:border-orange-500/50 transition-colors group"
                                         >
                                             {/* Play button */}
                                             <button
                                                 onClick={() => handlePlayPreview(sound)}
                                                 className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-colors ${playingId === sound.id
-                                                    ? 'bg-purple-500 text-white'
-                                                    : 'bg-white/5 text-gray-400 hover:bg-purple-500/20 hover:text-purple-400'
+                                                    ? 'bg-orange-500 text-black'
+                                                    : 'bg-white/5 text-gray-400 hover:bg-orange-500/20 hover:text-orange-400'
                                                     }`}
                                             >
                                                 {playingId === sound.id ? (
@@ -320,7 +320,7 @@ export const SfxSearchModal: React.FC<SfxSearchModalProps> = ({
                                             <button
                                                 onClick={() => handleSelectSound(sound)}
                                                 disabled={isDownloading}
-                                                className="px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500 text-purple-300 hover:text-white rounded text-xs font-medium transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-50"
+                                                className="px-3 py-1.5 bg-orange-500/20 hover:bg-orange-500 text-orange-300 hover:text-black rounded text-xs font-bold transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-50"
                                             >
                                                 {isDownloading ? 'Downloading...' : 'Select'}
                                             </button>
@@ -333,7 +333,7 @@ export const SfxSearchModal: React.FC<SfxSearchModalProps> = ({
                             {searchResults.length > 0 && (
                                 <p className="text-[10px] text-gray-600 text-center flex items-center justify-center gap-1">
                                     Powered by
-                                    <a href="https://freesound.org" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline">
+                                    <a href="https://freesound.org" target="_blank" rel="noopener noreferrer" className="text-orange-400 hover:underline">
                                         Freesound.org <ExternalLink size={10} className="inline" />
                                     </a>
                                 </p>

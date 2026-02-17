@@ -492,7 +492,7 @@ export const CompositionEditor: React.FC<CompositionEditorProps> = ({
                         onClick={handleApply}
                         disabled={!state.cannyEdges || state.isApplying}
                         className={`px-5 py-2.5 rounded-xl text-sm font-black flex items-center gap-2 transition-all ${state.cannyEdges && !state.isApplying
-                            ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:brightness-110 shadow-xl'
+                            ? 'bg-gradient-to-r from-[var(--color-primary)] to-[#FF9A5C] text-black hover:brightness-110 shadow-xl'
                             : 'bg-white/5 text-gray-600 cursor-not-allowed'
                             }`}
                     >

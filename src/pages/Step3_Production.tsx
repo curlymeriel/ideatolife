@@ -1277,6 +1277,7 @@ export const Step3_Production: React.FC = () => {
                     {/* Header with Stats */}
                     <div className="glass-panel p-4">
                         <div className="flex flex-col gap-3">
+
                             <div className="flex items-center justify-between">
                                 <div>
                                     <h2 className="text-2xl font-bold text-white tracking-tight">Production</h2>
@@ -1306,7 +1307,7 @@ export const Step3_Production: React.FC = () => {
                                 <button
                                     onClick={handleBatchGenerate}
                                     disabled={batchLoading || loading}
-                                    className="w-full mt-2 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2 shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="w-full mt-2 py-2 bg-gradient-to-r from-[var(--color-primary)] to-[#FF9A5C] text-black text-xs font-bold rounded-lg flex items-center justify-center gap-2 shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:brightness-110"
                                 >
                                     {batchLoading ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
                                     미생성 자산 일괄 생성하기 ({localScript.filter(c => (!c.audioUrl && c.speaker !== 'SILENT') || !c.finalImageUrl).length})
@@ -1318,7 +1319,7 @@ export const Step3_Production: React.FC = () => {
                                 <div className="pt-3 border-t border-white/5 flex gap-4">
                                     {/* Left Side: Title & Description */}
                                     <div className="flex-1 flex flex-col justify-center gap-1">
-                                        <span className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
+                                        <span className="text-[10px] uppercase tracking-widest font-black text-[var(--color-primary)] opacity-80 flex items-center gap-2">
                                             <Lock size={10} />
                                             이미 생성된 자산 일괄 잠금/해제
                                         </span>
@@ -1466,6 +1467,7 @@ export const Step3_Production: React.FC = () => {
                             </div>
 
                             {/* Per Speaker */}
+
                             <div className="space-y-2 pt-2 border-t border-[var(--color-border)]">
                                 <div className="text-[9px] text-[var(--color-text-muted)] uppercase font-bold">화자별 보이스 설정</div>
                                 <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
@@ -1588,12 +1590,12 @@ export const Step3_Production: React.FC = () => {
                             {/* 2) Video Prompt Instructions */}
                             <button
                                 onClick={() => setIsVideoInstructionsModalOpen(true)}
-                                className="w-full flex items-center justify-between p-3 bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-purple-400 rounded-lg transition-colors group text-left"
+                                className="w-full flex items-center justify-between p-3 bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)] rounded-lg transition-colors group text-left"
                             >
-                                <span className="text-xs font-medium text-white group-hover:text-purple-400 transition-colors">
+                                <span className="text-xs font-medium text-white group-hover:text-[var(--color-primary)] transition-colors">
                                     Video
                                 </span>
-                                <span className="text-[10px] text-purple-400 bg-purple-500/10 px-2 py-1 rounded">
+                                <span className="text-[10px] text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-2 py-1 rounded">
                                     Edit ✏️
                                 </span>
                             </button>

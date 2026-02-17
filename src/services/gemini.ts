@@ -146,8 +146,8 @@ export interface ProjectContext {
     assetDefinitions?: any; // NEW
 }
 
-const GEMINI_3_0_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-pro:generateContent';
-const GEMINI_3_0_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-flash:generateContent';
+const GEMINI_3_0_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro:generateContent';
+const GEMINI_3_0_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash:generateContent';
 const GEMINI_2_5_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent';
 const GEMINI_2_5_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
@@ -575,8 +575,8 @@ ${trendInsights.thumbnail ? (typeof trendInsights.thumbnail === 'string' ? `- ì
 
         // Base model list (fallback order)
         const baseModels = [
-            { name: 'Gemini 3.0 Pro', url: GEMINI_3_0_PRO_URL },
-            { name: 'Gemini 3.0 Flash', url: GEMINI_3_0_FLASH_URL },
+            { name: 'Gemini 3 Pro', url: GEMINI_3_PRO_URL },
+            { name: 'Gemini 3 Flash', url: GEMINI_3_FLASH_URL },
             { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
             { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL }
         ];
@@ -2083,7 +2083,7 @@ export const generateText = async (
             }
         }
         normalizedImages.forEach(img => {
-            parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
+            parts.push({ inline_data: { mime_type: img.mimeType, data: img.data } });
         });
         contents = [{ role: 'user', parts }];
     }

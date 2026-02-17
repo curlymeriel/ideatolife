@@ -743,7 +743,7 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                     <button
                         onClick={() => setActiveTab('composition')}
                         className={`px-5 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all ${activeTab === 'composition'
-                            ? 'bg-purple-500 text-white shadow-lg'
+                            ? 'bg-orange-500 text-black shadow-lg'
                             : 'text-gray-400 hover:text-white hover:bg-white/5'
                             }`}
                     >
@@ -852,7 +852,7 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                                     </div>
                                     <div className="space-y-2">
                                         <div className="flex items-center justify-between">
-                                            <label className="text-[10px] font-black text-purple-400 uppercase tracking-widest flex items-center gap-2"><Film size={14} /> Motion Direction</label>
+                                            <label className="text-[10px] font-black text-orange-400 uppercase tracking-widest flex items-center gap-2"><Film size={14} /> Motion Direction</label>
                                             <button
                                                 onClick={() => setVideoPrompt('')}
                                                 className="text-[9px] font-bold text-gray-500 hover:text-red-400 flex items-center gap-1 transition-colors"
@@ -861,7 +861,7 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                                                 <Trash2 size={12} /> CLEAR
                                             </button>
                                         </div>
-                                        <textarea value={videoPrompt} onChange={e => setVideoPrompt(e.target.value)} placeholder="Camera panning, movement..." className="w-full h-20 bg-purple-500/5 border border-purple-500/10 rounded-xl p-3 text-[11px] text-gray-400 outline-none focus:border-purple-500/30 transition-all resize-none" />
+                                        <textarea value={videoPrompt} onChange={e => setVideoPrompt(e.target.value)} placeholder="Camera panning, movement..." className="w-full h-20 bg-orange-500/5 border border-orange-500/10 rounded-xl p-3 text-[11px] text-gray-400 outline-none focus:border-orange-500/30 transition-all resize-none" />
                                     </div>
                                 </section>
                             </div>

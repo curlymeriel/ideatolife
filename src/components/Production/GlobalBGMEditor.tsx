@@ -40,12 +40,12 @@ export const GlobalBGMEditor: React.FC<GlobalBGMEditorProps> = ({ tracks, onChan
         <div className="bg-[#121212] border-t border-white/10 p-4">
             <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                    <Music size={16} className="text-pink-400" />
+                    <Music size={16} className="text-orange-400" />
                     <h3 className="text-sm font-bold text-white uppercase tracking-wider">Background Music Tracks</h3>
                 </div>
                 <button
                     onClick={() => setIsLibraryOpen(true)}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 rounded-lg text-xs font-bold transition-all"
+                    className="flex items-center gap-2 px-3 py-1.5 bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 rounded-lg text-xs font-bold transition-all border border-orange-500/20"
                 >
                     <Plus size={14} /> Add Track
                 </button>
@@ -68,7 +68,7 @@ export const GlobalBGMEditor: React.FC<GlobalBGMEditorProps> = ({ tracks, onChan
                                     <Clock size={10} />
                                     Cut {track.startCutId} - {track.endCutId}
                                 </span>
-                                <span className="text-pink-400/50">
+                                <span className="text-orange-400/50">
                                     {Math.round(track.volume * 100)}% Volume
                                 </span>
                             </div>
@@ -85,7 +85,7 @@ export const GlobalBGMEditor: React.FC<GlobalBGMEditorProps> = ({ tracks, onChan
                                     max={totalCuts}
                                     value={track.startCutId}
                                     onChange={(e) => handleUpdateTrack(track.id, { startCutId: parseInt(e.target.value) || 1 })}
-                                    className="w-10 bg-transparent text-center text-white border-b border-white/10 focus:border-pink-500 outline-none"
+                                    className="w-10 bg-transparent text-center text-white border-b border-white/10 focus:border-orange-500 outline-none"
                                 />
                                 <span className="text-gray-600">-</span>
                                 <input
@@ -94,7 +94,7 @@ export const GlobalBGMEditor: React.FC<GlobalBGMEditorProps> = ({ tracks, onChan
                                     max={totalCuts}
                                     value={track.endCutId}
                                     onChange={(e) => handleUpdateTrack(track.id, { endCutId: parseInt(e.target.value) || totalCuts })}
-                                    className="w-10 bg-transparent text-center text-white border-b border-white/10 focus:border-pink-500 outline-none"
+                                    className="w-10 bg-transparent text-center text-white border-b border-white/10 focus:border-orange-500 outline-none"
                                 />
                             </div>
 
@@ -106,7 +106,7 @@ export const GlobalBGMEditor: React.FC<GlobalBGMEditorProps> = ({ tracks, onChan
                                 step="0.1"
                                 value={track.volume}
                                 onChange={(e) => handleUpdateTrack(track.id, { volume: parseFloat(e.target.value) })}
-                                className="w-16 h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-pink-500"
+                                className="w-16 h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-orange-500"
                                 title={`Volume: ${Math.round(track.volume * 100)}%`}
                             />
 
@@ -126,7 +126,7 @@ export const GlobalBGMEditor: React.FC<GlobalBGMEditorProps> = ({ tracks, onChan
                         <p className="text-xs text-gray-500">No background music added yet.</p>
                         <button
                             onClick={() => setIsLibraryOpen(true)}
-                            className="mt-2 text-pink-400 text-xs font-bold hover:underline"
+                            className="mt-2 text-orange-400 text-xs font-bold hover:underline"
                         >
                             Browse Library
                         </button>

@@ -76,7 +76,7 @@ export const BGMLibraryModal: React.FC<BGMLibraryModalProps> = ({ isOpen, onClos
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 border-b border-white/10">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-pink-500/20 rounded-lg text-pink-400">
+                        <div className="p-2 bg-orange-500/20 rounded-lg text-orange-400">
                             <Music size={24} />
                         </div>
                         <div>
@@ -120,16 +120,16 @@ export const BGMLibraryModal: React.FC<BGMLibraryModalProps> = ({ isOpen, onClos
                     {filteredTracks.map(track => {
                         const isPlaying = previewTrackId === track.id;
                         return (
-                            <div key={track.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${isPlaying ? 'bg-pink-500/10 border-pink-500/50' : 'bg-white/5 border-white/5 hover:bg-white/10'}`}>
+                            <div key={track.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${isPlaying ? 'bg-orange-500/10 border-orange-500/50' : 'bg-white/5 border-white/5 hover:bg-white/10'}`}>
                                 <div className="flex items-center gap-4">
                                     <button
                                         onClick={() => handlePreview(track)}
-                                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isPlaying ? 'bg-pink-500 text-white' : 'bg-white/10 text-gray-400 hover:text-white hover:bg-white/20'}`}
+                                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isPlaying ? 'bg-orange-500 text-black' : 'bg-white/10 text-gray-400 hover:text-white hover:bg-white/20'}`}
                                     >
                                         {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-0.5" />}
                                     </button>
                                     <div>
-                                        <h4 className={`font-bold text-sm ${isPlaying ? 'text-pink-400' : 'text-white'}`}>{track.title}</h4>
+                                        <h4 className={`font-bold text-sm ${isPlaying ? 'text-orange-400' : 'text-white'}`}>{track.title}</h4>
                                         <div className="flex items-center gap-2 text-xs text-gray-500">
                                             <span>{track.category}</span>
                                             <span>•</span>

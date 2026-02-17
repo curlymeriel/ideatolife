@@ -603,7 +603,7 @@ export const CutItem = memo(({
                                                 <button
                                                     onClick={handleAiVisualSuggest}
                                                     disabled={isSuggestingVisual}
-                                                    className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold border bg-purple-500/10 text-purple-400 border-purple-500/20 hover:bg-purple-500/20 hover:text-purple-300 disabled:opacity-50"
+                                                    className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold border bg-orange-500/10 text-orange-400 border-orange-500/20 hover:bg-orange-500/20 hover:text-orange-300 disabled:opacity-50"
                                                     title="AI Camera Suggestion"
                                                 >
                                                     {isSuggestingVisual ? <Loader2 size={8} className="animate-spin" /> : <Sparkles size={8} />}
@@ -698,7 +698,7 @@ export const CutItem = memo(({
                                                 </div>
                                             ))}
                                             {cut.referenceCutIds?.map((refId: number) => (
-                                                <div key={`ref-${refId}`} className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-500/20 text-[8px] text-purple-300 border border-purple-500/30">
+                                                <div key={`ref-${refId}`} className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-500/20 text-[8px] text-orange-300 border border-orange-500/30">
                                                     <span>Cut #{refId}</span>
                                                     {onRemoveReference && <X size={8} className="cursor-pointer hover:text-red-400" onClick={() => onRemoveReference(cut.id, refId)} />}
                                                 </div>
@@ -736,10 +736,10 @@ export const CutItem = memo(({
                                     {/* Motion Prompt */}
                                     <div className="space-y-1">
                                         <div className="flex items-center justify-between">
-                                            <label className="text-[9px] text-purple-400/70 uppercase font-bold tracking-wider">Motion</label>
+                                            <label className="text-[9px] text-orange-400/70 uppercase font-bold tracking-wider">Motion</label>
                                             <div className="flex items-center gap-2">
                                                 <select
-                                                    className="bg-black/40 text-[8px] text-gray-400 border border-white/10 rounded px-1.5 py-0.5 outline-none focus:border-purple-500 cursor-pointer hover:bg-white/5 transition-colors max-w-[80px]"
+                                                    className="bg-black/40 text-[8px] text-gray-400 border border-white/10 rounded px-1.5 py-0.5 outline-none focus:border-orange-500 cursor-pointer hover:bg-white/5 transition-colors max-w-[80px]"
                                                     onChange={(e) => {
                                                         const preset = DEFAULT_MOTION_PRESETS.find(p => p.id === e.target.value);
                                                         if (preset) {
@@ -771,7 +771,7 @@ export const CutItem = memo(({
                                                 <button
                                                     onClick={handleAutoGenerateVideoPrompt}
                                                     disabled={_isGeneratingMotion}
-                                                    className="flex items-center gap-1 text-[8px] font-bold text-purple-400/80 hover:text-purple-400 disabled:opacity-50 transition-colors"
+                                                    className="flex items-center gap-1 text-[8px] font-bold text-orange-400/80 hover:text-orange-400 disabled:opacity-50 transition-colors"
                                                     title="Generate with AI"
                                                 >
                                                     {_isGeneratingMotion ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
@@ -788,7 +788,7 @@ export const CutItem = memo(({
                                             </div>
                                         </div>
                                         <textarea
-                                            className="w-full bg-black/50 border border-purple-500/10 rounded-lg px-2 py-1 text-gray-400 text-[9px] min-h-[30px] focus:border-purple-500 outline-none resize-none"
+                                            className="w-full bg-black/50 border border-orange-500/10 rounded-lg px-2 py-1 text-gray-400 text-[9px] min-h-[30px] focus:border-orange-500 outline-none resize-none"
                                             value={cut.videoPrompt || ''}
                                             disabled={isImageConfirmed}
                                             onChange={(e) => onUpdateCut(cut.id, { videoPrompt: e.target.value })}
