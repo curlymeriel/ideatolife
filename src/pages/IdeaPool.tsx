@@ -14,6 +14,18 @@ import {
 } from 'lucide-react';
 import type { IdeaPoolItem } from '../store/types';
 
+// Helper to format text with $$ markers
+const formatText = (text: string) => {
+    if (!text) return '';
+    const parts = text.split('$$');
+    return parts.map((part, index) => {
+        if (index % 2 === 1) {
+            return <span key={index} className="text-[var(--color-primary)] font-bold">{part}</span>;
+        }
+        return part;
+    });
+};
+
 export const IdeaPool: React.FC = () => {
     const navigate = useNavigate();
     const { ideaPool, setProjectInfo, setScript, saveProject } = useWorkflowStore();
@@ -95,10 +107,10 @@ export const IdeaPool: React.FC = () => {
             {/* Header */}
             <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-[var(--color-text-primary)] flex items-center gap-3">
-                        <Lightbulb className="text-yellow-400 fill-yellow-400/20" size={32} />
+                    <h1 className="text-3xl font-bold text-white flex items-center gap-3">
+                        <Lightbulb className="text-[var(--color-primary)] fill-[var(--color-primary)]/20" size={32} />
                         아이디어 풀 (Idea Pool)
-                        <span className="ml-2 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/10 text-xs text-green-500 border border-green-500/20 font-medium">
+                        <span className="ml-2 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-xs text-[var(--color-primary)] border border-[var(--color-primary)]/20 font-medium">
                             <CheckCircle2 size={12} /> Auto-saved to Browser
                         </span>
                     </h1>
@@ -109,7 +121,7 @@ export const IdeaPool: React.FC = () => {
                 <div className="flex items-center gap-3">
                     <button
                         onClick={() => setIsAddModalOpen(true)}
-                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--color-primary)] text-white hover:opacity-90 transition-all font-medium"
+                        className="btn-primary flex items-center gap-2 px-4 py-2 rounded-xl text-black font-medium"
                     >
                         <Plus size={20} />
                         직접 추가
@@ -150,25 +162,25 @@ export const IdeaPool: React.FC = () => {
                     {filteredIdeas.map((idea) => (
                         <div
                             key={idea.id}
-                            className="group relative bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] overflow-hidden hover:border-[var(--color-primary)]/50 transition-all duration-300 hover:shadow-xl hover:shadow-[var(--color-primary)]/5"
+                            className="group relative glass-panel hover:border-[var(--color-primary)]/50 transition-all duration-300 hover:shadow-xl hover:shadow-[var(--color-primary)]/5"
                         >
                             <div className="p-6 space-y-4">
                                 <div className="flex items-start justify-between">
-                                    <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-yellow-400/10 text-yellow-600 text-xs font-bold uppercase tracking-wider">
+                                    <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] text-xs font-bold uppercase tracking-wider border border-[var(--color-primary)]/20">
                                         <Target size={12} />
                                         {idea.category || 'Idea'}
                                     </div>
                                     <div className="flex items-center gap-1">
                                         <button
                                             onClick={() => handleStartResearch(idea)}
-                                            className="p-2 text-indigo-400 hover:bg-indigo-500/10 transition-all rounded-lg"
+                                            className="p-2 text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 transition-all rounded-lg"
                                             title="시장조사/검증 시작"
                                         >
                                             <Search size={18} />
                                         </button>
                                         <button
                                             onClick={() => useWorkflowStore.getState().deleteIdeaFromPool(idea.id)}
-                                            className="p-2 text-[var(--color-text-secondary)] hover:text-red-500 hover:bg-red-50 transition-all rounded-lg"
+                                            className="p-2 text-[var(--color-text-secondary)] hover:text-red-500 hover:bg-red-500/10 transition-all rounded-lg"
                                             title="아이디어 삭제"
                                         >
                                             <Trash2 size={18} />
@@ -177,8 +189,8 @@ export const IdeaPool: React.FC = () => {
                                 </div>
 
                                 <div>
-                                    <h3 className="text-xl font-bold text-[var(--color-text-primary)] leading-tight group-hover:text-[var(--color-primary)] transition-colors">
-                                        {idea.title}
+                                    <h3 className="text-xl font-bold text-white leading-tight group-hover:text-[var(--color-primary)] transition-colors">
+                                        {formatText(idea.title)}
                                     </h3>
                                     <p className="text-[var(--color-text-secondary)] mt-2 line-clamp-3 text-sm leading-relaxed">
                                         {idea.description}
@@ -186,12 +198,12 @@ export const IdeaPool: React.FC = () => {
                                 </div>
 
                                 <div className="flex items-center gap-4 pt-4 border-t border-[var(--color-border)]">
-                                    <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
+                                    <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)]">
                                         <Clock size={14} />
                                         {new Date(idea.createdAt).toLocaleDateString()}
                                     </div>
                                     {idea.metadata?.format && (
-                                        <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
+                                        <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)]">
                                             <LayoutGrid size={14} />
                                             {idea.metadata.format}
                                         </div>
@@ -201,13 +213,13 @@ export const IdeaPool: React.FC = () => {
                                 <div className="grid grid-cols-2 gap-3">
                                     <button
                                         onClick={() => handleStartResearch(idea)}
-                                        className="flex items-center justify-center gap-2 py-3 rounded-xl bg-indigo-500/10 text-indigo-400 font-bold hover:bg-indigo-500 hover:text-white transition-all text-sm"
+                                        className="btn-secondary flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold"
                                     >
                                         검증/분석
                                     </button>
                                     <button
                                         onClick={() => handlePromote(idea)}
-                                        className="flex items-center justify-center gap-2 py-3 rounded-xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-bold hover:bg-[var(--color-primary)] hover:text-white transition-all text-sm"
+                                        className="btn-primary flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold shadow-lg shadow-orange-500/10"
                                     >
                                         제작 시작
                                     </button>
@@ -215,7 +227,7 @@ export const IdeaPool: React.FC = () => {
                             </div>
 
                             {idea.status === 'completed' && (
-                                <div className="absolute top-2 right-2 p-1 bg-green-500 rounded-full text-white shadow-lg">
+                                <div className="absolute top-2 right-2 p-1 bg-[var(--color-primary)] text-black rounded-full shadow-lg">
                                     <CheckCircle2 size={16} />
                                 </div>
                             )}
@@ -277,13 +289,13 @@ export const IdeaPool: React.FC = () => {
                             </div>
                             <div className="flex gap-4 pt-4">
                                 <button
-                                    className="flex-1 py-4 rounded-2xl bg-white/5 text-gray-400 font-bold hover:bg-white/10 transition-all"
+                                    className="btn-secondary flex-1 py-4 rounded-2xl font-bold"
                                     onClick={() => setIsAddModalOpen(false)}
                                 >
                                     취소
                                 </button>
                                 <button
-                                    className="flex-1 py-4 rounded-2xl bg-[var(--color-primary)] text-black font-bold hover:opacity-90 transition-all shadow-lg shadow-[var(--color-primary)]/20"
+                                    className="btn-primary flex-1 py-4 rounded-2xl font-bold shadow-lg shadow-orange-500/20"
                                     onClick={handleAddIdea}
                                 >
                                     아이디어 저장

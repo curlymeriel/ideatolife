@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useWorkflowStore, type AssetDefinition } from '../store/workflowStore';
 import { enhancePrompt, analyzeImage } from '../services/gemini';
 import { ImageCropModal } from '../components/ImageCropModal';
-import { AssetGenerationModal, type GenerationResult } from '../components/AssetGenerationModal';
+import { UnifiedStudio, type AssetGenerationResult } from '../components/UnifiedStudio';
 import { resolveUrl } from '../utils/imageStorage';
 
 // Helper component for async loading of asset images
@@ -902,58 +902,57 @@ export const Step2_Style: React.FC = () => {
 
             {/* Asset Generation Studio Modal */}
             {showGenerationModal && selectedAssetId !== 'master_style' && (
-                <AssetGenerationModal
+                <UnifiedStudio
                     isOpen={showGenerationModal}
                     onClose={() => setShowGenerationModal(false)}
-                    assetId={selectedAssetId}
-                    assetType={selectedAssetType as 'character' | 'location' | 'prop'}
-                    assetName={selectedAssetName}
-                    initialDescription={description}
-                    initialReferenceImage={referenceImage}
-                    initialDraftImage={draftImage}
-                    masterStyle={safeMasterStyle.description}
-                    aspectRatio={aspectRatio || '16:9'}
                     apiKey={apiKeys?.gemini || ''}
-                    // [NEW] Pass full context including other assets
-                    projectContext={(() => {
-                        let ctx = `Series: ${seriesName}, Episode: ${episodeName}`;
-                        if (safeMasterStyle.description) ctx += `\nMaster Visual Style: ${safeMasterStyle.description}`;
-
-                        const definedAssets = Object.values(safeAssetDefinitions).filter((def: any) => isDefined(def.id) && def.id !== selectedAssetId);
-                        if (definedAssets.length > 0) {
-                            const chars = definedAssets.filter((d: any) => d.type === 'character').map((d: any) => `- ${d.name}: ${d.description.slice(0, 100)}...`).join('\n');
-                            const locs = definedAssets.filter((d: any) => d.type === 'location').map((d: any) => `- ${d.name}: ${d.description.slice(0, 100)}...`).join('\n');
-                            if (chars) ctx += `\n\n[Existing Characters]\n${chars}`;
-                            if (locs) ctx += `\n\n[Existing Locations]\n${locs}`;
-                        }
-                        return ctx;
-                    })()}
-                    existingAssets={(() => {
-                        const assets: { id: string, name: string, url: string, type: string }[] = [];
-                        if (safeMasterStyle.referenceImage) {
-                            assets.push({ id: 'master_style', name: 'Master Style', url: safeMasterStyle.referenceImage, type: 'style' });
-                        }
-                        Object.values(safeAssetDefinitions).forEach((def: any) => {
-                            if (def.id !== selectedAssetId && isDefined(def.id)) {
-                                const img = def.draftImage || def.referenceImage;
-                                if (img) {
-                                    assets.push({ id: def.id, name: def.name || 'Asset', url: img, type: def.type });
-                                }
+                    masterStyle={safeMasterStyle.description}
+                    config={{
+                        mode: 'asset',
+                        assetId: selectedAssetId,
+                        assetType: selectedAssetType as 'character' | 'location' | 'prop',
+                        assetName: selectedAssetName,
+                        initialDescription: description,
+                        initialReferenceImage: referenceImage,
+                        initialDraftImage: draftImage,
+                        aspectRatio: aspectRatio || '16:9',
+                        projectContext: (() => {
+                            let ctx = `Series: ${seriesName}, Episode: ${episodeName}`;
+                            if (safeMasterStyle.description) ctx += `\nMaster Visual Style: ${safeMasterStyle.description}`;
+                            const definedAssets = Object.values(safeAssetDefinitions).filter((def: any) => isDefined(def.id) && def.id !== selectedAssetId);
+                            if (definedAssets.length > 0) {
+                                const chars = definedAssets.filter((d: any) => d.type === 'character').map((d: any) => `- ${d.name}: ${d.description.slice(0, 100)}...`).join('\n');
+                                const locs = definedAssets.filter((d: any) => d.type === 'location').map((d: any) => `- ${d.name}: ${d.description.slice(0, 100)}...`).join('\n');
+                                if (chars) ctx += `\n\n[Existing Characters]\n${chars}`;
+                                if (locs) ctx += `\n\n[Existing Locations]\n${locs}`;
                             }
-                        });
-                        return assets;
-                    })()}
-                    onSave={(result: GenerationResult) => {
-                        // Apply results from modal
-                        setDescription(result.description);
-                        if (result.selectedDraft) {
-                            setDraftImage(result.selectedDraft);
-                        }
-                        // Store updated draft candidates
-                        if (result.draftHistory.length > 0) {
-                            setDraftCandidates(result.draftHistory);
-                        }
-                        setShowGenerationModal(false);
+                            return ctx;
+                        })(),
+                        existingAssets: (() => {
+                            const assets: { id: string, name: string, url: string, type: string }[] = [];
+                            if (safeMasterStyle.referenceImage) {
+                                assets.push({ id: 'master_style', name: 'Master Style', url: safeMasterStyle.referenceImage, type: 'style' });
+                            }
+                            Object.values(safeAssetDefinitions).forEach((def: any) => {
+                                if (def.id !== selectedAssetId && isDefined(def.id)) {
+                                    const img = def.draftImage || def.referenceImage;
+                                    if (img) {
+                                        assets.push({ id: def.id, name: def.name || 'Asset', url: img, type: def.type });
+                                    }
+                                }
+                            });
+                            return assets;
+                        })(),
+                        onSave: (result: AssetGenerationResult) => {
+                            setDescription(result.description);
+                            if (result.selectedDraft) {
+                                setDraftImage(result.selectedDraft);
+                            }
+                            if (result.draftHistory.length > 0) {
+                                setDraftCandidates(result.draftHistory);
+                            }
+                            setShowGenerationModal(false);
+                        },
                     }}
                 />
             )}

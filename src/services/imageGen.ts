@@ -174,7 +174,8 @@ export const editImageWithChat = async (
     instruction: string,
     apiKey: string,
     maskImage?: string | null, // [NEW] Optional mask for region-based editing
-    referenceImages?: string[] // [NEW] Optional tagged references
+    referenceImages?: string[], // [NEW] Optional tagged references
+    modelName: string = 'gemini-2.5-flash-image' // [NEW] Dynamic model selection
 ): Promise<{ image?: string; explanation: string }> => {
     if (!apiKey) {
         return { explanation: 'API key is required for image editing.' };
@@ -284,7 +285,7 @@ export const editImageWithChat = async (
 
         // Use Gemini for image editing
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -322,7 +323,7 @@ export const editImageWithChat = async (
             // Fallback: Try with the same model but simpler prompt
             console.warn('[ImageEdit] No image in response, trying simplified fallback...');
             const fallbackResponse = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+                `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },

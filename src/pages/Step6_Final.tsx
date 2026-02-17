@@ -1350,7 +1350,7 @@ export const Step6_Final = () => {
     const prepareRecordingCuts = (includeVideo: boolean): RecordingCut[] => {
         console.log(`[Step6:Prepare] Preparing cuts with includeVideo=${includeVideo}. Script length: ${script.length}`);
 
-        const mappedCuts = script.map((cut, index) => {
+        const mappedCuts: RecordingCut[] = script.map((cut, index) => {
             const imgUrl = getOptimizedUrl(cut.finalImageUrl || cut.draftImageUrl);
             if (!imgUrl) {
                 console.warn(`[Step6:Prepare] Cut ${index} has no resolved image URL!`, {

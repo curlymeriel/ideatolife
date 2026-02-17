@@ -7,7 +7,7 @@ import { DEFAULT_MOTION_PRESETS, getPresetsByCategory } from '../../data/motionP
 import { getMatchedAssets } from '../../utils/assetUtils';
 import { resolveUrl, isIdbUrl } from '../../utils/imageStorage';
 import type { AspectRatio } from '../../store/types';
-import { VisualSettingsStudio } from './VisualSettingsStudio';
+import { UnifiedStudio, type VisualSettingsResult } from '../UnifiedStudio';
 
 // Comprehensive Visual prompt helper terms (영문약어: 한글설명)
 const VISUAL_TERMS = {
@@ -1074,48 +1074,46 @@ export const CutItem = memo(({
 
             {/* Visual Settings Studio Fullscreen Modal */}
             {apiKey && (
-                <VisualSettingsStudio
+                <UnifiedStudio
                     isOpen={showVisualStudio}
                     onClose={() => setShowVisualStudio(false)}
-                    cutId={cut.id}
-                    cutIndex={index}
-                    initialVisualPrompt={cut.visualPrompt || ''}
-                    initialVisualPromptKR={cut.visualPromptKR}
-                    initialFinalImageUrl={cut.finalImageUrl}
-                    initialVideoPrompt={cut.videoPrompt}
-                    aspectRatio={aspectRatio}
                     apiKey={apiKey}
-                    assetDefinitions={assetDefinitions}
-                    existingCuts={localScript}
-                    autoMatchedAssets={allMatchedResults.map((m: any) => m.asset).filter(Boolean)}
-                    manualAssetObjs={manualAssetObjs}
-                    initialSpeaker={cut.speaker}
-                    initialDialogue={cut.dialogue}
                     masterStyle={masterStyle}
-                    onSave={(result) => {
-                        // Extract Asset IDs and Cut IDs from taggedReferences
-                        // only for non-auto matches
-                        const manualAssetIds = result.taggedReferences
-                            .filter(r => !r.isAuto && assetDefinitions && assetDefinitions[r.id])
-                            .map(r => r.id);
-
-                        const referenceCutIds = result.taggedReferences
-                            .filter(r => !r.isAuto && r.id.startsWith('cut-'))
-                            .map(r => parseInt(r.id.replace('cut-', ''), 10))
-                            .filter(n => !isNaN(n));
-
-                        const userRef = result.taggedReferences.find(r => r.id === 'user-ref');
-
-                        onUpdateCut(cut.id, {
-                            visualPrompt: result.visualPrompt,
-                            visualPromptKR: result.visualPromptKR,
-                            videoPrompt: result.videoPrompt,
-                            finalImageUrl: result.finalImageUrl || undefined,
-                            referenceAssetIds: manualAssetIds,
-                            referenceCutIds: referenceCutIds,
-                            userReferenceImage: userRef?.url
-                        });
-                        onSave();
+                    config={{
+                        mode: 'visual',
+                        cutId: cut.id,
+                        cutIndex: index,
+                        initialVisualPrompt: cut.visualPrompt || '',
+                        initialVisualPromptKR: cut.visualPromptKR,
+                        initialFinalImageUrl: cut.finalImageUrl,
+                        initialVideoPrompt: cut.videoPrompt,
+                        aspectRatio: aspectRatio,
+                        assetDefinitions: assetDefinitions,
+                        existingCuts: localScript,
+                        autoMatchedAssets: allMatchedResults.map((m: any) => m.asset).filter(Boolean),
+                        manualAssetObjs: manualAssetObjs,
+                        initialSpeaker: cut.speaker,
+                        initialDialogue: cut.dialogue,
+                        onSave: (result: VisualSettingsResult) => {
+                            const manualAssetIds = result.taggedReferences
+                                .filter(r => !r.isAuto && assetDefinitions && assetDefinitions[r.id])
+                                .map(r => r.id);
+                            const referenceCutIds = result.taggedReferences
+                                .filter(r => !r.isAuto && r.id.startsWith('cut-'))
+                                .map(r => parseInt(r.id.replace('cut-', ''), 10))
+                                .filter(n => !isNaN(n));
+                            const userRef = result.taggedReferences.find(r => r.id === 'user-ref');
+                            onUpdateCut(cut.id, {
+                                visualPrompt: result.visualPrompt,
+                                visualPromptKR: result.visualPromptKR,
+                                videoPrompt: result.videoPrompt,
+                                finalImageUrl: result.finalImageUrl || undefined,
+                                referenceAssetIds: manualAssetIds,
+                                referenceCutIds: referenceCutIds,
+                                userReferenceImage: userRef?.url
+                            });
+                            onSave();
+                        },
                     }}
                 />
             )}

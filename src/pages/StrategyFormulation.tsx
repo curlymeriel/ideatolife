@@ -30,12 +30,25 @@ import {
     MessageSquare,
     RefreshCw,
     Maximize2,
+    Check,
     Download
 } from 'lucide-react';
 import { generateStrategyInsight, generateText } from '../services/gemini';
 import type { CompetitorSnapshot, StrategyInsight } from '../store/types';
-import { ChannelArtModal } from '../components/ChannelArtModal';
+import { UnifiedStudio } from '../components/UnifiedStudio';
 import { resolveUrl, saveToIdb } from '../utils/imageStorage';
+
+// Helper to format text with $$ markers
+const formatText = (text: string) => {
+    if (!text) return '';
+    const parts = text.split('$$');
+    return parts.map((part, index) => {
+        if (index % 2 === 1) {
+            return <span key={index} className="text-[var(--color-primary)] font-bold">{part}</span>;
+        }
+        return part;
+    });
+};
 
 export const StrategyFormulation: React.FC = () => {
     const navigate = useNavigate();
@@ -766,7 +779,7 @@ export const StrategyFormulation: React.FC = () => {
                             )}
                         </div>
 
-                        <button onClick={handleSaveStrategy} disabled={saveStatus !== 'idle'} className={`px-4 py-1.5 rounded-lg flex items-center gap-2 text-[10px] font-bold transition-all h-8 ${saveStatus === 'saved' ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-[var(--color-primary)] text-black hover:opacity-90'}`}>
+                        <button onClick={handleSaveStrategy} disabled={saveStatus !== 'idle'} className={`px-4 py-1.5 rounded-lg flex items-center gap-2 text-[10px] font-bold transition-all h-8 ${saveStatus === 'saved' ? 'bg-[var(--color-primary)]/20 text-[var(--color-primary)] border border-[var(--color-primary)]/30' : 'bg-[var(--color-primary)] text-black hover:opacity-90'}`}>
                             <Save size={12} /> {saveStatus === 'saving' ? '저장 중...' : saveStatus === 'saved' ? '완료' : '전체 저장'}
                         </button>
                     </div>
@@ -775,7 +788,7 @@ export const StrategyFormulation: React.FC = () => {
                 <div className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar bg-gradient-to-b from-[#111] to-black">
                     <div className="max-w-7xl mx-auto space-y-16">
                         {activeTab === 'report' && (
-                            <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700 bg-white/[0.02] p-12 rounded-[48px] border border-white/5 shadow-2xl">
+                            <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700 bg-white/[0.02] p-12 rounded-[48px] border border-white/5 shadow-2xl max-h-[calc(100vh-160px)] overflow-y-auto custom-scrollbar">
                                 <div className="text-center space-y-4 mb-16">
                                     <div className="inline-block px-4 py-1.5 bg-[var(--color-primary)]/10 text-[var(--color-primary)] text-xs font-black uppercase tracking-widest rounded-full mb-4">Strategic Intelligence Report</div>
                                     <h1 className="text-5xl font-black text-white tracking-tight">{channelIdentity.channelName || 'YouTube Strategy'}</h1>
@@ -803,8 +816,8 @@ export const StrategyFormulation: React.FC = () => {
                                     <h2 className="text-2xl font-bold text-white border-b border-white/10 pb-4">3. Recommended Series</h2>
                                     <div className="space-y-6">
                                         {strategyResult.recommendedSeries.map((s, i) => (
-                                            <div key={i} className="bg-white/5 p-8 rounded-3xl space-y-4">
-                                                <h3 className="text-2xl font-bold text-white">{s.title}</h3>
+                                            <div key={i} className="bg-white/5 p-8 rounded-3xl space-y-4 hover:border-[var(--color-primary)]/30 border border-transparent transition-all">
+                                                <h3 className="text-2xl font-bold text-white">{formatText(s.title)}</h3>
                                                 <p className="text-gray-400">{s.description}</p>
                                                 <div className="flex gap-4 text-xs font-bold text-[var(--color-primary)] uppercase">
                                                     <span>Pillar: {s.targetPillar}</span>
@@ -820,12 +833,12 @@ export const StrategyFormulation: React.FC = () => {
                                     <h2 className="text-2xl font-bold text-white border-b border-white/10 pb-4">4. Episode Recommendations</h2>
                                     {strategyResult.recommendedSeries.map((series, sIdx) => (
                                         <div key={series.id || sIdx} className="space-y-4">
-                                            <h3 className="text-lg font-bold text-indigo-400">{series.title}</h3>
+                                            <h3 className="text-lg font-bold text-[var(--color-primary)]">{formatText(series.title)}</h3>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                                 {(series.episodes || []).map((ep, i) => (
                                                     <div key={ep.id || i} className="bg-white/5 p-6 rounded-2xl border border-white/5">
                                                         <div className="text-[var(--color-primary)] font-black text-xs mb-2 uppercase tracking-tighter">Ep.{i + 1} • {ep.format}</div>
-                                                        <h4 className="text-lg font-bold text-white mb-2">{ep.ideaTitle}</h4>
+                                                        <h4 className="text-lg font-bold text-white mb-2">{formatText(ep.ideaTitle)}</h4>
                                                         <p className="text-sm text-gray-400 mb-4 line-clamp-2 italic">"{ep.oneLiner}"</p>
                                                         <div className="mt-4 flex justify-end">
                                                             <button
@@ -844,43 +857,55 @@ export const StrategyFormulation: React.FC = () => {
 
                                 <section className="space-y-6">
                                     <h2 className="text-2xl font-bold text-white border-b border-white/10 pb-4">5. Channel Brand Identity</h2>
-                                    <div className="bg-gradient-to-br from-[var(--color-primary)]/10 to-transparent p-10 rounded-[40px] border border-white/10">
-                                        <div className="flex flex-col md:flex-row gap-10 items-center mb-10">
-                                            <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-[var(--color-primary)] shadow-2xl flex-shrink-0 bg-white/5">
-                                                {channelIdentity.profileUrl ? <img src={channelIdentity.profileUrl} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-gray-700 font-black text-4xl">{channelIdentity.channelName?.charAt(0)}</div>}
-                                            </div>
-                                            <div className="flex-1 text-center md:text-left">
-                                                <h3 className="text-4xl font-black text-white mb-1">{channelIdentity.channelName || 'Unset Name'}</h3>
-                                                <div className="text-[var(--color-primary)] font-bold mb-2 tracking-widest uppercase text-xs italic">
-                                                    {(channelIdentity as any).slogan || 'Slogan undefined'}
-                                                </div>
-                                                <div className="text-[var(--color-primary)] font-mono text-xl mb-4">@{channelIdentity.handle || 'handle'}</div>
-                                                <p className="text-gray-300 text-lg leading-relaxed max-w-2xl">{channelIdentity.bio}</p>
-                                            </div>
+                                    <div className="rounded-[40px] border border-white/10 overflow-hidden relative bg-gradient-to-br from-[var(--color-primary)]/5 to-transparent">
+                                        {/* Banner Area */}
+                                        <div className="h-64 w-full bg-white/5 relative">
+                                            {resolvedBannerUrl ? (
+                                                <img src={resolvedBannerUrl} className="w-full h-full object-cover" />
+                                            ) : (
+                                                <div className="w-full h-full flex items-center justify-center text-white/10"><ImageIcon size={64} /></div>
+                                            )}
+                                            <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A]/60 to-transparent"></div>
                                         </div>
 
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                            <div className="bg-black/40 p-6 rounded-2xl">
-                                                <h4 className="text-[10px] text-gray-400 font-black uppercase mb-3">Core Mission</h4>
-                                                <p className="text-xs text-white font-medium leading-relaxed">{(channelIdentity as any).mission || '핵심 가치가 정의되지 않았습니다.'}</p>
-                                            </div>
-                                            <div className="bg-black/40 p-6 rounded-2xl">
-                                                <h4 className="text-[10px] text-gray-400 font-black uppercase mb-3">Tone of Voice</h4>
-                                                <p className="text-xs text-white font-medium italic">{(channelIdentity as any).toneOfVoice || '소통 스타일이 정의되지 않았습니다.'}</p>
-                                            </div>
-                                            <div className="bg-black/40 p-6 rounded-2xl">
-                                                <h4 className="text-[10px] text-gray-400 font-black uppercase mb-3">Core Values</h4>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {(channelIdentity as any).coreValues?.map((val: string, i: number) => (
-                                                        <span key={i} className="px-2 py-1 bg-white/5 text-[10px] text-gray-400 rounded-md border border-white/10">{val}</span>
-                                                    ))}
+                                        <div className="p-10 -mt-32 relative z-10">
+                                            <div className="flex flex-col md:flex-row gap-10 items-end mb-10">
+                                                <div className="w-40 h-40 rounded-full overflow-hidden border-4 border-[var(--color-primary)] shadow-2xl flex-shrink-0 bg-[#0A0A0A]">
+                                                    {resolvedProfileUrl ? <img src={resolvedProfileUrl} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-gray-700 font-black text-4xl">{channelIdentity.channelName?.charAt(0)}</div>}
+                                                </div>
+                                                <div className="flex-1 text-center md:text-left">
+                                                    <h3 className="text-4xl font-black text-white mb-1">{channelIdentity.channelName || 'Unset Name'}</h3>
+                                                    <div className="text-[var(--color-primary)] font-bold mb-2 tracking-widest uppercase text-xs italic">
+                                                        {(channelIdentity as any).slogan || 'Slogan undefined'}
+                                                    </div>
+                                                    <div className="text-[var(--color-primary)] font-mono text-xl mb-4">@{channelIdentity.handle || 'handle'}</div>
+                                                    <p className="text-gray-300 text-lg leading-relaxed max-w-2xl">{channelIdentity.bio}</p>
                                                 </div>
                                             </div>
-                                            <div className="bg-black/40 p-6 rounded-2xl md:col-span-3">
-                                                <h4 className="text-[10px] text-gray-400 font-black uppercase mb-3">Brand Introduction</h4>
-                                                <p className="text-xs text-gray-400 leading-relaxed italic border-t border-white/5 pt-3 mt-1">
-                                                    {channelIdentity.introText || '인트로 텍스트가 생성되지 않았습니다.'}
-                                                </p>
+
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                                <div className="bg-black/40 p-6 rounded-2xl">
+                                                    <h4 className="text-[10px] text-gray-400 font-black uppercase mb-3">Core Mission</h4>
+                                                    <p className="text-xs text-white font-medium leading-relaxed">{(channelIdentity as any).mission || '핵심 가치가 정의되지 않았습니다.'}</p>
+                                                </div>
+                                                <div className="bg-black/40 p-6 rounded-2xl">
+                                                    <h4 className="text-[10px] text-gray-400 font-black uppercase mb-3">Tone of Voice</h4>
+                                                    <p className="text-xs text-white font-medium italic">{(channelIdentity as any).toneOfVoice || '소통 스타일이 정의되지 않았습니다.'}</p>
+                                                </div>
+                                                <div className="bg-black/40 p-6 rounded-2xl">
+                                                    <h4 className="text-[10px] text-gray-400 font-black uppercase mb-3">Core Values</h4>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {(channelIdentity as any).coreValues?.map((val: string, i: number) => (
+                                                            <span key={i} className="px-2 py-1 bg-white/5 text-[10px] text-gray-400 rounded-md border border-white/10">{val}</span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                                <div className="bg-black/40 p-6 rounded-2xl md:col-span-3">
+                                                    <h4 className="text-[10px] text-gray-400 font-black uppercase mb-3">Brand Introduction</h4>
+                                                    <p className="text-xs text-gray-400 leading-relaxed italic border-t border-white/5 pt-3 mt-1">
+                                                        {channelIdentity.introText || '인트로 텍스트가 생성되지 않았습니다.'}
+                                                    </p>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -937,8 +962,8 @@ export const StrategyFormulation: React.FC = () => {
                                     <section className="space-y-6">
                                         <h2 className="text-2xl font-bold text-white border-b border-white/10 pb-4">8. Marketing & KPI Strategy</h2>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                            <div className="bg-gradient-to-br from-indigo-500/10 to-transparent p-8 rounded-3xl border border-indigo-500/20">
-                                                <h3 className="text-base font-bold text-white mb-6 flex items-center gap-2"><Trophy size={18} className="text-yellow-500" /> Target KPIs</h3>
+                                            <div className="bg-gradient-to-br from-[var(--color-primary)]/5 to-transparent p-8 rounded-3xl border border-[var(--color-primary)]/10">
+                                                <h3 className="text-base font-bold text-white mb-6 flex items-center gap-2"><Trophy size={18} className="text-[var(--color-primary)]" /> Target KPIs</h3>
                                                 <ul className="space-y-4">
                                                     {strategyResult.marketingStrategy.kpis.map((kpi, i) => (
                                                         <li key={i} className="flex items-center gap-3 text-sm text-gray-300">
@@ -947,8 +972,8 @@ export const StrategyFormulation: React.FC = () => {
                                                     ))}
                                                 </ul>
                                             </div>
-                                            <div className="bg-gradient-to-br from-pink-500/10 to-transparent p-8 rounded-3xl border border-pink-500/20">
-                                                <h3 className="text-base font-bold text-white mb-6 flex items-center gap-2"><Sparkles size={18} className="text-pink-500" /> Viral Elements</h3>
+                                            <div className="bg-gradient-to-br from-orange-500/5 to-transparent p-8 rounded-3xl border border-orange-500/10">
+                                                <h3 className="text-base font-bold text-white mb-6 flex items-center gap-2"><Sparkles size={18} className="text-orange-500" /> Viral Elements</h3>
                                                 <div className="flex flex-wrap gap-2">
                                                     {strategyResult.marketingStrategy.viralElements.map((v, i) => (
                                                         <span key={i} className="px-3 py-1 bg-white/5 border border-white/10 rounded-lg text-xs text-gray-300 font-medium">{v}</span>
@@ -987,12 +1012,12 @@ export const StrategyFormulation: React.FC = () => {
                                     "{strategyResult.executiveSummary}"
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="bg-green-500/5 border border-green-500/20 p-6 rounded-3xl">
-                                        <h4 className="text-green-400 font-bold flex items-center gap-2 mb-4"><Zap size={20} /> 핵심 기회 요인</h4>
+                                    <div className="bg-[var(--color-primary)]/5 border border-[var(--color-primary)]/20 p-6 rounded-3xl">
+                                        <h4 className="text-[var(--color-primary)] font-bold flex items-center gap-2 mb-4"><Zap size={20} /> 핵심 기회 요인</h4>
                                         <ul className="space-y-2">
                                             {strategyResult.keyOpportunities.map((item, i) => (
                                                 <li key={i} className="text-gray-300 text-sm flex gap-2">
-                                                    <span className="text-green-500">•</span> {item}
+                                                    <span className="text-[var(--color-primary)]">•</span> {item}
                                                 </li>
                                             ))}
                                         </ul>
@@ -1029,49 +1054,96 @@ export const StrategyFormulation: React.FC = () => {
                             <div className="space-y-8 animate-in fade-in duration-300">
                                 <div className="flex items-center justify-between mb-4">
                                     <h3 className="text-2xl font-bold text-white">Recommended Episodes</h3>
-                                    <button onClick={handleSaveAllToPool} className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white rounded-lg text-xs font-bold border border-white/10 transition-all flex items-center gap-2">
-                                        <BookmarkPlus size={14} /> 전체 아이디어 담기
-                                    </button>
-                                </div>
-                                {/* NEW: Grouped by Series */}
-                                {strategyResult.recommendedSeries.map((series, sIdx) => (
-                                    <div key={series.id || sIdx} className="space-y-4">
-                                        <div className="flex items-center gap-3 pb-2 border-b border-white/10">
-                                            <span className="px-3 py-1 bg-indigo-500/20 text-indigo-400 text-xs font-bold rounded-lg">Series {sIdx + 1}</span>
-                                            <h4 className="text-lg font-bold text-white">{series.title}</h4>
-                                            <span className="text-xs text-gray-500 italic truncate max-w-[300px]">{series.description}</span>
-                                        </div>
-                                        <div className="grid grid-cols-1 gap-4 pl-4 border-l-2 border-indigo-500/30">
-                                            {(series.episodes || []).map((episode, eIdx) => (
-                                                <div key={episode.id || eIdx} className="bg-white/5 border border-white/10 p-6 rounded-2xl flex items-center justify-between group hover:bg-white/[0.07] transition-all">
-                                                    <div className="space-y-1">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="px-2 py-0.5 bg-[var(--color-primary)]/10 text-[var(--color-primary)] text-[10px] font-bold rounded">Ep.0{eIdx + 1}</span>
-                                                            <span className="text-gray-500 text-[10px] font-bold uppercase">{episode.format}</span>
-                                                        </div>
-                                                        <h4 className="text-lg font-bold text-white">{episode.ideaTitle}</h4>
-                                                        <p className="text-sm text-gray-400">{episode.oneLiner}</p>
-                                                    </div>
-                                                    <div className="flex flex-col items-end gap-2">
-                                                        <button
-                                                            onClick={() => handleSaveToPool(episode, series)}
-                                                            className="p-3 bg-white/5 text-gray-400 rounded-xl hover:bg-white/10 transition-all"
-                                                            title="아이디어 풀에 담기"
-                                                        >
-                                                            <BookmarkPlus size={20} />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handlePromoteToProject(series, episode)}
-                                                            className="px-4 py-2 bg-[var(--color-primary)] text-black text-xs font-black rounded-xl hover:scale-105 transition-all flex items-center gap-2 shadow-lg shadow-[var(--color-primary)]/10"
-                                                        >
-                                                            <Rocket size={16} /> 제작 시작
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={handleSaveAllToPool} className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white rounded-lg text-xs font-bold border border-white/10 transition-all flex items-center gap-2">
+                                            <BookmarkPlus size={14} /> 전체 아이디어 담기
+                                        </button>
                                     </div>
-                                ))}
+                                </div>
+                                {/* NEW: Grouped by Series with Idea Pool Merging */}
+                                {strategyResult.recommendedSeries.map((series, sIdx) => {
+                                    // 1. Get pool ideas for this series
+                                    const poolIdeas = ideaPool.filter(i =>
+                                        i.source === 'Phase3' &&
+                                        i.sourceId === strategyResult.id &&
+                                        i.category === series.title
+                                    );
+
+                                    // 2. Map existing recommended episodes to a format we can compare
+                                    const recommendedEpisodes = series.episodes || [];
+
+                                    // 3. Create a merged list
+                                    // Start with recommended episodes
+                                    const mergedEpisodes = [...recommendedEpisodes];
+
+                                    // 4. Add pool ideas that are missing from recommended (Backfill)
+                                    poolIdeas.forEach(idea => {
+                                        const exists = mergedEpisodes.some(e => e.ideaTitle === idea.title);
+                                        if (!exists) {
+                                            mergedEpisodes.push({
+                                                id: idea.id,
+                                                ideaTitle: idea.title,
+                                                oneLiner: idea.description,
+                                                angle: idea.metadata?.angle || '',
+                                                format: idea.metadata?.format || '',
+                                                notes: idea.metadata?.notes
+                                            });
+                                        }
+                                    });
+
+                                    return (
+                                        <div key={series.id || sIdx} className="space-y-4">
+                                            <div className="flex items-center gap-3 pb-2 border-b border-white/10">
+                                                <span className="px-3 py-1 bg-[var(--color-primary)]/10 text-[var(--color-primary)] text-xs font-bold rounded-lg">Series {sIdx + 1}</span>
+                                                <h4 className="text-lg font-bold text-white">{formatText(series.title)}</h4>
+                                                <span className="text-xs text-gray-500 italic truncate max-w-[300px]">{series.description}</span>
+                                            </div>
+                                            <div className="grid grid-cols-1 gap-4 pl-4 border-l-2 border-[var(--color-primary)]/20">
+                                                {mergedEpisodes.map((episode, eIdx) => {
+                                                    // Check if this episode is already in the pool
+                                                    const isSaved = ideaPool.some(i =>
+                                                        (i.title === episode.ideaTitle && i.category === series.title) ||
+                                                        (i.id === episode.id) // Fallback check by ID if preserving IDs
+                                                    );
+
+                                                    return (
+                                                        <div key={episode.id || eIdx} className={`border p-6 rounded-2xl flex items-center justify-between group transition-all ${isSaved ? 'bg-[var(--color-primary)]/5 border-[var(--color-primary)]/20' : 'bg-white/5 border-white/10 hover:bg-white/[0.07]'
+                                                            }`}>
+                                                            <div className="space-y-1">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="px-2 py-0.5 bg-[var(--color-primary)]/10 text-[var(--color-primary)] text-[10px] font-bold rounded">Ep.0{eIdx + 1}</span>
+                                                                    <span className="text-gray-500 text-[10px] font-bold uppercase">{episode.format || 'Format'}</span>
+                                                                    {isSaved && <span className="text-[var(--color-primary)] text-[10px] font-bold uppercase flex items-center gap-1"><CheckCircle2 size={10} /> Saved</span>}
+                                                                </div>
+                                                                <h4 className="text-lg font-bold text-white">{formatText(episode.ideaTitle)}</h4>
+                                                                <p className="text-sm text-gray-400">{episode.oneLiner}</p>
+                                                            </div>
+                                                            <div className="flex flex-col items-end gap-2">
+                                                                <button
+                                                                    onClick={() => handleSaveToPool(episode, series)}
+                                                                    disabled={isSaved}
+                                                                    className={`p-3 rounded-xl transition-all ${isSaved
+                                                                        ? 'bg-[var(--color-primary)]/20 text-[var(--color-primary)] cursor-default'
+                                                                        : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                                                                        }`}
+                                                                    title={isSaved ? "이미 저장됨" : "아이디어 풀에 담기"}
+                                                                >
+                                                                    {isSaved ? <Check size={20} /> : <BookmarkPlus size={20} />}
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handlePromoteToProject(series, episode)}
+                                                                    className="px-4 py-2 bg-[var(--color-primary)] text-black text-xs font-black rounded-xl hover:scale-105 transition-all flex items-center gap-2 shadow-lg shadow-[var(--color-primary)]/10"
+                                                                >
+                                                                    <Rocket size={16} /> 제작 시작
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
 
@@ -1126,7 +1198,7 @@ export const StrategyFormulation: React.FC = () => {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                     <div className="bg-white/5 border border-white/10 p-10 rounded-[40px] space-y-8">
                                         <div className="flex items-center gap-4">
-                                            <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 flex items-center justify-center text-indigo-400"><Target size={24} /></div>
+                                            <div className="w-12 h-12 rounded-2xl bg-[var(--color-primary)]/20 flex items-center justify-center text-[var(--color-primary)]"><Target size={24} /></div>
                                             <h3 className="text-2xl font-black text-white">Target KPIs</h3>
                                         </div>
                                         <div className="space-y-4">
@@ -1142,7 +1214,7 @@ export const StrategyFormulation: React.FC = () => {
                                     <div className="space-y-8">
                                         <div className="bg-white/5 border border-white/10 p-10 rounded-[40px] space-y-6">
                                             <div className="flex items-center gap-4">
-                                                <div className="w-12 h-12 rounded-2xl bg-pink-500/20 flex items-center justify-center text-pink-400"><Zap size={24} /></div>
+                                                <div className="w-12 h-12 rounded-2xl bg-orange-500/20 flex items-center justify-center text-orange-400"><Zap size={24} /></div>
                                                 <h3 className="text-xl font-black text-white">Viral Elements</h3>
                                             </div>
                                             <div className="flex flex-wrap gap-3">
@@ -1174,7 +1246,7 @@ export const StrategyFormulation: React.FC = () => {
                                 {strategyResult.recommendedSeries.map((series, i) => (
                                     <div key={i} className="bg-white/5 border border-white/10 rounded-[32px] p-10 flex flex-col lg:flex-row gap-10">
                                         <div className="flex-1 space-y-6">
-                                            <h3 className="text-3xl font-black text-white">{series.title}</h3>
+                                            <h3 className="text-3xl font-black text-white">{formatText(series.title)}</h3>
                                             <p className="text-lg text-gray-400">{series.description}</p>
                                         </div>
                                         <button onClick={() => handlePromoteToProject(series)} className="px-8 py-4 bg-white text-black font-black rounded-2xl hover:bg-[var(--color-primary)] transition-all flex items-center gap-3">
@@ -1372,7 +1444,7 @@ export const StrategyFormulation: React.FC = () => {
                     <div className="flex items-center gap-2 text-xs text-[var(--color-primary)] font-bold uppercase tracking-widest mb-1"><TrendingUp size={14} /> Intelligence Layer</div>
                     <h1 className="text-xl font-bold text-white flex items-center gap-2 leading-none">
                         Phase 3 : AI Strategic Planning
-                        <span className="ml-2 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/10 text-[10px] text-green-500 border border-green-500/20 font-medium font-bold">
+                        <span className="ml-2 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[10px] text-[var(--color-primary)] border border-[var(--color-primary)]/20 font-medium font-bold">
                             <CheckCircle2 size={10} /> Auto-saved to Browser
                         </span>
                     </h1>
@@ -1478,24 +1550,27 @@ export const StrategyFormulation: React.FC = () => {
 
             {/* Modal Layer */}
             {showArtModal && (
-                <ChannelArtModal
+                <UnifiedStudio
                     isOpen={!!showArtModal}
                     onClose={() => setShowArtModal(null)}
-                    type={showArtModal}
-                    channelName={channelIdentity.channelName}
-                    initialPrompt={showArtModal === 'banner' ? channelIdentity.bannerPrompt : channelIdentity.profilePrompt}
-                    initialUrl={showArtModal === 'banner' ? channelIdentity.bannerUrl : channelIdentity.profileUrl}
                     apiKey={geminiApiKey}
-                    strategyContext={`
+                    config={{
+                        mode: 'channelArt',
+                        type: showArtModal,
+                        channelName: channelIdentity.channelName,
+                        initialPrompt: showArtModal === 'banner' ? channelIdentity.bannerPrompt : channelIdentity.profilePrompt,
+                        initialUrl: showArtModal === 'banner' ? channelIdentity.bannerUrl : channelIdentity.profileUrl,
+                        strategyContext: `
 Channel Name: ${channelIdentity.channelName}
 Slogan: ${(channelIdentity as any).slogan}
 Mission: ${(channelIdentity as any).mission}
 Target Audience: ${(channelIdentity as any).targetAudience}
 Tone of Voice: ${(channelIdentity as any).toneOfVoice}
 Strategy Executive Summary: ${strategyResult?.executiveSummary || ''}
-`.trim()}
-                    characters={strategyResult?.characters}
-                    onSave={handleSaveArt}
+`.trim(),
+                        characters: strategyResult?.characters,
+                        onSave: handleSaveArt,
+                    }}
                 />
             )}
         </div>

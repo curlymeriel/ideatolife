@@ -234,8 +234,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         <div className="mt-2 relative group">
                             <button
                                 onClick={() => navigate('/research/guide')}
-                                className={`w-full px-4 py-3 flex items-center ${isCollapsed ? 'justify-center flex-col gap-0.5' : 'gap-3'} transition-all ${location.pathname === '/research/guide'
-                                    ? 'bg-orange-500/20 text-orange-400 font-semibold border-r-2 border-orange-400'
+                                className={`w-full px-4 py-3 flex items-center ${isCollapsed ? 'justify-center flex-col gap-0.5' : 'gap-3'} transition-all ${location.pathname === '/research/guide' || location.pathname.startsWith('/research')
+                                    ? 'bg-[var(--color-primary)]/15 text-[var(--color-primary)] font-bold border-r-2 border-[var(--color-primary)]'
                                     : 'text-[var(--color-text-muted)] hover:text-white hover:bg-[rgba(255,255,255,0.05)]'
                                     }`}
                                 title={isCollapsed ? '#0 Prep Phases Overview' : undefined}
@@ -243,12 +243,12 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                 {isCollapsed ? (
                                     <div className="flex flex-col items-center gap-0.5">
                                         <span className="text-[9px] font-bold">#0</span>
-                                        <Sparkles size={16} className="text-orange-400" />
+                                        <Sparkles size={16} className="text-[var(--color-primary)]" />
                                     </div>
                                 ) : (
                                     <>
-                                        <span className={`text-[10px] font-bold min-w-[24px] ${location.pathname === '/research/guide' ? 'text-orange-400' : 'text-[var(--color-text-muted)]'}`}>#0</span>
-                                        <Sparkles size={16} className="text-orange-400" />
+                                        <span className={`text-[10px] font-bold min-w-[24px] ${location.pathname.startsWith('/research') ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-muted)]'}`}>#0</span>
+                                        <Sparkles size={16} className={`transition-colors ${location.pathname.startsWith('/research') ? 'text-[var(--color-primary)]' : 'text-gray-500 group-hover:text-[var(--color-primary)]'}`} />
                                         <span className="flex-1 text-left text-xs font-semibold uppercase tracking-wider">Prep Phases</span>
                                     </>
                                 )}
@@ -438,7 +438,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                     {isDashboard ? (
                                         <span className="text-[var(--color-text-muted)]">Overview</span>
                                     ) : location.pathname.startsWith('/research') ? (
-                                        <span className="text-orange-400">PREP PHASES</span>
+                                        <span className="text-[var(--color-primary)]">PREP PHASES</span>
                                     ) : currentStepObj ? (
                                         <span className="text-[var(--color-text-muted)]">Step {currentStepObj.id} : {currentStepObj.name}</span>
                                     ) : (
@@ -461,13 +461,13 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                                     <button
                                                         onClick={() => navigate(phase.path)}
                                                         className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter transition-all hover:scale-105 ${location.pathname === phase.path
-                                                            ? 'bg-[var(--color-primary)] text-black shadow-[0_0_15px_rgba(255,173,117,0.3)]'
-                                                            : 'text-gray-500 hover:text-white'
+                                                            ? 'bg-[var(--color-primary)]/40 text-[var(--color-primary)] border border-[var(--color-primary)]/50 shadow-[0_0_15px_rgba(255,173,117,0.3)]'
+                                                            : 'text-gray-500 hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)]'
                                                             }`}
                                                     >
                                                         #{phase.id} {phase.label}
                                                     </button>
-                                                    {i < arr.length - 1 && <span className="text-gray-700 text-[10px] font-bold">/</span>}
+                                                    {i < arr.length - 1 && <span className="text-white/10 text-[10px] font-bold">/</span>}
                                                 </React.Fragment>
                                             ))}
                                         </div>
