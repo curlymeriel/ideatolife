@@ -1146,25 +1146,6 @@ export const useWorkflowStore = create<WorkflowStore>()(
                     }
                 }
 
-                // CLOUD SYNC: Firebase
-                const isCloudAvailable = isFirebaseConfigured() && auth?.currentUser;
-                if (isCloudAvailable) {
-                    // Don't block local save, run in background
-                    set({ syncStatus: 'syncing' } as any);
-
-                    // Use a non-blocking promise
-                    migrateProjectToCloud(auth!.currentUser!.uid, projectData)
-                        .then(() => {
-                            console.log(`[CloudSync] Synced project ${projectId} to Firebase`);
-                            set({ syncStatus: 'synced', lastSynced: Date.now() } as any);
-                        })
-                        .catch((err) => {
-                            console.error(`[CloudSync] Failed to sync ${projectId}:`, err);
-                            set({ syncStatus: 'error' } as any);
-                        });
-                }
-
-
                 // Calculate progress for metadata cache (same logic as MainLayout/Dashboard)
                 const safeScript = Array.isArray(state.script) ? state.script : [];
                 const safeCharacters = Array.isArray(state.characters) ? state.characters : [];
@@ -1237,7 +1218,6 @@ export const useWorkflowStore = create<WorkflowStore>()(
                         ...state.savedProjects,
                         [state.id]: metadata
                     },
-                    lastModified: Date.now()
                 }));
             },
 

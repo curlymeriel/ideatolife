@@ -19,6 +19,8 @@ import { getMatchedAssets } from '../utils/assetUtils';
 import { linkCutsToStoryline } from '../utils/storylineUtils';
 import { saveToIdb, generateCutImageKey, generateAudioKey, resolveUrl } from '../utils/imageStorage';
 
+const EMPTY_SCRIPT: ScriptCut[] = [];
+
 export const Step3_Production: React.FC = () => {
     const projectData = useWorkflowStore(useShallow(state => ({
         id: state.id,
@@ -78,6 +80,32 @@ export const Step3_Production: React.FC = () => {
         console.log(`[Step3] Store script changed - syncing localScript (projectId: ${projectId}, cuts: ${script.length})`);
         setLocalScript(script);
     }, [projectId, script]);
+
+    // healing logic: detection and recovery of NaN IDs that break React keys and deletion
+    useEffect(() => {
+        if (localScript && localScript.length > 0) {
+            const hasNaN = localScript.some(c => isNaN(Number(c.id)));
+            if (hasNaN) {
+                console.warn("[Step3] 🩹 Corrupted NaN IDs detected! Starting healing process...");
+                setLocalScript(prev => {
+                    const numericIds = prev.map(c => Number(c.id)).filter(id => !isNaN(id));
+                    let nextId = (numericIds.length > 0 ? Math.max(...numericIds) : 0) + 1;
+
+                    const updated = prev.map(cut => {
+                        if (isNaN(Number(cut.id))) {
+                            const healedId = nextId++;
+                            console.log(`[Step3] 🩹 Healed cut with NaN ID. New ID: ${healedId}`);
+                            return { ...cut, id: healedId };
+                        }
+                        return cut;
+                    });
+
+                    saveToStore(updated);
+                    return updated;
+                });
+            }
+        }
+    }, [localScript]);
 
     // Auto-save helper
     const saveToStore = (currentScript: ScriptCut[]) => {
@@ -1050,10 +1078,10 @@ export const Step3_Production: React.FC = () => {
 
     const handleUpdateCut = useCallback((id: number, updates: Partial<ScriptCut>) => {
         setLocalScript(prev => {
+            const targetId = Number(id);
             const updated = prev.map(cut =>
-                cut.id === id ? { ...cut, ...updates } : cut
+                Number(cut.id) === targetId ? { ...cut, ...updates } : cut
             );
-            // Auto-save to store when updating cut metadata
             saveToStore(updated);
             return updated;
         });
@@ -1082,8 +1110,9 @@ export const Step3_Production: React.FC = () => {
 
     const toggleAudioConfirm = useCallback((cutId: number) => {
         setLocalScript(prev => {
+            const targetId = Number(cutId);
             const updated = prev.map(cut =>
-                cut.id === cutId ? { ...cut, isAudioConfirmed: !cut.isAudioConfirmed } : cut
+                Number(cut.id) === targetId ? { ...cut, isAudioConfirmed: !cut.isAudioConfirmed } : cut
             );
             saveToStore(updated);
             return updated;
@@ -1092,12 +1121,12 @@ export const Step3_Production: React.FC = () => {
 
     const toggleImageConfirm = useCallback((cutId: number) => {
         setLocalScript(prev => {
+            const targetId = Number(cutId);
             const updated = prev.map(cut => {
-                if (cut.id === cutId) {
+                if (Number(cut.id) === targetId) {
                     const newIsConfirmed = !cut.isImageConfirmed;
                     let updates: Partial<typeof cut> = { isImageConfirmed: newIsConfirmed };
 
-                    // Auto-generate video motion prompt if locking and it's empty
                     if (newIsConfirmed && !cut.videoPrompt) {
                         const basePrompt = cut.visualPrompt || '';
                         const motionSuffix = '. Camera slowly pushes in. Subtle atmospheric motion. Character breathes naturally.';
@@ -1116,8 +1145,9 @@ export const Step3_Production: React.FC = () => {
 
     const addAssetToCut = useCallback((cutId: number, assetId: string) => {
         setLocalScript(prev => {
+            const targetId = Number(cutId);
             const updated = prev.map(cut => {
-                if (cut.id === cutId) {
+                if (Number(cut.id) === targetId) {
                     const currentAssets = cut.referenceAssetIds || [];
                     if (!currentAssets.includes(assetId)) {
                         return { ...cut, referenceAssetIds: [...currentAssets, assetId] };
@@ -1133,8 +1163,9 @@ export const Step3_Production: React.FC = () => {
 
     const removeAssetFromCut = useCallback((cutId: number, assetId: string) => {
         setLocalScript(prev => {
+            const targetId = Number(cutId);
             const updated = prev.map(cut => {
-                if (cut.id === cutId) {
+                if (Number(cut.id) === targetId) {
                     return {
                         ...cut,
                         referenceAssetIds: (cut.referenceAssetIds || []).filter(id => id !== assetId)
@@ -1149,8 +1180,9 @@ export const Step3_Production: React.FC = () => {
 
     const addCutReference = useCallback((cutId: number, refCutId: number) => {
         setLocalScript(prev => {
+            const targetId = Number(cutId);
             const updated = prev.map(cut => {
-                if (cut.id === cutId) {
+                if (Number(cut.id) === targetId) {
                     const currentRefs = cut.referenceCutIds || [];
                     if (!currentRefs.includes(refCutId)) {
                         return { ...cut, referenceCutIds: [...currentRefs, refCutId] };
@@ -1166,8 +1198,9 @@ export const Step3_Production: React.FC = () => {
 
     const removeCutReference = useCallback((cutId: number, refCutId: number) => {
         setLocalScript(prev => {
+            const targetId = Number(cutId);
             const updated = prev.map(cut => {
-                if (cut.id === cutId) {
+                if (Number(cut.id) === targetId) {
                     return {
                         ...cut,
                         referenceCutIds: (cut.referenceCutIds || []).filter(id => id !== refCutId)
@@ -1182,9 +1215,8 @@ export const Step3_Production: React.FC = () => {
 
     const handleDeleteCut = useCallback((id: number) => {
         setLocalScript(prev => {
-            // Just filter out the cut, DO NOT re-index IDs
-            // This preserves videoUrl references to IDB keys
-            const updated = prev.filter(cut => cut.id !== id);
+            const targetId = Number(id);
+            const updated = prev.filter(cut => Number(cut.id) !== targetId);
             saveToStore(updated);
             return updated;
         });
@@ -1192,14 +1224,14 @@ export const Step3_Production: React.FC = () => {
 
     const handleMoveCut = useCallback((id: number, direction: 'up' | 'down') => {
         setLocalScript(prev => {
-            const index = prev.findIndex(c => c.id === id);
+            const targetId = Number(id);
+            const index = prev.findIndex(c => Number(c.id) === targetId);
             if (index === -1) return prev;
             if (direction === 'up' && index === 0) return prev;
             if (direction === 'down' && index === prev.length - 1) return prev;
 
             const newIndex = direction === 'up' ? index - 1 : index + 1;
             const updated = [...prev];
-            // Just swap positions, DO NOT re-index IDs
             [updated[index], updated[newIndex]] = [updated[newIndex], updated[index]];
             saveToStore(updated);
             return updated;
@@ -1208,11 +1240,12 @@ export const Step3_Production: React.FC = () => {
 
     const handleInsertCut = useCallback((id: number) => {
         setLocalScript(prev => {
-            const index = prev.findIndex(c => c.id === id);
+            const targetId = Number(id);
+            const index = prev.findIndex(c => Number(c.id) === targetId);
             if (index === -1) return prev;
 
-            // Generate new unique ID (max existing + 1)
-            const maxId = Math.max(...prev.map(c => c.id), 0);
+            const numericIds = prev.map(c => Number(c.id)).filter(id => !isNaN(id));
+            const maxId = numericIds.length > 0 ? Math.max(...numericIds) : 0;
             const newCut: ScriptCut = {
                 id: maxId + 1,
                 speaker: 'Narrator',
@@ -1223,7 +1256,6 @@ export const Step3_Production: React.FC = () => {
 
             const updated = [...prev];
             updated.splice(index + 1, 0, newCut);
-            // DO NOT re-index - preserve original IDs
             saveToStore(updated);
             return updated;
         });
@@ -1267,6 +1299,17 @@ export const Step3_Production: React.FC = () => {
     const imageLockedCount = localScript.filter(c => c.isImageConfirmed).length;
     const audioGeneratedCount = localScript.filter(c => c.audioUrl).length;
     const imageGeneratedCount = localScript.filter(c => c.finalImageUrl).length;
+
+    const handleRemoveSfx = useCallback((id: number) => {
+        setLocalScript(prev => {
+            const targetId = Number(id);
+            const updated = prev.map(c =>
+                Number(c.id) === targetId ? { ...c, sfxUrl: undefined, sfxName: undefined, sfxVolume: undefined, sfxFreesoundId: undefined, sfxDescription: undefined } : c
+            );
+            saveToStore(updated);
+            return updated;
+        });
+    }, []);
 
     return (
         <>
@@ -1643,7 +1686,7 @@ export const Step3_Production: React.FC = () => {
                                     isImageConfirmed={!!(cut.isImageConfirmed || cut.isConfirmed)}
                                     showAssetSelector={showAssetSelector === cut.id}
                                     assetDefinitions={assetDefinitions}
-                                    localScript={localScript}
+                                    localScript={showAssetSelector === cut.id ? localScript : EMPTY_SCRIPT}
                                     audioLoading={!!audioLoading[cut.id]}
                                     imageLoading={!!imageLoading[cut.id]}
                                     playingAudio={playingAudio}
@@ -1658,7 +1701,6 @@ export const Step3_Production: React.FC = () => {
                                     onGenerateAudio={handleGenerateAudio}
                                     onPlayAudio={handlePlayAudio}
                                     onGenerateImage={handleGenerateFinalImage}
-                                    onRegenerateImage={(id) => handleGenerateFinalImage(id, localScript.find(c => c.id === id)?.visualPrompt || '')}
                                     onUploadUserReference={handleUploadUserReference}
                                     onAddAsset={addAssetToCut}
                                     onRemoveAsset={removeAssetFromCut}
@@ -1671,15 +1713,7 @@ export const Step3_Production: React.FC = () => {
                                     onMove={handleMoveCut}
                                     onInsert={handleInsertCut}
                                     onOpenSfxModal={(id) => setSfxModalCutId(id)}
-                                    onRemoveSfx={(id) => {
-                                        setLocalScript(prev => {
-                                            const updated = prev.map(c =>
-                                                c.id === id ? { ...c, sfxUrl: undefined, sfxName: undefined, sfxVolume: undefined, sfxFreesoundId: undefined } : c
-                                            );
-                                            saveToStore(updated);
-                                            return updated;
-                                        });
-                                    }}
+                                    onRemoveSfx={handleRemoveSfx}
                                     apiKey={apiKeys?.gemini || ''}
                                 />
                             ))}

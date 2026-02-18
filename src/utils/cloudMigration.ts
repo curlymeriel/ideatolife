@@ -318,7 +318,7 @@ export const migrateProjectToCloud = async (
         await cloudDatabase.saveProject(userId, migratedProject);
     } catch (e) {
         console.error('[CloudMigration] Firestore save failed:', e);
-        // Do not throw, just log. This prevents the store from marking sync as 'error' and retrying immediately.
+        throw e; // [FIX] Rethrow to allow caller to handle failure
     }
 
     onProgress?.({

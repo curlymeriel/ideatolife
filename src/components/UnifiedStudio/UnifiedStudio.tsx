@@ -213,10 +213,10 @@ export const UnifiedStudio = ({
 
     // Auto-translate
     useEffect(() => {
-        if (!prompt || prompt.trim().length < 5 || !apiKey) return;
-        const timer = setTimeout(() => handlers.performTranslation(), 1000);
+        if (!prompt || prompt.trim().length < 5 || !apiKey || prompt === initialPrompt) return;
+        const timer = setTimeout(() => handlers.performTranslation(), 3000);
         return () => clearTimeout(timer);
-    }, [prompt, apiKey]);
+    }, [prompt, apiKey, initialPrompt]);
 
     // Initialization effect
     useEffect(() => {

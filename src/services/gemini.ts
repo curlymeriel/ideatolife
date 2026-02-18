@@ -122,6 +122,7 @@ export interface ConsultationResult {
     suggestedCharacterModifier?: string;
     suggestedBackgroundModifier?: string;
     modifiedScript?: ScriptCut[]; // NEW: For Assistant Director to suggest script changes
+    newCuts?: { afterCutId: number, cut: Partial<ScriptCut> }[]; // NEW: For creating new cuts (Splitting/Adding)
 }
 
 export interface ProjectContext {
@@ -146,8 +147,8 @@ export interface ProjectContext {
     assetDefinitions?: any; // NEW
 }
 
-const GEMINI_3_0_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro:generateContent';
-const GEMINI_3_0_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash:generateContent';
+const GEMINI_3_0_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent';
+const GEMINI_3_0_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent';
 const GEMINI_2_5_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent';
 const GEMINI_2_5_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
@@ -575,8 +576,8 @@ ${trendInsights.thumbnail ? (typeof trendInsights.thumbnail === 'string' ? `- Ïç
 
         // Base model list (fallback order)
         const baseModels = [
-            { name: 'Gemini 3 Pro', url: GEMINI_3_PRO_URL },
-            { name: 'Gemini 3 Flash', url: GEMINI_3_FLASH_URL },
+            { name: 'Gemini 3 Pro', url: GEMINI_3_0_PRO_URL },
+            { name: 'Gemini 3 Flash', url: GEMINI_3_0_FLASH_URL },
             { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
             { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL }
         ];
@@ -1238,12 +1239,12 @@ IMPORTANT: The above data is REAL market research from Step 0. Do NOT treat it a
         ];
 
         let lastError: any = null;
-        let response: any = null;
+        let bestResponse: any = null;
 
         for (const model of modelsToTry) {
             try {
                 console.log(`[Gemini] Consulting AI with model: ${model.name}`);
-                response = await axios.post(
+                bestResponse = await axios.post(
                     model.url,
                     {
                         contents: [
@@ -1260,21 +1261,20 @@ IMPORTANT: The above data is REAL market research from Step 0. Do NOT treat it a
                     },
                     { timeout: 30000 } // 30 second timeout
                 );
-                if (response) break; // Success!
+                if (bestResponse) break; // Success!
             } catch (e: any) {
                 lastError = e;
                 const status = e.response?.status;
                 const msg = e.response?.data?.error?.message || e.message;
                 console.warn(`[Gemini] Model ${model.name} failed (${status}): ${msg}`);
-                // Continue to next model
             }
         }
 
-        if (!response) {
+        if (!bestResponse) {
             throw lastError || new Error("All Gemini models failed to respond.");
         }
 
-        const generatedText = response.data.candidates[0].content.parts[0].text;
+        const generatedText = bestResponse.data.candidates[0].content.parts[0].text;
 
         try {
             const parsed = JSON.parse(generatedText);
@@ -1310,7 +1310,7 @@ IMPORTANT: The above data is REAL market research from Step 0. Do NOT treat it a
 
 export const consultAssistantDirector = async (
     history: ChatMessage[],
-    context: ProjectContext & { currentScript: ScriptCut[] },
+    context: ProjectContext & { currentScript: ScriptCut[]; storylineTable?: any[] },
     apiKey: string,
     customInstruction?: string
 ): Promise<ConsultationResult> => {
@@ -1334,6 +1334,7 @@ export const consultAssistantDirector = async (
         // Clean script for prompt to save tokens and clear focus
         const compactScript = context.currentScript.map(c => ({
             id: c.id,
+            cut_number: (c as any).cut_number, // Pass the visual number to AI
             speaker: c.speaker,
             dialogue: c.dialogue,
             visualPrompt: c.visualPrompt,
@@ -1369,6 +1370,11 @@ export const consultAssistantDirector = async (
             .replace('{{aspectRatio}}', context.aspectRatio)
             .replace('{{masterStyle}}', (context as any).masterStyle || '')
             .replace('{{props}}', propInfo) // NEW: Add props tag for templates
+            .replace('{{storylineTable}}', JSON.stringify((context.storylineTable || []).map(s => ({
+                sceneNumber: s.sceneNumber,
+                content: s.content,
+                directionNotes: s.directionNotes
+            })), null, 2)) // NEW: Pass Storyline (Sanitized)
             .replace('{{currentScript}}', JSON.stringify(compactScript, null, 2));
 
         // Add trend insights to Assistant Director as well
@@ -1425,6 +1431,59 @@ IMPORTANT: The above is ACTUAL research data. Ensure all modifications align wit
             { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL }
         ];
 
+        // Helper to sanitize chat history (Merge consecutive same-role messages)
+        // 1. Truncate history (Last 12 messages to keep recent context but avoid bloat)
+        const recentHistory = contents.length > 12 ? contents.slice(-12) : contents;
+
+        // 2. Ensure history starts with 'user' role (Gemini requirement after system instruction)
+        let validRoleHistory = [...recentHistory];
+        while (validRoleHistory.length > 0 && validRoleHistory[0].role !== 'user') {
+            validRoleHistory.shift();
+        }
+
+        // 3. Helper to sanitize chat history (Merge consecutive same-role messages)
+        const sanitizeContents = (rawContents: any[]) => {
+            if (rawContents.length === 0) return [];
+
+            const sanitized: any[] = [];
+            let lastRole = '';
+
+            for (const msg of rawContents) {
+                // Skip empty messages or messages without parts
+                if (!msg.parts || msg.parts.length === 0) continue;
+
+                if (msg.role === lastRole) {
+                    // Merge text parts with previous message of same role
+                    const prevMsg = sanitized[sanitized.length - 1];
+
+                    // Find text parts to merge
+                    const prevTextPart = prevMsg.parts.find((p: any) => p.text !== undefined);
+                    const currTextPart = msg.parts.find((p: any) => p.text !== undefined);
+
+                    if (prevTextPart && currTextPart) {
+                        prevTextPart.text = (prevTextPart.text || "") + "\n\n" + (currTextPart.text || "");
+                    }
+
+                    // Also copy over any images if not already present
+                    msg.parts.forEach((p: any) => {
+                        if (p.inline_data && !prevMsg.parts.find((pp: any) => pp.inline_data && pp.inline_data.data === p.inline_data.data)) {
+                            prevMsg.parts.push(p);
+                        }
+                    });
+                } else {
+                    // Clone to avoid mutation of original history
+                    sanitized.push({
+                        role: msg.role,
+                        parts: JSON.parse(JSON.stringify(msg.parts))
+                    });
+                    lastRole = msg.role;
+                }
+            }
+            return sanitized;
+        };
+
+        const sanitizedHistory = sanitizeContents(validRoleHistory);
+
         let lastError: any = null;
         let bestResponse: any = null;
 
@@ -1434,16 +1493,13 @@ IMPORTANT: The above is ACTUAL research data. Ensure all modifications align wit
                 const response = await axios.post(
                     `${model.url}?key=${apiKey}`,
                     {
-                        contents: [
-                            {
-                                role: 'user',
-                                parts: [{ text: systemInstruction }]
-                            },
-                            ...contents
-                        ],
+                        system_instruction: {
+                            parts: [{ text: systemInstruction }]
+                        },
+                        contents: sanitizedHistory,
                         generationConfig: {
                             temperature: 0.7,
-                            response_mime_type: "application/json"
+                            responseMimeType: "application/json"
                         }
                     },
                     { timeout: 60000 }
@@ -1466,11 +1522,11 @@ IMPORTANT: The above is ACTUAL research data. Ensure all modifications align wit
 
         return {
             reply: parsed.reply,
-            modifiedScript: parsed.modifiedScript
+            modifiedScript: parsed.modifiedScript,
+            newCuts: parsed.newCuts
         };
-
     } catch (error) {
-        console.error("Assistant Director Error:", error);
+        console.error("Gemini API Error (Assistant Director):", error);
         throw error;
     }
 };
@@ -1613,8 +1669,8 @@ export const analyzeImage = async (
                         parts: [
                             { text: "Describe this image in high detail, focusing on visual style, lighting, colors, and composition. This description will be used as a prompt to generate similar images. Return ONLY the description." },
                             {
-                                inline_data: {
-                                    mime_type: mimeType,
+                                inlineData: {
+                                    mimeType: mimeType,
                                     data: cleanBase64
                                 }
                             }
@@ -1699,8 +1755,8 @@ ${trendInsights?.thumbnail ? `
         }
 
         parts.push({
-            inline_data: {
-                mime_type: mimeType,
+            inlineData: {
+                mimeType: mimeType,
                 data: data
             }
         });
@@ -1710,9 +1766,9 @@ ${trendInsights?.thumbnail ? `
 
     for (const modelUrl of models) {
         try {
-            console.log(`[Gemini] Trying visual prompt with model: ${modelUrl}`);
+            console.log(`[Gemini] Trying visual prompt with model: ${modelUrl.name}`);
             const response = await axios.post(
-                `${modelUrl}?key=${apiKey}`,
+                `${modelUrl.url}?key=${apiKey}`,
                 {
                     contents: [{ parts }]
                 }
@@ -2083,7 +2139,7 @@ export const generateText = async (
             }
         }
         normalizedImages.forEach(img => {
-            parts.push({ inline_data: { mime_type: img.mimeType, data: img.data } });
+            parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
         });
         contents = [{ role: 'user', parts }];
     }

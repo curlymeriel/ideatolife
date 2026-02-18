@@ -9,7 +9,7 @@ interface AssistantDirectorChatProps {
     isOpen: boolean;
     onClose: () => void;
     localScript: any[];
-    setLocalScript: (script: any[]) => void;
+    setLocalScript: React.Dispatch<React.SetStateAction<any[]>>;
     saveToStore: (script: any[]) => void;
 }
 
@@ -36,7 +36,8 @@ export const AssistantDirectorChat: React.FC<AssistantDirectorChatProps> = memo(
         targetDuration: state.targetDuration,
         aspectRatio: state.aspectRatio,
         masterStyle: state.masterStyle,
-        apiKeys: state.apiKeys
+        apiKeys: state.apiKeys,
+        storylineTable: state.storylineTable
     })));
 
     const productionChatHistory = useWorkflowStore(state => state.productionChatHistory);
@@ -81,7 +82,11 @@ export const AssistantDirectorChat: React.FC<AssistantDirectorChatProps> = memo(
                 targetDuration: projectContext.targetDuration,
                 aspectRatio: projectContext.aspectRatio || '16:9',
                 masterStyle: projectContext.masterStyle?.description || '',
-                currentScript: localScript.map(cut => {
+                storylineTable: projectContext.storylineTable,
+                currentScript: localScript.map((cut, index) => {
+                    // Inject 1-based index as 'cut_number' for AI context
+                    const cutWithIndex = { ...cut, cut_number: index + 1 };
+
                     const allAssets = [
                         ...projectContext.characters,
                         ...projectContext.episodeCharacters,
@@ -126,7 +131,7 @@ export const AssistantDirectorChat: React.FC<AssistantDirectorChatProps> = memo(
                     });
 
                     return {
-                        ...cut,
+                        ...cutWithIndex,
                         linkedAssets: linkedReferences
                     };
                 }),
@@ -141,23 +146,78 @@ export const AssistantDirectorChat: React.FC<AssistantDirectorChatProps> = memo(
             if (result.modifiedScript && result.modifiedScript.length > 0) {
                 console.log("[AssistantDirectorChat] suggested script modifications:", result.modifiedScript);
 
-                const updatedScript = [...localScript];
-                result.modifiedScript.forEach((modCut: any) => {
-                    const idx = updatedScript.findIndex(c => c.id === modCut.id);
-                    if (idx !== -1) {
-                        updatedScript[idx] = {
-                            ...updatedScript[idx],
-                            ...modCut,
-                            audioUrl: modCut.audioUrl || updatedScript[idx].audioUrl,
-                            finalImageUrl: modCut.finalImageUrl || updatedScript[idx].finalImageUrl,
-                            isAudioConfirmed: modCut.isAudioConfirmed ?? updatedScript[idx].isAudioConfirmed,
-                            isImageConfirmed: modCut.isImageConfirmed ?? updatedScript[idx].isImageConfirmed
-                        };
-                    }
-                });
+                setLocalScript(prevScript => {
+                    const updatedScript = [...prevScript];
+                    let hasChanges = false;
 
-                setLocalScript(updatedScript);
-                saveToStore(updatedScript);
+                    // 1. Handle Modifications
+                    (result.modifiedScript || []).forEach((modCut: any) => {
+                        const modId = Number(modCut.id);
+                        if (isNaN(modId)) return;
+
+                        const idx = updatedScript.findIndex(c => Number(c.id) === modId);
+                        if (idx !== -1) {
+                            updatedScript[idx] = {
+                                ...updatedScript[idx],
+                                ...modCut,
+                                id: modId, // Ensure it stays as numeric
+                                audioUrl: modCut.audioUrl || updatedScript[idx].audioUrl,
+                                finalImageUrl: modCut.finalImageUrl || updatedScript[idx].finalImageUrl,
+                                isAudioConfirmed: modCut.isAudioConfirmed ?? updatedScript[idx].isAudioConfirmed,
+                                isImageConfirmed: modCut.isImageConfirmed ?? updatedScript[idx].isImageConfirmed
+                            };
+                            hasChanges = true;
+                        }
+                    });
+
+                    // 2. Handle Insertions (New Feature)
+                    if (result.newCuts && result.newCuts.length > 0) {
+                        console.log("[AssistantDirectorChat] Inserting new cuts:", result.newCuts);
+
+                        // Sort by afterCutId in descending order to prevent index shift issues during splice
+                        // -1 (beginning) should be processed last or handled carefully.
+                        const sortedNewCuts = [...result.newCuts].sort((a: any, b: any) => {
+                            const idA = Number(a.afterCutId);
+                            const idB = Number(b.afterCutId);
+                            return idB - idA;
+                        });
+
+                        sortedNewCuts.forEach((newCutReq: any) => {
+                            const afterId = Number(newCutReq.afterCutId);
+                            const insertIndex = afterId === -1 ? -1 : updatedScript.findIndex(c => Number(c.id) === afterId);
+
+                            if (afterId === -1 || insertIndex !== -1) {
+                                // Generate temp ID safely
+                                const numericIds = updatedScript.map(c => Number(c.id)).filter(id => !isNaN(id));
+                                const maxId = numericIds.length > 0 ? Math.max(...numericIds) : 0;
+                                const newCutId = maxId + 1;
+
+                                const newCut = {
+                                    ...newCutReq.cut,
+                                    id: newCutId,
+                                    isConfirmed: false,
+                                    isAudioConfirmed: false,
+                                    isImageConfirmed: false
+                                };
+
+                                if (afterId === -1) {
+                                    updatedScript.unshift(newCut);
+                                } else {
+                                    updatedScript.splice(insertIndex + 1, 0, newCut);
+                                }
+                                hasChanges = true;
+                            } else {
+                                console.warn(`Could not find cut with ID ${afterId} to insert after.`);
+                            }
+                        });
+                    }
+
+                    if (hasChanges) {
+                        saveToStore(updatedScript);
+                        return updatedScript;
+                    }
+                    return prevScript;
+                });
             }
         } catch (error: any) {
             console.error("Chat Error:", error);

@@ -17,7 +17,7 @@ import {
     serverTimestamp,
     Timestamp,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import type { ProjectData, ProjectMetadata } from '../store/types';
 import { sanitizeFirestoreData } from '../utils/firebaseUtils';
 
@@ -56,38 +56,30 @@ export const listProjects = async (userId: string): Promise<ProjectMetadata[]> =
 /**
  * 프로젝트 저장 (전체)
  */
+
 export const saveProject = async (
     userId: string,
     projectData: ProjectData
 ): Promise<void> => {
     const projectRef = doc(getDb(), getUserProjectsPath(userId), projectData.id);
-    console.log(`[CloudDB] saveProject called for User: ${userId}, Project: ${projectData.id}`);
-
 
     // Firestore에 저장할 데이터 준비
-    // 바이너리 데이터(이미지 URL 등)는 Storage에 저장하므로 여기서는 URL 참조만 저장
+    // [FIX] Exclude apiKeys and ensure userId is present for security rules
+    const { apiKeys, ...restOfProjectData } = projectData;
+
     const firestoreData = sanitizeFirestoreData({
-        ...projectData,
+        ...restOfProjectData,
+        userId, // [CRITICAL] Rules often check for this field
         lastModified: serverTimestamp(),
-        // apiKeys는 암호화하거나 별도 저장 권장 (현재는 그대로 저장)
     });
 
-
-
-    // [DEBUG] Log payload info to debug permission error
     try {
-        const json = JSON.stringify(firestoreData);
-        console.log(`[CloudDB] Saving project ${projectData.id}. Payload size: ~${Math.round(json.length / 1024)}KB`);
-        if (json.length > 900 * 1024) {
-            console.warn('[CloudDB] WARNING: Payload is close to 1MB limit. Check for large string fields.');
-        }
-    } catch (e) {
-        console.warn('[CloudDB] Could not stringify payload for logging');
+        await setDoc(projectRef, firestoreData, { merge: true });
+        console.log(`[CloudDB] Saved project: ${projectData.id}`);
+    } catch (error: any) {
+        console.error(`[CloudDB] setDoc FAILED: ${error.code} - ${error.message}`);
+        throw error;
     }
-
-    await setDoc(projectRef, firestoreData, { merge: true });
-
-    console.log(`[CloudDB] Saved project: ${projectData.id}`);
 };
 
 /**

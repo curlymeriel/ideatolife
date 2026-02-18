@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowRight, RefreshCw, Image as ImageIcon, Upload, Type, Layers, Move, ZoomIn, Download, Wand2, Sparkles, CheckSquare, Square, X, Loader2 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { generateImage } from '../services/imageGen';
-import { generateVisualPrompt } from '../services/gemini';
+import { generateVisualPrompt, type ScriptCut } from '../services/gemini';
 import { resolveUrl, saveToIdb, isIdbUrl } from '../utils/imageStorage';
 import { getResolution } from '../utils/aspectRatioUtils';
 
@@ -1145,10 +1145,10 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                             <div>
                                 <h4 className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-widest mb-4 flex items-center gap-2 px-1">
                                     <ImageIcon size={14} />
-                                    Final Production Cuts ({script.filter(c => c.finalImageUrl).length})
+                                    Final Production Cuts ({script.filter((c: ScriptCut) => c.finalImageUrl).length})
                                 </h4>
                                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                                    {script.filter(c => c.finalImageUrl).map(cut => (
+                                    {script.filter((c: ScriptCut) => c.finalImageUrl).map((cut: ScriptCut) => (
                                         <ReferenceSelectorItem
                                             key={`cut-${cut.id}`}
                                             id={cut.finalImageUrl!}

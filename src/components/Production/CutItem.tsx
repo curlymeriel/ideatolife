@@ -95,7 +95,6 @@ export interface CutItemProps {
     onGenerateAudio: (id: number, dialogue: string) => void;
     onPlayAudio: (id: number) => void;
     onGenerateImage: (id: number, prompt: string) => void;
-    onRegenerateImage: (id: number) => void;
     onUploadUserReference?: (cutId: number, file: File) => void;
     onAddAsset: (cutId: number, assetId: string) => void;
     onRemoveAsset: (cutId: number, assetId: string) => void;
@@ -132,7 +131,6 @@ export const CutItem = memo(({
     onGenerateAudio,
     onPlayAudio,
     onGenerateImage,
-    onRegenerateImage,
     onAddAsset,
     onRemoveAsset,
     onAddReference,
@@ -514,7 +512,7 @@ export const CutItem = memo(({
                         <div className="flex flex-col items-center gap-3 text-gray-600">
                             <Image size={48} className="opacity-20" />
                             <button
-                                onClick={() => onGenerateImage(cut.id, cut.visualPrompt)}
+                                onClick={() => onGenerateImage(cut.id, cut.visualPrompt || '')}
                                 disabled={imageLoading || isImageConfirmed}
                                 className="px-4 py-2 bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 rounded-lg text-xs font-bold hover:bg-[var(--color-primary)]/20 transition-all"
                             >
@@ -561,7 +559,7 @@ export const CutItem = memo(({
                     {hasImage && !isImageConfirmed && (
                         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center gap-2 z-20 pointer-events-none">
                             <button
-                                onClick={() => onRegenerateImage(cut.id)}
+                                onClick={() => onGenerateImage(cut.id, cut.visualPrompt || '')}
                                 disabled={imageLoading}
                                 className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-md border border-white/20 transition-all pointer-events-auto"
                             >
@@ -640,7 +638,7 @@ export const CutItem = memo(({
                                         {/* Generate Button - Right Side */}
                                         <div className="pt-4">
                                             <button
-                                                onClick={() => hasImage ? onRegenerateImage(cut.id) : onGenerateImage(cut.id, cut.visualPrompt)}
+                                                onClick={() => onGenerateImage(cut.id, cut.visualPrompt || '')}
                                                 disabled={imageLoading || isImageConfirmed}
                                                 className={`flex flex-col items-center justify-center w-12 h-12 rounded-xl transition-all border ${imageLoading ? 'bg-[var(--color-primary)]/20 animate-pulse border-[var(--color-primary)]/40' :
                                                     isImageConfirmed ? 'opacity-30 cursor-not-allowed border-white/5' :
