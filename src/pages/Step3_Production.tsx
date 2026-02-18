@@ -125,6 +125,7 @@ export const Step3_Production: React.FC = () => {
 
     // Assistant Director Chat States
     const [isChatOpen, setIsChatOpen] = useState(false);
+    const [isAiInstructionsOpen, setIsAiInstructionsOpen] = useState(false);
 
 
     // Calculate progress - requires BOTH actual content AND confirmation
@@ -1608,41 +1609,49 @@ export const Step3_Production: React.FC = () => {
 
 
                     {/* System Instruction Management Panel */}
-                    <div className="glass-panel p-4 space-y-3">
-                        <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm font-bold text-white flex items-center gap-2">
-                                <Sparkles size={14} className="text-white" />
-                                프롬프트 작성 Gemini 지시문 관리
+                    <div className="p-4 space-y-3 border-none shadow-none bg-transparent">
+                        <div
+                            className="flex items-center justify-between mb-1 cursor-pointer group"
+                            onClick={() => setIsAiInstructionsOpen(!isAiInstructionsOpen)}
+                        >
+                            <span className="text-sm font-bold text-white flex items-center gap-2 group-hover:text-[var(--color-primary)] transition-colors">
+                                <Sparkles size={14} className="text-white group-hover:text-[var(--color-primary)] transition-colors" />
+                                사용자별 AI작가 시스템 지시문 관리
+                            </span>
+                            <span className="text-gray-500 group-hover:text-white transition-colors">
+                                {isAiInstructionsOpen ? '▲' : '▼'}
                             </span>
                         </div>
 
-                        <div className="space-y-2">
-                            {/* 1) Script / Image Prompt Instructions */}
-                            <button
-                                onClick={() => setIsInstructionsModalOpen(true)}
-                                className="w-full flex items-center justify-between p-3 bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)] rounded-lg transition-colors group text-left"
-                            >
-                                <span className="text-xs font-medium text-white group-hover:text-[var(--color-primary)] transition-colors">
-                                    Script/Image
-                                </span>
-                                <span className="text-[10px] text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-2 py-1 rounded">
-                                    Edit ✏️
-                                </span>
-                            </button>
+                        {isAiInstructionsOpen && (
+                            <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                                {/* 1) Script / Image Prompt Instructions */}
+                                <button
+                                    onClick={() => setIsInstructionsModalOpen(true)}
+                                    className="w-full flex items-center justify-between p-3 bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)] rounded-lg transition-colors group text-left"
+                                >
+                                    <span className="text-xs font-medium text-white group-hover:text-[var(--color-primary)] transition-colors">
+                                        Script/Image
+                                    </span>
+                                    <span className="text-[10px] text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-2 py-1 rounded">
+                                        Edit ✏️
+                                    </span>
+                                </button>
 
-                            {/* 2) Video Prompt Instructions */}
-                            <button
-                                onClick={() => setIsVideoInstructionsModalOpen(true)}
-                                className="w-full flex items-center justify-between p-3 bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)] rounded-lg transition-colors group text-left"
-                            >
-                                <span className="text-xs font-medium text-white group-hover:text-[var(--color-primary)] transition-colors">
-                                    Video
-                                </span>
-                                <span className="text-[10px] text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-2 py-1 rounded">
-                                    Edit ✏️
-                                </span>
-                            </button>
-                        </div>
+                                {/* 2) Video Prompt Instructions */}
+                                <button
+                                    onClick={() => setIsVideoInstructionsModalOpen(true)}
+                                    className="w-full flex items-center justify-between p-3 bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)] rounded-lg transition-colors group text-left"
+                                >
+                                    <span className="text-xs font-medium text-white group-hover:text-[var(--color-primary)] transition-colors">
+                                        Video
+                                    </span>
+                                    <span className="text-[10px] text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-2 py-1 rounded">
+                                        Edit ✏️
+                                    </span>
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     {/* Next Step Button */}

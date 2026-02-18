@@ -128,7 +128,7 @@ const getEmptyProjectState = (id: string, apiKeys: any = {}): ProjectData => ({
     },
     assetDefinitions: {},
     script: [],
-    ttsModel: 'neural2',
+    ttsModel: 'gemini-tts',
     imageModel: 'gemini-3-pro-image-preview',
     assets: {},
     currentStep: 1,
