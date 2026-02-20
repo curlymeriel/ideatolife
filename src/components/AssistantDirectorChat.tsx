@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, memo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { Bot, X, Sparkles, Send, Loader2 } from 'lucide-react';
 import { ChatMessageItem } from './ChatMessageItem';
 import { consultAssistantDirector, type ChatMessage as AiChatMessage } from '../services/gemini';
@@ -57,6 +57,78 @@ export const AssistantDirectorChat: React.FC<AssistantDirectorChatProps> = memo(
         }
     }, [isOpen, productionChatHistory]);
 
+    // OPTIMIZATION: Memoize context to prevent heavy O(N) recalculations on every render
+    const context = useMemo(() => ({
+        seriesName: projectContext.seriesName,
+        episodeName: projectContext.episodeName,
+        episodeNumber: projectContext.episodeNumber,
+        seriesStory: projectContext.seriesStory || '',
+        characters: projectContext.characters,
+        seriesLocations: projectContext.seriesLocations,
+        episodePlot: projectContext.episodePlot,
+        episodeCharacters: projectContext.episodeCharacters,
+        episodeLocations: projectContext.episodeLocations,
+        seriesProps: projectContext.seriesProps || [],
+        episodeProps: projectContext.episodeProps || [],
+        targetDuration: projectContext.targetDuration,
+        aspectRatio: projectContext.aspectRatio || '16:9',
+        masterStyle: projectContext.masterStyle?.description || '',
+        storylineTable: projectContext.storylineTable,
+        currentScript: localScript.map((cut, index) => {
+            // Inject 1-based index as 'cut_number' for AI context
+            const cutWithIndex = { ...cut, cut_number: index + 1 };
+
+            const allAssets = [
+                ...projectContext.characters,
+                ...projectContext.episodeCharacters,
+                ...projectContext.seriesLocations,
+                ...projectContext.episodeLocations,
+                ...(projectContext.seriesProps || []),
+                ...(projectContext.episodeProps || [])
+            ];
+
+            const matchedAssets = (cut.referenceAssetIds || [])
+                .map((id: string) => allAssets.find((a: any) => a.id === id))
+                .filter(Boolean);
+
+            const linkedReferences: any[] = [];
+
+            // 1. User Uploads
+            if (cut.userReferenceImage) {
+                linkedReferences.push({
+                    name: "User Reference",
+                    type: "user",
+                    hasImage: true
+                });
+            }
+
+            // 2. Previous Cuts
+            (cut.referenceCutIds || []).forEach((refId: number) => {
+                const refCut = localScript.find(c => c.id === refId);
+                linkedReferences.push({
+                    name: `Cut #${refId}`,
+                    type: "composition",
+                    hasImage: !!refCut?.finalImageUrl
+                });
+            });
+
+            // 3. Project Assets
+            matchedAssets.forEach((asset: any) => {
+                linkedReferences.push({
+                    name: asset.name,
+                    type: asset.type,
+                    hasImage: !!(asset.masterImage || asset.draftImage || asset.referenceImage)
+                });
+            });
+
+            return {
+                ...cutWithIndex,
+                linkedAssets: linkedReferences
+            };
+        }),
+        assetDefinitions: useWorkflowStore.getState().assetDefinitions
+    }), [projectContext, localScript]);
+
     const handleSendChatMessage = async () => {
         if (!chatInput.trim() || isConsulting) return;
 
@@ -67,76 +139,6 @@ export const AssistantDirectorChat: React.FC<AssistantDirectorChatProps> = memo(
         setIsConsulting(true);
 
         try {
-            const context = {
-                seriesName: projectContext.seriesName,
-                episodeName: projectContext.episodeName,
-                episodeNumber: projectContext.episodeNumber,
-                seriesStory: projectContext.seriesStory || '',
-                characters: projectContext.characters,
-                seriesLocations: projectContext.seriesLocations,
-                episodePlot: projectContext.episodePlot,
-                episodeCharacters: projectContext.episodeCharacters,
-                episodeLocations: projectContext.episodeLocations,
-                seriesProps: projectContext.seriesProps || [],
-                episodeProps: projectContext.episodeProps || [],
-                targetDuration: projectContext.targetDuration,
-                aspectRatio: projectContext.aspectRatio || '16:9',
-                masterStyle: projectContext.masterStyle?.description || '',
-                storylineTable: projectContext.storylineTable,
-                currentScript: localScript.map((cut, index) => {
-                    // Inject 1-based index as 'cut_number' for AI context
-                    const cutWithIndex = { ...cut, cut_number: index + 1 };
-
-                    const allAssets = [
-                        ...projectContext.characters,
-                        ...projectContext.episodeCharacters,
-                        ...projectContext.seriesLocations,
-                        ...projectContext.episodeLocations,
-                        ...(projectContext.seriesProps || []),
-                        ...(projectContext.episodeProps || [])
-                    ];
-
-                    const matchedAssets = (cut.referenceAssetIds || [])
-                        .map((id: string) => allAssets.find((a: any) => a.id === id))
-                        .filter(Boolean);
-
-                    const linkedReferences: any[] = [];
-
-                    // 1. User Uploads
-                    if (cut.userReferenceImage) {
-                        linkedReferences.push({
-                            name: "User Reference",
-                            type: "user",
-                            hasImage: true
-                        });
-                    }
-
-                    // 2. Previous Cuts
-                    (cut.referenceCutIds || []).forEach((refId: number) => {
-                        const refCut = localScript.find(c => c.id === refId);
-                        linkedReferences.push({
-                            name: `Cut #${refId}`,
-                            type: "composition",
-                            hasImage: !!refCut?.finalImageUrl
-                        });
-                    });
-
-                    // 3. Project Assets
-                    matchedAssets.forEach((asset: any) => {
-                        linkedReferences.push({
-                            name: asset.name,
-                            type: asset.type,
-                            hasImage: !!(asset.masterImage || asset.draftImage || asset.referenceImage)
-                        });
-                    });
-
-                    return {
-                        ...cutWithIndex,
-                        linkedAssets: linkedReferences
-                    };
-                }),
-                assetDefinitions: useWorkflowStore.getState().assetDefinitions // Pass full definitions for Prop info
-            };
 
             const result = await consultAssistantDirector(updatedHistory, context, projectContext.apiKeys.gemini);
 
@@ -155,12 +157,39 @@ export const AssistantDirectorChat: React.FC<AssistantDirectorChatProps> = memo(
                         const modId = Number(modCut.id);
                         if (isNaN(modId)) return;
 
-                        const idx = updatedScript.findIndex(c => Number(c.id) === modId);
+                        // [MAPPING LOGIC]
+                        // Standard: Match by internal ID
+                        let idx = updatedScript.findIndex(c => Number(c.id) === modId);
+
+                        // FALLBACK 1: Check if AI explicitly provided 'cut_number'
+                        if (idx === -1 && modCut.cut_number) {
+                            const visualNum = Number(modCut.cut_number);
+                            console.warn(`[AssistantDirector] ID ${modId} not found. Attempting Fallback 1: cut_number ${visualNum}`);
+                            idx = visualNum - 1; // 1-based to 0-based
+                        }
+
+                        // FALLBACK 2: Check if 'id' sent by AI is actually a plausible 'cut_number'
+                        // If id is small (e.g. 1-100) and we didn't find a matching long internal id,
+                        // it's highly likely the AI inserted the visual number into the id field.
+                        if (idx === -1 && modId > 0 && modId <= updatedScript.length) {
+                            // Double check if the internal ID at this visual index is NOT modId
+                            // If it were, it would have been found in the initial 'findIndex'.
+                            console.warn(`[AssistantDirector] ID ${modId} not found in internal IDs. Attempting Fallback 2: interpreting ID as cut_number.`);
+                            idx = modId - 1;
+                        }
+
+                        // VALIDATION: Ensure the resolved index is within bounds
+                        if (idx < 0 || idx >= updatedScript.length) {
+                            console.error(`[AssistantDirector] Failed to map cut (modId: ${modId}, cut_num: ${modCut.cut_number}) to a valid index.`);
+                            idx = -1;
+                        }
+
                         if (idx !== -1) {
+                            console.log(`[AssistantDirector] Successfully mapped modId ${modId} to cut index ${idx} (Original ID: ${updatedScript[idx].id})`);
                             updatedScript[idx] = {
                                 ...updatedScript[idx],
                                 ...modCut,
-                                id: modId, // Ensure it stays as numeric
+                                id: updatedScript[idx].id, // ALWAYS preserve existing internal ID
                                 audioUrl: modCut.audioUrl || updatedScript[idx].audioUrl,
                                 finalImageUrl: modCut.finalImageUrl || updatedScript[idx].finalImageUrl,
                                 isAudioConfirmed: modCut.isAudioConfirmed ?? updatedScript[idx].isAudioConfirmed,

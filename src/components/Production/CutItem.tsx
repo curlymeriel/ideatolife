@@ -249,22 +249,36 @@ export const CutItem = memo(({
     // Resolved URLs for IndexedDB removed unused userRef
 
     // Debounced dialogue update
+    const dialogueDebounceRef = useRef<any>(null);
     const handleDialogueChange = useCallback((value: string) => {
         setLocalDialogue(value);
-        onUpdateCut(cut.id, { dialogue: value });
+
+        if (dialogueDebounceRef.current) clearTimeout(dialogueDebounceRef.current);
+        dialogueDebounceRef.current = setTimeout(() => {
+            onUpdateCut(cut.id, { dialogue: value });
+        }, 500); // 500ms debounce
     }, [cut.id, onUpdateCut]);
 
     // Debounced visual prompt update
+    const visualDebounceRef = useRef<any>(null);
     const handleVisualPromptChange = useCallback((value: string) => {
         setLocalVisualPrompt(value);
-        // Clear the Korean translation when the English prompt is modified
-        onUpdateCut(cut.id, { visualPrompt: value, visualPromptKR: undefined });
+
+        if (visualDebounceRef.current) clearTimeout(visualDebounceRef.current);
+        visualDebounceRef.current = setTimeout(() => {
+            onUpdateCut(cut.id, { visualPrompt: value, visualPromptKR: undefined });
+        }, 500);
     }, [cut.id, onUpdateCut]);
 
     // Debounced acting direction update
+    const actingDebounceRef = useRef<any>(null);
     const handleActingDirectionChange = useCallback((value: string) => {
         setLocalActingDirection(value);
-        onUpdateCut(cut.id, { actingDirection: value });
+
+        if (actingDebounceRef.current) clearTimeout(actingDebounceRef.current);
+        actingDebounceRef.current = setTimeout(() => {
+            onUpdateCut(cut.id, { actingDirection: value });
+        }, 500);
     }, [cut.id, onUpdateCut]);
 
     // Auto-generate video prompt from visual prompt (AI-powered)

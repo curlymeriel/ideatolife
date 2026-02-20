@@ -293,6 +293,7 @@ export interface ProjectData {
     seriesName: string;
     episodeName: string;
     episodeNumber: number;
+    nextCutId: number; // Added for stable ID generation
     seriesStory: string;
     mainCharacters: string;
     characters: Character[];

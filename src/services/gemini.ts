@@ -51,6 +51,7 @@ export interface ScriptCut {
         start: number; // Start time in seconds (relative to original video)
         end: number;   // End time in seconds
     };
+    cutDurationMaster?: 'audio' | 'video'; // 'audio' (default) = audio length wins, video loops/freezes. 'video' = video trim length wins, audio cuts off.
 
     // [NEW] Advanced Audio Mixing (0.0 - 1.0)
     audioVolumes?: {
@@ -147,8 +148,8 @@ export interface ProjectContext {
     assetDefinitions?: any; // NEW
 }
 
-const GEMINI_3_0_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent';
-const GEMINI_3_0_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent';
+const GEMINI_3_0_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-pro:generateContent';
+const GEMINI_3_0_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-flash:generateContent';
 const GEMINI_2_5_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent';
 const GEMINI_2_5_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
@@ -1353,29 +1354,32 @@ export const consultAssistantDirector = async (
         });
         const propInfo = propStrings.length > 0 ? propStrings.join('\n') : 'No specific props defined';
 
-        // Hydrate template variables
-        systemInstruction = systemInstruction
-            .replace('{{seriesName}}', context.seriesName || '')
-            .replace('{{seriesStory}}', context.seriesStory || '')
-            .replace('{{characters}}', JSON.stringify(context.characters))
-            .replace('{{seriesLocations}}', JSON.stringify(context.seriesLocations))
-            .replace('{{seriesProps}}', JSON.stringify(context.seriesProps))
-            .replace('{{episodeName}}', context.episodeName || '')
-            .replace('{{episodeNumber}}', String(context.episodeNumber))
-            .replace('{{episodePlot}}', context.episodePlot || '')
-            .replace('{{episodeCharacters}}', JSON.stringify(context.episodeCharacters))
-            .replace('{{episodeLocations}}', JSON.stringify(context.episodeLocations))
-            .replace('{{episodeProps}}', JSON.stringify(context.episodeProps))
-            .replace('{{targetDuration}}', String(context.targetDuration))
-            .replace('{{aspectRatio}}', context.aspectRatio)
-            .replace('{{masterStyle}}', (context as any).masterStyle || '')
-            .replace('{{props}}', propInfo) // NEW: Add props tag for templates
-            .replace('{{storylineTable}}', JSON.stringify((context.storylineTable || []).map(s => ({
-                sceneNumber: s.sceneNumber,
-                content: s.content,
-                directionNotes: s.directionNotes
-            })), null, 2)) // NEW: Pass Storyline (Sanitized)
-            .replace('{{currentScript}}', JSON.stringify(compactScript, null, 2));
+        // Hydrate template variables with global replacement to catch all tags
+        const replaceAll = (str: string, tag: string, value: string) => {
+            return str.split(tag).join(value);
+        };
+
+        systemInstruction = replaceAll(systemInstruction, '{{seriesName}}', context.seriesName || '');
+        systemInstruction = replaceAll(systemInstruction, '{{seriesStory}}', context.seriesStory || '');
+        systemInstruction = replaceAll(systemInstruction, '{{characters}}', JSON.stringify(context.characters));
+        systemInstruction = replaceAll(systemInstruction, '{{seriesLocations}}', JSON.stringify(context.seriesLocations));
+        systemInstruction = replaceAll(systemInstruction, '{{seriesProps}}', JSON.stringify(context.seriesProps));
+        systemInstruction = replaceAll(systemInstruction, '{{episodeName}}', context.episodeName || '');
+        systemInstruction = replaceAll(systemInstruction, '{{episodeNumber}}', String(context.episodeNumber));
+        systemInstruction = replaceAll(systemInstruction, '{{episodePlot}}', context.episodePlot || '');
+        systemInstruction = replaceAll(systemInstruction, '{{episodeCharacters}}', JSON.stringify(context.episodeCharacters));
+        systemInstruction = replaceAll(systemInstruction, '{{episodeLocations}}', JSON.stringify(context.episodeLocations));
+        systemInstruction = replaceAll(systemInstruction, '{{episodeProps}}', JSON.stringify(context.episodeProps));
+        systemInstruction = replaceAll(systemInstruction, '{{targetDuration}}', String(context.targetDuration));
+        systemInstruction = replaceAll(systemInstruction, '{{aspectRatio}}', context.aspectRatio);
+        systemInstruction = replaceAll(systemInstruction, '{{masterStyle}}', (context as any).masterStyle || '');
+        systemInstruction = replaceAll(systemInstruction, '{{props}}', propInfo);
+        systemInstruction = replaceAll(systemInstruction, '{{storylineTable}}', JSON.stringify((context.storylineTable || []).map(s => ({
+            sceneNumber: s.sceneNumber,
+            content: s.content,
+            directionNotes: s.directionNotes
+        })), null, 2));
+        systemInstruction = replaceAll(systemInstruction, '{{currentScript}}', JSON.stringify(compactScript, null, 2));
 
         // Add trend insights to Assistant Director as well
         let trendSummary = "No trend insights provided.";
@@ -1385,19 +1389,19 @@ export const consultAssistantDirector = async (
 REAL MARKET RESEARCH DATA (Apply these strictly):
 - Target Audience: ${ti.target || 'Not specified'}
 - Strategic Vibe/Mood: ${ti.vibe || 'Not specified'}
-- Storytelling Framework: ${typeof ti.storytelling === 'string' ? ti.storytelling : JSON.stringify(ti.storytelling)}
-- Visual/Thumbnail Strategy: ${typeof ti.thumbnail === 'string' ? ti.thumbnail : JSON.stringify(ti.thumbnail)}
+- Storytelling Framework: ${ti.storytelling ? (typeof ti.storytelling === 'string' ? ti.storytelling : JSON.stringify(ti.storytelling)) : 'Not specified'}
+- Visual/Thumbnail Strategy: ${ti.thumbnail ? (typeof ti.thumbnail === 'string' ? ti.thumbnail : JSON.stringify(ti.thumbnail)) : 'Not specified'}
 
 IMPORTANT: The above is ACTUAL research data. Ensure all modifications align with these market trends.
 `.trim();
         }
-        systemInstruction = systemInstruction.replace('{{trendInsights}}', trendSummary);
+        systemInstruction = replaceAll(systemInstruction, '{{trendInsights}}', trendSummary);
 
         const { resolveUrl } = await import('../utils/imageStorage');
 
         const contents = await Promise.all(history.map(async (msg) => {
             const parts: any[] = [];
-            let textContent = msg.content;
+            let textContent = msg.content || "";
             if (msg.fileContent && msg.fileName) {
                 textContent += `\n\n[Attached file: ${msg.fileName}]\n\`\`\`\n${msg.fileContent}\n\`\`\``;
             }
@@ -1431,11 +1435,10 @@ IMPORTANT: The above is ACTUAL research data. Ensure all modifications align wit
             { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL }
         ];
 
-        // Helper to sanitize chat history (Merge consecutive same-role messages)
-        // 1. Truncate history (Last 12 messages to keep recent context but avoid bloat)
-        const recentHistory = contents.length > 12 ? contents.slice(-12) : contents;
+        // 1. Truncate history (Last 10 messages)
+        const recentHistory = contents.length > 10 ? contents.slice(-10) : contents;
 
-        // 2. Ensure history starts with 'user' role (Gemini requirement after system instruction)
+        // 2. Ensure history starts with 'user' role
         let validRoleHistory = [...recentHistory];
         while (validRoleHistory.length > 0 && validRoleHistory[0].role !== 'user') {
             validRoleHistory.shift();
@@ -1444,34 +1447,24 @@ IMPORTANT: The above is ACTUAL research data. Ensure all modifications align wit
         // 3. Helper to sanitize chat history (Merge consecutive same-role messages)
         const sanitizeContents = (rawContents: any[]) => {
             if (rawContents.length === 0) return [];
-
             const sanitized: any[] = [];
             let lastRole = '';
 
             for (const msg of rawContents) {
-                // Skip empty messages or messages without parts
                 if (!msg.parts || msg.parts.length === 0) continue;
-
                 if (msg.role === lastRole) {
-                    // Merge text parts with previous message of same role
                     const prevMsg = sanitized[sanitized.length - 1];
-
-                    // Find text parts to merge
                     const prevTextPart = prevMsg.parts.find((p: any) => p.text !== undefined);
                     const currTextPart = msg.parts.find((p: any) => p.text !== undefined);
-
                     if (prevTextPart && currTextPart) {
                         prevTextPart.text = (prevTextPart.text || "") + "\n\n" + (currTextPart.text || "");
                     }
-
-                    // Also copy over any images if not already present
                     msg.parts.forEach((p: any) => {
                         if (p.inline_data && !prevMsg.parts.find((pp: any) => pp.inline_data && pp.inline_data.data === p.inline_data.data)) {
                             prevMsg.parts.push(p);
                         }
                     });
                 } else {
-                    // Clone to avoid mutation of original history
                     sanitized.push({
                         role: msg.role,
                         parts: JSON.parse(JSON.stringify(msg.parts))
@@ -1499,16 +1492,16 @@ IMPORTANT: The above is ACTUAL research data. Ensure all modifications align wit
                         contents: sanitizedHistory,
                         generationConfig: {
                             temperature: 0.7,
-                            responseMimeType: "application/json"
+                            response_mime_type: "application/json"
                         }
                     },
                     { timeout: 60000 }
                 );
-
                 bestResponse = response;
-                break; // Success
+                break;
             } catch (error: any) {
-                console.warn(`[Gemini] Assistant Director failed with ${model.name}:`, error.message);
+                const apiError = error.response?.data?.error || error.message;
+                console.warn(`[Gemini] Assistant Director failed with ${model.name}:`, apiError);
                 lastError = error;
             }
         }

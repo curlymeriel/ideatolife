@@ -12,7 +12,9 @@ import type {
 import type { ScriptCut, ChatMessage } from '../services/gemini';
 
 // Project Slice: Manages all domain/project data
-export interface ProjectSlice extends Omit<ProjectData, 'id' | 'lastModified'> {
+export interface ProjectSlice extends Omit<ProjectData, 'id' | 'lastModified' | 'nextCutId'> {
+    isDirty: boolean;
+    nextCutId: number; // For stable ID generation
     // Actions
     setProjectInfo: (info: Partial<ProjectData>) => void;
     setApiKeys: (keys: Partial<ApiKeys>) => void;
@@ -29,6 +31,7 @@ export interface ProjectSlice extends Omit<ProjectData, 'id' | 'lastModified'> {
     setProductionChatHistory: (history: ChatMessage[]) => void;
     setBGMTracks: (tracks: BGMTrack[]) => void;
     cleanupOrphanedAssets: () => void;
+    setDirty: (dirty: boolean) => void;
 }
 
 const sampleProjectDefaults = {
@@ -87,31 +90,39 @@ const sampleProjectDefaults = {
     assets: {},
     currentStep: 1,
     bgmTracks: [],
+    nextCutId: 1,
+    isDirty: false,
 };
 
 export const createProjectSlice: StateCreator<ProjectSlice> = (set, get) => ({
     ...sampleProjectDefaults,
 
-    setProjectInfo: (info) => set((state) => ({ ...state, ...info })),
+    setDirty: (dirty) => set({ isDirty: dirty }),
+
+    setProjectInfo: (info) => set((state) => ({ ...state, ...info, isDirty: true })),
 
     setApiKeys: (keys) => set((state) => ({
-        apiKeys: { ...state.apiKeys, ...keys }
+        apiKeys: { ...state.apiKeys, ...keys },
+        isDirty: true
     })),
 
-    setChatHistory: (history) => set({ chatHistory: history }),
+    setChatHistory: (history) => set({ chatHistory: history, isDirty: true }),
 
-    setThumbnail: (url) => set({ thumbnailUrl: url }),
+    setThumbnail: (url) => set({ thumbnailUrl: url, isDirty: true }),
 
     setThumbnailSettings: (settings) => set((state) => ({
-        thumbnailSettings: { ...state.thumbnailSettings, ...settings }
+        thumbnailSettings: { ...state.thumbnailSettings, ...settings },
+        isDirty: true
     })),
 
     setMasterStyle: (style) => set((state) => ({
-        masterStyle: { ...state.masterStyle, ...style }
+        masterStyle: { ...state.masterStyle, ...style },
+        isDirty: true
     })),
 
     setStyleAnchor: (style) => set((state) => ({
-        styleAnchor: { ...state.styleAnchor, ...style }
+        styleAnchor: { ...state.styleAnchor, ...style },
+        isDirty: true
     })),
 
     setScript: async (script) => {
@@ -155,7 +166,14 @@ export const createProjectSlice: StateCreator<ProjectSlice> = (set, get) => ({
             }
         }
 
-        set({ script: sanitizedScript });
+        // Update nextCutId based on the max ID in the new script
+        const maxId = sanitizedScript.reduce((max, cut) => Math.max(max, cut.id || 0), 0);
+
+        set((state) => ({
+            script: sanitizedScript,
+            nextCutId: Math.max(state.nextCutId || 1, maxId + 1),
+            isDirty: true
+        }));
 
         // If we moved things to IDB, trigger a save to reflect optimized state
         if (wasModified) {
@@ -163,11 +181,11 @@ export const createProjectSlice: StateCreator<ProjectSlice> = (set, get) => ({
         }
     },
 
-    setTtsModel: (model) => set({ ttsModel: model }),
+    setTtsModel: (model) => set({ ttsModel: model, isDirty: true }),
 
-    setImageModel: (model) => set({ imageModel: model }),
+    setImageModel: (model) => set({ imageModel: model, isDirty: true }),
 
-    setAssets: (assets) => set({ assets }),
+    setAssets: (assets) => set({ assets, isDirty: true }),
 
     updateAsset: async (cutId, asset) => {
         // PROACTIVE OPTIMIZATION: If adding a large image/audio to a cut asset, move to IDB first
@@ -195,7 +213,8 @@ export const createProjectSlice: StateCreator<ProjectSlice> = (set, get) => ({
             assets: {
                 ...state.assets,
                 [cutId]: { ...state.assets[cutId], ...sanitizedAsset }
-            }
+            },
+            isDirty: true
         }));
 
         if (wasModified) {
@@ -203,9 +222,9 @@ export const createProjectSlice: StateCreator<ProjectSlice> = (set, get) => ({
         }
     },
 
-    setProductionChatHistory: (history) => set({ productionChatHistory: history }),
+    setProductionChatHistory: (history) => set({ productionChatHistory: history, isDirty: true }),
 
-    setBGMTracks: (tracks) => set({ bgmTracks: tracks }),
+    setBGMTracks: (tracks) => set({ bgmTracks: tracks, isDirty: true }),
 
     cleanupOrphanedAssets: () => set((state) => {
         const validIds = new Set<string>();

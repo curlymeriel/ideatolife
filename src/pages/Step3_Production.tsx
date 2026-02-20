@@ -1,6 +1,5 @@
 ﻿import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useWorkflowStore } from '../store/workflowStore';
-import { useShallow } from 'zustand/react/shallow';
 import { generateScript, DEFAULT_SCRIPT_INSTRUCTIONS, DEFAULT_VIDEO_PROMPT_INSTRUCTIONS, detectGender } from '../services/gemini';
 import type { ScriptCut } from '../services/gemini';
 import { generateImage } from '../services/imageGen';
@@ -22,51 +21,52 @@ import { saveToIdb, generateCutImageKey, generateAudioKey, resolveUrl } from '..
 const EMPTY_SCRIPT: ScriptCut[] = [];
 
 export const Step3_Production: React.FC = () => {
-    const projectData = useWorkflowStore(useShallow(state => ({
-        id: state.id,
-        seriesName: state.seriesName,
-        episodeName: state.episodeName,
-        targetDuration: state.targetDuration,
-        styleAnchor: state.styleAnchor,
-        apiKeys: state.apiKeys,
-        script: state.script,
-        ttsModel: state.ttsModel,
-        imageModel: state.imageModel,
-        assetDefinitions: state.assetDefinitions,
-        episodePlot: state.episodePlot,
-        characters: state.characters,
-        episodeCharacters: state.episodeCharacters,
-        seriesLocations: state.seriesLocations,
-        episodeLocations: state.episodeLocations,
-        masterStyle: state.masterStyle,
-        aspectRatio: state.aspectRatio,
-        storylineTable: state.storylineTable,
-        trendInsights: (state as any).trendInsights,
-        nextStep: state.nextStep,
-    })));
+    // OPTIMIZED SELECTORS: Individual selectors prevent the entire component 
+    // from re-rendering when unrelated store fields change.
+    const id = useWorkflowStore(state => state.id);
+    const seriesName = useWorkflowStore(state => state.seriesName);
+    const episodeName = useWorkflowStore(state => state.episodeName);
+    const targetDuration = useWorkflowStore(state => state.targetDuration);
+    const styleAnchor = useWorkflowStore(state => state.styleAnchor);
+    const apiKeys = useWorkflowStore(state => state.apiKeys);
+    const script = useWorkflowStore(state => state.script);
+    const ttsModel = useWorkflowStore(state => state.ttsModel);
+    const imageModel = useWorkflowStore(state => state.imageModel);
+    const assetDefinitions = useWorkflowStore(state => state.assetDefinitions);
+    const episodePlot = useWorkflowStore(state => state.episodePlot);
+    const characters = useWorkflowStore(state => state.characters);
+    const episodeCharacters = useWorkflowStore(state => state.episodeCharacters);
+    const seriesLocations = useWorkflowStore(state => state.seriesLocations);
+    const episodeLocations = useWorkflowStore(state => state.episodeLocations);
+    const masterStyle = useWorkflowStore(state => state.masterStyle);
+    const aspectRatio = useWorkflowStore(state => state.aspectRatio);
+    const storylineTable = useWorkflowStore(state => state.storylineTable);
+    const trendInsights = useWorkflowStore(state => (state as any).trendInsights);
+    const nextStep = useWorkflowStore(state => state.nextStep);
 
-    const {
-        id: projectId,
-        seriesName, episodeName, targetDuration, styleAnchor, apiKeys,
-        script, ttsModel, imageModel, assetDefinitions,
-        episodePlot, characters, episodeCharacters, seriesLocations, episodeLocations, masterStyle, aspectRatio,
-        storylineTable, trendInsights, nextStep
-    } = projectData;
-
+    // Aliases for backward compatibility
+    const projectId = id;
     const setScript = useWorkflowStore(state => state.setScript);
     const setTtsModel = useWorkflowStore(state => state.setTtsModel);
     const setImageModel = useWorkflowStore(state => state.setImageModel);
-    const setProjectInfo = useWorkflowStore(state => state.setProjectInfo);
 
     const navigate = useNavigate();
 
+    // --- LOCAL STATE ---
     const [loading, setLoading] = useState(false);
-    const [localScript, setLocalScript] = useState<ScriptCut[]>(script);
+    const [localScript, setLocalScript] = useState<ScriptCut[]>(script || []);
     const [imageLoading, setImageLoading] = useState<Record<number, boolean>>({});
     const [audioLoading, setAudioLoading] = useState<Record<number, boolean>>({});
     const [playingAudio, setPlayingAudio] = useState<number | null>(null);
     const [showAssetSelector, setShowAssetSelector] = useState<number | null>(null);
     const [sfxModalCutId, setSfxModalCutId] = useState<number | null>(null);
+    const [batchLoading, setBatchLoading] = useState(false);
+    const [isChatOpen, setIsChatOpen] = useState(false);
+    const [isAiInstructionsOpen, setIsAiInstructionsOpen] = useState(false);
+    const [customInstructions, setCustomInstructions] = useState(DEFAULT_SCRIPT_INSTRUCTIONS);
+    const [isInstructionsModalOpen, setIsInstructionsModalOpen] = useState(false);
+    const [videoPromptInstructions, setVideoPromptInstructions] = useState(DEFAULT_VIDEO_PROMPT_INSTRUCTIONS);
+    const [isVideoInstructionsModalOpen, setIsVideoInstructionsModalOpen] = useState(false);
 
     // Ref to keep track of latest script for stable callbacks
     const localScriptRef = useRef(localScript);
@@ -74,70 +74,30 @@ export const Step3_Production: React.FC = () => {
         localScriptRef.current = localScript;
     }, [localScript]);
 
-    // CRITICAL: Sync localScript when store's script changes (e.g., project switch)
-    // This ensures that when navigating between projects, the component shows correct data
+    // Sync localScript when store's script changes
     useEffect(() => {
-        console.log(`[Step3] Store script changed - syncing localScript (projectId: ${projectId}, cuts: ${script.length})`);
-        setLocalScript(script);
+        setLocalScript(script || []);
     }, [projectId, script]);
 
-    // healing logic: detection and recovery of NaN IDs that break React keys and deletion
-    useEffect(() => {
-        if (localScript && localScript.length > 0) {
-            const hasNaN = localScript.some(c => isNaN(Number(c.id)));
-            if (hasNaN) {
-                console.warn("[Step3] 🩹 Corrupted NaN IDs detected! Starting healing process...");
-                setLocalScript(prev => {
-                    const numericIds = prev.map(c => Number(c.id)).filter(id => !isNaN(id));
-                    let nextId = (numericIds.length > 0 ? Math.max(...numericIds) : 0) + 1;
-
-                    const updated = prev.map(cut => {
-                        if (isNaN(Number(cut.id))) {
-                            const healedId = nextId++;
-                            console.log(`[Step3] 🩹 Healed cut with NaN ID. New ID: ${healedId}`);
-                            return { ...cut, id: healedId };
-                        }
-                        return cut;
-                    });
-
-                    saveToStore(updated);
-                    return updated;
-                });
-            }
-        }
-    }, [localScript]);
-
-    // Auto-save helper
-    const saveToStore = (currentScript: ScriptCut[]) => {
+    // --- PERSISTENCE HELPER ---
+    const saveToStore = useCallback((currentScript: ScriptCut[]) => {
         setScript(currentScript);
-    };
+    }, [setScript]);
 
     const handleSave = useCallback(() => {
         saveToStore(localScriptRef.current);
-    }, []);
-    // State for local instructions
-    const [customInstructions, setCustomInstructions] = useState(DEFAULT_SCRIPT_INSTRUCTIONS);
-    const [isInstructionsModalOpen, setIsInstructionsModalOpen] = useState(false);
+    }, [saveToStore]);
 
-    // State for video prompt instructions
-    const [videoPromptInstructions, setVideoPromptInstructions] = useState(DEFAULT_VIDEO_PROMPT_INSTRUCTIONS);
-    const [isVideoInstructionsModalOpen, setIsVideoInstructionsModalOpen] = useState(false);
-
-    // Assistant Director Chat States
-    const [isChatOpen, setIsChatOpen] = useState(false);
-    const [isAiInstructionsOpen, setIsAiInstructionsOpen] = useState(false);
-
-
-    // Calculate progress - requires BOTH actual content AND confirmation
-    const confirmedCount = localScript.filter(c => {
+    // --- DERIVED DATA ---
+    const confirmedCount = useMemo(() => localScript.filter(c => {
         const hasConfirmedImage = c.isImageConfirmed && c.finalImageUrl;
         const hasConfirmedAudio = c.isAudioConfirmed && (c.audioUrl || c.speaker === 'SILENT');
         return hasConfirmedImage && hasConfirmedAudio;
-    }).length;
+    }).length, [localScript]);
+
     const totalCount = localScript.length;
     const progressPercent = totalCount > 0 ? Math.round((confirmedCount / totalCount) * 100) : 0;
 
-    // Memoized speaker list to prevent re-renders and crashes
     const speakerList = useMemo(() => {
         const allChars = [...(characters || []), ...(episodeCharacters || [])];
         return allChars
@@ -145,6 +105,7 @@ export const Step3_Production: React.FC = () => {
             .filter((v, i, a) => v && a.indexOf(v) === i);
     }, [characters, episodeCharacters]);
 
+    // --- CONSTANTS ---
     const TTS_MODELS = [
         { value: 'standard' as const, label: 'Standard', cost: '$', hint: '기본 품질, 가장 저렴한 비용' },
         { value: 'wavenet' as const, label: 'WaveNet', cost: '$$', hint: '고품질, 합리적인 비용' },
@@ -153,63 +114,11 @@ export const Step3_Production: React.FC = () => {
         { value: 'gemini-tts' as const, label: 'Gemini TTS ✨', cost: '$$', hint: '자연어 연기 지시 지원 - 감정 표현 최고' },
     ];
 
-
     const IMAGE_MODELS = [
         { value: 'gemini-3-pro-image-preview', label: 'Gemini 3.0 Pro', cost: '$$$$', hint: '최고 품질 프리미엄 이미지 생성' },
         { value: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash', cost: '$', hint: '빠르고 효율적인 표준 모델' },
         { value: 'gemini-2.5-pro-image', label: 'Gemini 2.5 Pro', cost: '$$$', hint: '고품질 프리미엄 이미지 생성' },
     ];
-
-
-
-    // Helper: Auto-detect language from dialogue text
-    const detectLanguageFromText = (text: string): 'en-US' | 'ko-KR' => {
-        const koreanRegex = /[\u3131-\uD79D]/;
-        return koreanRegex.test(text) ? 'ko-KR' : 'en-US';
-    };
-
-    // --- BATCH GENERATION LOGIC (Moved from Step 4) ---
-    const [batchLoading, setBatchLoading] = useState(false);
-
-    const handleBatchGenerate = async () => {
-        if (!confirm('아직 생성되지 않은 모든 오디오와 이미지를 일괄 생성하시겠습니까?')) return;
-
-        setBatchLoading(true);
-        const cuts = localScriptRef.current;
-        const missingAudio = cuts.filter(c => (!c.audioUrl || c.audioUrl === 'mock:beep') && c.speaker !== 'SILENT' && c.dialogue);
-        const missingImages = cuts.filter(c => !c.finalImageUrl && c.visualPrompt);
-
-        console.log(`[Batch] Starting batch generation. Missing Audio: ${missingAudio.length}, Missing Images: ${missingImages.length}`);
-
-        try {
-            // 1. Generate Missing Audio
-            for (const cut of missingAudio) {
-                try {
-                    console.log(`[Batch Audio] Generating for cut ${cut.id}`);
-                    await handleGenerateAudio(cut.id, cut.dialogue);
-                } catch (e) {
-                    console.error(`[Batch Audio] Failed for cut ${cut.id}`, e);
-                }
-            }
-
-            // 2. Generate Missing Images
-            for (const cut of missingImages) {
-                try {
-                    console.log(`[Batch Image] Generating for cut ${cut.id}`);
-                    await handleGenerateFinalImage(cut.id, cut.visualPrompt || '');
-                } catch (e) {
-                    console.error(`[Batch Image] Failed for cut ${cut.id}`, e);
-                }
-            }
-
-            alert('일괄 생성이 완료되었습니다!');
-        } catch (error) {
-            console.error('Batch generation error:', error);
-            alert('일괄 생성 중 일부 오류가 발생했습니다.');
-        } finally {
-            setBatchLoading(false);
-        }
-    };
 
     // Helper: Get default voice for language, gender, and TTS model
     const getDefaultVoiceForLanguage = (
@@ -892,12 +801,14 @@ export const Step3_Production: React.FC = () => {
     const { VOICE_OPTIONS, FLAT_VOICE_OPTIONS } = useMemo(() => {
         const geminiOps = [
             {
-                optgroup: '✨ Gemini TTS - 여성 (Female)', options: GEMINI_TTS_VOICES
+                optgroup: '✨ Gemini TTS - 여성 (Female)',
+                options: GEMINI_TTS_VOICES
                     .filter(v => v.gender === 'female')
                     .map(v => ({ value: v.id, label: `♀ ${v.label} - ${v.style}`, gender: v.gender, lang: 'multilingual' }))
             },
             {
-                optgroup: '✨ Gemini TTS - 남성 (Male)', options: GEMINI_TTS_VOICES
+                optgroup: '✨ Gemini TTS - 남성 (Male)',
+                options: GEMINI_TTS_VOICES
                     .filter(v => v.gender === 'male')
                     .map(v => ({ value: v.id, label: `♂ ${v.label} - ${v.style}`, gender: v.gender, lang: 'multilingual' }))
             }
@@ -905,13 +816,15 @@ export const Step3_Production: React.FC = () => {
 
         const cloudOps = [
             {
-                optgroup: '🇰🇷 Korean (Standard)', options: [
+                optgroup: '🇰🇷 Korean (Standard)',
+                options: [
                     { value: 'ko-KR-Standard-A', label: '♀ Standard-A (여성)', gender: 'female', lang: 'ko-KR' },
                     { value: 'ko-KR-Standard-C', label: '♂ Standard-C (남성)', gender: 'male', lang: 'ko-KR' },
                 ]
             },
             {
-                optgroup: '🇰🇷 Korean (WaveNet)', options: [
+                optgroup: '🇰🇷 Korean (WaveNet)',
+                options: [
                     { value: 'ko-KR-Wavenet-A', label: '♀ WaveNet-A (여성)', gender: 'female', lang: 'ko-KR' },
                     { value: 'ko-KR-Wavenet-B', label: '♀ WaveNet-B (여성, 차분함)', gender: 'female', lang: 'ko-KR' },
                     { value: 'ko-KR-Wavenet-C', label: '♂ WaveNet-C (남성)', gender: 'male', lang: 'ko-KR' },
@@ -919,132 +832,34 @@ export const Step3_Production: React.FC = () => {
                 ]
             },
             {
-                optgroup: '🇰🇷 Korean (Neural2)', options: [
+                optgroup: '🇰🇷 Korean (Neural2)',
+                options: [
                     { value: 'ko-KR-Neural2-A', label: '♀ Neural2-A (여성)', gender: 'female', lang: 'ko-KR' },
-                    { value: 'ko-KR-Neural2-B', label: '♀ Neural2-B (여성, 차분함)', gender: 'female', lang: 'ko-KR' },
+                    { value: 'ko-KR-Neural2-B', label: '♀ Neural2-B (여성)', gender: 'female', lang: 'ko-KR' },
                     { value: 'ko-KR-Neural2-C', label: '♂ Neural2-C (남성)', gender: 'male', lang: 'ko-KR' },
-                ]
-            },
-            {
-                optgroup: '🇰🇷 Korean (Chirp HD)', options: [
-                    { value: 'ko-KR-Chirp3-HD-Aoede', label: '♀ Aoede (여성, 성인)', gender: 'female', lang: 'ko-KR' },
-                    { value: 'ko-KR-Chirp3-HD-Leda', label: '♀ Leda (여성, 젊음)', gender: 'female', lang: 'ko-KR' },
-                    { value: 'ko-KR-Chirp3-HD-Fenrir', label: '♂ Fenrir (남성, 성인)', gender: 'male', lang: 'ko-KR' },
-                    { value: 'ko-KR-Chirp3-HD-Puck', label: '♂ Puck (남성, 젊음)', gender: 'male', lang: 'ko-KR' },
-                ]
-            },
-            {
-                optgroup: '🇺🇸 English (Neural2)', options: [
-                    { value: 'en-US-Neural2-C', label: '♀ Neural2-C (Female)', gender: 'female', lang: 'en-US' },
-                    { value: 'en-US-Neural2-G', label: '♀ Neural2-G (Female, Young)', gender: 'female', lang: 'en-US' },
-                    { value: 'en-US-Neural2-J', label: '♂ Neural2-J (Male)', gender: 'male', lang: 'en-US' },
-                    { value: 'en-US-Neural2-I', label: '♂ Neural2-I (Male, Young)', gender: 'male', lang: 'en-US' },
                 ]
             }
         ];
 
-        const combined = [...cloudOps, ...geminiOps];
-        return {
-            VOICE_OPTIONS: combined,
-            FLAT_VOICE_OPTIONS: combined.flatMap(g => g.options)
-        };
+        const combined = [...geminiOps, ...cloudOps];
+        const flat = combined.flatMap(g => g.options);
+        return { VOICE_OPTIONS: combined, FLAT_VOICE_OPTIONS: flat };
     }, []);
 
-    const getDefaultVoice = useCallback((gender?: string) => {
-        if (ttsModel === 'gemini-tts') return gender === 'male' ? 'Puck' : 'Aoede';
-        if (gender === 'male') {
-            return FLAT_VOICE_OPTIONS.find(v => v.gender === 'male' && v.lang === currentLanguage)?.value || FLAT_VOICE_OPTIONS[0]?.value;
-        }
-        return FLAT_VOICE_OPTIONS.find(v => v.gender === 'female' && v.lang === currentLanguage)?.value || FLAT_VOICE_OPTIONS[0]?.value;
-    }, [ttsModel, currentLanguage, FLAT_VOICE_OPTIONS]);
+    // Helper: Auto-detect language from dialogue text
+    const detectLanguageFromText = (text: string): 'en-US' | 'ko-KR' => {
+        const koreanRegex = /[\u3131-\uD79D]/;
+        return koreanRegex.test(text) ? 'ko-KR' : 'en-US';
+    };
 
-    const applyVoiceToSpeaker = useCallback((speakerName: string, voiceValue: string) => {
-        const voice = FLAT_VOICE_OPTIONS.find(v => v.value === voiceValue);
-        if (voice) {
-            if (isGeminiTtsVoice(voiceValue)) setTtsModel('gemini-tts');
-            else if (voiceValue.includes('Chirp3-HD')) setTtsModel('chirp3-hd');
-            else if (voiceValue.includes('Neural2')) setTtsModel('neural2');
-            else if (voiceValue.includes('Wavenet')) setTtsModel('wavenet');
-            else setTtsModel('standard');
+    // --- HANDLERS ---
 
-            setLocalScript(prev => {
-                const updated = prev.map(cut => {
-                    if ((cut.speaker || 'Narrator') === speakerName && !(cut.isAudioConfirmed || cut.isConfirmed)) {
-                        return { ...cut, voiceId: voiceValue, voiceGender: voice.gender as any, language: voice.lang } as ScriptCut;
-                    }
-                    return cut;
-                });
-                saveToStore(updated);
-                return updated;
-            });
-        }
-    }, [FLAT_VOICE_OPTIONS, setTtsModel]);
-
-    const applyToSpeaker = useCallback((speakerName: string, field: keyof ScriptCut, value: any) => {
-        setLocalScript(prev => {
-            const updated = prev.map(cut => {
-                if ((cut.speaker || 'Narrator') === speakerName && !(cut.isAudioConfirmed || cut.isConfirmed)) {
-                    return { ...cut, [field]: value };
-                }
-                return cut;
-            });
-            saveToStore(updated);
-            return updated;
-        });
-    }, []);
-
-    const applyToAll = useCallback((field: string, value: any) => {
-        setLocalScript(prev => {
-            const updated = prev.map(cut => {
-                if (!(cut.isAudioConfirmed || cut.isConfirmed)) return { ...cut, [field]: value };
-                return cut;
-            });
-            saveToStore(updated);
-            return updated;
-        });
-    }, []);
-
-    const handleBulkGenerateAudio = useCallback(async (speakerName: string) => {
-        const cutsToGenerate = localScriptRef.current.filter(c => (c.speaker || 'Narrator') === speakerName && !c.isAudioConfirmed);
-        if (cutsToGenerate.length === 0) return alert('No unlocked cuts found for this speaker.');
-        if (!confirm(`Generate audio for ${cutsToGenerate.length} cuts for "${speakerName}"?`)) return;
-        for (const cut of cutsToGenerate) {
-            if (cut.dialogue) await handleGenerateAudio(cut.id, cut.dialogue);
-        }
-    }, [handleGenerateAudio]);
-
-    const handleBulkLockAudio = useCallback((speakerName: string, lock: boolean) => {
-        setLocalScript(prev => {
-            const updated = prev.map(cut => {
-                if ((cut.speaker || 'Narrator') === speakerName) {
-                    if (lock && !cut.audioUrl && cut.speaker !== 'SILENT') return cut;
-                    return { ...cut, isAudioConfirmed: lock };
-                }
-                return cut;
-            });
-            saveToStore(updated);
-            return updated;
-        });
-    }, []);
 
     const playVoiceSample = useCallback(async (voiceId: string) => {
         const VOICE_SAMPLES: Record<string, string> = {
-            'ko-KR-Chirp3-HD-Aoede': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Aoede.wav',
-            'ko-KR-Chirp3-HD-Fenrir': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Fenrir.wav',
-            'ko-KR-Chirp3-HD-Leda': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Leda.wav',
             'ko-KR-Chirp3-HD-Puck': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Chirp3-HD-Puck.wav',
             'ko-KR-Neural2-A': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Neural2-A.wav',
-            'ko-KR-Neural2-B': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Neural2-B.wav',
             'ko-KR-Standard-A': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-A.wav',
-            'ko-KR-Standard-B': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-B.wav',
-            'ko-KR-Standard-C': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-C.wav',
-            'ko-KR-Standard-D': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Standard-D.wav',
-            'ko-KR-Wavenet-C': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Wavenet-C.wav',
-            'ko-KR-Wavenet-D': 'https://cloud.google.com/static/text-to-speech/docs/audio/ko-KR-Wavenet-D.wav',
-            'en-US-Neural2-C': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-C.wav',
-            'en-US-Neural2-G': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-G.wav',
-            'en-US-Neural2-J': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-J.wav',
-            'en-US-Neural2-I': 'https://cloud.google.com/static/text-to-speech/docs/audio/en-US-Neural2-I.wav',
         };
 
         const sampleUrl = VOICE_SAMPLES[voiceId];
@@ -1053,29 +868,101 @@ export const Step3_Production: React.FC = () => {
             return;
         }
 
-        if (isGeminiTtsVoice(voiceId)) {
-            if (!apiKeys?.gemini) return alert('Gemini API 키가 필요합니다.');
-            setSampleLoading(voiceId);
-            try {
-                const voiceInfo = GEMINI_TTS_VOICES.find(v => v.id === voiceId);
-                const sampleText = currentLanguage === 'ko-KR' ? '안녕하세요, 저는 이 목소리의 샘플입니다.' : 'Hello, this is a sample of my voice.';
-                const result = await generateGeminiSpeech(sampleText, apiKeys.gemini, {
-                    voiceName: voiceId, languageCode: currentLanguage || 'ko-KR',
-                    actingDirection: voiceInfo?.style || '', rate: 1.0, volume: 1.0
-                });
-                const audioUrl = result instanceof Blob ? URL.createObjectURL(result) : result;
-                const audio = new Audio(audioUrl);
-                audio.onended = () => { if (result instanceof Blob) URL.revokeObjectURL(audioUrl); };
-                await audio.play();
-            } catch (error: any) {
-                alert(`샘플 생성 실패: ${error.message}`);
-            } finally {
-                setSampleLoading(null);
-            }
-            return;
+        if (!apiKeys?.gemini) return alert('Gemini API 키가 필요합니다.');
+        setSampleLoading(voiceId);
+        try {
+            const sampleText = '안녕하세요, 저는 이 목소리의 샘플입니다.';
+            const result = await generateSpeech(sampleText, voiceId, apiKeys.gemini, 'gemini-tts');
+            const audio = new Audio(result);
+            await audio.play();
+        } catch (error: any) {
+            alert(`샘플 생성 실패: ${error.message}`);
+        } finally {
+            setSampleLoading(null);
         }
-        alert('이 음성의 샘플을 사용할 수 없습니다.');
-    }, [apiKeys.gemini, currentLanguage]);
+    }, [apiKeys?.gemini]);
+
+
+
+    // --- BULK HELPERS ---
+    const applyToAll = useCallback((field: string, value: any) => {
+        setLocalScript(prev => {
+            const updated = prev.map(cut => ({ ...cut, [field]: value }));
+            saveToStore(updated);
+            return updated;
+        });
+    }, [saveToStore]);
+
+    const applyToSpeaker = useCallback((speaker: string, field: string, value: any) => {
+        setLocalScript(prev => {
+            const updated = prev.map(cut => cut.speaker === speaker ? { ...cut, [field]: value } : cut);
+            saveToStore(updated);
+            return updated;
+        });
+    }, [saveToStore]);
+
+    const applyVoiceToSpeaker = useCallback((speaker: string, voiceId: string) => {
+        setLocalScript(prev => {
+            const updated = prev.map(cut => cut.speaker === speaker ? { ...cut, voiceName: voiceId, voiceId } : cut);
+            saveToStore(updated);
+            return updated;
+        });
+    }, [saveToStore]);
+
+    const handleBulkGenerateAudio = useCallback(async (speaker: string) => {
+        const cutsToGenerate = localScriptRef.current.filter(c => c.speaker === speaker && !c.isAudioConfirmed && c.dialogue);
+        if (cutsToGenerate.length === 0) return alert('생성할 컷이 없거나 모두 잠겨있습니다.');
+
+        setBatchLoading(true);
+        try {
+            for (const cut of cutsToGenerate) {
+                await handleGenerateAudio(cut.id, cut.dialogue);
+            }
+            alert(`${speaker}의 오디오 생성이 완료되었습니다.`);
+        } catch (e) {
+            console.error('Bulk audio error:', e);
+        } finally {
+            setBatchLoading(false);
+        }
+    }, [handleGenerateAudio, localScriptRef, setBatchLoading]);
+
+    const handleBatchGenerate = useCallback(async () => {
+        const cutsToGenerate = localScriptRef.current.filter(c =>
+            (!c.audioUrl && c.speaker !== 'SILENT') || !c.finalImageUrl
+        );
+        if (cutsToGenerate.length === 0) return alert('이미 모든 자산이 생성되었습니다.');
+
+        if (!confirm(`${cutsToGenerate.length}개 컷의 누락된 자산을 일괄 생성하시겠습니까?`)) return;
+
+        setBatchLoading(true);
+        try {
+            for (const cut of cutsToGenerate) {
+                // Generate Audio if missing (and not silent)
+                if (!cut.audioUrl && cut.speaker !== 'SILENT' && cut.dialogue) {
+                    await handleGenerateAudio(cut.id, cut.dialogue);
+                }
+                // Generate Image if missing
+                if (!cut.finalImageUrl) {
+                    await handleGenerateFinalImage(cut.id, cut.visualPrompt || '');
+                }
+            }
+            alert('일괄 생성이 완료되었습니다.');
+        } catch (e: any) {
+            console.error('Batch generation error:', e);
+            alert(`일괄 생성 중 오류 발생: ${e.message}`);
+        } finally {
+            setBatchLoading(false);
+        }
+    }, [handleGenerateAudio, handleGenerateFinalImage, setBatchLoading]);
+
+
+    const handleBulkLockAudio = useCallback((speaker: string, lock: boolean) => {
+        setLocalScript(prev => {
+            const updated = prev.map(cut => cut.speaker === speaker ? { ...cut, isAudioConfirmed: lock } : cut);
+            saveToStore(updated);
+            return updated;
+        });
+    }, [saveToStore]);
 
     const handleUpdateCut = useCallback((id: number, updates: Partial<ScriptCut>) => {
         setLocalScript(prev => {
@@ -1086,7 +973,7 @@ export const Step3_Production: React.FC = () => {
             saveToStore(updated);
             return updated;
         });
-    }, [storylineTable, setProjectInfo]);
+    }, [saveToStore]);
 
     const handleUploadUserReference = useCallback(async (cutId: number, file: File) => {
         try {
@@ -1094,47 +981,37 @@ export const Step3_Production: React.FC = () => {
             reader.onload = async (e) => {
                 const base64 = e.target?.result as string;
                 if (!base64) return;
-
-                // Optimization: Save to IDB to avoid bloating project.json
-                // Use a manual key pattern since generateCutImageKey assumes final/draft
                 const storageKey = `cut-${cutId}-userref`;
                 const idbUrl = await saveToIdb('images', storageKey, base64, { compress: true, maxWidth: 1024 });
-
                 handleUpdateCut(cutId, { userReferenceImage: idbUrl });
-                console.log(`[Step3] 🎨 Saved user reference to IDB: ${idbUrl}`);
             };
             reader.readAsDataURL(file);
         } catch (error) {
             console.error("Failed to upload reference:", error);
         }
-    }, [projectId, handleUpdateCut]);
+    }, [handleUpdateCut, saveToIdb]);
 
     const toggleAudioConfirm = useCallback((cutId: number) => {
         setLocalScript(prev => {
-            const targetId = Number(cutId);
             const updated = prev.map(cut =>
-                Number(cut.id) === targetId ? { ...cut, isAudioConfirmed: !cut.isAudioConfirmed } : cut
+                Number(cut.id) === Number(cutId) ? { ...cut, isAudioConfirmed: !cut.isAudioConfirmed } : cut
             );
             saveToStore(updated);
             return updated;
         });
-    }, []);
+    }, [saveToStore]);
 
     const toggleImageConfirm = useCallback((cutId: number) => {
         setLocalScript(prev => {
-            const targetId = Number(cutId);
             const updated = prev.map(cut => {
-                if (Number(cut.id) === targetId) {
+                if (Number(cut.id) === Number(cutId)) {
                     const newIsConfirmed = !cut.isImageConfirmed;
                     let updates: Partial<typeof cut> = { isImageConfirmed: newIsConfirmed };
-
                     if (newIsConfirmed && !cut.videoPrompt) {
                         const basePrompt = cut.visualPrompt || '';
-                        const motionSuffix = '. Camera slowly pushes in. Subtle atmospheric motion. Character breathes naturally.';
+                        const motionSuffix = '. Camera slowly pushes in. Subtle atmospheric motion.';
                         updates.videoPrompt = basePrompt + motionSuffix;
-                        console.log(`[Cut ${cut.id}] 🎬 Auto-generated video prompt on lock`);
                     }
-
                     return { ...cut, ...updates };
                 }
                 return cut;
@@ -1142,13 +1019,12 @@ export const Step3_Production: React.FC = () => {
             saveToStore(updated);
             return updated;
         });
-    }, []);
+    }, [saveToStore]);
 
     const addAssetToCut = useCallback((cutId: number, assetId: string) => {
         setLocalScript(prev => {
-            const targetId = Number(cutId);
             const updated = prev.map(cut => {
-                if (Number(cut.id) === targetId) {
+                if (Number(cut.id) === Number(cutId)) {
                     const currentAssets = cut.referenceAssetIds || [];
                     if (!currentAssets.includes(assetId)) {
                         return { ...cut, referenceAssetIds: [...currentAssets, assetId] };
@@ -1160,13 +1036,12 @@ export const Step3_Production: React.FC = () => {
             return updated;
         });
         setShowAssetSelector(null);
-    }, []);
+    }, [saveToStore, setShowAssetSelector]);
 
     const removeAssetFromCut = useCallback((cutId: number, assetId: string) => {
         setLocalScript(prev => {
-            const targetId = Number(cutId);
             const updated = prev.map(cut => {
-                if (Number(cut.id) === targetId) {
+                if (Number(cut.id) === Number(cutId)) {
                     return {
                         ...cut,
                         referenceAssetIds: (cut.referenceAssetIds || []).filter(id => id !== assetId)
@@ -1177,13 +1052,12 @@ export const Step3_Production: React.FC = () => {
             saveToStore(updated);
             return updated;
         });
-    }, []);
+    }, [saveToStore]);
 
     const addCutReference = useCallback((cutId: number, refCutId: number) => {
         setLocalScript(prev => {
-            const targetId = Number(cutId);
             const updated = prev.map(cut => {
-                if (Number(cut.id) === targetId) {
+                if (Number(cut.id) === Number(cutId)) {
                     const currentRefs = cut.referenceCutIds || [];
                     if (!currentRefs.includes(refCutId)) {
                         return { ...cut, referenceCutIds: [...currentRefs, refCutId] };
@@ -1195,13 +1069,12 @@ export const Step3_Production: React.FC = () => {
             return updated;
         });
         setShowAssetSelector(null);
-    }, []);
+    }, [saveToStore, setShowAssetSelector]);
 
     const removeCutReference = useCallback((cutId: number, refCutId: number) => {
         setLocalScript(prev => {
-            const targetId = Number(cutId);
             const updated = prev.map(cut => {
-                if (Number(cut.id) === targetId) {
+                if (Number(cut.id) === Number(cutId)) {
                     return {
                         ...cut,
                         referenceCutIds: (cut.referenceCutIds || []).filter(id => id !== refCutId)
@@ -1212,16 +1085,15 @@ export const Step3_Production: React.FC = () => {
             saveToStore(updated);
             return updated;
         });
-    }, []);
+    }, [saveToStore]);
 
     const handleDeleteCut = useCallback((id: number) => {
         setLocalScript(prev => {
-            const targetId = Number(id);
-            const updated = prev.filter(cut => Number(cut.id) !== targetId);
+            const updated = prev.filter(cut => Number(cut.id) !== Number(id));
             saveToStore(updated);
             return updated;
         });
-    }, []);
+    }, [saveToStore]);
 
     const handleMoveCut = useCallback((id: number, direction: 'up' | 'down') => {
         setLocalScript(prev => {
@@ -1237,39 +1109,37 @@ export const Step3_Production: React.FC = () => {
             saveToStore(updated);
             return updated;
         });
-    }, []);
+    }, [saveToStore]);
 
     const handleInsertCut = useCallback((id: number) => {
+        const state = useWorkflowStore.getState();
+        const nextId = state.nextCutId || 1;
+
         setLocalScript(prev => {
-            const targetId = Number(id);
-            const index = prev.findIndex(c => Number(c.id) === targetId);
+            const index = prev.findIndex(c => Number(c.id) === Number(id));
             if (index === -1) return prev;
 
-            const numericIds = prev.map(c => Number(c.id)).filter(id => !isNaN(id));
-            const maxId = numericIds.length > 0 ? Math.max(...numericIds) : 0;
             const newCut: ScriptCut = {
-                id: maxId + 1,
+                id: nextId,
                 speaker: 'Narrator',
                 dialogue: '',
                 visualPrompt: '',
                 estimatedDuration: 3
             };
-
             const updated = [...prev];
             updated.splice(index + 1, 0, newCut);
             saveToStore(updated);
             return updated;
         });
-    }, []);
+    }, [saveToStore]);
 
-    // Bulk lock functions - component level for header access
     const lockAllAudio = useCallback(() => {
         setLocalScript(prev => {
             const updated = prev.map(cut => (cut.audioUrl || cut.speaker === 'SILENT') ? { ...cut, isAudioConfirmed: true } : cut);
             saveToStore(updated);
             return updated;
         });
-    }, []);
+    }, [saveToStore]);
 
     const unlockAllAudio = useCallback(() => {
         setLocalScript(prev => {
@@ -1277,7 +1147,7 @@ export const Step3_Production: React.FC = () => {
             saveToStore(updated);
             return updated;
         });
-    }, []);
+    }, [saveToStore]);
 
     const lockAllImages = useCallback(() => {
         setLocalScript(prev => {
@@ -1285,7 +1155,7 @@ export const Step3_Production: React.FC = () => {
             saveToStore(updated);
             return updated;
         });
-    }, []);
+    }, [saveToStore]);
 
     const unlockAllImages = useCallback(() => {
         setLocalScript(prev => {
@@ -1293,9 +1163,8 @@ export const Step3_Production: React.FC = () => {
             saveToStore(updated);
             return updated;
         });
-    }, []);
+    }, [saveToStore]);
 
-    // Bulk lock counts - component level for header access
     const audioLockedCount = localScript.filter(c => c.isAudioConfirmed).length;
     const imageLockedCount = localScript.filter(c => c.isImageConfirmed).length;
     const audioGeneratedCount = localScript.filter(c => c.audioUrl).length;
@@ -1303,14 +1172,14 @@ export const Step3_Production: React.FC = () => {
 
     const handleRemoveSfx = useCallback((id: number) => {
         setLocalScript(prev => {
-            const targetId = Number(id);
             const updated = prev.map(c =>
-                Number(c.id) === targetId ? { ...c, sfxUrl: undefined, sfxName: undefined, sfxVolume: undefined, sfxFreesoundId: undefined, sfxDescription: undefined } : c
+                Number(c.id) === Number(id) ? { ...c, sfxUrl: undefined, sfxName: undefined, sfxVolume: undefined, sfxFreesoundId: undefined, sfxDescription: undefined } : c
             );
             saveToStore(updated);
             return updated;
         });
-    }, []);
+    }, [saveToStore]);
+
 
     return (
         <>
@@ -1321,7 +1190,6 @@ export const Step3_Production: React.FC = () => {
                     {/* Header with Stats */}
                     <div className="glass-panel p-4">
                         <div className="flex flex-col gap-3">
-
                             <div className="flex items-center justify-between">
                                 <div>
                                     <h2 className="text-2xl font-bold text-white tracking-tight">Production</h2>
@@ -1516,7 +1384,7 @@ export const Step3_Production: React.FC = () => {
                                 <div className="text-[9px] text-[var(--color-text-muted)] uppercase font-bold">화자별 보이스 설정</div>
                                 <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
                                     {speakers.map(([speaker, settings]) => {
-                                        const currentVoice = settings.voiceId || getDefaultVoice(settings.gender);
+                                        const currentVoice = settings.voiceId || getDefaultGeminiVoice(settings.gender);
                                         return (
                                             <div key={speaker} className="bg-[var(--color-surface)] p-2 rounded border border-[var(--color-border)] space-y-2">
                                                 <div className="flex items-center gap-2">
@@ -1891,7 +1759,7 @@ export const Step3_Production: React.FC = () => {
             </div>
 
             {/* AI Assistant Director Chat Sidebar */}
-            <AssistantDirectorChat
+            < AssistantDirectorChat
                 isOpen={isChatOpen}
                 onClose={() => setIsChatOpen(false)}
                 localScript={localScript}
@@ -1900,17 +1768,21 @@ export const Step3_Production: React.FC = () => {
             />
 
             {/* Chat Trigger Button (Floating) */}
-            <button
-                onClick={() => setIsChatOpen(true)}
-                className={`fixed bottom-8 right-8 w-20 h-20 rounded-full bg-orange-500 text-white shadow-2xl flex flex-col items-center justify-center hover:scale-110 active:scale-95 transition-all z-50 group ${isChatOpen ? 'hidden' : ''}`}
-            >
-                <div className="absolute -top-12 right-0 bg-black/80 backdrop-blur px-3 py-1.5 rounded-lg text-[11px] font-bold text-orange-400 border border-orange-500/30 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                    AI 조감독에게 코칭받기 ✨
-                </div>
-                <Bot size={32} />
-                <span className="text-[11px] font-bold mt-1 font-noto">조감독</span>
-                <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 border-2 border-[#121212] rounded-full" />
-            </button>
+            {
+                !isChatOpen && (
+                    <button
+                        onClick={() => setIsChatOpen(true)}
+                        className="fixed bottom-8 right-8 w-20 h-20 rounded-full bg-orange-500 text-white shadow-2xl flex flex-col items-center justify-center hover:scale-110 active:scale-95 transition-all z-50 group"
+                    >
+                        <div className="absolute -top-12 right-0 bg-black/80 backdrop-blur px-3 py-1.5 rounded-lg text-[11px] font-bold text-orange-400 border border-orange-500/30 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                            AI 조감독에게 코칭받기 ✨
+                        </div>
+                        <Bot size={32} />
+                        <span className="text-[11px] font-bold mt-1 font-noto">조감독</span>
+                        <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 border-2 border-[#121212] rounded-full" />
+                    </button>
+                )
+            }
         </>
     );
 };

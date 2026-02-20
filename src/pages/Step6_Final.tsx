@@ -225,9 +225,14 @@ export const Step6_Final = () => {
         let videoDur = 0;
         // Priority 1: If valid videoTrim exists, calculate duration from it directly
         if (cut.videoTrim) {
-            const { start, end } = cut.videoTrim;
+            const { start = 0, end = 0 } = cut.videoTrim;
             const trimDuration = end - start;
-            if (trimDuration > 0) videoDur = trimDuration;
+            // Fallback: If trim end is 0 or less than start, use reported videoDuration if available
+            if (trimDuration > 0) {
+                videoDur = trimDuration;
+            } else if (cut.videoDuration && cut.videoDuration > 0) {
+                videoDur = cut.videoDuration;
+            }
         }
         // Fallback: Custom video duration
         else if (cut.videoDuration && cut.videoDuration > 0) {
@@ -241,7 +246,15 @@ export const Step6_Final = () => {
             ? audioDur + (cut.audioPadding ?? 0.5)
             : (cut.audioUrl ? (cut.estimatedDuration || 5) : 0);
 
-        // HYBRID SYNC LOGIC:
+        // [New Logic] Respect Duration Master preference
+        const master = cut.cutDurationMaster || 'audio';
+
+        if (master === 'video' && videoDur > 0) {
+            // Strictly follow Video Trim/Duration if set as Master
+            return videoDur;
+        }
+
+        // Default 'audio' logic (or fallback if video duration unknown)
         // Case A: Video Audio is USED (Authentic Video Mode) -> Video dictates timing
         if (cut.useVideoAudio) {
             // If video duration is known, trust it. Otherwise fallback to audio/estimate.
@@ -249,11 +262,7 @@ export const Step6_Final = () => {
         }
 
         // Case B: TTS/Mix Mode (Hybrid) -> MAX of Video or Audio
-        // [FIX] Previously this rigorously followed Audio, cutting off video details.
-        // Now we respect the user's Video Trim if it's longer than the dialogue.
-        // We also respect the Dialogue if it's longer than the video (audio won't be cut).
-
-        // If NO audio and NO video, fallback to estimated.
+        // Respect the Dialogue if it's longer than the video (audio won't be cut).
         return Math.max(videoDur, effectiveAudioDur, cut.estimatedDuration || 5);
     };
 
@@ -368,7 +377,6 @@ export const Step6_Final = () => {
 
     // 1. Optimize Assets (Convert Base64 to Blob URLs & Measure Audio)
     // Priority loading: load first 5 cuts first, then rest in background
-    // Priority loading: load first 5 cuts first, then rest in background
     const lastScriptRef = React.useRef<string>('');
     const lastStateUpdateRef = React.useRef<number>(0);
 
@@ -395,19 +403,16 @@ export const Step6_Final = () => {
             const newCache: Record<string, string> = {};
 
             const processUrl = async (url: string) => {
-                // Optimization: If it's already a playable format, return as is.
-                // We skip separate Blob conversion for Data URLs to prevent hanging on large projects.
-                if (!url || url.startsWith('blob:') || url.startsWith('http') || url.startsWith('data:')) return url;
+                // Optimization: If it's already a resolved format, return as is.
+                if (!url || url.startsWith('blob:') || url.startsWith('http')) return url;
 
-                // Handle idb:// URLs - resolve from IndexedDB first
+                // Handle idb:// URLs - resolve from IndexedDB
                 if (isIdbUrl(url)) {
-                    // Use asBlob: true for efficient handling of large files
+                    // [IMPORTANT] Use asBlob: true to leverage centralized caching and prevent ERR_FILE_NOT_FOUND
                     const resolved = await resolveUrl(url, { asBlob: true });
-                    if (!resolved) return undefined;
-                    return resolved;
+                    return resolved || undefined;
                 }
 
-                // Fallback for other cases
                 return url;
             };
 
@@ -419,46 +424,27 @@ export const Step6_Final = () => {
                         newCache[thumbnailUrl] = resolved;
                         setResolvedThumbnail(resolved);
                     }
-                    console.log('[Step6] Resolved thumbnail:', resolved?.substring(0, 50));
-                } catch (e) {
-                    console.error("Failed to process thumbnail:", e);
-                }
+                } catch (e) { console.error("Failed to process thumbnail:", e); }
             }
-
-
 
             // Helper to process a cut and return updates
             const processCutAndGetUpdates = async (cut: typeof script[0], index: number) => {
                 const updates: { cache: Record<string, string>, durations: Record<number, number> } = { cache: {}, durations: {} };
 
                 try {
-                    // Helper to add to local updates
                     const addToCache = (original: string | undefined, resolved: string | undefined) => {
-                        // Allow IDB resolved URLs into the cache regardless of prefix, as long as resolved
                         if (original && resolved && !resolved.startsWith('idb://')) {
                             updates.cache[original] = resolved;
                         }
                     };
 
-                    // ... (existing resolution logic adapted to use addToCache) ...
-                    // Since the logic is complex, I will simplify by processing and returning:
-
-                    // 1. Audio
+                    // 1. Audio (Measure duration)
                     if (cut.audioUrl) {
-                        let url: string | undefined = await processUrl(cut.audioUrl);
-
-                        // Fallback: If we got a Data URL (not from IDB but direct), convert to Blob for stability
-                        if (url && url.startsWith('data:')) {
-                            try {
-                                const res = await fetch(url);
-                                const blob = await res.blob();
-                                url = URL.createObjectURL(blob);
-                            } catch (e) { console.error('Audio blob conversion failed', e); }
-                        }
-
+                        const url = await processUrl(cut.audioUrl);
                         if (url) {
                             addToCache(cut.audioUrl, url);
-                            if (url.startsWith('blob:') || url.startsWith('data:') || !url.startsWith('idb://')) {
+                            // Only measure if format is supported and resolved
+                            if (url.startsWith('blob:') || url.startsWith('http')) {
                                 const duration = await getAudioDuration(url);
                                 if (duration > 0) updates.durations[index] = duration;
                             }
@@ -466,30 +452,14 @@ export const Step6_Final = () => {
                     }
 
                     // 2. SFX
-                    if (cut.sfxUrl) {
-                        let sfxUrl = await processUrl(cut.sfxUrl);
-                        // Fallback: Convert direct Data URLs to Blob
-                        if (sfxUrl && sfxUrl.startsWith('data:')) {
-                            try {
-                                const res = await fetch(sfxUrl);
-                                const blob = await res.blob();
-                                sfxUrl = URL.createObjectURL(blob);
-                            } catch (e) { }
-                        }
-                        addToCache(cut.sfxUrl, sfxUrl);
-                    }
+                    if (cut.sfxUrl) addToCache(cut.sfxUrl, await processUrl(cut.sfxUrl));
 
                     // 3. Images
                     if (cut.finalImageUrl) addToCache(cut.finalImageUrl, await processUrl(cut.finalImageUrl));
                     if (cut.draftImageUrl) addToCache(cut.draftImageUrl, await processUrl(cut.draftImageUrl));
 
                     // 4. Video
-                    if (cut.videoUrl) {
-                        // FIX: Do NOT convert Data URL to Blob eagerly.
-                        // Browsers can play Data URLs fine, and converting them causes massive main-thread freeze.
-                        let vidUrl = await processUrl(cut.videoUrl);
-                        addToCache(cut.videoUrl, vidUrl);
-                    }
+                    if (cut.videoUrl) addToCache(cut.videoUrl, await processUrl(cut.videoUrl));
 
                 } catch (e) {
                     console.error(`[Step6] Error processing cut ${index}:`, e);
@@ -523,13 +493,11 @@ export const Step6_Final = () => {
             // CRITICAL: Priority assets (first 5) are loaded. Player can start.
             setAssetsLoaded(true);
             setLoadingProgress(prev => ({ ...prev, current: PRIORITY_COUNT }));
-            console.log('[Step6] Priority assets loaded! Player ready.');
 
             // IMMEDIATE PRELOAD FOR CUT 0
             if (script.length > 0 && script[0].audioUrl) {
                 const audioUrl0 = script[0].audioUrl;
-                const resolvedUrl = priorityCache[audioUrl0]; // Use local priority cache mapping directly
-
+                const resolvedUrl = priorityCache[audioUrl0];
                 if (resolvedUrl && !resolvedUrl.startsWith('idb://') && audioARef.current) {
                     audioARef.current.src = resolvedUrl;
                     audioARef.current.load();
@@ -538,17 +506,13 @@ export const Step6_Final = () => {
 
             // Load rest in background
             if (restCuts.length > 0) {
-                console.log(`[Step6] Loading ${restCuts.length} remaining cuts in background...`);
-
-                const BATCH_SIZE = 10;
+                const BATCH_SIZE = 8; // Reduced batch size for smoother UI on 8GB RAM
                 for (let i = 0; i < restCuts.length; i += BATCH_SIZE) {
                     const batch = restCuts.slice(i, i + BATCH_SIZE);
-                    // Process batch
                     const batchResults = await Promise.all(batch.map((cut, batchIndex) =>
                         processCutAndGetUpdates(cut, PRIORITY_COUNT + i + batchIndex)
                     ));
 
-                    // Merge only this batch's results
                     const batchCache: Record<string, string> = {};
                     const batchDurations: Record<number, number> = {};
                     batchResults.forEach(res => {
@@ -556,7 +520,6 @@ export const Step6_Final = () => {
                         Object.assign(batchDurations, res.durations);
                     });
 
-                    // Update State using only new data (prevent O(N^2) data spreading of accumulator)
                     if (Object.keys(batchCache).length > 0) {
                         setBlobCache(prev => ({ ...prev, ...batchCache }));
                         blobCacheRef.current = { ...blobCacheRef.current, ...batchCache };
@@ -564,15 +527,10 @@ export const Step6_Final = () => {
                     }
 
                     setLoadingProgress(prev => ({ ...prev, current: Math.min(prev.total, PRIORITY_COUNT + i + batch.length) }));
-
-                    // Small yield to UI thread
-                    await new Promise(r => setTimeout(r, 10));
+                    await new Promise(r => setTimeout(r, 20)); // Increased sleep for UI thread
                 }
-
                 setIsAllAssetsLoaded(true);
-                console.log('[Step6] All assets loaded! Export ready.');
             } else {
-                // If there were no rest cuts, then all assets are loaded
                 setIsAllAssetsLoaded(true);
             }
         };
@@ -580,9 +538,8 @@ export const Step6_Final = () => {
         optimizeAssets();
 
         return () => {
-            // Only revoke in meaningful cleanup, not every render if we can avoid it.
-            Object.values(blobCacheRef.current).forEach(url => URL.revokeObjectURL(url));
-            blobCacheRef.current = {};
+            // [FIX] Removed aggressive revocation to prevent ERR_FILE_NOT_FOUND during edit/state updates
+            // Centralized cleanup should be handled by clearBlobUrlCache on project switch or unmount if needed
             lastScriptRef.current = '';
         };
     }, [script, thumbnailUrl]);
@@ -722,6 +679,25 @@ export const Step6_Final = () => {
                             // Relaxed threshold from 0.3 to 0.5 to prevent micro-stutters
                             if (drift > 0.5) {
                                 videoEl.currentTime = targetTime;
+                            }
+                        }
+                    }
+
+                    // AUDIO SYNC & CUT-OFF:
+                    // Ensure TTS audio doesn't bleed into next cut if video is trimmed
+                    const audioPlayer = getPlayerForIndex(foundIndex);
+                    if (audioPlayer && !audioPlayer.paused) {
+                        const cutDur = getCutDuration(foundIndex);
+                        // If audio is playing past the current cut's duration, pause it
+                        if (localTime >= cutDur) {
+                            // console.log(`[AudioSync] Cut ${foundIndex} ended (Trimmed). Pausing audio.`);
+                            audioPlayer.pause();
+                        } else {
+                            // Sync check: If audio drifts > 0.5s from wall clock, nudge it
+                            const audioDrift = Math.abs(audioPlayer.currentTime - localTime);
+                            if (audioDrift > 0.5) {
+                                // console.log(`[AudioSync] Nudging Cut ${foundIndex} audio drift: ${audioDrift.toFixed(2)}s`);
+                                audioPlayer.currentTime = localTime;
                             }
                         }
                     }
@@ -1823,8 +1799,15 @@ export const Step6_Final = () => {
                                                 onSeeked={handleMediaResume}
                                                 onError={(e) => {
                                                     const err = e.currentTarget.error;
-                                                    console.error(`[Step6] Video play failed for Cut ${indexA}. Code: ${err?.code}, Message: ${err?.message}`);
-                                                    e.currentTarget.style.display = 'none';
+                                                    const cutId = script[indexA]?.id;
+                                                    const videoUrl = script[indexA]?.videoUrl;
+                                                    console.error(`[Step6] Video play failed for Cut ${indexA} (ID: ${cutId}). Code: ${err?.code}, Msg: ${err?.message}, URL: ${videoUrl}`);
+
+                                                    // Don't hide immediately - might be a transient stall
+                                                    // Only hide if it's a persistent error
+                                                    if (err?.code === 4 || err?.code === 3) { // SRC_NOT_SUPPORTED or DECODE_ERR
+                                                        e.currentTarget.style.display = 'none';
+                                                    }
                                                     isBufferingRef.current = false;
                                                 }}
                                             />
@@ -1869,8 +1852,13 @@ export const Step6_Final = () => {
                                                 onSeeked={handleMediaResume}
                                                 onError={(e) => {
                                                     const err = e.currentTarget.error;
-                                                    console.error(`[Step6] Video play failed for Cut ${indexB}. Code: ${err?.code}, Message: ${err?.message}`);
-                                                    e.currentTarget.style.display = 'none';
+                                                    const cutId = script[indexB]?.id;
+                                                    const videoUrl = script[indexB]?.videoUrl;
+                                                    console.error(`[Step6] Video play failed for Cut ${indexB} (ID: ${cutId}). Code: ${err?.code}, Msg: ${err?.message}, URL: ${videoUrl}`);
+
+                                                    if (err?.code === 4 || err?.code === 3) {
+                                                        e.currentTarget.style.display = 'none';
+                                                    }
                                                     isBufferingRef.current = false;
                                                 }}
                                             />

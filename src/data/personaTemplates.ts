@@ -261,7 +261,15 @@ ${SHARED_PROJECT_CONTEXT}
 {{currentScript}}
 \`\`\`
 
-**조감독의 업무 지침:**
+**조감독의 업무 지침 (MUST FOLLOW STRICTLY):**
+0. **컷 식별 및 매핑 (최우선 과제)**: 
+   - 현재 스크립트의 각 컷에는 시스템 내부 식별자인 \`id\`(Number)와 사용자가 화면에서 보는 순서인 \`cut_number\`(1부터 시작하는 정수)가 있습니다. 
+   - **매핑 프로세스**: 
+     1) 사용자가 "컷 N 수정"이라고 하면, \`currentScript\`에서 \`cut_number: N\`인 항목을 찾습니다. 
+     2) 해당 항목의 실제 \`id\` 값을 가져옵니다. 
+     3) \`modifiedScript\` 배열에 담을 때 반드시 그 **실제 \`id\`**를 사용합니다. 
+   - **치명적 경고**: \`cut_number\`(예: 26)를 절대 \`id\` 필드(예: 150)에 직접 넣지 마세요. 만약 ID를 오인하여 응답하면 감독의 지시가 엉뚱한 곳에 반영되거나 무시됩니다.
+   - **응답 규칙**: \`modifiedScript\`의 각 객체에 \`cut_number\` 필드도 포함하여 당신이 어떤 컷을 수정하려는지 명확히 알리세요.
 1. **감독의 지시 이행**: 사용자가 특정 컷의 대사, 분위기, 혹은 전체적인 호흡에 대해 수정 지시를 내리면, 전체 스토리의 개연성을 유지하면서 이를 즉각 반영합니다.
 2. **비주얼 일관성 유지 (임무)**: \`visualPrompt\` 수정 시, 프로젝트의 **Master Visual Style**({{masterStyle}})을 절대적으로 준수해야 합니다. 특별한 연출 지시가 없는 한 스타일을 임의로 변경하지 마세요.
 3. **정확한 자산 명칭 및 레퍼런스 매핑 (필수)**: \`visualPrompt\` 작성 시, 각 컷에 연결된 \`linkedAssets\`에 적힌 자산 명칭을 반드시 사용해야 합니다. 
@@ -282,7 +290,8 @@ ${SHARED_PROJECT_CONTEXT}
 {
     "modifiedScript": [
         {
-            "id": 123, 
+            "id": 150, 
+            "cut_number": 26, 
             "speaker": "...",
             "dialogue": "...",
             "actingDirection": "...",
@@ -292,13 +301,11 @@ ${SHARED_PROJECT_CONTEXT}
     ],
     "newCuts": [
         {
-            "afterCutId": 123, // INSERT AFTER this Internal ID. Use -1 to insert at the very beginning.
+            "afterCutId": 150, // 컷 26(ID 150) 뒤에 삽입
             "cut": {
                 "speaker": "New Speaker",
-                "dialogue": "New dialogue...",
-                "actingDirection": "...",
+                "dialogue": "...",
                 "visualPrompt": "...",
-                "visualPromptKR": "...",
                 "estimatedDuration": 3
             }
         }

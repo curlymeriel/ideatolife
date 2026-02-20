@@ -199,12 +199,17 @@ const VideoCompositionRow = React.memo(({
 
 const repairVideoData = async (store: any, script: ScriptCut[], onProgress: (msg: string) => void, onComplete?: () => void) => {
     const { loadFromIdb, parseIdbUrl, saveToIdb, generateVideoKey, clearBlobUrlCache } = await import('../utils/imageStorage');
+    const { keys } = await import('idb-keyval');
 
     console.log(`[Repair:BruteForce] Starting total reset of ${script.length} cuts...`);
     clearBlobUrlCache();
 
     const currentProjectId = store.id;
     let fixedCount = 0;
+
+    // Get all available keys once for broad search
+    const allIdbKeys = await keys();
+    const projectMediaKeys = allIdbKeys.filter(k => typeof k === 'string' && k.includes(currentProjectId)) as string[];
 
     const auditMimeFromMagicBytes = async (blob: Blob): Promise<string | null> => {
         try {
@@ -230,8 +235,20 @@ const repairVideoData = async (store: any, script: ScriptCut[], onProgress: (msg
                 if (!parsed) continue;
                 extension = parsed.key.split('.').pop()?.toLowerCase() || 'mp4';
 
-                onProgress(`Re-processing Cut #${cut.id}...`);
-                const rawData = await loadFromIdb(cut.videoUrl);
+                onProgress(`Checking Cut #${cut.id}...`);
+                let rawData = await loadFromIdb(cut.videoUrl);
+
+                // [FIX] If direct load fails, try to find by ID in available keys (Project Migration/ID Shift Fix)
+                if (!rawData) {
+                    console.log(`[Repair] Direct load failed for ${cut.videoUrl}. Searching project keys...`);
+                    const fallbackKey = projectMediaKeys.find(k => k.includes(`-video-${cut.id}`));
+                    if (fallbackKey) {
+                        const actualKey = fallbackKey.replace('media-video-', '');
+                        console.log(`[Repair] Found fallback key match: ${actualKey}`);
+                        rawData = await loadFromIdb(`idb://video/${actualKey}`);
+                    }
+                }
+
                 if (!rawData) continue;
 
                 if (rawData instanceof Blob) {
@@ -319,6 +336,8 @@ const AudioComparisonModal = React.memo<{
     const [loadingStatus, setLoadingStatus] = useState<string | null>('Initializing...');
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [durationMaster, setDurationMaster] = useState<'audio' | 'video'>(previewCut?.cutDurationMaster || 'audio');
+
 
     // [New Effect] Resolve URL & Download Logic
     useEffect(() => {
@@ -1099,8 +1118,40 @@ const AudioComparisonModal = React.memo<{
                             {selectedAudioSource === 'tts' && <div className="hidden sm:block text-[10px] px-2 py-0.5 bg-green-500 text-white rounded-full font-bold tracking-wider">ACTIVE</div>}
                         </div>
 
+                        {/* Row C: Duration Master Selection */}
+                        <div className="p-4 bg-[var(--color-bg)] rounded-xl border border-[var(--color-border)]">
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                                    <Sparkles size={14} className="text-yellow-400" />
+                                    <span>Duration Master (재생 시간 기준)</span>
+                                </div>
+                                <div className="flex bg-black/40 p-1 rounded-lg border border-white/5">
+                                    <button
+                                        onClick={() => setDurationMaster('audio')}
+                                        className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${durationMaster === 'audio' ? 'bg-white/10 text-[var(--color-primary)]' : 'text-gray-500 hover:text-gray-300'}`}
+                                    >
+                                        AUDIO (Default)
+                                    </button>
+                                    <button
+                                        onClick={() => setDurationMaster('video')}
+                                        className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${durationMaster === 'video' ? 'bg-white/10 text-pink-400' : 'text-gray-500 hover:text-gray-300'}`}
+                                    >
+                                        VIDEO TRIM
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="text-[10px] leading-relaxed text-[var(--color-text-muted)] space-y-1">
+                                {durationMaster === 'audio' ? (
+                                    <p>• <b>오디오 길이 기준</b>: 목소리가 다 나올 때까지 장면이 유지됩니다. 비디오가 짧으면 마지막 프레임에서 멈추거나 반복됩니다.</p>
+                                ) : (
+                                    <p>• <b>비디오 트리밍 기준</b>: 편집한 비디오 길이에 맞춰 컷이 강제 종료됩니다. 목소리가 더 길면 중간에 끊길 수 있습니다.</p>
+                                )}
+                            </div>
+                        </div>
+
                     </div>
                 </div>
+
 
                 {/* Hidden Audio for TTS */}
                 {resolvedTtsUrl && (
@@ -1150,7 +1201,8 @@ const AudioComparisonModal = React.memo<{
                             const updates: Partial<ScriptCut> = {
                                 useVideoAudio: selectedAudioSource === 'video',
                                 audioVolumes: volumes,
-                                videoTrim: finalTrim
+                                videoTrim: finalTrim,
+                                cutDurationMaster: durationMaster
                             };
 
                             // Also update videoDuration to match trim for accurate project calculation in Step 6

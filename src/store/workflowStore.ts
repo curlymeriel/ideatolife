@@ -25,6 +25,7 @@ import { createIntelligenceSlice, type IntelligenceSlice } from './intelligenceS
 import { createUISlice, type UISlice } from './uiSlice';
 import { saveToIdb, generateAudioKey, generateCutImageKey, generateAssetImageKey, resolveUrl, loadFromIdb, parseIdbUrl } from '../utils/imageStorage';
 import { selectLocalFolder, saveFileToHandle, readFilesFromDirectory, verifyPermission, requestPermission, getSubFolder, deleteFileFromHandle, deleteDirectoryFromHandle, type LocalFolderHandle } from '../utils/localFileSystem';
+import { linkCutsToStoryline } from '../utils/storylineUtils';
 import { auth, isFirebaseConfigured } from '../lib/firebase';
 import { migrateProjectToCloud } from '../utils/cloudMigration';
 
@@ -95,6 +96,7 @@ const getEmptyProjectState = (id: string, apiKeys: any = {}): ProjectData => ({
     episodeName: 'New Episode',
     episodeNumber: 1,
     seriesStory: '',
+    nextCutId: 1,
     mainCharacters: '',
     characters: [],
     seriesLocations: [],
@@ -175,17 +177,22 @@ const saveProjectToDisk = async (project: ProjectData) => {
 
     // Set new timeout (debounce)
     const timeout = setTimeout(async () => {
-        // Safety valve: If saving takes > 10s, force idle to prevent stuck UI
+        // Safety valve: If saving takes > 30s, force idle to prevent stuck UI
         const safetyTimer = setTimeout(() => {
             if (useWorkflowStore.getState().saveStatus === 'saving') {
                 console.warn(`[Store] Save operation timed out for ${projectId}. Resetting UI.`);
                 useWorkflowStore.getState().setSaveStatus('error');
                 setTimeout(() => useWorkflowStore.getState().setSaveStatus('idle'), 2000);
             }
-        }, 10000);
+        }, 30000);
 
         try {
             useWorkflowStore.getState().setSaveStatus('saving'); // Start saving
+
+            // OPTIMIZATION: We no longer do JIT migration here because it's O(N) and blocks the main thread.
+            // Migration is now handled strictly in loadProjectFromDisk (once) and 
+            // setScript/updateAsset (incrementally when data enters the store).
+
             await idbSet(getProjectKey(projectId), project);
             console.log(`[Store] Saved project ${projectId} to disk (Throttle: 1000ms).`);
 
@@ -193,6 +200,7 @@ const saveProjectToDisk = async (project: ProjectData) => {
             syncChannel.postMessage({ type: 'PROJECT_SAVED', projectId });
 
             // 🔄 Auto Cloud Sync: If user is logged in, sync to Firebase
+            // TODO: In the future, only sync if 'dirty' to further reduce overhead
             if (isFirebaseConfigured() && auth?.currentUser) {
                 try {
                     console.log(`[Store] Auto-syncing to cloud for user: ${auth.currentUser.email}`);
@@ -200,7 +208,6 @@ const saveProjectToDisk = async (project: ProjectData) => {
                     console.log(`[Store] Cloud sync completed for ${projectId}`);
                 } catch (cloudError) {
                     console.error(`[Store] Cloud sync failed (will retry later):`, cloudError);
-                    // Don't fail the whole save, just log the error
                 }
             }
 
@@ -246,7 +253,7 @@ const loadProjectFromDisk = async (id: string): Promise<ProjectData | null> => {
         let wasMigrated = false;
 
         // Helper to process a single URL
-        const migrateUrl = async (url: string | undefined | null, type: 'images' | 'audio' | 'assets', key: string): Promise<string | undefined | null> => {
+        const migrateUrl = async (url: string | undefined | null, type: 'images' | 'audio' | 'assets' | 'video', key: string): Promise<string | undefined | null> => {
             // Check for large Base64 (ignore existing idb:// or short strings)
             if (url && typeof url === 'string' && url.startsWith('data:') && url.length > 50000) { // > 50KB roughly
                 try {
@@ -479,82 +486,123 @@ const storage: StateStorage = {
     },
 };
 
+// Module-level lock for asset sync
+let activeSyncPromise: Promise<void> | null = null;
+
 /**
  * Helper to sync all project assets (images/audio) to a connected local folder
  */
 async function syncProjectAssetsToPC(projectData: ProjectData, directoryHandle: FileSystemDirectoryHandle) {
-    const assetsToSync: string[] = [];
-
-    // 1. Collect all idb:// URLs
-    // From script
-    if (Array.isArray(projectData.script)) {
-        projectData.script.forEach((cut: any) => {
-            if (cut.finalImageUrl && cut.finalImageUrl.startsWith('idb://')) assetsToSync.push(cut.finalImageUrl);
-            if (cut.draftImageUrl && cut.draftImageUrl.startsWith('idb://')) assetsToSync.push(cut.draftImageUrl);
-            if (cut.audioUrl && cut.audioUrl.startsWith('idb://')) assetsToSync.push(cut.audioUrl);
-            if (cut.userReferenceImage && cut.userReferenceImage.startsWith('idb://')) assetsToSync.push(cut.userReferenceImage);
-        });
+    // If a sync is already in progress, wait for it to finish or return if immediate consistency isn't required
+    // Here we wait to ensure we don't skip a sync trigger
+    if (activeSyncPromise) {
+        await activeSyncPromise;
     }
 
-    // From assetDefinitions
-    if (projectData.assetDefinitions) {
-        Object.values(projectData.assetDefinitions).forEach((asset: any) => {
-            if (asset.referenceImage && asset.referenceImage.startsWith('idb://')) assetsToSync.push(asset.referenceImage);
-            if (asset.masterImage && asset.masterImage.startsWith('idb://')) assetsToSync.push(asset.masterImage);
-            if (asset.draftImage && asset.draftImage.startsWith('idb://')) assetsToSync.push(asset.draftImage);
-        });
-    }
+    let resolveSync: () => void = () => { };
+    activeSyncPromise = new Promise(r => { resolveSync = r; });
 
-    // From masterStyle
-    if (projectData.masterStyle?.referenceImage && projectData.masterStyle.referenceImage.startsWith('idb://')) {
-        assetsToSync.push(projectData.masterStyle.referenceImage);
-    }
+    try {
+        const assetsToSync: string[] = [];
 
-    // From thumbnailUrl
-    if (projectData.thumbnailUrl && projectData.thumbnailUrl.startsWith('idb://')) {
-        assetsToSync.push(projectData.thumbnailUrl);
-    }
-
-    // Deduplicate
-    const uniqueAssets = Array.from(new Set(assetsToSync));
-    if (uniqueAssets.length === 0) return;
-
-    const syncStart = Date.now();
-    console.log(`[LocalSync] Deep scanning ${uniqueAssets.length} assets for PC sync...`);
-
-    // 2. Resolve and save each asset
-    for (const idbUrl of uniqueAssets) {
-        try {
-            const parsed = parseIdbUrl(idbUrl);
-            if (!parsed) continue;
-
-            const binaryData = await loadFromIdb(idbUrl);
-            if (!binaryData) {
-                console.warn(`[LocalSync] Asset data not found in IndexedDB: ${idbUrl}`);
-                continue;
-            }
-
-            // Determine file extension
-            let ext = '';
-            if (parsed.type === 'images' || parsed.type === 'assets') ext = '.jpg';
-            else if (parsed.type === 'audio') ext = '.mp3';
-            else if (parsed.type === 'video') ext = '.mp4';
-
-            // Clean up key for filename
-            const safeKey = parsed.key.replace(/[/\\?%*:|"<>]/g, '-');
-
-            // Fix: Check if extension is already present to avoid dumping double extensions (e.g. .jpg.jpg)
-            let fileName = safeKey;
-            if (!safeKey.toLowerCase().endsWith(ext)) {
-                fileName = `${safeKey}${ext}`;
-            }
-
-            await saveFileToHandle(directoryHandle, ['assets', parsed.type, fileName], binaryData);
-        } catch (e) {
-            console.error(`[LocalSync] Failed to sync asset ${idbUrl}:`, e);
+        // 1. Collect all idb:// URLs
+        // From script
+        if (Array.isArray(projectData.script)) {
+            projectData.script.forEach((cut: any) => {
+                if (cut.finalImageUrl && cut.finalImageUrl.startsWith('idb://')) assetsToSync.push(cut.finalImageUrl);
+                if (cut.draftImageUrl && cut.draftImageUrl.startsWith('idb://')) assetsToSync.push(cut.draftImageUrl);
+                if (cut.audioUrl && cut.audioUrl.startsWith('idb://')) assetsToSync.push(cut.audioUrl);
+                if (cut.userReferenceImage && cut.userReferenceImage.startsWith('idb://')) assetsToSync.push(cut.userReferenceImage);
+            });
         }
+
+        // From assetDefinitions
+        if (projectData.assetDefinitions) {
+            Object.values(projectData.assetDefinitions).forEach((asset: any) => {
+                if (asset.referenceImage && asset.referenceImage.startsWith('idb://')) assetsToSync.push(asset.referenceImage);
+                if (asset.masterImage && asset.masterImage.startsWith('idb://')) assetsToSync.push(asset.masterImage);
+                if (asset.draftImage && asset.draftImage.startsWith('idb://')) assetsToSync.push(asset.draftImage);
+            });
+        }
+
+        // From masterStyle
+        if (projectData.masterStyle?.referenceImage && projectData.masterStyle.referenceImage.startsWith('idb://')) {
+            assetsToSync.push(projectData.masterStyle.referenceImage);
+        }
+
+        // From thumbnailUrl
+        if (projectData.thumbnailUrl && projectData.thumbnailUrl.startsWith('idb://')) {
+            assetsToSync.push(projectData.thumbnailUrl);
+        }
+
+        // Deduplicate
+        const uniqueAssets = Array.from(new Set(assetsToSync));
+        if (uniqueAssets.length === 0) return;
+
+        const syncStart = Date.now();
+        console.log(`[LocalSync] Deep scanning ${uniqueAssets.length} assets for PC sync...`);
+
+        // 2. Resolve and save each asset
+        for (const idbUrl of uniqueAssets) {
+            try {
+                const parsed = parseIdbUrl(idbUrl);
+                if (!parsed) continue;
+
+                const binaryData = await loadFromIdb(idbUrl);
+                if (!binaryData) {
+                    console.warn(`[LocalSync] Asset data not found in IndexedDB: ${idbUrl}`);
+                    continue;
+                }
+
+                // Determine file extension
+                let ext = '';
+                if (parsed.type === 'images' || parsed.type === 'assets') ext = '.jpg';
+                else if (parsed.type === 'audio') ext = '.mp3';
+                else if (parsed.type === 'video') ext = '.mp4';
+
+                // Clean up key for filename
+                const safeKey = parsed.key.replace(/[/\\?%*:|"<>]/g, '-');
+
+                // Fix: Check if extension is already present to avoid dumping double extensions (e.g. .jpg.jpg)
+                let fileName = safeKey;
+                if (!safeKey.toLowerCase().endsWith(ext)) {
+                    fileName = `${safeKey}${ext}`;
+                }
+
+                await saveFileToHandle(directoryHandle, ['assets', parsed.type, fileName], binaryData);
+            } catch (e: any) {
+                if (e.name === 'InvalidStateError') {
+                    console.error(`[LocalSync] IndexedDB InvalidStateError detected for ${idbUrl}. Skipping this asset to prevent crash.`);
+                } else {
+                    console.error(`[LocalSync] Failed to sync asset ${idbUrl}:`, e);
+                }
+            }
+        }
+        console.log(`[LocalSync] Asset sync completed in ${Date.now() - syncStart}ms`);
+    } finally {
+        activeSyncPromise = null;
+        resolveSync();
     }
-    console.log(`[LocalSync] Asset sync completed in ${Date.now() - syncStart}ms`);
+}
+
+// Debounce map for asset sync
+const assetSyncTimeouts = new Map<string, any>();
+
+async function scheduleAssetSync(projectData: ProjectData, directoryHandle: FileSystemDirectoryHandle) {
+    const projectId = projectData.id;
+
+    // Clear any existing timeout for this project's asset sync
+    if (assetSyncTimeouts.has(projectId)) {
+        clearTimeout(assetSyncTimeouts.get(projectId));
+    }
+
+    const timeout = setTimeout(async () => {
+        console.log(`[LocalSync] Triggering debounced asset sync for project ${projectId}...`);
+        await syncProjectAssetsToPC(projectData, directoryHandle);
+        assetSyncTimeouts.delete(projectId); // Clean up after execution
+    }, 5000); // 5-second debounce
+
+    assetSyncTimeouts.set(projectId, timeout);
 }
 
 /**
@@ -863,7 +911,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
 
             // Wrap project actions to trigger save
             setProjectInfo: (info: Partial<ProjectData>) => {
-                set((state: any) => ({ ...state, ...info }));
+                set((state: any) => ({ ...state, ...info, isDirty: true }));
                 get().saveProject();
             },
             setApiKeys: (keys: Partial<ApiKeys>) => {
@@ -871,56 +919,117 @@ export const useWorkflowStore = create<WorkflowStore>()(
                 get().saveProject(); // Ensure keys are persisted immediately
             },
             setChatHistory: (history: ChatMessage[]) => {
-                set({ chatHistory: history });
+                set({ chatHistory: history, isDirty: true });
                 get().saveProject();
             },
             setProductionChatHistory: (history: ChatMessage[]) => {
-                set({ productionChatHistory: history });
+                set({ productionChatHistory: history, isDirty: true });
                 get().saveProject();
             },
             setThumbnail: (url: string | null) => {
-                set({ thumbnailUrl: url });
+                set({ thumbnailUrl: url, isDirty: true });
                 get().saveProject();
             },
             setThumbnailSettings: (settings: Partial<ThumbnailSettings>) => {
-                set((state: any) => ({ thumbnailSettings: { ...state.thumbnailSettings, ...settings } }));
+                set((state: any) => ({
+                    thumbnailSettings: { ...state.thumbnailSettings, ...settings },
+                    isDirty: true
+                }));
                 get().saveProject();
             },
             setMasterStyle: (style: Partial<MasterStyle>) => {
-                set((state: any) => ({ masterStyle: { ...state.masterStyle, ...style } }));
+                set((state: any) => ({
+                    masterStyle: { ...state.masterStyle, ...style },
+                    isDirty: true
+                }));
                 get().saveProject();
             },
             setStyleAnchor: (style: Partial<StyleAnchor>) => {
-                set((state: any) => ({ styleAnchor: { ...state.styleAnchor, ...style } }));
+                set((state: any) => ({
+                    styleAnchor: { ...state.styleAnchor, ...style },
+                    isDirty: true
+                }));
                 get().saveProject();
             },
-            setScript: (script: ScriptCut[]) => {
-                set({ script });
+            setScript: async (script: ScriptCut[]) => {
+                const state = get() as any;
+                const currentId = state.id;
+
+                // [PROACTIVE OPTIMIZATION] Scan for large Base64 strings and move to IDB before they hit the store
+                const sanitizedScript = [...script];
+                let wasModified = false;
+                const { saveToIdb, generateAudioKey, generateCutImageKey } = await import('../utils/imageStorage');
+
+                for (let i = 0; i < sanitizedScript.length; i++) {
+                    const cut = sanitizedScript[i];
+                    if (cut.audioUrl?.startsWith('data:') && cut.audioUrl.length > 50000) {
+                        try {
+                            const idbUrl = await saveToIdb('audio', generateAudioKey(currentId, cut.id), cut.audioUrl);
+                            sanitizedScript[i] = { ...sanitizedScript[i], audioUrl: idbUrl };
+                            wasModified = true;
+                        } catch (e) { console.error("[Sanitizer] Audio failed", e); }
+                    }
+                    if (cut.finalImageUrl?.startsWith('data:') && cut.finalImageUrl.length > 50000) {
+                        try {
+                            const idbUrl = await saveToIdb('images', generateCutImageKey(currentId, cut.id, 'final' as any), cut.finalImageUrl);
+                            sanitizedScript[i] = { ...sanitizedScript[i], finalImageUrl: idbUrl };
+                            wasModified = true;
+                        } catch (e) { console.error("[Sanitizer] Final image failed", e); }
+                    }
+                }
+
+                // Update nextCutId based on max ID in the new script to prevent collisions
+                const maxId = sanitizedScript.reduce((max, cut) => Math.max(max, cut.id || 0), 0);
+
+                // Automatically link cuts to storyline
+                const linkedScript = linkCutsToStoryline(sanitizedScript, state.storylineTable);
+                set({
+                    script: linkedScript,
+                    nextCutId: Math.max(state.nextCutId || 1, maxId + 1),
+                    isDirty: true
+                });
                 get().saveProject();
             },
             setTtsModel: (model: TtsModel) => {
-                set({ ttsModel: model });
+                set({ ttsModel: model, isDirty: true });
                 get().saveProject();
             },
             setImageModel: (model: ImageModel) => {
-                set({ imageModel: model });
+                set({ imageModel: model, isDirty: true });
                 get().saveProject();
             },
             setAssets: (assets: Record<string, any[]>) => {
-                set({ assets });
+                set({ assets, isDirty: true });
                 get().saveProject();
             },
-            updateAsset: (cutId: string | number, asset: Partial<Asset>) => {
+            updateAsset: async (cutId: string | number, asset: Partial<Asset>) => {
+                const state = get() as any;
+                const currentId = state.id;
+
+                // [PROACTIVE OPTIMIZATION]
+                let sanitizedAsset = { ...asset };
+                let wasModified = false;
+                const { saveToIdb, generateAudioKey, generateCutImageKey } = await import('../utils/imageStorage');
+
+                if (typeof sanitizedAsset.imageUrl === 'string' && sanitizedAsset.imageUrl.startsWith('data:') && sanitizedAsset.imageUrl.length > 50000) {
+                    try {
+                        const idbUrl = await saveToIdb('images', generateCutImageKey(currentId, cutId, 'final' as any), sanitizedAsset.imageUrl);
+                        sanitizedAsset.imageUrl = idbUrl;
+                        wasModified = true;
+                    } catch (e) { console.error("[Sanitizer] Asset image failed", e); }
+                }
+
                 set((state: any) => ({
                     assets: {
                         ...state.assets,
-                        [cutId]: { ...state.assets[cutId], ...asset }
-                    }
+                        [cutId]: { ...state.assets[cutId], ...sanitizedAsset }
+                    },
+                    isDirty: true
                 }));
                 get().saveProject();
             },
             setBGMTracks: (tracks: any[]) => {
-                set({ bgmTracks: tracks });
+                set({ bgmTracks: tracks, isDirty: true });
                 get().saveProject();
             },
             setStep: (step: number) => {
@@ -1009,6 +1118,12 @@ export const useWorkflowStore = create<WorkflowStore>()(
                 const state = get() as any;
                 const projectId = state.id;
 
+                // OPTIMIZATION: If nothing has changed, skip the heavy save/sync process
+                if (!state.isDirty) {
+                    console.log('[Store] Skipping save: Project is not dirty');
+                    return;
+                }
+
                 // SAFETY CHECK 1: Validate project ID exists and is not the default volatile ID
                 if (!projectId || projectId === 'default-project') {
                     console.log('[Store] Skipping save: No project ID set or is default-project');
@@ -1051,21 +1166,22 @@ export const useWorkflowStore = create<WorkflowStore>()(
                     mergedScript = state.script.map((cut: any) => {
                         const existingCut = existingCutMap.get(cut.id);
                         if (!existingCut) return cut;
+
+                        // [CRITICAL] Only merge if the field is missing in current state
+                        // This allows intentional deletion (setting to undefined) to persist
                         return {
                             ...cut,
-                            // Preserve URLs if current is null but existing has value
-                            finalImageUrl: cut.finalImageUrl || existingCut.finalImageUrl,
-                            draftImageUrl: cut.draftImageUrl || existingCut.draftImageUrl,
-                            audioUrl: cut.audioUrl || existingCut.audioUrl,
-                            videoUrl: cut.videoUrl || existingCut.videoUrl, // [CRITICAL FIX]
-                            videoSource: cut.videoSource || existingCut.videoSource,
-                            videoTrim: cut.videoTrim || existingCut.videoTrim,
-                            useVideoAudio: cut.useVideoAudio !== undefined ? cut.useVideoAudio : existingCut.useVideoAudio,
-                            audioVolumes: cut.audioVolumes || existingCut.audioVolumes,
-                            // Preserve confirmed flags if existing has true but current has false/undefined
-                            isImageConfirmed: cut.isImageConfirmed || existingCut.isImageConfirmed,
-                            isAudioConfirmed: cut.isAudioConfirmed || existingCut.isAudioConfirmed,
-                            isVideoConfirmed: cut.isVideoConfirmed || existingCut.isVideoConfirmed,
+                            finalImageUrl: cut.finalImageUrl ?? existingCut.finalImageUrl,
+                            draftImageUrl: cut.draftImageUrl ?? existingCut.draftImageUrl,
+                            audioUrl: cut.audioUrl ?? existingCut.audioUrl,
+                            videoUrl: cut.videoUrl ?? existingCut.videoUrl,
+                            videoSource: cut.videoSource ?? existingCut.videoSource,
+                            videoTrim: cut.videoTrim ?? existingCut.videoTrim,
+                            useVideoAudio: cut.useVideoAudio ?? existingCut.useVideoAudio,
+                            audioVolumes: cut.audioVolumes ?? existingCut.audioVolumes,
+                            isImageConfirmed: cut.isImageConfirmed ?? existingCut.isImageConfirmed,
+                            isAudioConfirmed: cut.isAudioConfirmed ?? existingCut.isAudioConfirmed,
+                            isVideoConfirmed: cut.isVideoConfirmed ?? existingCut.isVideoConfirmed,
                         };
                     });
                 }
@@ -1094,6 +1210,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
                     episodeName: state.episodeName,
                     episodeNumber: state.episodeNumber,
                     seriesStory: state.seriesStory,
+                    nextCutId: state.nextCutId || 1,
                     mainCharacters: state.mainCharacters,
                     characters: state.characters,
                     seriesLocations: state.seriesLocations,
@@ -1137,9 +1254,9 @@ export const useWorkflowStore = create<WorkflowStore>()(
                         );
                         console.log(`[LocalSync] Synced ${fileName} to PC`);
 
-                        // NEW: LIVE ASSET SYNC
-                        // We also sync binary assets (images, audio) to the local folder
-                        await syncProjectAssetsToPC(projectData, state.localFolder.handle);
+                        // [OPTIMIZATION] Debounce asset sync (5 seconds) to reduce main-thread blocking during rapid edits
+                        // This prevents the 'Save operation timed out' caused by heavy binary scanning
+                        scheduleAssetSync(projectData, state.localFolder.handle);
 
                     } catch (e) {
                         console.error("[LocalSync] Failed to sync to local folder:", e);
@@ -1218,6 +1335,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
                         ...state.savedProjects,
                         [state.id]: metadata
                     },
+                    isDirty: false // Reset dirty flag after successful save
                 }));
             },
 

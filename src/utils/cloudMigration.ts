@@ -168,88 +168,107 @@ export const migrateProjectToCloud = async (
         }
     }
 
-    // 1. 스크립트 미디어 업로드
+    // 1. Collect all upload tasks for the script
     if (migratedProject.script) {
+        // We process in chunks of 5 parallel cuts to balance speed and stability
+        const CHUNK_SIZE = 5;
+        for (let i = 0; i < migratedProject.script.length; i += CHUNK_SIZE) {
+            const chunk = migratedProject.script.slice(i, i + CHUNK_SIZE);
 
-        for (let i = 0; i < migratedProject.script.length; i++) {
-            const cut = migratedProject.script[i];
-            const cutId = cut.id ?? i;
+            await Promise.all(chunk.map(async (cut, chunkIdx) => {
+                const actualIdx = i + chunkIdx;
+                const cutId = cut.id ?? actualIdx;
 
-            onProgress?.({
-                phase: 'uploading',
-                currentProject: project.episodeName,
-                currentFile: `Cut ${cutId} - Images`,
-                projectsTotal: 1,
-                projectsDone: 0,
-                filesTotal: migratedProject.script.length * 4,
-                filesDone: i * 4,
-                bytesTotal: 0,
-                bytesDone: 0,
-            });
+                onProgress?.({
+                    phase: 'uploading',
+                    currentProject: project.episodeName,
+                    currentFile: `Cut ${cutId} assets...`,
+                    projectsTotal: 1,
+                    projectsDone: 0,
+                    filesTotal: migratedProject.script!.length,
+                    filesDone: actualIdx,
+                    bytesTotal: 0,
+                    bytesDone: 0,
+                });
 
-            // Final Image
-            if (cut.finalImageUrl) {
-                const cloudUrl = await uploadMediaUrl(
-                    userId, project.id, 'images',
-                    `cut_${String(cutId).padStart(3, '0')}_final.webp`,
-                    cut.finalImageUrl
-                );
-                if (cloudUrl === 'UNAUTHORIZED') break;
-                if (cloudUrl) migratedProject.script[i].finalImageUrl = cloudUrl;
-            }
+                // Process all media types for this cut in parallel
+                const mediaTasks = [];
 
-            // Draft Image
-            if (cut.draftImageUrl) {
-                const cloudUrl = await uploadMediaUrl(
-                    userId, project.id, 'images',
-                    `cut_${String(cutId).padStart(3, '0')}_draft.webp`,
-                    cut.draftImageUrl
-                );
-                if (cloudUrl === 'UNAUTHORIZED') break;
-                if (cloudUrl) migratedProject.script[i].draftImageUrl = cloudUrl;
-            }
-
-            // Audio
-            if (cut.audioUrl && !cut.audioUrl.startsWith('mock:')) {
-                const cloudUrl = await uploadMediaUrl(
-                    userId, project.id, 'audio',
-                    `cut_${String(cutId).padStart(3, '0')}.mp3`,
-                    cut.audioUrl,
-                    false // 오디오는 압축하지 않음
-                );
-                if (cloudUrl === 'UNAUTHORIZED') break;
-                if (cloudUrl) migratedProject.script[i].audioUrl = cloudUrl;
-            }
-
-            // Video
-            if (cut.videoUrl) {
-                const cloudUrl = await uploadMediaUrl(
-                    userId, project.id, 'videos',
-                    `cut_${String(cutId).padStart(3, '0')}_video.webm`,
-                    cut.videoUrl,
-                    false // [FIX] Disable compression for videos to prevent memory issues and 110-byte errors
-                );
-                if (cloudUrl === 'UNAUTHORIZED') {
-                    console.error('[CloudMigration] Unauthorized upload. Aborting migration.');
-                    return project; // Return original project without saving changes
+                // Final Image
+                if (cut.finalImageUrl) {
+                    mediaTasks.push((async () => {
+                        const cloudUrl = await uploadMediaUrl(
+                            userId, project.id, 'images',
+                            `cut_${String(cutId).padStart(3, '0')}_final.webp`,
+                            cut.finalImageUrl
+                        );
+                        if (cloudUrl && cloudUrl !== 'UNAUTHORIZED') {
+                            migratedProject.script![actualIdx].finalImageUrl = cloudUrl;
+                        }
+                    })());
                 }
-                if (cloudUrl) migratedProject.script[i].videoUrl = cloudUrl;
-            }
 
-            // SFX
-            if (cut.sfxUrl) {
-                const cloudUrl = await uploadMediaUrl(
-                    userId, project.id, 'audio',
-                    `cut_${String(cutId).padStart(3, '0')}_sfx.mp3`,
-                    cut.sfxUrl,
-                    false
-                );
-                if (cloudUrl === 'UNAUTHORIZED') {
-                    console.error('[CloudMigration] Unauthorized upload. Aborting migration.');
-                    return project;
+                // Draft Image
+                if (cut.draftImageUrl) {
+                    mediaTasks.push((async () => {
+                        const cloudUrl = await uploadMediaUrl(
+                            userId, project.id, 'images',
+                            `cut_${String(cutId).padStart(3, '0')}_draft.webp`,
+                            cut.draftImageUrl
+                        );
+                        if (cloudUrl && cloudUrl !== 'UNAUTHORIZED') {
+                            migratedProject.script![actualIdx].draftImageUrl = cloudUrl;
+                        }
+                    })());
                 }
-                if (cloudUrl) migratedProject.script[i].sfxUrl = cloudUrl;
-            }
+
+                // Audio
+                if (cut.audioUrl && !cut.audioUrl.startsWith('mock:')) {
+                    mediaTasks.push((async () => {
+                        const cloudUrl = await uploadMediaUrl(
+                            userId, project.id, 'audio',
+                            `cut_${String(cutId).padStart(3, '0')}.mp3`,
+                            cut.audioUrl,
+                            false
+                        );
+                        if (cloudUrl && cloudUrl !== 'UNAUTHORIZED') {
+                            migratedProject.script![actualIdx].audioUrl = cloudUrl;
+                        }
+                    })());
+                }
+
+                // Video
+                if (cut.videoUrl) {
+                    mediaTasks.push((async () => {
+                        const cloudUrl = await uploadMediaUrl(
+                            userId, project.id, 'videos',
+                            `cut_${String(cutId).padStart(3, '0')}_video.webm`,
+                            cut.videoUrl,
+                            false
+                        );
+                        if (cloudUrl && cloudUrl !== 'UNAUTHORIZED') {
+                            migratedProject.script![actualIdx].videoUrl = cloudUrl;
+                        }
+                    })());
+                }
+
+                // SFX
+                if (cut.sfxUrl) {
+                    mediaTasks.push((async () => {
+                        const cloudUrl = await uploadMediaUrl(
+                            userId, project.id, 'audio',
+                            `cut_${String(cutId).padStart(3, '0')}_sfx.mp3`,
+                            cut.sfxUrl,
+                            false
+                        );
+                        if (cloudUrl && cloudUrl !== 'UNAUTHORIZED') {
+                            migratedProject.script![actualIdx].sfxUrl = cloudUrl;
+                        }
+                    })());
+                }
+
+                await Promise.all(mediaTasks);
+            }));
         }
     }
 
