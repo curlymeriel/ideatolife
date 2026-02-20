@@ -130,7 +130,7 @@ export const VideoTrimmer: React.FC<VideoTrimmerProps> = ({
     return (
         <div className="bg-black/40 rounded-lg p-3 border border-white/5 w-full max-w-full overflow-hidden">
             <div className="flex items-center gap-2 mb-2">
-                <Scissors size={14} className="text-cyan-400" />
+                <Scissors size={14} className="text-[var(--color-primary)]" />
                 <span className="text-xs font-bold text-gray-300">TRIM VIDEO</span>
                 <span className="text-[10px] text-gray-500 ml-auto">
                     {formatTime(localStart)} - {formatTime(localEnd)} ({((localEnd - localStart).toFixed(1))}s)
@@ -166,7 +166,7 @@ export const VideoTrimmer: React.FC<VideoTrimmerProps> = ({
 
                 {/* Active Range Track */}
                 <div
-                    className="absolute top-1/2 h-1 bg-cyan-500 rounded-full -translate-y-1/2"
+                    className="absolute top-1/2 h-1 bg-[var(--color-primary)] rounded-full -translate-y-1/2"
                     style={{
                         left: `${(localStart / Math.max(videoDuration, 1)) * 100}%`,
                         width: `${((localEnd - localStart) / Math.max(videoDuration, 1)) * 100}%`

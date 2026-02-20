@@ -149,7 +149,7 @@ const VideoCompositionRow = React.memo(({
 
                 <div className="text-sm text-[var(--color-text-muted)]">
                     {cut.videoTrim ? (cut.videoTrim.end - cut.videoTrim.start).toFixed(1) : (cut.videoDuration || cut.estimatedDuration || 5).toFixed(1)}s
-                    {cut.videoTrim && <span className="ml-1 text-xs text-blue-400">(Trimmed)</span>}
+                    {cut.videoTrim && <span className="ml-1 text-xs text-[var(--color-primary)]">(Trimmed)</span>}
                 </div>
 
                 <div>
@@ -161,7 +161,7 @@ const VideoCompositionRow = React.memo(({
                         cut.videoUrl ? (
                             cut.isVideoConfirmed ?
                                 <span className="flex items-center gap-1 text-xs text-green-400 font-medium"><Check size={12} /> Confirmed</span> :
-                                <span className="flex items-center gap-1 text-xs text-blue-400 font-medium"><FileVideo size={12} /> Ready</span>
+                                <span className="flex items-center gap-1 text-xs text-[var(--color-primary)] font-medium"><FileVideo size={12} /> Ready</span>
                         ) : <span className="text-xs text-[var(--color-text-muted)] opacity-50">Empty</span>
                     )}
                 </div>
@@ -169,7 +169,7 @@ const VideoCompositionRow = React.memo(({
                 <div className="flex items-center gap-1">
                     {cut.videoUrl && (
                         <>
-                            <button onClick={onPreview} className="p-1.5 rounded hover:bg-[var(--color-bg)] text-blue-400" title="Preview Video & Audio"><Play size={16} /></button>
+                            <button onClick={onPreview} className="p-1.5 rounded hover:bg-[var(--color-bg)] text-[var(--color-primary)]" title="Preview Video & Audio"><Play size={16} /></button>
                             {!isLocked && (
                                 <button onClick={onConfirm} className="p-1.5 rounded hover:bg-green-500/20 text-green-400" title="Confirm"><Check size={16} /></button>
                             )}
@@ -868,8 +868,8 @@ const AudioComparisonModal = React.memo<{
     if (!previewCut) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4 overflow-y-auto" onClick={onClose}>
-            <div className="max-w-4xl w-full relative bg-[var(--color-surface)] rounded-2xl overflow-hidden max-h-[95vh] flex flex-col my-auto border border-[var(--color-border)] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/90 flex items-start justify-center z-50 p-4 overflow-y-auto" onClick={onClose}>
+            <div className="max-w-4xl w-full relative bg-[var(--color-surface)] rounded-2xl overflow-hidden flex flex-col my-auto border border-[var(--color-border)] shadow-2xl" onClick={(e) => e.stopPropagation()}>
 
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)] bg-[var(--color-bg)]">
@@ -886,7 +886,7 @@ const AudioComparisonModal = React.memo<{
                 </div>
 
                 {/* Main Content */}
-                <div className="flex-1 overflow-y-auto bg-black/20 flex flex-col">
+                <div className="bg-black/20 flex flex-col">
 
                     {/* 1. Video Preview (Top) */}
                     <div className="bg-black relative aspect-video max-h-[40vh] shrink-0 border-b border-white/5">
@@ -958,7 +958,7 @@ const AudioComparisonModal = React.memo<{
                                                 window.open(previewCut.videoUrl, '_blank');
                                             }
                                         }}
-                                        className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/40 text-blue-300 rounded-full text-sm transition-colors"
+                                        className="px-4 py-2 bg-[var(--color-primary)]/20 hover:bg-[var(--color-primary)]/40 text-[var(--color-primary)] rounded-full text-sm transition-colors"
                                     >
                                         Open Original
                                     </button>
@@ -1000,14 +1000,10 @@ const AudioComparisonModal = React.memo<{
                     </div>
 
                     {/* 2. Video Trimmer (Slider Only) - Immediately below video */}
-                    <div className="px-4 py-3 bg-[var(--color-bg)] border-b border-[var(--color-border)] w-full max-w-full overflow-hidden">
-                        <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                                <Scissors size={14} className="text-pink-400" />
-                                <span>Trim Range</span>
-                            </div>
-                            <span className="text-xs text-[var(--color-text-muted)]">
-                                Duration: <span className="text-white">{(previewCut.videoTrim ? previewCut.videoTrim.end - previewCut.videoTrim.start : videoDuration).toFixed(1)}s</span>
+                    <div className="px-4 py-3 bg-[var(--color-bg)] border-b border-[var(--color-border)] w-full max-w-full">
+                        <div className="flex items-center mb-2">
+                            <span className="text-sm font-semibold text-white">
+                                Duration: {(previewCut.videoTrim ? previewCut.videoTrim.end - previewCut.videoTrim.start : videoDuration).toFixed(1)}s
                             </span>
                         </div>
                         <VideoTrimmer
@@ -1020,52 +1016,43 @@ const AudioComparisonModal = React.memo<{
                             onSeek={(time) => {
                                 if (videoRef.current) {
                                     videoRef.current.currentTime = time;
-                                    // Optional: pause if seeking
-                                    // videoRef.current.pause(); 
                                 }
                             }}
                         />
                     </div>
 
                     {/* 3. Audio Controls (Stacked Rows) */}
-                    <div className="p-6 bg-[var(--color-surface)] flex flex-col gap-4">
+                    <div className="p-4 bg-[var(--color-surface)] flex flex-col gap-3">
 
-                        {/* Row A: Original Video Audio */}
-                        <div className={`flex items-center gap-4 p-4 rounded-xl border transition-all ${selectedAudioSource === 'video' ? 'bg-blue-500/10 border-blue-500/50' : 'bg-white/5 border-white/5 opacity-70 hover:opacity-100'}`}>
-                            {/* Source Select Button */}
-                            <button
-                                onClick={() => handleSourceChange('video')}
-                                className="flex items-center gap-3 min-w-[180px]"
-                            >
-                                <div className={`p-2.5 rounded-full ${selectedAudioSource === 'video' ? 'bg-blue-500 text-white' : 'bg-gray-700 text-gray-400'}`}>
-                                    <Volume2 size={20} />
+                        {/* Row A: Audio Source Selection */}
+                        <div className="p-4 bg-[var(--color-bg)] rounded-xl border border-[var(--color-border)]">
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                                    <Volume2 size={14} className="text-[var(--color-primary)]" />
+                                    <span>Audio Source (오디오 소스)</span>
                                 </div>
-                                <div className="text-left">
-                                    <div className={`font-bold ${selectedAudioSource === 'video' ? 'text-white' : 'text-gray-400'}`}>Original Video</div>
-                                    <div className="text-[10px] text-[var(--color-text-muted)]">Use video sound</div>
+                                <div className="flex bg-black/40 p-1 rounded-lg border border-white/5">
+                                    <button
+                                        onClick={() => handleSourceChange('video')}
+                                        className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${selectedAudioSource === 'video' ? 'bg-white/10 text-[var(--color-primary)]' : 'text-gray-500 hover:text-gray-300'}`}
+                                    >
+                                        ORIGINAL VIDEO
+                                    </button>
+                                    <button
+                                        onClick={() => handleSourceChange('tts')}
+                                        className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${selectedAudioSource === 'tts' ? 'bg-white/10 text-[var(--color-primary)]' : 'text-gray-500 hover:text-gray-300'}`}
+                                    >
+                                        AI VOICE (TTS)
+                                    </button>
                                 </div>
-                            </button>
-
-                            {/* Divider */}
-                            <div className="w-px h-8 bg-white/10" />
-
-                            {/* Volume Control */}
-                            <div className="flex-1 flex items-center gap-3">
-                                <span className="text-xs text-gray-400 font-medium w-12 text-right">Volume</span>
-                                <input
-                                    type="range"
-                                    min={0}
-                                    max={1}
-                                    step={0.1}
-                                    value={volumes.video}
-                                    onChange={(e) => handleVolumeChange('video', parseFloat(e.target.value))}
-                                    className="flex-1 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                                />
-                                <span className="text-xs text-white w-8 text-right font-mono">{Math.round(volumes.video * 100)}%</span>
                             </div>
-
-                            {/* Active Badge */}
-                            {selectedAudioSource === 'video' && <div className="hidden sm:block text-[10px] px-2 py-0.5 bg-blue-500 text-white rounded-full font-bold tracking-wider">ACTIVE</div>}
+                            <div className="text-[10px] leading-relaxed text-[var(--color-text-muted)] space-y-1">
+                                {selectedAudioSource === 'video' ? (
+                                    <p>• <b>원본 영상 오디오</b>: 비디오 파일에 포함된 소리를 사용합니다. (Default Volume: 100%)</p>
+                                ) : (
+                                    <p>• <b>AI Voice (TTS)</b>: 캐릭터 목소리를 사용하고, 영상 소리는 음소거됩니다. (Default Volume: 100%)</p>
+                                )}
+                            </div>
                         </div>
 
                         {/* Audio Track Warning */}
@@ -1080,49 +1067,11 @@ const AudioComparisonModal = React.memo<{
                             </div>
                         )}
 
-                        {/* Row B: TTS Audio */}
-                        <div className={`flex items-center gap-4 p-4 rounded-xl border transition-all ${selectedAudioSource === 'tts' ? 'bg-green-500/10 border-green-500/50' : 'bg-white/5 border-white/5 opacity-70 hover:opacity-100'}`}>
-                            {/* Source Select Button */}
-                            <button
-                                onClick={() => handleSourceChange('tts')}
-                                className="flex items-center gap-3 min-w-[180px]"
-                            >
-                                <div className={`p-2.5 rounded-full ${selectedAudioSource === 'tts' ? 'bg-green-500 text-white' : 'bg-gray-700 text-gray-400'}`}>
-                                    <Mic size={20} />
-                                </div>
-                                <div className="text-left">
-                                    <div className={`font-bold ${selectedAudioSource === 'tts' ? 'text-white' : 'text-gray-400'}`}>AI Voice (TTS)</div>
-                                    <div className="text-[10px] text-[var(--color-text-muted)]">Use character voice</div>
-                                </div>
-                            </button>
-
-                            {/* Divider */}
-                            <div className="w-px h-8 bg-white/10" />
-
-                            {/* Volume Control */}
-                            <div className="flex-1 flex items-center gap-3">
-                                <span className="text-xs text-gray-400 font-medium w-12 text-right">Volume</span>
-                                <input
-                                    type="range"
-                                    min={0}
-                                    max={1}
-                                    step={0.1}
-                                    value={volumes.tts}
-                                    onChange={(e) => handleVolumeChange('tts', parseFloat(e.target.value))}
-                                    className="flex-1 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-green-500"
-                                />
-                                <span className="text-xs text-white w-8 text-right font-mono">{Math.round(volumes.tts * 100)}%</span>
-                            </div>
-
-                            {/* Active Badge */}
-                            {selectedAudioSource === 'tts' && <div className="hidden sm:block text-[10px] px-2 py-0.5 bg-green-500 text-white rounded-full font-bold tracking-wider">ACTIVE</div>}
-                        </div>
-
                         {/* Row C: Duration Master Selection */}
                         <div className="p-4 bg-[var(--color-bg)] rounded-xl border border-[var(--color-border)]">
                             <div className="flex items-center justify-between mb-3">
                                 <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                                    <Sparkles size={14} className="text-yellow-400" />
+                                    <Sparkles size={14} className="text-[var(--color-primary)]" />
                                     <span>Duration Master (재생 시간 기준)</span>
                                 </div>
                                 <div className="flex bg-black/40 p-1 rounded-lg border border-white/5">
@@ -1134,7 +1083,7 @@ const AudioComparisonModal = React.memo<{
                                     </button>
                                     <button
                                         onClick={() => setDurationMaster('video')}
-                                        className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${durationMaster === 'video' ? 'bg-white/10 text-pink-400' : 'text-gray-500 hover:text-gray-300'}`}
+                                        className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${durationMaster === 'video' ? 'bg-white/10 text-[var(--color-primary)]' : 'text-gray-500 hover:text-gray-300'}`}
                                     >
                                         VIDEO TRIM
                                     </button>
