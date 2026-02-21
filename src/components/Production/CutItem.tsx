@@ -222,12 +222,10 @@ export const CutItem = memo(({
     }, [cut.finalImageUrl]);
 
     useEffect(() => {
-        let currentBlobUrl = '';
         if (cut.audioUrl) {
             if (isIdbUrl(cut.audioUrl)) {
                 resolveUrl(cut.audioUrl, { asBlob: true }).then(url => {
                     console.log(`[CutItem ${cut.id}] 🔊 Resolved audio URL: ${url.substring(0, 50)}...`);
-                    currentBlobUrl = url;
                     setResolvedAudioUrl(url);
                 }).catch(err => {
                     console.error(`[CutItem ${cut.id}] ❌ Failed to resolve audio:`, err);
