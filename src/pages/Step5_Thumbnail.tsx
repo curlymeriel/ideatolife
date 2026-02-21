@@ -53,8 +53,14 @@ export const Step5_Thumbnail: React.FC = () => {
     // Initialize state from store settings or defaults
     const [frameImage, setFrameImage] = useState<string>(thumbnailSettings?.frameImage || '/frame_bg.svg');
     const [resolvedFrameImage, setResolvedFrameImage] = useState<string>(thumbnailSettings?.frameImage || '/frame_bg.svg');
+    const [showFrame, setShowFrame] = useState<boolean>(thumbnailSettings?.showFrame ?? true);
     const [titleFont, setTitleFont] = useState(thumbnailSettings?.fontFamily || 'Inter');
     const [customTitle, setCustomTitle] = useState(thumbnailSettings?.episodeTitle || episodeName || '');
+
+    // Text Background State
+    const [textBgShape, setTextBgShape] = useState<'none' | 'rectangle' | 'rounded' | 'full-width'>(thumbnailSettings?.textBgShape || 'none');
+    const [textBgColor, setTextBgColor] = useState(thumbnailSettings?.textBgColor || '#000000');
+    const [textBgOpacity, setTextBgOpacity] = useState(thumbnailSettings?.textBgOpacity ?? 0.5);
 
 
     // Image Transform State
@@ -130,6 +136,10 @@ export const Step5_Thumbnail: React.FC = () => {
                 if (settings.textColor) setTextColor(settings.textColor);
                 if (settings.fontFamily) setTitleFont(settings.fontFamily);
                 if (settings.frameImage) setFrameImage(settings.frameImage);
+                if (settings.showFrame !== undefined) setShowFrame(settings.showFrame);
+                if (settings.textBgShape) setTextBgShape(settings.textBgShape);
+                if (settings.textBgColor) setTextBgColor(settings.textBgColor);
+                if (settings.textBgOpacity !== undefined) setTextBgOpacity(settings.textBgOpacity);
             }
         };
 
@@ -171,6 +181,10 @@ export const Step5_Thumbnail: React.FC = () => {
             setTextColor(thumbnailSettings.textColor);
             setTitleFont(thumbnailSettings.fontFamily);
             setFrameImage(thumbnailSettings.frameImage);
+            if (thumbnailSettings.showFrame !== undefined) setShowFrame(thumbnailSettings.showFrame);
+            if (thumbnailSettings.textBgShape) setTextBgShape(thumbnailSettings.textBgShape);
+            if (thumbnailSettings.textBgColor) setTextBgColor(thumbnailSettings.textBgColor);
+            if (thumbnailSettings.textBgOpacity !== undefined) setTextBgOpacity(thumbnailSettings.textBgOpacity);
         }
     }, [isHydrated, thumbnailSettings]);
 
@@ -205,12 +219,16 @@ export const Step5_Thumbnail: React.FC = () => {
                 textAlign,
                 textColor,
                 fontFamily: titleFont,
-                frameImage
+                frameImage,
+                showFrame,
+                textBgShape,
+                textBgColor,
+                textBgOpacity
             });
         }, 500); // Debounce save
 
         return () => clearTimeout(timer);
-    }, [mode, aiPrompt, aiTitle, selectedReferenceIds, styleReferenceId, scale, position, textPosition, titleSize, seriesTitle, seriesTitleSize, textAlign, textColor, titleFont, frameImage, customTitle, setThumbnailSettings, isHydrated]);
+    }, [mode, aiPrompt, aiTitle, selectedReferenceIds, styleReferenceId, scale, position, textPosition, titleSize, seriesTitle, seriesTitleSize, textAlign, textColor, titleFont, frameImage, showFrame, textBgShape, textBgColor, textBgOpacity, customTitle, setThumbnailSettings, isHydrated]);
 
 
     // Calculate scale factor on resize (Dynamic based on targetResolution)
@@ -553,6 +571,14 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
     };
 
     const ThumbnailContent = ({ forCapture = false }: { forCapture?: boolean }) => {
+        // Convert hex to rgb for rgba application
+        const hexToRgb = (hex: string) => {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '0, 0, 0';
+        };
+
+        const bgRgba = `rgba(${hexToRgb(textBgColor)}, ${textBgOpacity})`;
+
         if (mode === 'ai-gen') {
             return (
                 <div className="w-full h-full bg-[#050505] overflow-hidden relative flex items-center justify-center">
@@ -598,53 +624,72 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                 </div>
 
                 {/* LAYER 2: FRAME OVERLAY (MIDDLE) - Z-10 */}
-                <div className="absolute inset-0 z-10 pointer-events-none">
-                    <img
-                        src={resolvedFrameImage}
-                        alt="Frame Overlay"
-                        className="w-full h-full object-fill"
-                        crossOrigin="anonymous"
-                    />
-                </div>
+                {showFrame && (
+                    <div className="absolute inset-0 z-10 pointer-events-none">
+                        <img
+                            src={resolvedFrameImage}
+                            alt="Frame Overlay"
+                            className="w-full h-full object-fill"
+                            crossOrigin="anonymous"
+                        />
+                    </div>
+                )}
 
                 {/* LAYER 3: TEXT (TOP) - Z-20 */}
                 <div className="absolute inset-0 z-20 pointer-events-none flex flex-col justify-end p-[5%] pb-[8%]">
                     <div
-                        className="flex flex-col gap-2 px-12"
+                        className="flex flex-col gap-2 px-12 relative"
                         style={{
                             transform: `translate(${textPosition.x}px, ${textPosition.y}px)`,
                             transition: forCapture ? 'none' : 'transform 0.1s ease-out',
                             textAlign: textAlign
                         }}
                     >
-                        {/* Episode Title (Top) */}
-                        <h1
+                        <div
+                            className="relative z-0"
                             style={{
-                                fontFamily: `${titleFont}, Arial, sans-serif`,
-                                fontSize: `${titleSize}px`,
-                                lineHeight: 1.2,
-                                color: textColor,
-                                textShadow: '0 4px 20px rgba(0,0,0,0.7)',
-                                fontWeight: 'bold',
+                                backgroundColor: textBgShape !== 'none' ? bgRgba : 'transparent',
+                                padding: textBgShape !== 'none' ? (textBgShape === 'full-width' ? '32px 100vw' : '32px 48px') : '0',
+                                marginLeft: textBgShape === 'full-width' ? '-100vw' : '0',
+                                marginRight: textBgShape === 'full-width' ? '-100vw' : '0',
+                                borderRadius: textBgShape === 'rounded' ? '32px' : '0',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '8px',
+                                alignItems: textAlign === 'center' ? 'center' : textAlign === 'right' ? 'flex-end' : 'flex-start',
                             }}
                         >
-                            {customTitle}
-                        </h1>
-                        {/* Series Title (Bottom) */}
-                        {seriesTitle && (
-                            <p
+                            {/* Episode Title (Top) */}
+                            <h1
                                 style={{
                                     fontFamily: `${titleFont}, Arial, sans-serif`,
-                                    fontSize: `${seriesTitleSize}px`,
-                                    lineHeight: 1.3,
+                                    fontSize: `${titleSize}px`,
+                                    lineHeight: 1.1,
                                     color: textColor,
-                                    textShadow: '0 2px 10px rgba(0,0,0,0.5)',
-                                    opacity: 0.85,
+                                    textShadow: '0 4px 20px rgba(0,0,0,0.7)',
+                                    fontWeight: 'bold',
+                                    margin: 0,
                                 }}
                             >
-                                {seriesTitle}
-                            </p>
-                        )}
+                                {customTitle}
+                            </h1>
+                            {/* Series Title (Bottom) */}
+                            {seriesTitle && (
+                                <p
+                                    style={{
+                                        fontFamily: `${titleFont}, Arial, sans-serif`,
+                                        fontSize: `${seriesTitleSize}px`,
+                                        lineHeight: 1.1,
+                                        color: textColor,
+                                        textShadow: '0 2px 10px rgba(0,0,0,0.5)',
+                                        opacity: 0.85,
+                                        margin: 0,
+                                    }}
+                                >
+                                    {seriesTitle}
+                                </p>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -731,9 +776,20 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
 
                                 {/* 2. Frame Overlay */}
                                 <div className="space-y-3 pt-4 border-t border-white/5">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                                        <Layers size={14} /> 2. Frame Overlay
-                                    </label>
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                                            <Layers size={14} /> 2. Frame Overlay
+                                        </label>
+                                        <label className="flex items-center gap-2 cursor-pointer group">
+                                            <span className="text-[10px] text-gray-400 font-bold uppercase group-hover:text-white transition-colors">Show Frame</span>
+                                            <input
+                                                type="checkbox"
+                                                checked={showFrame}
+                                                onChange={(e) => setShowFrame(e.target.checked)}
+                                                className="w-3.5 h-3.5 rounded bg-black/40 border-white/20 checked:bg-[var(--color-primary)] checked:border-[var(--color-primary)] focus:ring-[var(--color-primary)]/50 focus:ring-offset-black transition-all cursor-pointer"
+                                            />
+                                        </label>
+                                    </div>
                                     <div className="grid grid-cols-2 gap-3">
                                         <label className="cursor-pointer flex flex-col items-center justify-center p-4 border-2 border-dashed border-white/5 hover:border-yellow-500/50 hover:bg-yellow-500/5 transition-all rounded-2xl group">
                                             <Upload size={20} className="mb-2 text-gray-500 group-hover:text-yellow-400 group-hover:scale-110 transition-transform" />
@@ -979,6 +1035,59 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                                         </div>
                                     </div>
 
+                                    {/* Text Background Controls */}
+                                    <div className="space-y-3 p-4 bg-white/5 rounded-2xl border border-white/5">
+                                        <div className="flex justify-between items-center px-1">
+                                            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Text Background</span>
+                                        </div>
+
+                                        <div className="space-y-4 pt-2">
+                                            {/* Shape Selector */}
+                                            <div className="flex bg-black/40 border border-white/10 rounded-xl overflow-hidden">
+                                                <button
+                                                    onClick={() => setTextBgShape('none')}
+                                                    className={`flex-1 py-2 text-[10px] font-bold transition-colors ${textBgShape === 'none' ? 'bg-[var(--color-primary)] text-black' : 'text-gray-500 hover:text-gray-300'}`}
+                                                >None</button>
+                                                <button
+                                                    onClick={() => setTextBgShape('rectangle')}
+                                                    className={`flex-1 py-2 text-[10px] font-bold transition-colors border-x border-white/10 ${textBgShape === 'rectangle' ? 'bg-[var(--color-primary)] text-black' : 'text-gray-500 hover:text-gray-300'}`}
+                                                >Rect</button>
+                                                <button
+                                                    onClick={() => setTextBgShape('rounded')}
+                                                    className={`flex-1 py-2 text-[10px] font-bold transition-colors border-r border-white/10 ${textBgShape === 'rounded' ? 'bg-[var(--color-primary)] text-black' : 'text-gray-500 hover:text-gray-300'}`}
+                                                >Round</button>
+                                                <button
+                                                    onClick={() => setTextBgShape('full-width')}
+                                                    className={`flex-1 py-2 text-[10px] font-bold transition-colors ${textBgShape === 'full-width' ? 'bg-[var(--color-primary)] text-black' : 'text-gray-500 hover:text-gray-300'}`}
+                                                >Full</button>
+                                            </div>
+
+                                            {/* Color and Opacity */}
+                                            {textBgShape !== 'none' && (
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="space-y-1">
+                                                        <div className="flex justify-between text-[9px] text-gray-500 font-bold uppercase px-1">Bg Color</div>
+                                                        <input
+                                                            type="color"
+                                                            value={textBgColor}
+                                                            onChange={(e) => setTextBgColor(e.target.value)}
+                                                            className="w-full h-8 p-0 border border-white/10 rounded-md cursor-pointer bg-black/40"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <div className="flex justify-between text-[9px] text-gray-500 font-bold uppercase px-1">Opacity <span className="text-gray-600">{Math.round(textBgOpacity * 100)}%</span></div>
+                                                        <input
+                                                            type="range" min="0" max="1" step="0.05"
+                                                            value={textBgOpacity}
+                                                            onChange={(e) => setTextBgOpacity(parseFloat(e.target.value))}
+                                                            className="w-full h-8 accent-white/30"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
                                     {/* Size & Position Controls */}
                                     <div className="space-y-3 p-4 bg-white/5 rounded-2xl border border-white/5">
                                         <div className="flex justify-between items-center px-1">
@@ -996,7 +1105,7 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                                                 <div className="space-y-1">
                                                     <div className="flex justify-between text-[9px] text-gray-500 font-bold uppercase px-1">X Offset</div>
                                                     <input
-                                                        type="range" min="-1000" max="1000" step="10"
+                                                        type="range" min="-2000" max="2000" step="10"
                                                         value={textPosition.x}
                                                         onChange={(e) => setTextPosition({ ...textPosition, x: parseInt(e.target.value) })}
                                                         className="w-full accent-white/30"
@@ -1005,7 +1114,7 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                                                 <div className="space-y-1">
                                                     <div className="flex justify-between text-[9px] text-gray-500 font-bold uppercase px-1">Y Offset</div>
                                                     <input
-                                                        type="range" min="-1000" max="1000" step="10"
+                                                        type="range" min="-2000" max="2000" step="10"
                                                         value={textPosition.y}
                                                         onChange={(e) => setTextPosition({ ...textPosition, y: parseInt(e.target.value) })}
                                                         className="w-full accent-white/30"

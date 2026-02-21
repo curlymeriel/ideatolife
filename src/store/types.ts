@@ -94,6 +94,10 @@ export interface ThumbnailSettings {
     textColor: string;
     fontFamily: string;
     frameImage: string;
+    showFrame?: boolean;
+    textBgShape?: 'none' | 'rectangle' | 'rounded' | 'full-width';
+    textBgColor?: string;
+    textBgOpacity?: number;
     aiPrompt?: string;
     aiTitle?: string;
     selectedReferenceIds?: string[];

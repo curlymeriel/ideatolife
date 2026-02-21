@@ -17,8 +17,7 @@ import {
     serverTimestamp,
     Timestamp,
 } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
-import type { ProjectData, ProjectMetadata } from '../store/types';
+import { db } from '../lib/firebase';
 import { sanitizeFirestoreData } from '../utils/firebaseUtils';
 
 // Firestore 컬렉션 경로

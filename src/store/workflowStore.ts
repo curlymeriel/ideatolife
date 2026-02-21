@@ -121,7 +121,11 @@ const getEmptyProjectState = (id: string, apiKeys: any = {}): ProjectData => ({
         seriesTitleSize: 36,
         textColor: '#ffffff',
         fontFamily: 'Inter',
-        frameImage: ''
+        frameImage: '',
+        showFrame: true,
+        textBgShape: 'none',
+        textBgColor: '#000000',
+        textBgOpacity: 0.5
     },
     masterStyle: { description: '', referenceImage: null },
     styleAnchor: {
@@ -957,7 +961,6 @@ export const useWorkflowStore = create<WorkflowStore>()(
 
                 // [PROACTIVE OPTIMIZATION] Scan for large Base64 strings and move to IDB before they hit the store
                 const sanitizedScript = [...script];
-                let wasModified = false;
                 const { saveToIdb, generateAudioKey, generateCutImageKey } = await import('../utils/imageStorage');
 
                 for (let i = 0; i < sanitizedScript.length; i++) {
@@ -966,14 +969,12 @@ export const useWorkflowStore = create<WorkflowStore>()(
                         try {
                             const idbUrl = await saveToIdb('audio', generateAudioKey(currentId, cut.id), cut.audioUrl);
                             sanitizedScript[i] = { ...sanitizedScript[i], audioUrl: idbUrl };
-                            wasModified = true;
                         } catch (e) { console.error("[Sanitizer] Audio failed", e); }
                     }
                     if (cut.finalImageUrl?.startsWith('data:') && cut.finalImageUrl.length > 50000) {
                         try {
                             const idbUrl = await saveToIdb('images', generateCutImageKey(currentId, cut.id, 'final' as any), cut.finalImageUrl);
                             sanitizedScript[i] = { ...sanitizedScript[i], finalImageUrl: idbUrl };
-                            wasModified = true;
                         } catch (e) { console.error("[Sanitizer] Final image failed", e); }
                     }
                 }
@@ -1008,14 +1009,12 @@ export const useWorkflowStore = create<WorkflowStore>()(
 
                 // [PROACTIVE OPTIMIZATION]
                 let sanitizedAsset = { ...asset };
-                let wasModified = false;
-                const { saveToIdb, generateAudioKey, generateCutImageKey } = await import('../utils/imageStorage');
+                const { saveToIdb } = await import('../utils/imageStorage');
 
                 if (typeof sanitizedAsset.imageUrl === 'string' && sanitizedAsset.imageUrl.startsWith('data:') && sanitizedAsset.imageUrl.length > 50000) {
                     try {
-                        const idbUrl = await saveToIdb('images', generateCutImageKey(currentId, cutId, 'final' as any), sanitizedAsset.imageUrl);
+                        const idbUrl = await saveToIdb('assets', `asset-${currentId}-${cutId}-image`, sanitizedAsset.imageUrl);
                         sanitizedAsset.imageUrl = idbUrl;
-                        wasModified = true;
                     } catch (e) { console.error("[Sanitizer] Asset image failed", e); }
                 }
 
@@ -1563,6 +1562,12 @@ export const useWorkflowStore = create<WorkflowStore>()(
 
                 // Update store state for savedProjects
                 set({ savedProjects: remainingProjects });
+
+                // Force persist the updated savedProjects list to prevent it coming back on reload
+                const currentState = get() as any;
+                const { saveStatus, isHydrated, ...stateToPersist } = currentState;
+                const persistPayload = JSON.stringify({ state: stateToPersist, version: 7 });
+                await idbSet('idea-lab-storage', persistPayload);
 
                 // Remove from IndexedDB
                 await deleteProjectFromDisk(id);

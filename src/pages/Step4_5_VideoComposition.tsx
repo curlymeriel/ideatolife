@@ -1215,6 +1215,7 @@ export const Step4_5_VideoComposition: React.FC = () => {
     const [selectedReplicateModel, setSelectedReplicateModel] = useState<ReplicateVideoModel>('wan-2.2-i2v');
     const [selectedKieModel, setSelectedKieModel] = useState<string>('veo-3.1');
     const [isGenerating, setIsGenerating] = useState(false);
+    const [generatingMode, setGeneratingMode] = useState<'selected' | 'all' | null>(null);
     const [generationProgress, setGenerationProgress] = useState<{ current: number; total: number; status: string }>({
         current: 0,
         total: 0,
@@ -1583,6 +1584,7 @@ export const Step4_5_VideoComposition: React.FC = () => {
         }
 
         setIsGenerating(true);
+        setGeneratingMode(mode);
         setGenerationProgress({ current: 0, total: targetCuts.length, status: 'Starting...' });
 
         let successCount = 0;
@@ -1772,6 +1774,7 @@ export const Step4_5_VideoComposition: React.FC = () => {
         await useWorkflowStore.getState().saveProject();
 
         setIsGenerating(false);
+        setGeneratingMode(null);
         setSelectedCuts(new Set());
         setGenerationProgress({ current: 0, total: 0, status: '' });
 
@@ -1790,13 +1793,9 @@ export const Step4_5_VideoComposition: React.FC = () => {
         <div className="space-y-6">
             {/* Header */}
             <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold text-white flex items-center gap-3">
-                        <Video className="text-[var(--color-primary)]" size={28} />
-                        Motion Design
-                    </h1>
-                    <p className="text-[var(--color-text-muted)] text-sm mt-1">
-                        Step 4의 이미지를 사용하여 외부 AI 도구(Luma Dream Machine, Runway 등)로 비디오를 생성하고 업로드하여 합성합니다.
+                <div className="flex-none px-2 mb-2">
+                    <p className="text-[var(--color-text-muted)] text-sm">
+                        앱 내부의 AI 비디오 생성 기능을 사용하거나, 외부 AI 도구(Runway, Luma 등)에서 생성한 비디오를 업로드하여 합성할 수 있습니다.
                     </p>
                 </div>
                 {/* Stats */}
@@ -1841,10 +1840,10 @@ export const Step4_5_VideoComposition: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
                 {/* 1. AI Video Generation Mode (Left) */}
-                <div className="bg-[var(--color-surface)] rounded-xl p-6 border border-[var(--color-border)] hover:border-[var(--color-primary)]/30 transition-colors h-full flex flex-col">
-                    <div className="flex items-center justify-between mb-4">
+                <div className="bg-[var(--color-surface)] rounded-xl p-4 border border-[var(--color-border)] hover:border-[var(--color-primary)]/30 transition-colors h-full flex flex-col">
+                    <div className="flex items-center justify-between mb-3">
                         <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                            <Video size={22} className="text-[var(--color-primary)]" />
+                            <Video size={20} className="text-[var(--color-primary)]" />
                             AI Video 생성모드
                         </h2>
                         {isGenerating && (
@@ -1858,7 +1857,7 @@ export const Step4_5_VideoComposition: React.FC = () => {
                         )}
                     </div>
 
-                    <p className="text-xs text-[var(--color-text-muted)] mb-4 leading-relaxed">
+                    <p className="text-xs text-[var(--color-text-muted)] mb-3 leading-relaxed">
                         Google Gemini Veo 또는 Replicate API를 통해 이미지로부터 직접 영상을 생성합니다.<br />
                         생성할 모델을 선택한 후, 리스트에서 컷을 골라 고품질 AI 비디오를 만들어보세요.
                     </p>
@@ -2056,7 +2055,7 @@ export const Step4_5_VideoComposition: React.FC = () => {
                                     : 'bg-[var(--color-primary)] text-black hover:brightness-110 shadow-lg shadow-[var(--color-primary)]/20'
                                     }`}
                             >
-                                {isGenerating ? <Loader2 className="animate-spin" size={18} /> : <Sparkles size={18} />}
+                                {isGenerating && generatingMode === 'selected' ? <Loader2 className="animate-spin" size={18} /> : <Sparkles size={18} />}
                                 선택 컷 생성 ({selectedCuts.size}개)
                             </button>
                             <button
@@ -2067,7 +2066,7 @@ export const Step4_5_VideoComposition: React.FC = () => {
                                     : 'bg-white/10 text-white border border-white/10 hover:bg-white/20 shadow-lg'
                                     }`}
                             >
-                                {isGenerating ? <Loader2 className="animate-spin" size={18} /> : <Video size={18} />}
+                                {isGenerating && generatingMode === 'all' ? <Loader2 className="animate-spin" size={18} /> : <Video size={18} />}
                                 미생성 컷 전체
                             </button>
                         </div>
@@ -2075,13 +2074,13 @@ export const Step4_5_VideoComposition: React.FC = () => {
                 </div>
 
                 {/* 2. External Tools (Right) - Modified to Stack Vertically */}
-                <div className="bg-[var(--color-surface)] rounded-xl p-6 border border-[var(--color-border)] hover:border-[var(--color-primary)]/30 transition-colors h-full flex flex-col">
-                    <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-6">
-                        <Upload size={22} className="text-[var(--color-primary)]" />
+                <div className="bg-[var(--color-surface)] rounded-xl p-4 border border-[var(--color-border)] hover:border-[var(--color-primary)]/30 transition-colors h-full flex flex-col">
+                    <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-4">
+                        <Upload size={20} className="text-[var(--color-primary)]" />
                         외부 비디오 업로드 모드
                     </h2>
 
-                    <div className="flex flex-col gap-6 flex-1">
+                    <div className="flex flex-col gap-3 flex-1">
 
                         {/* Top: Export Kit */}
                         <div className="flex-1 p-4 bg-white/5 rounded-xl border border-white/5 hover:border-[var(--color-primary)]/50 transition-all group">
@@ -2105,7 +2104,7 @@ export const Step4_5_VideoComposition: React.FC = () => {
 
                         {/* Arrow separator (Visual only) */}
                         <div className="flex justify-center text-gray-600">
-                            <ChevronLeft className="rotate-[-90deg]" size={24} />
+                            <ChevronLeft className="rotate-[-90deg]" size={20} />
                         </div>
 
                         {/* Bottom: Import */}

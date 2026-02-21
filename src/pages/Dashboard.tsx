@@ -143,6 +143,18 @@ export const Dashboard: React.FC = () => {
         e.stopPropagation();
         if (confirm(`Are you sure you want to delete "${episodeName}"? This cannot be undone.`)) {
             await deleteProject(projectId);
+            if (user) {
+                try {
+                    await cloudDatabase.deleteProject(user.uid, projectId);
+                    setCloudProjects(prev => {
+                        const next = new Map(prev);
+                        next.delete(projectId);
+                        return next;
+                    });
+                } catch (err) {
+                    console.error("Failed to delete from cloud db:", err);
+                }
+            }
         }
     };
 
@@ -157,6 +169,22 @@ export const Dashboard: React.FC = () => {
         e.stopPropagation(); // Prevent accordion toggle if implemented
         if (confirm(`WARNING: Are you sure you want to delete the entire series "${seriesName}"? \n\nThis will delete ALL episodes in this series. This cannot be undone.`)) {
             await deleteSeries(seriesName);
+            if (user) {
+                // Delete all projects in this series from cloud
+                const projectsToDelete = Array.from(cloudProjects.values()).filter(p => p.seriesName === seriesName);
+                if (projectsToDelete.length > 0) {
+                    try {
+                        await Promise.all(projectsToDelete.map(p => cloudDatabase.deleteProject(user.uid, p.id)));
+                        setCloudProjects(prev => {
+                            const next = new Map(prev);
+                            projectsToDelete.forEach(p => next.delete(p.id));
+                            return next;
+                        });
+                    } catch (err) {
+                        console.error("Failed to delete series from cloud:", err);
+                    }
+                }
+            }
         }
     };
 
@@ -230,6 +258,18 @@ export const Dashboard: React.FC = () => {
 
         for (const pid of selectedProjects) {
             await deleteProject(pid);
+            if (user && cloudProjects.has(pid)) {
+                try {
+                    await cloudDatabase.deleteProject(user.uid, pid);
+                    setCloudProjects(prev => {
+                        const next = new Map(prev);
+                        next.delete(pid);
+                        return next;
+                    });
+                } catch (err) {
+                    console.error(`Failed to delete project ${pid} from cloud:`, err);
+                }
+            }
         }
         setSelectedProjects(new Set());
     };
@@ -258,6 +298,7 @@ export const Dashboard: React.FC = () => {
                 episodeName: state.episodeName,
                 episodeNumber: state.episodeNumber,
                 seriesStory: state.seriesStory,
+                nextCutId: state.nextCutId || 1,
                 mainCharacters: state.mainCharacters,
                 characters: state.characters,
                 seriesLocations: state.seriesLocations,

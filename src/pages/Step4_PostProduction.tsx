@@ -5,7 +5,7 @@ import { Play, Image as ImageIcon, ArrowRight, ArrowLeft, Pause, ChevronLeft, Ch
 import { resolveUrl, isIdbUrl } from '../utils/imageStorage';
 import { TimelineView } from '../components/Production/TimelineView';
 
-export const Step4_QualityAssurance: React.FC = () => {
+export const Step4_PostProduction: React.FC = () => {
     const { id: projectId, script, nextStep, prevStep, bgmTracks, setBGMTracks } = useWorkflowStore();
     const navigate = useNavigate();
 
