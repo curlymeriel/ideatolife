@@ -310,13 +310,16 @@ export const Step4_QualityAssurance: React.FC = () => {
 
                         {/* Cut info overlay */}
                         <div className="absolute top-4 left-4 bg-black/60 backdrop-blur px-3 py-1.5 rounded-full border border-white/10 text-xs font-bold text-white">
-                            Cut #{currentCut?.id}
+                            Cut #{currentCutIndex + 1}
                         </div>
                     </div>
 
                     {/* Playback Controls & Dialogue */}
                     <div className="h-[120px] shrink-0 flex items-start gap-6 pt-2">
-                        <div className="shrink-0 pt-2">
+                        <div className="shrink-0 flex items-center gap-3 pt-2">
+                            <button onClick={handlePrevCut} disabled={currentCutIndex === 0} className="p-2 hover:bg-white/10 rounded-full text-white disabled:opacity-30">
+                                <ArrowLeft size={20} />
+                            </button>
                             <button
                                 onClick={handlePlaySequential}
                                 className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isPlaying
@@ -325,6 +328,9 @@ export const Step4_QualityAssurance: React.FC = () => {
                                     }`}
                             >
                                 {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" className="ml-1" />}
+                            </button>
+                            <button onClick={handleNextCut} disabled={currentCutIndex === script.length - 1} className="p-2 hover:bg-white/10 rounded-full text-white disabled:opacity-30">
+                                <ArrowRight size={20} />
                             </button>
                         </div>
 
@@ -338,17 +344,8 @@ export const Step4_QualityAssurance: React.FC = () => {
                                 "{currentCut?.dialogue}"
                             </p>
                             <p className="text-xs text-gray-500 line-clamp-1">
-                                🎨 {currentCut?.visualPrompt}
+                                {currentCut?.visualPrompt}
                             </p>
-                        </div>
-
-                        <div className="flex gap-2 self-center">
-                            <button onClick={handlePrevCut} disabled={currentCutIndex === 0} className="p-2 hover:bg-white/10 rounded-full text-white disabled:opacity-30">
-                                <ArrowLeft size={20} />
-                            </button>
-                            <button onClick={handleNextCut} disabled={currentCutIndex === script.length - 1} className="p-2 hover:bg-white/10 rounded-full text-white disabled:opacity-30">
-                                <ArrowRight size={20} />
-                            </button>
                         </div>
                     </div>
                 </div>

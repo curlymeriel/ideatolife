@@ -423,6 +423,9 @@ export const Step6_Final = () => {
                     if (resolved) {
                         newCache[thumbnailUrl] = resolved;
                         setResolvedThumbnail(resolved);
+                        // [FIX] Ensure the resolved thumbnail is immediately available in the ref 
+                        // for export preparation so it doesn't get dropped.
+                        blobCacheRef.current[thumbnailUrl] = resolved;
                     }
                 } catch (e) { console.error("Failed to process thumbnail:", e); }
             }
@@ -2130,6 +2133,7 @@ export const Step6_Final = () => {
                             {/* Export Options */}
                             <div className="mb-8 p-4 bg-black/30 rounded-xl border border-white/5 space-y-3">
                                 <label className="text-sm font-bold text-gray-400 block mb-1">옵션</label>
+
                                 <label className="flex items-center gap-3 p-3 bg-white/5 rounded-lg cursor-pointer hover:bg-white/10 transition-colors">
                                     <input
                                         type="checkbox"
@@ -2144,9 +2148,7 @@ export const Step6_Final = () => {
                                         <div className="text-xs text-gray-400">영상에 자막을 입혀서 저장합니다.</div>
                                     </div>
                                 </label>
-                            </div>
-                            {/* New Thumbnail Option */}
-                            <div className="mb-2 p-1">
+
                                 <label className="flex items-center gap-3 p-3 bg-white/5 rounded-lg cursor-pointer hover:bg-white/10 transition-colors">
                                     <input
                                         type="checkbox"
@@ -2178,19 +2180,19 @@ export const Step6_Final = () => {
                                 className="w-full p-5 glass-panel border border-white/10 hover:border-[var(--color-primary)]/50 rounded-xl text-left transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <div className="flex items-start gap-4">
-                                    <div className="p-3 rounded-lg bg-yellow-500/20 text-yellow-400">
+                                    <div className="p-3 rounded-lg bg-[var(--color-primary)]/20 text-[var(--color-primary)]">
                                         <Zap size={24} />
                                     </div>
                                     <div className="flex-1">
                                         <h4 className="text-lg font-bold text-white group-hover:text-[var(--color-primary)] transition-colors">
-                                            ⚡ Quick Export (WebM)
+                                            Quick Export (WebM)
                                         </h4>
                                         <p className="text-sm text-gray-400 mt-1">
                                             빠른 실시간 녹화. 양호한 화질, 자막 포함.
                                         </p>
                                         <div className="flex gap-2 mt-2">
-                                            <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs rounded-full">Fast</span>
-                                            <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full">WebM</span>
+                                            <span className="px-2 py-0.5 bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-xs rounded-full">Fast</span>
+                                            <span className="px-2 py-0.5 bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-xs rounded-full">WebM</span>
                                         </div>
                                     </div>
                                 </div>
@@ -2202,19 +2204,19 @@ export const Step6_Final = () => {
                                 className="w-full p-5 glass-panel border border-white/10 hover:border-[var(--color-primary)]/50 rounded-xl text-left transition-all group"
                             >
                                 <div className="flex items-start gap-4">
-                                    <div className="p-3 rounded-lg bg-purple-500/20 text-purple-400">
+                                    <div className="p-3 rounded-lg bg-[var(--color-primary)]/20 text-[var(--color-primary)]">
                                         <Film size={24} />
                                     </div>
                                     <div className="flex-1">
                                         <h4 className="text-lg font-bold text-white group-hover:text-[var(--color-primary)] transition-colors">
-                                            🎥 High Quality (MP4)
+                                            High Quality (MP4)
                                         </h4>
                                         <p className="text-sm text-gray-400 mt-1">
                                             FFmpeg 기반 H.264 인코딩. 최고 화질, 범용 호환성.
                                         </p>
                                         <div className="flex gap-2 mt-2">
-                                            <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 text-xs rounded-full">Best Quality</span>
-                                            <span className="px-2 py-0.5 bg-orange-500/20 text-orange-400 text-xs rounded-full">MP4</span>
+                                            <span className="px-2 py-0.5 bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-xs rounded-full">Best Quality</span>
+                                            <span className="px-2 py-0.5 bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-xs rounded-full">MP4</span>
                                             {!isFFmpegSupported() && (
                                                 <span className="px-2 py-0.5 bg-red-500/20 text-red-400 text-xs rounded-full">CORS 설정 필요</span>
                                             )}
@@ -2229,19 +2231,19 @@ export const Step6_Final = () => {
                                 className="w-full p-5 glass-panel border border-white/10 hover:border-[var(--color-primary)]/50 rounded-xl text-left transition-all group"
                             >
                                 <div className="flex items-start gap-4">
-                                    <div className="p-3 rounded-lg bg-cyan-500/20 text-cyan-400">
+                                    <div className="p-3 rounded-lg bg-[var(--color-primary)]/20 text-[var(--color-primary)]">
                                         <Download size={24} />
                                     </div>
                                     <div className="flex-1">
                                         <h4 className="text-lg font-bold text-white group-hover:text-[var(--color-primary)] transition-colors">
-                                            📦 Video Kit (ZIP)
+                                            Video Kit (ZIP)
                                         </h4>
                                         <p className="text-sm text-gray-400 mt-1">
                                             모든 에셋과 FFmpeg 스크립트를 다운로드. 외부 도구로 영상 제작.
                                         </p>
                                         <div className="flex gap-2 mt-2">
-                                            <span className="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 text-xs rounded-full">Offline</span>
-                                            <span className="px-2 py-0.5 bg-gray-500/20 text-gray-400 text-xs rounded-full">ZIP</span>
+                                            <span className="px-2 py-0.5 bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-xs rounded-full">Offline</span>
+                                            <span className="px-2 py-0.5 bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-xs rounded-full">ZIP</span>
                                         </div>
                                     </div>
                                 </div>

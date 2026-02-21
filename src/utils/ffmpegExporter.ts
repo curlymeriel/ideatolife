@@ -240,23 +240,20 @@ export async function exportWithFFmpeg(
                     // Video Input Setup
                     if (isVideo) {
                         if (useTranscode) {
-                            console.log(`[FFmpeg] Cut ${i}: Retrying with Safe Transcode (Attempt ${attempt})...`);
+                            console.log(`[FFmpeg] Cut ${i}: Retrying with Safe Video-Only Transcode (Attempt ${attempt})...`);
                             const cleanVid = `clean_${padNum}.mp4`;
                             // [FIX] All inputs MUST be declared before any output options.
-                            // Previous bug: codec options were placed between two -i inputs,
-                            // causing FFmpeg to misinterpret the command structure.
+                            // Since WebM audio/duration info is often corrupt, we transcode 
+                            // video ONLY (-an) to guarantee a clean stream, avoiding -shortest 
+                            // mapping bugs that cause infinite hangs and Black Screens.
                             await ffmpeg.exec([
-                                // --- INPUTS first ---
+                                // --- INPUTS ---
                                 '-i', vidInputFile,
-                                '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
-                                // --- MAPPING ---
-                                '-map', '0:v', '-map', '1:a',
                                 // --- OUTPUT options ---
                                 '-c:v', 'libx264', '-preset', 'ultrafast',
                                 '-vf', `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black,fps=30`,
                                 '-r', '30',
-                                '-c:a', 'aac', '-ar', '44100', '-ac', '2',
-                                '-shortest',
+                                '-an', // Strip audio to prevent demux/duration errors from corrupt webm
                                 '-y', cleanVid
                             ]);
                             vidInputFile = cleanVid;
