@@ -231,7 +231,8 @@ export const StrategyFormulation: React.FC = () => {
                 notes: episode.notes,
                 seriesTitle: series.title,
                 seriesDescription: series.description,
-                characters: strategyResult?.characters || []
+                characters: strategyResult?.characters || [],
+                thumbnailStrategy: strategyResult?.thumbnailStrategy // NEW
             }
         });
     };
@@ -262,7 +263,8 @@ export const StrategyFormulation: React.FC = () => {
                             notes: episode.notes,
                             seriesTitle: series.title,
                             seriesDescription: series.description,
-                            characters: strategyResult.characters || []
+                            characters: strategyResult.characters || [],
+                            thumbnailStrategy: strategyResult.thumbnailStrategy // NEW
                         }
                     });
                     count++;

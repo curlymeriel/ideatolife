@@ -17,6 +17,7 @@ import {
     serverTimestamp,
     Timestamp,
 } from 'firebase/firestore';
+import type { ProjectMetadata, ProjectData } from '../store/types';
 import { db } from '../lib/firebase';
 import { sanitizeFirestoreData } from '../utils/firebaseUtils';
 

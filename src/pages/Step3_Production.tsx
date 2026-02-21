@@ -798,7 +798,7 @@ export const Step3_Production: React.FC = () => {
     }, [localScript]);
 
     // Voice Options Derived from Models
-    const { VOICE_OPTIONS, FLAT_VOICE_OPTIONS } = useMemo(() => {
+    const { VOICE_OPTIONS } = useMemo(() => {
         const geminiOps = [
             {
                 optgroup: '✨ Gemini TTS - 여성 (Female)',

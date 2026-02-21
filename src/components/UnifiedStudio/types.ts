@@ -71,6 +71,13 @@ export interface VisualSettingsResult {
     taggedReferences: TaggedReference[];
 }
 
+export interface ThumbnailResult {
+    url: string;
+    prompt: string;
+    draftHistory: string[];
+    suggestedHookCopies?: string[]; // 썸네일 전용 후킹 카피 제안
+}
+
 // ============================================================================
 // MODE-SPECIFIC CONFIGS (Discriminated Union)
 // ============================================================================
@@ -118,7 +125,16 @@ export interface VisualConfig {
     onSave: (result: VisualSettingsResult) => void;
 }
 
-export type StudioModeConfig = ChannelArtConfig | AssetConfig | VisualConfig;
+export interface ThumbnailConfig {
+    mode: 'thumbnail';
+    initialPrompt: string;
+    initialUrl?: string;
+    strategyContext: any; // trendInsights.thumbnail
+    characters?: Array<{ name: string }>;
+    onSave: (result: ThumbnailResult) => void;
+}
+
+export type StudioModeConfig = ChannelArtConfig | AssetConfig | VisualConfig | ThumbnailConfig;
 
 // ============================================================================
 // UNIFIED PROPS

@@ -148,6 +148,7 @@ export interface ProjectContext {
     assetDefinitions?: any; // NEW
 }
 
+const GEMINI_3_1_PRO_PREVIEW_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent';
 const GEMINI_3_0_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-pro:generateContent';
 const GEMINI_3_0_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-flash:generateContent';
 const GEMINI_2_5_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent';
@@ -1007,6 +1008,9 @@ If the "User's Strategic Direction (from Chat)" implies a change (e.g. AI propos
     - Characters: 비중 있는 캐릭터/페르소나 정의 (이름, 역할, 성격, 비주얼 가이드 프롬프트 포함)
     - Tech Stack: 제작 단계별 권장 AI 도구 및 활용법 (기획, 이미지, 비디오, 오디오 등)
     - Marketing & KPI: 인터랙티브 요소, 바이럴 전략 및 주요 목표 지표(KPI)
+    - Thumbnail Strategy: 
+        - Prep 1/2 단계의 트렌드 영상 분석 데이터를 기반으로 최적의 썸네일 제작 가이드 수립
+        - 색감(Color Scheme), 텍스트 스타일, 구도(Composition), 표정 등 구체적 정의
     - Channel Identity: 채널명, 슬로건, 핵심 가치, 미션, 타겟 오디언스, 톤앤매너, 컬러 팔레트
 
 응답은 JSON 형식으로만 해주세요(Markdown 블록 없이, types.ts의 StrategyInsight 구조와 일치해야 함):
@@ -1049,6 +1053,13 @@ If the "User's Strategic Direction (from Chat)" implies a change (e.g. AI propos
             "kpis": ["...", "..."],
             "viralElements": ["...", "..."],
             "interactiveIdeas": ["...", "..."]
+        },
+        "thumbnailStrategy": {
+            "colorScheme": "Prep 1/2 분석 기반 권장 색상",
+            "textStyle": "폰트 및 텍스트 배치 전략",
+            "composition": "인물/배경 구도 가이드",
+            "faceExpression": "권장 표정 및 감정 톤",
+            "recommendations": ["팁1", "팁2", "팁3"]
         },
         "channelIdentity": {
             "channelName": "...",
@@ -1429,6 +1440,7 @@ IMPORTANT: The above is ACTUAL research data. Ensure all modifications align wit
         }));
 
         const models = [
+            { name: 'Gemini 3.1 Pro Preview', url: GEMINI_3_1_PRO_PREVIEW_URL },
             { name: 'Gemini 3.0 Pro', url: GEMINI_3_0_PRO_URL },
             { name: 'Gemini 3.0 Flash', url: GEMINI_3_0_FLASH_URL },
             { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
@@ -1693,6 +1705,7 @@ export const generateVisualPrompt = async (
     if (!apiKey) return "Please provide an API key.";
 
     const models = [
+        { name: 'Gemini 3.1 Pro Preview', url: GEMINI_3_1_PRO_PREVIEW_URL },
         { name: 'Gemini 3.0 Pro', url: GEMINI_3_0_PRO_URL },
         { name: 'Gemini 3.0 Flash', url: GEMINI_3_0_FLASH_URL },
         { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
@@ -1720,15 +1733,17 @@ TASK:
    - Title: If the benchmarks suggest bold typography, you MAY ask to render the 'Thumbnail Title'.
    - ABSOLUTE PROHIBITION: Do NOT render 'Episode Number'.
 9. Return ONLY the raw prompt string.
-${trendInsights?.thumbnail ? `
-10. TREND BENCHMARKS (Apply these insights):
+${trendInsights?.thumbnail ? (
+                    typeof trendInsights.thumbnail === 'string'
+                        ? `\n10. TREND BENCHMARKS: ${trendInsights.thumbnail}`
+                        : `\n10. TREND BENCHMARKS (Apply these insights):
     - Color Scheme: ${trendInsights.thumbnail.colorScheme || 'N/A'}
     - Composition: ${trendInsights.thumbnail.composition || 'N/A'}
     - Text Style: ${trendInsights.thumbnail.textStyle || 'N/A'}
     - Face/Expression: ${trendInsights.thumbnail.faceExpression || 'N/A'}
     - Recommendations: ${(trendInsights.thumbnail.recommendations || []).join('; ') || 'N/A'}
-    → Incorporate these trending thumbnail patterns into the visual prompt.
-` : ''}
+    → Incorporate these trending thumbnail patterns into the visual prompt.`
+                ) : ''}
 `
         }
     ];
@@ -2096,6 +2111,7 @@ export const generateText = async (
 
     // Prioritize stable models
     const models = [
+        { name: 'Gemini 3.1 Pro Preview', url: GEMINI_3_1_PRO_PREVIEW_URL },
         { name: 'Gemini 3.0 Pro', url: GEMINI_3_0_PRO_URL },
         { name: 'Gemini 3.0 Flash', url: GEMINI_3_0_FLASH_URL },
         { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },

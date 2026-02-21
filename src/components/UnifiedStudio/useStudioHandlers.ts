@@ -116,6 +116,33 @@ export function useStudioHandlers(props: UseStudioHandlersProps) {
                     const clean = result.replace(/^["']|["']$/g, '').replace(/^(Prompt|Output):\s*/i, '').trim();
                     setPrompt(clean);
                 }
+            } else if (config.mode === 'thumbnail') {
+                const { strategyContext } = config as any;
+                const systemPrompt = `You are a YouTube thumbnail CTR optimization expert. Convert trend insights into highly effective visual prompts. Return ONLY valid JSON.`;
+
+                // Safe Zone, Anti-Bleeding, Typography Guard 주입
+                const fullPrompt = `[Thumbnail Strategy]\n${JSON.stringify(strategyContext)}\n\n[User Intent]\n${prompt}\n\n${refContext ? `[Reference Analysis]\n${refContext}` : ''}\n\n[Instructions]\n1. Incorporate specific reference details using '(Ref: {Name})' format.\n2. **Youtube Safe Zone Guard**: Keep the bottom-right corner clear. Focus subjects in center/left.\n3. **Anti-Bleeding**: Ensure clear spatial separation if multiple characters exist (e.g., A on left, B on right. Do NOT mix features).\n4. **Typography Guard**: Describe visuals only. Append 'No typography, no broken text, (Korean Font Safeguard)'.\n\nReturn JSON: { "prompt": "Detailed English visual prompt", "hookCopies": ["Hook text 1 in KR", "Hook text 2 in KR", "Hook text 3 in KR"] }`;
+
+                const result = await generateText(fullPrompt, apiKey, undefined, undefined, systemPrompt);
+                try {
+                    const jsonMatch = result?.match(/\{[\s\S]*\}/);
+                    if (jsonMatch) {
+                        const parsed = JSON.parse(jsonMatch[0]);
+                        if (parsed.prompt) setPrompt(parsed.prompt);
+                        if (parsed.hookCopies && parsed.hookCopies.length > 0) {
+                            setChatMessages(prev => [...prev, {
+                                id: `msg-${Date.now()}`, role: 'assistant',
+                                content: `썸네일 기획 전략을 바탕으로 프롬프트를 자동 최적화했습니다.\n\n💡 **추천 썸네일 카피(Hook)**:\n${parsed.hookCopies.map((c: string) => `- ${c}`).join('\n')}`,
+                                timestamp: Date.now()
+                            }]);
+                        }
+                    } else if (result) {
+                        setPrompt(result.trim());
+                    }
+                } catch (e) {
+                    console.error('Failed to parse thumbnail expand JSON', e);
+                    if (result) setPrompt(result.trim());
+                }
             } else if (config.mode === 'asset') {
                 // Asset mode: category-based analysis + enhancePrompt
                 const categoryAnalyses: Record<string, string[]> = {};
@@ -199,7 +226,7 @@ export function useStudioHandlers(props: UseStudioHandlersProps) {
                 if (masterStyle) finalPrompt = `[Master Style: ${masterStyle}]\n\n${finalPrompt}`;
                 ratio = config.aspectRatio;
             } else {
-                // Visual mode: smart ref tag processing
+                // Visual & Thumbnail mode: smart ref tag processing
                 const refTagRegex = /\(Ref:\s*(.+?)\)/g;
                 const matches = [...prompt.matchAll(refTagRegex)];
                 const usedRefImages: string[] = [];
@@ -228,7 +255,7 @@ export function useStudioHandlers(props: UseStudioHandlersProps) {
                 }
 
                 refImages = usedRefImages.length > 0 ? usedRefImages : refImages;
-                ratio = config.aspectRatio;
+                ratio = config.mode === 'thumbnail' ? '16:9' : config.aspectRatio;
             }
 
             const cleaned = cleanPromptForGeneration(finalPrompt);
@@ -352,6 +379,12 @@ export function useStudioHandlers(props: UseStudioHandlersProps) {
 
             if (config.mode === 'channelArt') {
                 await config.onSave(selectedDraft || '', finalDescription);
+            } else if (config.mode === 'thumbnail') {
+                await config.onSave({
+                    url: selectedDraft || '',
+                    prompt: finalDescription,
+                    draftHistory
+                });
             } else if (config.mode === 'asset') {
                 console.log('[UnifiedStudio] Calling onSave (asset mode) with description:', finalDescription);
                 await config.onSave({

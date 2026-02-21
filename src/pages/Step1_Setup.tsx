@@ -642,7 +642,7 @@ export const Step1_Setup: React.FC = () => {
             setChatHistory([...updatedHistory, newAiMsg]);
 
             // Auto-populate fields if suggestions exist (including deletions)
-            if (result.suggestedSeriesName || result.suggestedEpisodeName || result.suggestedDuration || result.suggestedEpisodeNumber || result.suggestedSeriesStory || result.suggestedMainCharacters || result.suggestedEpisodePlot || result.suggestedEpisodeCharacters || result.suggestedCharacters || result.suggestedSeriesProps || result.suggestedEpisodeProps || result.suggestedDeletions || result.suggestedAspectRatio || result.suggestedMasterStyle) {
+            if (result.suggestedSeriesName || result.suggestedEpisodeName || result.suggestedDuration || result.suggestedEpisodeNumber || result.suggestedSeriesStory || result.suggestedMainCharacters || result.suggestedEpisodePlot || result.suggestedEpisodeCharacters || result.suggestedCharacters || result.suggestedSeriesLocations || result.suggestedSeriesProps || result.suggestedEpisodeProps || result.suggestedDeletions || result.suggestedAspectRatio || result.suggestedMasterStyle || result.suggestedStorylineScenes) {
                 const updates: Partial<Parameters<typeof setProjectInfo>[0]> = {
                     seriesName: result.suggestedSeriesName || (isEditing ? localSeriesName : seriesName),
                     episodeName: result.suggestedEpisodeName || (isEditing ? localEpisodeName : episodeName),

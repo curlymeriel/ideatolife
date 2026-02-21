@@ -103,6 +103,7 @@ export const IdeaPool: React.FC = () => {
                     vibe: idea.metadata?.angle || '',
                     references: [],
                     storytelling: idea.metadata?.notes || '',
+                    thumbnail: idea.metadata?.thumbnailStrategy,
                     appliedAt: Date.now()
                 }
             }

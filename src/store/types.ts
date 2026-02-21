@@ -102,6 +102,7 @@ export interface ThumbnailSettings {
     aiTitle?: string;
     selectedReferenceIds?: string[];
     styleReferenceId?: string;
+    referenceTags?: Record<string, 'HERO' | 'STYLE' | 'BKG' | 'OBJ'>; // NEW: Category tags for references
 }
 
 export interface Asset {
@@ -240,6 +241,14 @@ export interface TrendAnalysisInsights {
 }
 
 // 채널 분석 타입
+export interface ThumbnailStrategy {
+    colorScheme?: string;
+    textStyle?: string;
+    composition?: string;
+    faceExpression?: string;
+    recommendations: string[];
+}
+
 export interface ChannelAnalysis {
     channelId: string;
     channelName: string;
@@ -350,7 +359,7 @@ export interface ProjectData {
     // Step 0: Market Research Insights (from YouTube Trend Analyzer)
     trendInsights?: {
         storytelling?: string;   // Step 1 → Step 3 전달용 (후킹멘트, 스토리 전개, 카메라워크)
-        thumbnail?: string;      // Step 5 전달용 (썸네일 색감, 텍스트, 구도)
+        thumbnail?: string | ThumbnailStrategy;      // Step 5 전달용 (썸네일 색감, 텍스트, 구도)
         target?: string;         // Target audience profile
         vibe?: string;           // Overall vibe/mood guide
         references?: string[];    // Benchmark video links
@@ -403,6 +412,7 @@ export interface StrategyInsight {
     keyOpportunities: string[];
     keyRisks: string[];
     recommendedPillars: { pillarName: string; reason: string }[];
+    thumbnailStrategy?: ThumbnailStrategy; // NEW: Detailed thumbnail guide
     recommendedSeries: {
         id: string;
         title: string;
@@ -476,6 +486,7 @@ export interface IdeaPoolItem {
         seriesTitle?: string;       // NEW: Pre-discussed series title
         seriesDescription?: string; // NEW: Pre-discussed series description
         characters?: any[];         // NEW: Strategic characters to carry over
+        thumbnailStrategy?: ThumbnailStrategy; // NEW: Thumbnail strategic guide
     };
 };
 

@@ -5,7 +5,7 @@ import {
     Video, Upload, Play, Edit3, Check, X, Loader2,
     ChevronLeft, ChevronRight, FileVideo, Image as ImageIcon, Film,
     Lock, Download, Zap, RefreshCw, FolderOpen,
-    Volume2, Sparkles, AlertCircle, Trash2, Scissors, Mic, AlertTriangle
+    Volume2, Sparkles, AlertCircle, Trash2, AlertTriangle
 } from 'lucide-react';
 
 import { VideoTrimmer } from '../components/Production/VideoTrimmer';
@@ -850,11 +850,6 @@ const AudioComparisonModal = React.memo<{
             }
             return prev;
         });
-    };
-
-    const handleVolumeChange = (type: 'video' | 'tts', val: number) => {
-        setVolumes(prev => ({ ...prev, [type]: val }));
-        // [OPTIMIZATION] Update internal state only.
     };
 
     const handleTrimChange = (start: number, end: number) => {

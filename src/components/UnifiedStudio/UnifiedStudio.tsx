@@ -36,7 +36,8 @@ export const UnifiedStudio = ({
     // Determine initial values based on mode
     const initialPrompt = mode === 'channelArt' ? config.initialPrompt
         : mode === 'asset' ? config.initialDescription
-            : config.initialVisualPrompt;
+            : mode === 'thumbnail' ? config.initialPrompt
+                : (config as any).initialVisualPrompt;
 
     const [prompt, setPrompt] = useState(initialPrompt);
     const [promptKR, setPromptKR] = useState(mode === 'visual' ? (config.initialVisualPromptKR || '') : '');
@@ -114,8 +115,12 @@ export const UnifiedStudio = ({
             const chars = config.characters || [];
             return [...DEFAULT_CATEGORIES, ...chars.map(c => ({ value: `character-${c.name}`, label: `캐릭터: ${c.name}` }))];
         }
+        if (mode === 'thumbnail') {
+            const chars = config.characters || [];
+            return [...DEFAULT_CATEGORIES, ...chars.map(c => ({ value: `character-${c.name}`, label: `캐릭터: ${c.name}` }))];
+        }
         return [...DEFAULT_CATEGORIES, ...dynamicCategories];
-    }, [mode, dynamicCategories, mode === 'channelArt' ? config.characters : null]);
+    }, [mode, dynamicCategories, (mode === 'channelArt' || mode === 'thumbnail') ? config.characters : null]);
 
     // ========================================================================
     // REFERENCE HANDLERS
@@ -293,6 +298,12 @@ export const UnifiedStudio = ({
                         if (url.startsWith('idb://')) url = await resolveUrl(url) || url;
                         if (url) { setDraftHistory([url]); setSelectedDraft(url); }
                     }
+                } else if (mode === 'thumbnail') {
+                    if (config.initialUrl) {
+                        let url = config.initialUrl;
+                        if (url.startsWith('idb://')) url = await resolveUrl(url) || url;
+                        if (url) { setDraftHistory([url]); setSelectedDraft(url); }
+                    }
                 }
             };
 
@@ -355,15 +366,18 @@ export const UnifiedStudio = ({
     // Title
     const studioTitle = mode === 'channelArt' ? `${config.type === 'banner' ? 'Channel Banner' : 'Profile Icon'} Studio`
         : mode === 'asset' ? `${config.assetName} Studio`
-            : 'Visual Settings Studio';
+            : mode === 'thumbnail' ? 'Thumbnail Synthesis Studio'
+                : 'Visual Settings Studio';
 
     const subtitle = mode === 'channelArt' ? config.channelName
         : mode === 'asset' ? config.assetType
-            : `CUT #${config.cutIndex + 1}`;
+            : mode === 'thumbnail' ? 'YouTube Thumbnail'
+                : `CUT #${config.cutIndex + 1}`;
 
     const aspectRatio = mode === 'channelArt' ? (config.type === 'banner' ? '16:9' : '1:1')
         : mode === 'asset' ? config.aspectRatio
-            : config.aspectRatio;
+            : mode === 'thumbnail' ? '16:9'
+                : config.aspectRatio;
 
     const handleSaveAndClose = async () => {
         await handlers.handleSave();

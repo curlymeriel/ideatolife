@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useWorkflowStore } from '../store/workflowStore';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, RefreshCw, Image as ImageIcon, Upload, Type, Layers, Move, ZoomIn, Download, Wand2, Sparkles, CheckSquare, Square, X, Loader2 } from 'lucide-react';
+import { ArrowRight, RefreshCw, Image as ImageIcon, Type, Move, ZoomIn, Download, Wand2, Sparkles } from 'lucide-react';
 import html2canvas from 'html2canvas';
-import { generateImage } from '../services/imageGen';
-import { generateVisualPrompt, type ScriptCut } from '../services/gemini';
-import { resolveUrl, saveToIdb, isIdbUrl } from '../utils/imageStorage';
+
+import { resolveUrl, isIdbUrl } from '../utils/imageStorage';
 import { getResolution } from '../utils/aspectRatioUtils';
+import { UnifiedStudio } from '../components/UnifiedStudio/UnifiedStudio';
+import { ReferenceSelectorModal } from '../components/ReferenceSelectorModal';
 
 export const Step5_Thumbnail: React.FC = () => {
     const {
@@ -15,13 +16,12 @@ export const Step5_Thumbnail: React.FC = () => {
         setThumbnail, nextStep, prevStep,
         thumbnailSettings, setThumbnailSettings,
         isHydrated,
-        script,
         saveProject,
-        apiKeys,
-        imageModel,
-        assetDefinitions,
         aspectRatio,
-        trendInsights
+        script,
+        masterStyle,
+        styleAnchor,
+        assetDefinitions
     } = useWorkflowStore() as any;
     const navigate = useNavigate();
 
@@ -36,19 +36,19 @@ export const Step5_Thumbnail: React.FC = () => {
 
     // Local state initialized from store (or defaults if not yet hydrated)
     const [selectedImage, setSelectedImage] = useState<string | null>(null); // Don't use thumbnailUrl to avoid confusion
-    const [showCutSelector, setShowCutSelector] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [showCutSelector, setShowCutSelector] = useState(false);
+
+    // Resolved assets for ReferenceSelectorModal (IDB URL safe)
+    const [resolvedProjectAssets, setResolvedProjectAssets] = useState<Array<{ id: string; name: string; url: string; type: string }>>([]);
+    const [resolvedCandidates, setResolvedCandidates] = useState<Array<{ id: string; url: string; index: number }>>([]);
 
     // Mode state
     const [mode, setMode] = useState<'framing' | 'ai-gen'>(thumbnailSettings?.mode || 'framing');
-    const [aiPrompt, setAiPrompt] = useState(thumbnailSettings?.aiPrompt || '');
-    const [aiTitle, setAiTitle] = useState(thumbnailSettings?.aiTitle || episodeName || '');
-    const [selectedReferenceIds, setSelectedReferenceIds] = useState<string[]>(thumbnailSettings?.selectedReferenceIds || []);
-    const [styleReferenceId, setStyleReferenceId] = useState<string | null>(thumbnailSettings?.styleReferenceId || null);
-    const [resolvedStyleRef, setResolvedStyleRef] = useState<string | null>(null);
 
-    const [isGeneratingAI, setIsGeneratingAI] = useState(false);
-    const [isSuggesting, setIsSuggesting] = useState(false);
+    // Style Reference & AI state
+    const [aiPrompt, setAiPrompt] = useState(thumbnailSettings?.aiPrompt || '');
+    const [showStudio, setShowStudio] = useState(false);
 
     // Initialize state from store settings or defaults
     const [frameImage, setFrameImage] = useState<string>(thumbnailSettings?.frameImage || '/frame_bg.svg');
@@ -74,15 +74,6 @@ export const Step5_Thumbnail: React.FC = () => {
     const [seriesTitleSize, setSeriesTitleSize] = useState(thumbnailSettings?.seriesTitleSize || 36);
     const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>(thumbnailSettings?.textAlign || 'left');
     const [textColor, setTextColor] = useState(thumbnailSettings?.textColor || '#ffffff');
-
-    // Resolve style reference if it exists
-    useEffect(() => {
-        if (styleReferenceId) {
-            resolveUrl(styleReferenceId).then(setResolvedStyleRef);
-        } else {
-            setResolvedStyleRef(null);
-        }
-    }, [styleReferenceId]);
 
     // Font options (Google Fonts)
     const FONTS = [
@@ -125,7 +116,6 @@ export const Step5_Thumbnail: React.FC = () => {
                 const settings = store.thumbnailSettings;
                 if (settings.mode) setMode(settings.mode);
                 if (settings.aiPrompt) setAiPrompt(settings.aiPrompt);
-                if (settings.selectedReferenceIds) setSelectedReferenceIds(settings.selectedReferenceIds);
                 if (settings.scale !== undefined) setScale(settings.scale);
                 if (settings.imagePosition) setPosition(settings.imagePosition);
                 if (settings.textPosition) setTextPosition(settings.textPosition);
@@ -158,6 +148,41 @@ export const Step5_Thumbnail: React.FC = () => {
         initFromStore();
     }, []);
 
+    // Resolve projectAssets & pastCuts for ReferenceSelectorModal (IDB-safe)
+    useEffect(() => {
+        if (!showCutSelector) return;
+        const resolveAll = async () => {
+            // 1. Project Assets from assetDefinitions
+            if (assetDefinitions) {
+                const rawAssets = (Object.values(assetDefinitions) as any[])
+                    .filter((a: any) => (a.type === 'character' || a.type === 'location' || a.type === 'prop') && (a.masterImage || a.draftImage || a.referenceImage))
+                    .map((a: any) => ({ id: a.id, name: a.name, type: a.type, url: a.masterImage || a.draftImage || a.referenceImage }));
+
+                const resolved = await Promise.all(rawAssets.map(async (a: any) => {
+                    let url = a.url;
+                    if (isIdbUrl(url)) url = await resolveUrl(url) || url;
+                    return { ...a, url };
+                }));
+                setResolvedProjectAssets(resolved);
+            }
+
+            // 2. Past Cuts from Step 3
+            if (script && Array.isArray(script)) {
+                const cuts = (script as any[])
+                    .filter((c: any) => c.finalImageUrl)
+                    .map((c: any, idx: number) => ({ id: String(c.id), url: c.finalImageUrl, index: idx + 1 }));
+
+                const resolved = await Promise.all(cuts.map(async (c: any) => {
+                    let url = c.url;
+                    if (isIdbUrl(url)) url = await resolveUrl(url) || url;
+                    return { ...c, url };
+                }));
+                setResolvedCandidates(resolved);
+            }
+        };
+        resolveAll();
+    }, [showCutSelector, assetDefinitions, script]);
+
     // Sync with store when it changes
     useEffect(() => {
         if (episodeName) setCustomTitle(episodeName);
@@ -169,8 +194,6 @@ export const Step5_Thumbnail: React.FC = () => {
         if (isHydrated && thumbnailSettings) {
             setMode(thumbnailSettings.mode || 'framing');
             setAiPrompt(thumbnailSettings.aiPrompt || '');
-            setAiTitle(thumbnailSettings.aiTitle || episodeName || ''); // Sync AI Title
-            setSelectedReferenceIds(thumbnailSettings.selectedReferenceIds || []);
             setScale(thumbnailSettings.scale);
             setPosition(thumbnailSettings.imagePosition);
             setTextPosition(thumbnailSettings.textPosition);
@@ -205,10 +228,6 @@ export const Step5_Thumbnail: React.FC = () => {
         const timer = setTimeout(() => {
             setThumbnailSettings({
                 mode,
-                aiPrompt,
-                aiTitle,
-                selectedReferenceIds,
-                styleReferenceId: styleReferenceId || undefined,
                 scale,
                 imagePosition: position,
                 textPosition,
@@ -228,7 +247,7 @@ export const Step5_Thumbnail: React.FC = () => {
         }, 500); // Debounce save
 
         return () => clearTimeout(timer);
-    }, [mode, aiPrompt, aiTitle, selectedReferenceIds, styleReferenceId, scale, position, textPosition, titleSize, seriesTitle, seriesTitleSize, textAlign, textColor, titleFont, frameImage, showFrame, textBgShape, textBgColor, textBgOpacity, customTitle, setThumbnailSettings, isHydrated]);
+    }, [mode, scale, position, textPosition, titleSize, seriesTitle, seriesTitleSize, textAlign, textColor, titleFont, frameImage, showFrame, textBgShape, textBgColor, textBgOpacity, customTitle, setThumbnailSettings, isHydrated]);
 
 
     // Calculate scale factor on resize (Dynamic based on targetResolution)
@@ -252,68 +271,7 @@ export const Step5_Thumbnail: React.FC = () => {
         return () => window.removeEventListener('resize', updateScale);
     }, [targetResolution]); // Re-calculate when resolution changes
 
-    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = async () => {
-                const base64 = reader.result as string;
-                setSelectedImage(base64); // Show in UI immediately
 
-                // Save to IDB and store the reference
-                const { saveToIdb } = await import('../utils/imageStorage');
-                const idbUrl = await saveToIdb('images', `${projectId}-thumbnail-bg`, base64);
-                setThumbnail(idbUrl);
-
-                // Reset transform
-                setScale(1);
-                setPosition({ x: 0, y: 0 });
-            };
-            reader.readAsDataURL(file);
-        }
-    };
-
-    const handleFrameUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = async () => {
-                const base64 = reader.result as string;
-                // Save to IDB immediately using standardized storage
-                const idbUrl = await saveToIdb('images', `${projectId}-thumbnail-frame`, base64);
-
-                setFrameImage(idbUrl);
-                // Also update settings in store immediately
-                setThumbnailSettings({
-                    ...thumbnailSettings,
-                    frameImage: idbUrl
-                });
-            };
-            reader.readAsDataURL(file);
-        }
-    };
-
-    const handleSelectCutImage = async (imageUrl: string) => {
-        // 1. Save the reference to the store
-        setThumbnail(imageUrl);
-
-        // 2. Resolve for UI display
-        let resolvedUrl = imageUrl;
-        if (imageUrl.startsWith('idb://')) {
-            try {
-                const { resolveUrl } = await import('../utils/imageStorage');
-                resolvedUrl = await resolveUrl(imageUrl);
-            } catch (e) {
-                console.error('[Step5] Failed to resolve:', e);
-            }
-        }
-        setSelectedImage(resolvedUrl);
-        setShowCutSelector(false);
-
-        // Reset transform on new image
-        setScale(1);
-        setPosition({ x: 0, y: 0 });
-    };
 
     const handleSaveThumbnail = async () => {
         if (!contentRef.current) return;
@@ -422,153 +380,7 @@ export const Step5_Thumbnail: React.FC = () => {
         }
     };
 
-    const handleGenerateAIThumbnail = async () => {
-        if (!aiPrompt.trim() || !apiKeys.gemini) {
-            alert('Prompt and Gemini API Key are required.');
-            return;
-        }
 
-        setIsGeneratingAI(true);
-        try {
-            // 1. Resolve all reference images to base64
-            const resolvedRefs = await Promise.all(
-                selectedReferenceIds.map(async (url) => {
-                    const resolved = await resolveUrl(url);
-                    return resolved;
-                })
-            );
-
-            // 1b. Resolve style reference if exists
-            if (styleReferenceId) {
-                const styleResolved = await resolveUrl(styleReferenceId);
-                if (styleResolved) resolvedRefs.push(styleResolved);
-            }
-
-            // 2. Construct Enhanced Prompt for AI Text Rendering
-            const fullPrompt = `TASK: Create a professional cinematic masterpiece thumbnail.
-${aiTitle ? `TEXT TO INCLUDE: Render the title "${aiTitle}" as bold, stylistic typography integrated into the scene. DO NOT render episode numbers.` : ''}
-USER VISION: ${aiPrompt}
-${trendInsights?.thumbnail ? `TREND BENCHMARKS: Color scheme: ${trendInsights.thumbnail.colorScheme || 'N/A'}. Composition: ${trendInsights.thumbnail.composition || 'N/A'}. Recommendations: ${(trendInsights.thumbnail.recommendations || []).join('; ') || 'N/A'}.` : ''}
-TECHNICAL: High contrast, 4K quality, professional composition. The typography should be legible and artistic.`;
-
-            // 3. Generate Image
-            const result = await generateImage(
-                fullPrompt,
-                apiKeys.gemini,
-                resolvedRefs.length > 0 ? resolvedRefs : undefined,
-                aspectRatio,
-                imageModel
-            );
-
-            if (result.urls && result.urls.length > 0) {
-                const generatedUrl = result.urls[0];
-
-                // 4. Save to IDB immediately
-                const idbUrl = await saveToIdb('images', `${projectId}-thumbnail-bg-ai`, generatedUrl);
-                setThumbnail(idbUrl);
-
-                // 4b. Resolve to Blob URL for UI Display (Prevents CORS issues with html2canvas)
-                // If generatedUrl is remote, html2canvas might fail. IDB blob is safe.
-                const resolvedBlobUrl = await resolveUrl(idbUrl);
-                setSelectedImage(resolvedBlobUrl || generatedUrl);
-
-                // 5. Reset transform (not used in AI mode but good to have)
-                setScale(1);
-                setPosition({ x: 0, y: 0 });
-
-                alert('✅ AI Thumbnail generated successfully!');
-            }
-        } catch (error: any) {
-            console.error('AI Thumbnail Generation Failed:', error);
-            alert(`Generation Failed: ${error.message}`);
-        } finally {
-            setIsGeneratingAI(false);
-        }
-    };
-
-    const handleNext = () => {
-        nextStep();
-        navigate('/step/6');
-    };
-
-    // Clear existing thumbnail data
-    const handleClearThumbnail = async () => {
-        if (!confirm('Clear existing thumbnail? This will remove the saved thumbnail from this project.')) return;
-
-        try {
-            // Clear from store
-            setThumbnail(null);
-            setSelectedImage(null);
-            useWorkflowStore.setState({ thumbnailPreview: null } as any);
-
-            // Save project to persist changes
-            await saveProject();
-
-            alert('✅ Thumbnail cleared successfully!');
-        } catch (error) {
-            console.error('Error clearing thumbnail:', error);
-            alert('Failed to clear thumbnail.');
-        }
-    };
-
-    const handleStyleRefUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = async (event) => {
-            const base64 = event.target?.result as string;
-            const idbUrl = await saveToIdb('images', `${projectId}-thumbnail-style-ref`, base64);
-            setStyleReferenceId(idbUrl);
-        };
-        reader.readAsDataURL(file);
-    };
-
-    const handleSuggestPrompt = async () => {
-        if (!apiKeys.gemini) {
-            alert("Gemini API Key is required for prompt suggestion.");
-            return;
-        }
-        setIsSuggesting(true);
-        try {
-            // Context construction
-            const { seriesStory, episodePlot, episodeName, assetDefinitions } = useWorkflowStore.getState();
-
-            console.log("Suggest Prompt Debug:", { aiTitle, episodeName, aiPrompt });
-
-            // Simplify context to visual relevant info
-            const context = `
-Thumbnail Title: "${aiTitle || episodeName}"
-Story Concept: ${seriesStory}
-Episode Focus: ${episodePlot || script?.[0]?.dialogue}
-Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.name).join(', ')}
-`.trim();
-
-            // Gather reference images (Style Ref + Selected Cuts/Assets)
-            const resolvedRefs: string[] = [];
-
-            // 1. Style Reference (External)
-            if (styleReferenceId) {
-                const url = await resolveUrl(styleReferenceId);
-                if (url) resolvedRefs.push(url);
-            }
-
-            // 2. Selected IDs (Cuts or Assets)
-            for (const id of selectedReferenceIds) {
-                const url = await resolveUrl(id);
-                if (url) resolvedRefs.push(url);
-            }
-
-            const visualPrompt = await generateVisualPrompt(context, resolvedRefs, apiKeys.gemini, trendInsights);
-            setAiPrompt(visualPrompt);
-
-        } catch (error) {
-            console.error("Prompt Suggestion Failed:", error);
-            alert("Failed to suggest prompt.");
-        } finally {
-            setIsSuggesting(false);
-        }
-    };
 
     const ThumbnailContent = ({ forCapture = false }: { forCapture?: boolean }) => {
         // Convert hex to rgb for rgba application
@@ -616,9 +428,13 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                                 crossOrigin="anonymous"
                             />
                         ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center text-gray-600">
+                            <div
+                                className="w-full h-full flex flex-col items-center justify-center text-gray-600 cursor-pointer hover:bg-white/5 hover:text-gray-400 transition-colors"
+                                onClick={() => setShowCutSelector(true)}
+                            >
                                 <ImageIcon size={100} className="mb-4 opacity-50" />
                                 <span className="text-4xl">이미지를 선택해주세요</span>
+                                <span className="text-sm mt-4 text-gray-500">클릭하여 불러오기</span>
                             </div>
                         )}
                 </div>
@@ -711,7 +527,21 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
 
                         <div className="flex gap-2">
                             <button
-                                onClick={handleClearThumbnail}
+                                onClick={() => {
+                                    setThumbnailSettings({
+                                        ...thumbnailSettings,
+                                        scale: 1,
+                                        imagePosition: { x: 0, y: 0 },
+                                        textPosition: { x: 0, y: 0 },
+                                        showFrame: true,
+                                        textBgShape: 'none',
+                                    });
+                                    setScale(1);
+                                    setPosition({ x: 0, y: 0 });
+                                    setTextPosition({ x: 0, y: 0 });
+                                    setShowFrame(true);
+                                    setTextBgShape('none');
+                                }}
                                 className="p-2 rounded-lg text-red-400 hover:bg-red-400/10 transition-colors"
                                 title="Clear Settings"
                             >
@@ -746,178 +576,28 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                                     onClick={() => setMode('ai-gen')}
                                     className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all ${mode === 'ai-gen' ? 'bg-[var(--color-primary)] text-black shadow-lg' : 'text-gray-500 hover:text-white'}`}
                                 >
-                                    <Sparkles size={14} /> AI Gen
+                                    <Sparkles size={14} /> AI Synthesis
                                 </button>
                             </div>
                         </div>
 
-                        {/* 1. Image Source (Framing Mode) */}
-                        {mode === 'framing' && (
-                            <div className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
-                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                                    <ImageIcon size={14} /> 1. Background Source
-                                </label>
-
-                                <div className="grid grid-cols-2 gap-3">
-                                    <label className="cursor-pointer flex flex-col items-center justify-center p-5 border-2 border-dashed border-white/5 hover:border-[var(--color-primary)]/50 hover:bg-[var(--color-primary)]/5 transition-all rounded-2xl group">
-                                        <Upload size={24} className="mb-2 text-gray-500 group-hover:text-[var(--color-primary)] group-hover:scale-110 transition-transform" />
-                                        <span className="text-[10px] font-bold text-gray-500 group-hover:text-white lowercase">upload file</span>
-                                        <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-                                    </label>
-
-                                    <button
-                                        onClick={() => setShowCutSelector(true)}
-                                        className="flex flex-col items-center justify-center p-5 border border-white/5 bg-white/5 hover:bg-white/10 hover:border-white/10 transition-all rounded-2xl group"
-                                    >
-                                        <RefreshCw size={24} className="mb-2 text-gray-500 group-hover:text-[var(--color-primary)] group-hover:rotate-180 transition-all duration-500" />
-                                        <span className="text-[10px] font-bold text-gray-500 group-hover:text-white lowercase">from library</span>
-                                    </button>
-                                </div>
-
-                                {/* 2. Frame Overlay */}
-                                <div className="space-y-3 pt-4 border-t border-white/5">
-                                    <div className="flex items-center justify-between">
-                                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                                            <Layers size={14} /> 2. Frame Overlay
-                                        </label>
-                                        <label className="flex items-center gap-2 cursor-pointer group">
-                                            <span className="text-[10px] text-gray-400 font-bold uppercase group-hover:text-white transition-colors">Show Frame</span>
-                                            <input
-                                                type="checkbox"
-                                                checked={showFrame}
-                                                onChange={(e) => setShowFrame(e.target.checked)}
-                                                className="w-3.5 h-3.5 rounded bg-black/40 border-white/20 checked:bg-[var(--color-primary)] checked:border-[var(--color-primary)] focus:ring-[var(--color-primary)]/50 focus:ring-offset-black transition-all cursor-pointer"
-                                            />
-                                        </label>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <label className="cursor-pointer flex flex-col items-center justify-center p-4 border-2 border-dashed border-white/5 hover:border-yellow-500/50 hover:bg-yellow-500/5 transition-all rounded-2xl group">
-                                            <Upload size={20} className="mb-2 text-gray-500 group-hover:text-yellow-400 group-hover:scale-110 transition-transform" />
-                                            <span className="text-[10px] font-bold text-gray-500 group-hover:text-white lowercase">upload frame</span>
-                                            <input type="file" accept="image/*" className="hidden" onChange={handleFrameUpload} />
-                                        </label>
-
-                                        <button
-                                            onClick={() => setFrameImage('/frame_bg.svg')}
-                                            className="flex flex-col items-center justify-center p-4 border border-white/5 bg-white/5 hover:bg-white/10 hover:border-white/10 transition-all rounded-2xl group"
-                                        >
-                                            <RefreshCw size={20} className="mb-2 text-gray-500 group-hover:text-yellow-400 group-hover:rotate-180 transition-all duration-500" />
-                                            <span className="text-[10px] font-bold text-gray-500 group-hover:text-white lowercase">reset default</span>
-                                        </button>
-                                    </div>
-                                    {resolvedFrameImage && resolvedFrameImage !== '/frame_bg.svg' && (
-                                        <div className="relative aspect-video rounded-xl overflow-hidden border border-yellow-500/30 bg-black/40">
-                                            <img src={resolvedFrameImage} alt="Current Frame" className="w-full h-full object-contain" />
-                                            <div className="absolute top-2 right-2">
-                                                <button
-                                                    onClick={() => setFrameImage('/frame_bg.svg')}
-                                                    className="p-1.5 bg-red-500/80 text-white rounded-full hover:bg-red-500 transition-colors"
-                                                >
-                                                    <X size={12} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
                         {/* 1. AI Generation (AI Gen Mode) */}
                         {mode === 'ai-gen' && (
-                            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-                                {/* 1. Typography for AI */}
-                                <div className="space-y-3">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                                        <Type size={14} /> 1. Typography (AI Rendered)
-                                    </label>
-                                    <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-4">
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] text-gray-400 font-bold uppercase px-1">썸네일 제목</label>
-                                            <input
-                                                type="text"
-                                                placeholder="Main headline for AI to render"
-                                                value={aiTitle}
-                                                onChange={(e) => setAiTitle(e.target.value)}
-                                                className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm text-white font-bold focus:border-[var(--color-primary)]/50 outline-none transition-all shadow-inner"
-                                            />
-                                        </div>
-                                        <button
-                                            onClick={handleSuggestPrompt}
-                                            disabled={isSuggesting}
-                                            className="w-full py-2.5 bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 text-[var(--color-primary)] rounded-xl text-[10px] font-bold uppercase tracking-widest border border-[var(--color-primary)]/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                            {isSuggesting ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
-                                            {isSuggesting ? 'Analyzing Visuals...' : 'Suggest AI Prompt'}
-                                        </button>
+                            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500 h-full flex flex-col items-center justify-center">
+                                <div className="text-center space-y-4">
+                                    <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] mb-4 shadow-[0_0_30px_rgba(var(--color-primary-rgb),0.3)]">
+                                        <ImagePlus size={40} />
                                     </div>
-                                </div>
-
-                                {/* 2. Style Guidance */}
-                                <div className="space-y-3">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                                        <Layers size={14} /> 2. Style Guidance
-                                    </label>
-                                    <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-4">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-[10px] text-gray-400 font-bold uppercase px-1">외부 스타일 참고</span>
-                                            <label className="cursor-pointer text-[10px] text-[var(--color-primary)] hover:opacity-80 font-bold flex items-center gap-1 transition-colors">
-                                                <Upload size={12} /> UPLOAD
-                                                <input type="file" accept="image/*" className="hidden" onChange={handleStyleRefUpload} />
-                                            </label>
-                                        </div>
-                                        {resolvedStyleRef ? (
-                                            <div className="relative aspect-video rounded-xl overflow-hidden border border-[var(--color-primary)]/30 group">
-                                                <img src={resolvedStyleRef} alt="Style Reference" className="w-full h-full object-cover" />
-                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                                    <button onClick={() => setStyleReferenceId(null)} className="p-2 bg-red-500 text-white rounded-full"><X size={14} /></button>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div className="aspect-video rounded-xl bg-black/40 border border-dashed border-white/10 flex flex-col items-center justify-center text-gray-600">
-                                                <ImageIcon size={24} className="mb-2 opacity-20" />
-                                                <span className="text-[9px] uppercase tracking-tighter">No style ref uploaded</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* 3. Prompt & Generation */}
-                                <div className="space-y-3">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                                        <Sparkles size={14} /> 3. Synthesis
-                                    </label>
-                                    <textarea
-                                        value={aiPrompt}
-                                        onChange={(e) => setAiPrompt(e.target.value)}
-                                        placeholder="Describe the visual composition, lighting, and mood..."
-                                        className="w-full h-24 bg-black/40 border border-white/10 rounded-2xl p-4 text-sm text-gray-300 placeholder:text-gray-700 focus:border-[var(--color-primary)]/50 outline-none resize-none transition-all shadow-inner custom-scrollbar"
-                                    />
-                                    <div className="space-y-3">
-                                        <div className="flex justify-between items-center px-1">
-                                            <label className="text-[10px] text-gray-500 font-bold uppercase">Visual Guidance ({selectedReferenceIds.length})</label>
-                                            <button onClick={() => setShowCutSelector(true)} className="text-[10px] text-[var(--color-primary)] hover:opacity-80 font-bold transition-colors">+ ADD REFS</button>
-                                        </div>
-                                        <div className="flex flex-wrap gap-2.5 p-3 bg-black/40 rounded-xl border border-white/5 min-h-[56px] shadow-inner">
-                                            {selectedReferenceIds.length === 0 ? (
-                                                <div className="flex flex-col items-center justify-center w-full py-2 opacity-30">
-                                                    <ImageIcon size={16} className="mb-1" />
-                                                    <span className="text-[10px] lowercase italic">no references</span>
-                                                </div>
-                                            ) : (
-                                                selectedReferenceIds.map(id => (
-                                                    <ReferenceBadge key={id} id={id} onRemove={(id: string) => setSelectedReferenceIds(prev => prev.filter(ref => ref !== id))} />
-                                                ))
-                                            )}
-                                        </div>
-                                    </div>
-
+                                    <h3 className="text-2xl font-bold tracking-tight">AI Thumbnail Studio</h3>
+                                    <p className="text-sm text-gray-400 max-w-[280px]">
+                                        Create YouTube-optimized thumbnails using the Strategic Analysis Guide, Safe Zone boundaries, and automated hook copies.
+                                    </p>
                                     <button
-                                        onClick={handleGenerateAIThumbnail}
-                                        disabled={isGeneratingAI || !aiPrompt.trim()}
-                                        className="w-full py-4 bg-[var(--color-primary)] hover:opacity-90 text-black rounded-xl font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-xl shadow-[var(--color-primary)]/20 active:scale-[0.97]"
+                                        onClick={() => setShowStudio(true)}
+                                        className="mt-6 w-full py-4 bg-[var(--color-primary)] hover:opacity-90 text-black rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-xl shadow-[var(--color-primary)]/20 active:scale-[0.97]"
                                     >
-                                        {isGeneratingAI ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
-                                        {isGeneratingAI ? 'Generating Image...' : 'Synthesize Thumbnail'}
+                                        <Wand2 size={18} />
+                                        Open Studio
                                     </button>
                                 </div>
                             </div>
@@ -1219,8 +899,8 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
 
             <div className="absolute bottom-6 right-6 z-50">
                 <button
-                    onClick={handleNext}
-                    disabled={!selectedImage || isGeneratingAI}
+                    onClick={() => { nextStep(); navigate('/step/6'); }}
+                    disabled={!selectedImage}
                     className={`flex items-center gap-2 px-10 py-4 rounded-xl font-bold transition-all shadow-2xl ${selectedImage
                         ? 'bg-[var(--color-primary)] text-black hover:opacity-90 shadow-[0_10px_40px_rgba(var(--color-primary-rgb),0.3)] hover:-translate-y-0.5 active:translate-y-0'
                         : 'bg-white/5 text-gray-600 cursor-not-allowed border border-white/5'
@@ -1231,171 +911,62 @@ Key Visual Assets: ${Object.values(assetDefinitions || {}).map((a: any) => a.nam
                 </button>
             </div>
 
-            {/* Reference Selector Modal */}
-            {showCutSelector && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setShowCutSelector(false)} />
-                    <div className="relative z-10 w-full max-w-5xl max-h-[85vh] overflow-hidden bg-[var(--color-surface)] border border-white/10 rounded-2xl flex flex-col shadow-2xl">
-                        <div className="p-6 border-b border-white/5 flex justify-between items-center bg-[var(--color-bg)]">
-                            <div>
-                                <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                    <Sparkles className="text-[var(--color-primary)]" size={20} />
-                                    Select Reference Images
-                                </h3>
-                                <p className="text-xs text-gray-500 mt-1">Guided generation uses these images as visual style and character references</p>
-                            </div>
-                            <button onClick={() => setShowCutSelector(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-white">
-                                <X size={24} />
-                            </button>
-                        </div>
+            {/* CUT SELECTOR MODAL - ReferenceSelectorModal 재사용 */}
+            <ReferenceSelectorModal
+                isOpen={showCutSelector}
+                onClose={() => setShowCutSelector(false)}
+                onSelect={(asset) => {
+                    setSelectedImage(asset.url);
+                    setShowCutSelector(false);
+                }}
+                projectAssets={resolvedProjectAssets}
+                pastCuts={resolvedCandidates}
+                drafts={[]}
+                defaultTab="assets"
+                title="기준 이미지 선택"
+            />
 
-                        <div className="flex-1 overflow-y-auto p-6 space-y-10 custom-scrollbar">
-                            {/* Production Cuts */}
-                            <div>
-                                <h4 className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-widest mb-4 flex items-center gap-2 px-1">
-                                    <ImageIcon size={14} />
-                                    Final Production Cuts ({script.filter((c: ScriptCut) => c.finalImageUrl).length})
-                                </h4>
-                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                                    {script.filter((c: ScriptCut) => c.finalImageUrl).map((cut: ScriptCut) => (
-                                        <ReferenceSelectorItem
-                                            key={`cut-${cut.id}`}
-                                            id={cut.finalImageUrl!}
-                                            label={`Cut #${cut.id}`}
-                                            isSelected={selectedReferenceIds.includes(cut.finalImageUrl!)}
-                                            isMulti={mode === 'ai-gen'}
-                                            onToggle={(id) => {
-                                                if (mode === 'framing') {
-                                                    handleSelectCutImage(id);
-                                                    setShowCutSelector(false);
-                                                } else {
-                                                    setSelectedReferenceIds(prev => prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]);
-                                                }
-                                            }}
-                                        />
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Asset Definitions */}
-                            {Object.keys(assetDefinitions || {}).length > 0 && (
-                                <div>
-                                    <h4 className="text-xs font-bold text-orange-400 uppercase tracking-widest mb-4 flex items-center gap-2 px-1">
-                                        <Layers size={14} />
-                                        Master Character & Location Assets
-                                    </h4>
-                                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                                        {Object.values(assetDefinitions).map((asset: any) => {
-                                            const imgUrl = asset.masterImage || asset.draftImage || asset.referenceImage;
-                                            if (!imgUrl) return null;
-                                            return (
-                                                <ReferenceSelectorItem
-                                                    key={`asset-${asset.id}`}
-                                                    id={imgUrl}
-                                                    label={asset.name}
-                                                    isSelected={selectedReferenceIds.includes(imgUrl)}
-                                                    isMulti={mode === 'ai-gen'}
-                                                    onToggle={(id: string) => {
-                                                        if (mode === 'framing') {
-                                                            handleSelectCutImage(id);
-                                                            setShowCutSelector(false);
-                                                        } else {
-                                                            setSelectedReferenceIds(prev => prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]);
-                                                        }
-                                                    }}
-                                                />
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="p-6 border-t border-white/5 bg-[var(--color-bg)] flex justify-between items-center">
-                            <div className="text-sm text-gray-400">
-                                {mode === 'ai-gen' ? (
-                                    <p>선택된 <span className="text-[var(--color-primary)] font-bold">{selectedReferenceIds.length}</span>개 참고 이미지</p>
-                                ) : (
-                                    <p>배경으로 사용할 이미지를 선택하세요</p>
-                                )}
-                            </div>
-                            <button
-                                onClick={() => setShowCutSelector(false)}
-                                className="px-10 py-3 bg-[var(--color-primary)] hover:opacity-90 text-black rounded-xl font-bold transition-all shadow-lg active:scale-95"
-                            >
-                                Confirm Selection
-                            </button>
-                        </div>
+            {/* AI Thumbnail Studio Modal */}
+            {showStudio && (
+                <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center">
+                    <div className="w-full h-full max-w-[1920px] max-h-[1080px] bg-[#0a0a0b] relative flex flex-col">
+                        <UnifiedStudio
+                            isOpen={showStudio}
+                            apiKey={useWorkflowStore.getState().apiKeys?.gemini || ''}
+                            config={{
+                                mode: 'thumbnail',
+                                characters: [],
+                                initialPrompt: aiPrompt,
+                                initialUrl: selectedImage || undefined,
+                                strategyContext: {},
+                                onSave: async (result: any) => {
+                                    const url = result.url;
+                                    const finalPrompt = result.prompt;
+                                    if (finalPrompt) setAiPrompt(finalPrompt);
+                                    if (url) {
+                                        setThumbnail(url);
+                                        let resolvedUrl = url;
+                                        if (url.startsWith('idb://')) {
+                                            try {
+                                                resolvedUrl = await resolveUrl(url) || url;
+                                            } catch (e) {
+                                                console.error('[Step5] Failed to resolve:', e);
+                                            }
+                                        }
+                                        setSelectedImage(resolvedUrl);
+                                    }
+                                    setShowStudio(false);
+                                }
+                            }}
+                            onClose={() => setShowStudio(false)}
+                        />
                     </div>
                 </div>
             )}
         </div>
+
     );
 };
 
-const ReferenceBadge = ({ id, onRemove }: { id: string, onRemove: (id: string) => void }) => {
-    const [resolvedUrl, setResolvedUrl] = useState<string>('');
+export default Step5_Thumbnail;
 
-    useEffect(() => {
-        resolveUrl(id).then(setResolvedUrl);
-    }, [id]);
-
-    return (
-        <div className="relative w-12 h-12 rounded-lg overflow-hidden border border-white/20 group">
-            {resolvedUrl ? (
-                <img src={resolvedUrl} alt="Ref" className="w-full h-full object-cover" />
-            ) : (
-                <div className="w-full h-full bg-gray-800 animate-pulse" />
-            )}
-            <button
-                onClick={() => onRemove(id)}
-                className="absolute top-0 right-0 bg-red-500/80 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-            >
-                <X size={10} className="text-white" />
-            </button>
-        </div>
-    );
-};
-
-const ReferenceSelectorItem = ({ id, label, isSelected, onToggle, isMulti }: { id: string, label: string, isSelected: boolean, onToggle: (id: string) => void, isMulti: boolean }) => {
-    const [resolvedUrl, setResolvedUrl] = useState<string>('');
-
-    useEffect(() => {
-        resolveUrl(id).then(setResolvedUrl);
-    }, [id]);
-
-    return (
-        <button
-            onClick={() => onToggle(id)}
-            className={`group relative aspect-video rounded-xl overflow-hidden border-2 transition-all ${isSelected
-                ? 'border-[var(--color-primary)] ring-4 ring-[var(--color-primary)]/20'
-                : 'border-white/5 hover:border-white/20'
-                }`}
-        >
-            {resolvedUrl ? (
-                <img src={resolvedUrl} alt={label} className="w-full h-full object-cover" />
-            ) : (
-                <div className="w-full h-full flex items-center justify-center bg-gray-900">
-                    <Loader2 size={24} className="text-gray-700 animate-spin" />
-                </div>
-            )}
-
-            <div className={`absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                <div className="absolute top-3 right-3">
-                    {isSelected ? (
-                        <div className="bg-[var(--color-primary)] text-black rounded-full p-1 shadow-lg">
-                            <CheckSquare size={16} />
-                        </div>
-                    ) : isMulti ? (
-                        <div className="bg-black/50 text-white rounded-md p-1 backdrop-blur-md border border-white/20">
-                            <Square size={16} />
-                        </div>
-                    ) : null}
-                </div>
-                <div className="absolute bottom-3 left-3 right-3 text-left">
-                    <p className="text-[10px] font-bold text-white uppercase tracking-wider">{label}</p>
-                </div>
-            </div>
-        </button>
-    );
-};

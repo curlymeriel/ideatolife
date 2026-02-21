@@ -270,23 +270,6 @@ export const compressVideoBlob = async (
     });
 };
 
-/**
- * 헬퍼: 압축 결과가 너무 작으면(1KB 미만) 원본 반환 (안전장치)
- */
-const safeCompressVideoBlob = async (blob: Blob, options?: VideoCompressionOptions, onProgress?: (p: number) => void): Promise<Blob> => {
-    try {
-        const compressed = await compressVideoBlob(blob, options, onProgress);
-        if (compressed.size < 1024) {
-            console.warn(`[Compressor] Compressed video is too small (${compressed.size} bytes). Reverting to original.`);
-            return blob;
-        }
-        return compressed;
-    } catch (e) {
-        console.error('[Compressor] Compression failed:', e);
-        return blob;
-    }
-};
-
 
 /**
  * 비디오 압축이 필요한지 확인

@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { ExternalLink, ThumbsUp, MessageCircle, Eye } from 'lucide-react';
+import { ExternalLink, ThumbsUp, Eye } from 'lucide-react';
 import type { YouTubeTrendVideo } from '../../store/types';
 import { formatViewCount, parseDuration, calculateEngagementRate } from '../../services/youtube';
 
