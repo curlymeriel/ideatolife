@@ -239,11 +239,8 @@ export const CutItem = memo(({
             setResolvedAudioUrl(undefined);
         }
 
-        return () => {
-            if (currentBlobUrl && currentBlobUrl.startsWith('blob:')) {
-                URL.revokeObjectURL(currentBlobUrl);
-            }
-        };
+        // Memory is managed by blobUrlCache globally in imageStorage.ts
+        // Do NOT revoke locally as it breaks caching across navigations
     }, [cut.audioUrl]);
 
     // Resolved URLs for IndexedDB removed unused userRef

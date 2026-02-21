@@ -297,10 +297,11 @@ export async function resolveUrl(
         const rawData = await loadFromIdb(url);
         if (!rawData) return '';
 
+        const parsed = parseIdbUrl(url);
+
         // Case 1: Already a Blob (modern storage)
         if (rawData instanceof Blob) {
             let blobToUse = rawData;
-            const parsed = parseIdbUrl(url);
 
             if (parsed?.type === 'video') {
                 const ext = parsed.key.split('.').pop()?.toLowerCase();
@@ -334,10 +335,17 @@ export async function resolveUrl(
                     console.log(`[ImageStorage:Resolve] Healing Video MIME: ${originalMime} -> ${targetMime} for ${parsed.key}`);
                     blobToUse = new Blob([rawData], { type: targetMime });
                 }
-            } else if (parsed?.type === 'audio' && (rawData.type === 'application/octet-stream' || !rawData.type)) {
-                blobToUse = new Blob([rawData], { type: 'audio/mpeg' });
+            } else if (parsed?.type === 'audio') {
+                if (rawData.type === 'application/octet-stream' || !rawData.type || rawData.type === 'audio/mp3') {
+                    blobToUse = new Blob([rawData], { type: 'audio/mpeg' });
+                }
             }
 
+            // [FIX] Prevent returning 0 byte blobs which cause Format Error
+            if (blobToUse.size === 0) {
+                console.error(`[ImageStorage:Resolve] Error: Blob for ${parsed?.key} is 0 bytes. Invalid media data.`);
+                return '';
+            }
 
             if (options.asBlob) {
                 const bUrl = URL.createObjectURL(blobToUse);
@@ -370,16 +378,33 @@ export async function resolveUrl(
 
         if (options.asBlob) {
             try {
-                const dataStr = typeof rawData === 'string' ? rawData : String(rawData);
                 if (dataStr.startsWith('data:')) {
                     const [header, base64] = dataStr.split(',');
-                    const mime = header.match(/:(.*?);/)?.[1] || 'application/octet-stream';
+                    let mime = header.match(/:(.*?);/)?.[1] || 'application/octet-stream';
+
+                    // [FIX] Heal legacy MIME types when converting string -> Blob
+                    if (parsed?.type === 'audio') {
+                        if (mime === 'audio/mp3' || mime === 'application/octet-stream' || !mime) {
+                            mime = 'audio/mpeg';
+                        }
+                    } else if (parsed?.type === 'video') {
+                        if (mime === 'application/octet-stream' || !mime) {
+                            mime = 'video/mp4';
+                        }
+                    }
+
                     const binary = atob(base64);
                     const array = new Uint8Array(binary.length);
                     for (let i = 0; i < binary.length; i++) {
                         array[i] = binary.charCodeAt(i);
                     }
                     const blobToCache = new Blob([array], { type: mime });
+
+                    if (blobToCache.size === 0) {
+                        console.error(`[ImageStorage:Resolve] Error: Legacy Blob for ${parsed?.key} is 0 bytes.`);
+                        return '';
+                    }
+
                     const bUrl = URL.createObjectURL(blobToCache);
                     blobUrlCache.set(url, { url: bUrl, blob: blobToCache });
                     return bUrl;

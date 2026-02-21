@@ -129,6 +129,8 @@ export const generateGeminiSpeech = async (
             (p: any) => p.inlineData?.mimeType?.startsWith('audio/')
         );
 
+        console.log('[Gemini TTS] Raw Response Data:', JSON.stringify(response.data, null, 2));
+
         if (!audioPart?.inlineData?.data) {
             throw new Error('Gemini TTS 응답에 오디오 데이터가 없습니다.');
         }
