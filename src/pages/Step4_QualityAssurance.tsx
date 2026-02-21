@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useWorkflowStore } from '../store/workflowStore';
 import { useNavigate } from 'react-router-dom';
-import { Play, Image as ImageIcon, ArrowRight, ArrowLeft, BarChart3, Pause } from 'lucide-react';
+import { Play, Image as ImageIcon, ArrowRight, ArrowLeft, Pause, ChevronLeft, ChevronRight } from 'lucide-react';
 import { resolveUrl, isIdbUrl } from '../utils/imageStorage';
 import { TimelineView } from '../components/Production/TimelineView';
 
@@ -252,47 +252,17 @@ export const Step4_QualityAssurance: React.FC = () => {
     };
 
     return (
-        <div className="flex flex-col gap-6 h-[calc(100vh-120px)] overflow-hidden">
+        <div className="flex flex-col gap-4 h-[calc(100vh-120px)] overflow-hidden min-h-[700px]">
+            {/* Description */}
+            <div className="flex-none px-2">
+                <p className="text-[var(--color-text-muted)] text-sm">
+                    STEP 3에서 확정된 이미지, TTS 오디오, 음향 효과에 배경음악(BGM)을 결합하여 결과물의 전체 흐름을 확인 및 수정하는 단계입니다.
+                </p>
+            </div>
+
             {/* Main Preview Area */}
-            <div className="flex-1 flex gap-6 overflow-hidden min-h-0">
-                {/* Left Controls / Nav (Simplified) */}
-                <div className="w-[200px] shrink-0 flex flex-col gap-4">
-                    <div className="glass-panel p-4 flex flex-col gap-2">
-                        <div className="flex items-center gap-2 mb-1">
-                            <BarChart3 className="text-[var(--color-primary)]" size={18} />
-                            <h2 className="text-sm font-bold text-white">Review</h2>
-                        </div>
-                        <p className="text-[10px] text-gray-400">
-                            Check the visuals and audio flow before finalizing video.
-                        </p>
-                    </div>
-
-                    <div className="glass-panel p-4 flex flex-col gap-2 flex-1 relative">
-                        {/* Mini Map or Stats could go here, but for now just navigation */}
-                        <div className="flex items-center justify-between text-xs text-white mb-2">
-                            <span>Cut</span>
-                            <span className="font-bold text-[var(--color-primary)]">{currentCutIndex + 1} / {script.length}</span>
-                        </div>
-
-                        <div className="flex flex-col gap-2 mt-auto">
-                            <button
-                                onClick={() => { prevStep(); navigate('/step/3'); }}
-                                className="w-full flex items-center justify-center gap-1 px-3 py-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-white text-xs transition-all"
-                            >
-                                <ArrowLeft size={14} /> Back
-                            </button>
-                            <button
-                                onClick={handleFinish}
-                                className="w-full btn-primary flex items-center justify-center gap-1 px-3 py-2 rounded-lg font-bold text-xs shadow-lg hover:scale-105 transition-all"
-                            >
-                                Next Step <ArrowRight size={14} />
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Center: Image & Dialogue */}
-                <div className="flex-1 flex flex-col gap-4 glass-panel p-6 h-full">
+            <div className="flex-1 flex gap-4 overflow-hidden min-h-0">
+                <div className="flex-1 flex flex-col gap-3 glass-panel p-4 h-full">
                     {/* Main Image */}
                     <div className="flex-1 relative min-h-0 rounded-lg overflow-hidden bg-black/40 border border-white/5">
                         {currentResolvedImage ? (
@@ -315,8 +285,8 @@ export const Step4_QualityAssurance: React.FC = () => {
                     </div>
 
                     {/* Playback Controls & Dialogue */}
-                    <div className="h-[120px] shrink-0 flex items-start gap-6 pt-2">
-                        <div className="shrink-0 flex items-center gap-3 pt-2">
+                    <div className="h-[90px] shrink-0 flex items-start gap-4 pt-1">
+                        <div className="shrink-0 flex items-center gap-3 pt-1">
                             <button onClick={handlePrevCut} disabled={currentCutIndex === 0} className="p-2 hover:bg-white/10 rounded-full text-white disabled:opacity-30">
                                 <ArrowLeft size={20} />
                             </button>
@@ -349,28 +319,48 @@ export const Step4_QualityAssurance: React.FC = () => {
                         </div>
                     </div>
                 </div>
-            </div>
+            </div >
 
             {/* Bottom: Timeline (Fixed Height) */}
-            <div className="h-[320px] shrink-0">
-                {script.length > 0 ? (
-                    <TimelineView
-                        script={script}
-                        bgmTracks={bgmTracks || []}
-                        currentCutIndex={currentCutIndex}
-                        onCutClick={setCurrentCutIndex}
-                        onBGMUpdate={setBGMTracks}
-                    />
-                ) : (
-                    <div className="h-full glass-panel flex items-center justify-center text-gray-500">
-                        No script data available.
-                    </div>
-                )}
-            </div>
+            < div className="h-[160px] shrink-0" >
+                {
+                    script.length > 0 ? (
+                        <TimelineView
+                            script={script}
+                            bgmTracks={bgmTracks || []}
+                            currentCutIndex={currentCutIndex}
+                            onCutClick={setCurrentCutIndex}
+                            onBGMUpdate={setBGMTracks}
+                        />
+                    ) : (
+                        <div className="h-full glass-panel flex items-center justify-center text-gray-500">
+                            No script data available.
+                        </div>
+                    )
+                }
+            </div >
 
             {/* Hidden Audio Elements */}
-            <audio id="sequential-audio" className="hidden" />
+            < audio id="sequential-audio" className="hidden" />
             <audio id="sequential-sfx" className="hidden" />
-        </div>
+
+            {/* Navigation */}
+            <div className="flex items-center justify-between shrink-0">
+                <button
+                    onClick={() => { prevStep(); navigate('/step/3'); }}
+                    className="flex items-center gap-2 px-4 py-2 bg-[var(--color-surface)] text-[var(--color-text-muted)] rounded-lg hover:text-white transition-colors border border-[var(--color-border)] text-sm"
+                >
+                    <ChevronLeft size={16} />
+                    <span>Back</span>
+                </button>
+                <button
+                    onClick={handleFinish}
+                    className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] text-black font-semibold rounded-lg hover:bg-[var(--color-primary-hover)] transition-colors shadow-lg shadow-[var(--color-primary)]/20 text-sm"
+                >
+                    <span>Next Step</span>
+                    <ChevronRight size={16} />
+                </button>
+            </div>
+        </div >
     );
 };

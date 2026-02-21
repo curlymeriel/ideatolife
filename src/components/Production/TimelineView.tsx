@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, GripVertical, Plus, Trash2, Volume2, Settings } from 'lucide-react';
+import { ChevronLeft, ChevronRight, GripVertical, Plus, Trash2, Volume2 } from 'lucide-react';
 import type { ScriptCut } from '../../services/gemini';
 import type { BGMTrack, BGMPreset } from '../../store/types';
 import { resolveUrl, isIdbUrl } from '../../utils/imageStorage';
@@ -13,14 +13,9 @@ interface TimelineViewProps {
     onBGMUpdate: (tracks: BGMTrack[]) => void;
 }
 
-// Color palette for BGM tracks
+// Color palette for BGM tracks (Unified to brand color)
 const BGM_COLORS = [
-    { bg: 'bg-pink-500/40', border: 'border-pink-500', text: 'text-pink-300', hover: 'hover:bg-pink-500/30' },
-    { bg: 'bg-purple-500/40', border: 'border-purple-500', text: 'text-purple-300', hover: 'hover:bg-purple-500/30' },
-    { bg: 'bg-blue-500/40', border: 'border-blue-500', text: 'text-blue-300', hover: 'hover:bg-blue-500/30' },
-    { bg: 'bg-green-500/40', border: 'border-green-500', text: 'text-green-300', hover: 'hover:bg-green-500/30' },
-    { bg: 'bg-yellow-500/40', border: 'border-yellow-500', text: 'text-yellow-300', hover: 'hover:bg-yellow-500/30' },
-    { bg: 'bg-orange-500/40', border: 'border-orange-500', text: 'text-orange-300', hover: 'hover:bg-orange-500/30' },
+    { bg: 'bg-[var(--color-primary)]/40', border: 'border-[var(--color-primary)]', text: 'text-[var(--color-primary)]', hover: 'hover:bg-[var(--color-primary)]/30' }
 ];
 
 // Resolved Image Component
@@ -160,12 +155,11 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
     const scrollRight = () => setScrollPosition(prev => Math.min(Math.max(0, totalWidth - 800), prev + 400));
 
     return (
-        <div className="bg-[#0a0a0a] border border-white/10 rounded-xl overflow-hidden flex flex-col h-[320px]">
+        <div className="bg-[#0a0a0a] border border-white/10 rounded-xl overflow-hidden flex flex-col h-full">
             {/* Toolbar Header */}
             <div className="flex items-center justify-between px-4 py-2 bg-white/5 border-b border-white/10 h-10 shrink-0">
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2">
-                        <Settings size={14} className="text-gray-400" />
                         <span className="text-xs font-bold text-white uppercase tracking-wider">Timeline</span>
                     </div>
                     {dragging && (
@@ -188,12 +182,6 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                         <ChevronRight size={16} />
                     </button>
                     <div className="w-px h-4 bg-white/10 mx-1" />
-                    <button
-                        onClick={() => setIsLibraryOpen(true)}
-                        className="flex items-center gap-1.5 px-3 py-1 bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 rounded text-xs font-bold transition-all border border-orange-500/20 shadow-lg shadow-orange-500/5"
-                    >
-                        <Plus size={12} /> Add Audio Track
-                    </button>
                 </div>
             </div>
 
@@ -208,7 +196,12 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                     {/* Header Row (matches Cut Thumbnails height) */}
                     <div className="h-16 border-b border-white/10 flex items-center justify-between px-4 bg-white/5">
                         <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Track Layers</span>
-                        <Settings size={12} className="text-gray-600" />
+                        <button
+                            onClick={() => setIsLibraryOpen(true)}
+                            className="flex items-center gap-1.5 px-3 py-1 bg-[var(--color-primary)]/20 hover:bg-[var(--color-primary)]/30 text-[var(--color-primary)] rounded text-xs font-bold transition-all border border-[var(--color-primary)]/20 shadow-sm"
+                        >
+                            <Plus size={12} /> Add BGM
+                        </button>
                     </div>
 
                     {/* Track Headers List */}
