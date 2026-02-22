@@ -76,7 +76,11 @@ export const Step3_Production: React.FC = () => {
 
     // Sync localScript when store's script changes
     useEffect(() => {
-        setLocalScript(script || []);
+        setLocalScript(prev => {
+            const newScript = script || [];
+            if (JSON.stringify(prev) === JSON.stringify(newScript)) return prev;
+            return newScript;
+        });
     }, [projectId, script]);
 
     // --- PERSISTENCE HELPER ---
@@ -254,6 +258,7 @@ export const Step3_Production: React.FC = () => {
             console.log('[Step3] Received merged script from Gemini Service:', linkedScript);
 
             setLocalScript(linkedScript);
+            localScriptRef.current = linkedScript; // SYNC REF
             saveToStore(linkedScript);
         } catch (error) {
             console.error(error);
@@ -407,6 +412,7 @@ export const Step3_Production: React.FC = () => {
                 cut.id === cutId ? { ...cut, finalImageUrl: `${idbUrl}?t=${Date.now()}` } : cut
             );
             setLocalScript(updatedScript);
+            localScriptRef.current = updatedScript; // SYNC REF
             saveToStore(updatedScript);
 
             console.log(`[Image ${cutId}] ✅ Generated and saved to IndexedDB`);
@@ -488,6 +494,7 @@ export const Step3_Production: React.FC = () => {
                             voiceVolume: String(geminiConfig.volume)
                         } as ScriptCut : cut
                     );
+                    localScriptRef.current = updated; // SYNC REF
                     saveToStore(updated);
                     return updated;
                 });
@@ -627,6 +634,7 @@ export const Step3_Production: React.FC = () => {
                         voiceSpeed: currentCut?.voiceSpeed
                     } as ScriptCut : cut
                 );
+                localScriptRef.current = updated; // SYNC REF
                 saveToStore(updated);
                 return updated;
             });
@@ -888,6 +896,7 @@ export const Step3_Production: React.FC = () => {
     const applyToAll = useCallback((field: string, value: any) => {
         setLocalScript(prev => {
             const updated = prev.map(cut => ({ ...cut, [field]: value }));
+            localScriptRef.current = updated; // SYNC REF
             saveToStore(updated);
             return updated;
         });
@@ -896,6 +905,7 @@ export const Step3_Production: React.FC = () => {
     const applyToSpeaker = useCallback((speaker: string, field: string, value: any) => {
         setLocalScript(prev => {
             const updated = prev.map(cut => cut.speaker === speaker ? { ...cut, [field]: value } : cut);
+            localScriptRef.current = updated; // SYNC REF
             saveToStore(updated);
             return updated;
         });
@@ -904,6 +914,7 @@ export const Step3_Production: React.FC = () => {
     const applyVoiceToSpeaker = useCallback((speaker: string, voiceId: string) => {
         setLocalScript(prev => {
             const updated = prev.map(cut => cut.speaker === speaker ? { ...cut, voiceName: voiceId, voiceId } : cut);
+            localScriptRef.current = updated; // SYNC REF
             saveToStore(updated);
             return updated;
         });
@@ -959,21 +970,52 @@ export const Step3_Production: React.FC = () => {
     const handleBulkLockAudio = useCallback((speaker: string, lock: boolean) => {
         setLocalScript(prev => {
             const updated = prev.map(cut => cut.speaker === speaker ? { ...cut, isAudioConfirmed: lock } : cut);
+            localScriptRef.current = updated;
             saveToStore(updated);
             return updated;
         });
     }, [saveToStore]);
 
-    const handleUpdateCut = useCallback((id: number, updates: Partial<ScriptCut>) => {
+    const handleUpdateCut = useCallback(async (id: number, updates: Partial<ScriptCut>) => {
+        let finalUpdates = { ...updates };
+
+        // [STABILITY FIX] If Studio sends raw data: URLs (Base64), save to IDB first
+        // to prevent large JSON payloads from crashing the save/sync engine.
+        // This mirrors the logic in handleGenerateFinalImage that is already working reliably.
+        if (finalUpdates.finalImageUrl?.startsWith('data:')) {
+            try {
+                const key = generateCutImageKey(projectId, id, 'final');
+                const idbUrl = await saveToIdb('images', key, finalUpdates.finalImageUrl);
+                finalUpdates.finalImageUrl = idbUrl;
+                console.log(`[handleUpdateCut] Pre-saved final image to IDB for cut ${id}`);
+            } catch (e) {
+                console.error(`[handleUpdateCut] Failed to pre-save final image to IDB for cut ${id}:`, e);
+            }
+        }
+
+        if (finalUpdates.draftImageUrl?.startsWith('data:')) {
+            try {
+                const key = generateCutImageKey(projectId, id, 'draft');
+                const idbUrl = await saveToIdb('images', key, finalUpdates.draftImageUrl);
+                finalUpdates.draftImageUrl = idbUrl;
+                console.log(`[handleUpdateCut] Pre-saved draft image to IDB for cut ${id}`);
+            } catch (e) {
+                console.error(`[handleUpdateCut] Failed to pre-save draft image to IDB for cut ${id}:`, e);
+            }
+        }
+
         setLocalScript(prev => {
             const targetId = Number(id);
             const updated = prev.map(cut =>
-                Number(cut.id) === targetId ? { ...cut, ...updates } : cut
+                Number(cut.id) === targetId ? { ...cut, ...finalUpdates } : cut
             );
+            // IMMUTABLE UPDATE: Also update the ref immediately so subsequent handleSave calls
+            // see the newest data even if the component hasn't re-rendered yet.
+            localScriptRef.current = updated;
             saveToStore(updated);
             return updated;
         });
-    }, [saveToStore]);
+    }, [projectId, saveToStore]);
 
     const handleUploadUserReference = useCallback(async (cutId: number, file: File) => {
         try {
@@ -996,6 +1038,7 @@ export const Step3_Production: React.FC = () => {
             const updated = prev.map(cut =>
                 Number(cut.id) === Number(cutId) ? { ...cut, isAudioConfirmed: !cut.isAudioConfirmed } : cut
             );
+            localScriptRef.current = updated;
             saveToStore(updated);
             return updated;
         });
@@ -1016,6 +1059,7 @@ export const Step3_Production: React.FC = () => {
                 }
                 return cut;
             });
+            localScriptRef.current = updated;
             saveToStore(updated);
             return updated;
         });
@@ -1032,6 +1076,7 @@ export const Step3_Production: React.FC = () => {
                 }
                 return cut;
             });
+            localScriptRef.current = updated;
             saveToStore(updated);
             return updated;
         });
@@ -1049,6 +1094,7 @@ export const Step3_Production: React.FC = () => {
                 }
                 return cut;
             });
+            localScriptRef.current = updated;
             saveToStore(updated);
             return updated;
         });
@@ -1065,6 +1111,7 @@ export const Step3_Production: React.FC = () => {
                 }
                 return cut;
             });
+            localScriptRef.current = updated;
             saveToStore(updated);
             return updated;
         });
@@ -1082,6 +1129,7 @@ export const Step3_Production: React.FC = () => {
                 }
                 return cut;
             });
+            localScriptRef.current = updated;
             saveToStore(updated);
             return updated;
         });
@@ -1090,6 +1138,7 @@ export const Step3_Production: React.FC = () => {
     const handleDeleteCut = useCallback((id: number) => {
         setLocalScript(prev => {
             const updated = prev.filter(cut => Number(cut.id) !== Number(id));
+            localScriptRef.current = updated;
             saveToStore(updated);
             return updated;
         });
@@ -1106,6 +1155,7 @@ export const Step3_Production: React.FC = () => {
             const newIndex = direction === 'up' ? index - 1 : index + 1;
             const updated = [...prev];
             [updated[index], updated[newIndex]] = [updated[newIndex], updated[index]];
+            localScriptRef.current = updated;
             saveToStore(updated);
             return updated;
         });
@@ -1128,6 +1178,7 @@ export const Step3_Production: React.FC = () => {
             };
             const updated = [...prev];
             updated.splice(index + 1, 0, newCut);
+            localScriptRef.current = updated;
             saveToStore(updated);
             return updated;
         });
@@ -1136,6 +1187,7 @@ export const Step3_Production: React.FC = () => {
     const lockAllAudio = useCallback(() => {
         setLocalScript(prev => {
             const updated = prev.map(cut => (cut.audioUrl || cut.speaker === 'SILENT') ? { ...cut, isAudioConfirmed: true } : cut);
+            localScriptRef.current = updated;
             saveToStore(updated);
             return updated;
         });
@@ -1144,6 +1196,7 @@ export const Step3_Production: React.FC = () => {
     const unlockAllAudio = useCallback(() => {
         setLocalScript(prev => {
             const updated = prev.map(cut => ({ ...cut, isAudioConfirmed: false }));
+            localScriptRef.current = updated;
             saveToStore(updated);
             return updated;
         });
@@ -1152,6 +1205,7 @@ export const Step3_Production: React.FC = () => {
     const lockAllImages = useCallback(() => {
         setLocalScript(prev => {
             const updated = prev.map(cut => cut.finalImageUrl ? { ...cut, isImageConfirmed: true } : cut);
+            localScriptRef.current = updated;
             saveToStore(updated);
             return updated;
         });
@@ -1160,6 +1214,7 @@ export const Step3_Production: React.FC = () => {
     const unlockAllImages = useCallback(() => {
         setLocalScript(prev => {
             const updated = prev.map(cut => ({ ...cut, isImageConfirmed: false }));
+            localScriptRef.current = updated;
             saveToStore(updated);
             return updated;
         });
@@ -1175,6 +1230,7 @@ export const Step3_Production: React.FC = () => {
             const updated = prev.map(c =>
                 Number(c.id) === Number(id) ? { ...c, sfxUrl: undefined, sfxName: undefined, sfxVolume: undefined, sfxFreesoundId: undefined, sfxDescription: undefined } : c
             );
+            localScriptRef.current = updated;
             saveToStore(updated);
             return updated;
         });
@@ -1563,7 +1619,7 @@ export const Step3_Production: React.FC = () => {
                                     isImageConfirmed={!!(cut.isImageConfirmed || cut.isConfirmed)}
                                     showAssetSelector={showAssetSelector === cut.id}
                                     assetDefinitions={assetDefinitions}
-                                    localScript={showAssetSelector === cut.id ? localScript : EMPTY_SCRIPT}
+                                    localScript={localScript}
                                     audioLoading={!!audioLoading[cut.id]}
                                     imageLoading={!!imageLoading[cut.id]}
                                     playingAudio={playingAudio}

@@ -126,57 +126,83 @@ export const createProjectSlice: StateCreator<ProjectSlice> = (set, get) => ({
     })),
 
     setScript: async (script) => {
-        // PROACTIVE OPTIMIZATION: Scan for large Base64 strings and move to IDB before they hit the store
-        // This prevents main-thread blocking during JSON serialization of the global state
-        const sanitizedScript = [...script];
-        let wasModified = false;
-        const currentId = (get() as any).id;
-
-        const { saveToIdb, generateAudioKey, generateCutImageKey } = await import('../utils/imageStorage');
-
-        for (let i = 0; i < sanitizedScript.length; i++) {
-            const cut = sanitizedScript[i];
-            const cutId = cut.id;
-
-            // 1. Audio
-            if (cut.audioUrl?.startsWith('data:') && cut.audioUrl.length > 50000) {
-                try {
-                    const idbUrl = await saveToIdb('audio', generateAudioKey(currentId, cutId), cut.audioUrl);
-                    sanitizedScript[i] = { ...sanitizedScript[i], audioUrl: idbUrl };
-                    wasModified = true;
-                } catch (e) { console.error("[Sanitizer] Audio failed", e); }
-            }
-
-            // 2. Final Image
-            if (cut.finalImageUrl?.startsWith('data:') && cut.finalImageUrl.length > 50000) {
-                try {
-                    const idbUrl = await saveToIdb('images', generateCutImageKey(currentId, cutId, 'final' as any), cut.finalImageUrl);
-                    sanitizedScript[i] = { ...sanitizedScript[i], finalImageUrl: idbUrl };
-                    wasModified = true;
-                } catch (e) { console.error("[Sanitizer] Final image failed", e); }
-            }
-
-            // 3. Draft Image
-            if (cut.draftImageUrl?.startsWith('data:') && cut.draftImageUrl.length > 50000) {
-                try {
-                    const idbUrl = await saveToIdb('images', generateCutImageKey(currentId, cutId, 'draft' as any), cut.draftImageUrl);
-                    sanitizedScript[i] = { ...sanitizedScript[i], draftImageUrl: idbUrl };
-                    wasModified = true;
-                } catch (e) { console.error("[Sanitizer] Draft image failed", e); }
-            }
-        }
-
-        // Update nextCutId based on the max ID in the new script
-        const maxId = sanitizedScript.reduce((max, cut) => Math.max(max, cut.id || 0), 0);
-
+        // [PHASE 1] Initial Sync Update: reflective of the UI's intent immediately
+        const maxId = script.reduce((max, cut) => Math.max(max, cut.id || 0), 0);
         set((state) => ({
-            script: sanitizedScript,
+            script: script,
             nextCutId: Math.max(state.nextCutId || 1, maxId + 1),
             isDirty: true
         }));
 
-        // If we moved things to IDB, trigger a save to reflect optimized state
-        if (wasModified) {
+        // CRITICAL FIX: Save to disk IMMEDIATELY after Phase 1, BEFORE any async work.
+        // This guarantees the script is persisted even if:
+        // 1. The async sanitization in Phase 2 takes time
+        // 2. Another saveProject() call resets isDirty during that time
+        // 3. The caller doesn't await this async function
+        (get() as any).saveProject?.();
+
+        // [PHASE 2] Async Sanitization: scan for large data and move to IDB
+        const currentId = (get() as any).id;
+        const { saveToIdb, generateAudioKey, generateCutImageKey } = await import('../utils/imageStorage');
+
+        // Capture the version of the script we are processing
+        const originalScriptForSanitization = [...script];
+        const patches: Record<number, Partial<ScriptCut>> = {};
+
+        for (const cut of originalScriptForSanitization) {
+            const updates: Partial<ScriptCut> = {};
+            const cutId = cut.id;
+
+            if (cut.audioUrl?.startsWith('data:') && cut.audioUrl.length > 50000) {
+                try {
+                    updates.audioUrl = await saveToIdb('audio', generateAudioKey(currentId, cutId), cut.audioUrl);
+                } catch (e) { console.error("[Sanitizer] Audio failed", e); }
+            }
+            if (cut.finalImageUrl?.startsWith('data:') && cut.finalImageUrl.length > 50000) {
+                try {
+                    updates.finalImageUrl = await saveToIdb('images', generateCutImageKey(currentId, cutId, 'final' as any), cut.finalImageUrl);
+                } catch (e) { console.error("[Sanitizer] Final image failed", e); }
+            }
+            if (cut.draftImageUrl?.startsWith('data:') && cut.draftImageUrl.length > 50000) {
+                try {
+                    updates.draftImageUrl = await saveToIdb('images', generateCutImageKey(currentId, cutId, 'draft' as any), cut.draftImageUrl);
+                } catch (e) { console.error("[Sanitizer] Draft image failed", e); }
+            }
+
+            if (Object.keys(updates).length > 0) {
+                patches[cutId] = updates;
+            }
+        }
+
+        // [PHASE 3] Final Patch Update: Merge back ONLY the sanitized URLs into the LATEST state.
+        if (Object.keys(patches).length > 0) {
+            set((state) => {
+                const latestScript = Array.isArray(state.script) ? state.script : [];
+                const patchedScript = latestScript.map(c => {
+                    const patch = patches[c.id];
+                    if (!patch) return c;
+
+                    const result = { ...c };
+                    let changed = false;
+
+                    if (patch.audioUrl && c.audioUrl?.startsWith('data:')) {
+                        result.audioUrl = patch.audioUrl;
+                        changed = true;
+                    }
+                    if (patch.finalImageUrl && c.finalImageUrl?.startsWith('data:')) {
+                        result.finalImageUrl = patch.finalImageUrl;
+                        changed = true;
+                    }
+                    if (patch.draftImageUrl && c.draftImageUrl?.startsWith('data:')) {
+                        result.draftImageUrl = patch.draftImageUrl;
+                        changed = true;
+                    }
+
+                    return changed ? result : c;
+                });
+                return { script: patchedScript, isDirty: true };
+            });
+            // Save again after patching Base64→IDB URLs
             (get() as any).saveProject?.();
         }
     },

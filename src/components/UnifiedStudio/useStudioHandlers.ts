@@ -482,7 +482,6 @@ ${refContext}` : ''}
                 let finalVideoPrompt = videoPrompt;
                 if (!finalVideoPrompt?.trim() && finalDescription?.trim()) {
                     try {
-                        console.log('[UnifiedStudio] Auto-generating AI video prompt on save...');
                         const { assetDefinitions, existingCuts = [], initialSpeaker, initialDialogue } = config;
 
                         const speakerAsset = assetDefinitions ?

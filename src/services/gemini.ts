@@ -148,13 +148,13 @@ export interface ProjectContext {
     assetDefinitions?: any; // NEW
 }
 
-const GEMINI_3_1_PRO_PREVIEW_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent';
-const GEMINI_3_0_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-pro:generateContent';
-const GEMINI_3_0_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-flash:generateContent';
+const GEMINI_3_1_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent';
+const GEMINI_3_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent';
+const GEMINI_3_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent';
 const GEMINI_2_5_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent';
 const GEMINI_2_5_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
-const GEMINI_API_URL = GEMINI_3_0_PRO_URL;
+const GEMINI_API_URL = GEMINI_3_1_PRO_URL;
 
 
 import type { StrategicAnalysis, StrategyInsight, YouTubeTrendVideo, ChannelAnalysis, TrendAnalysisInsights } from '../store/types';
@@ -578,8 +578,9 @@ ${trendInsights.thumbnail ? (typeof trendInsights.thumbnail === 'string' ? `- Ïç
 
         // Base model list (fallback order)
         const baseModels = [
-            { name: 'Gemini 3 Pro', url: GEMINI_3_0_PRO_URL },
-            { name: 'Gemini 3 Flash', url: GEMINI_3_0_FLASH_URL },
+            { name: 'Gemini 3.1 Pro Preview', url: GEMINI_3_1_PRO_URL },
+            { name: 'Gemini 3 Pro Preview', url: GEMINI_3_PRO_URL },
+            { name: 'Gemini 3 Flash Preview', url: GEMINI_3_FLASH_URL },
             { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
             { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL }
         ];
@@ -1244,8 +1245,8 @@ IMPORTANT: The above data is REAL market research from Step 0. Do NOT treat it a
         }));
 
         const modelsToTry = [
-            { name: 'Gemini 3.0 Pro', url: `${GEMINI_3_0_PRO_URL}?key=${apiKey}` },
-            { name: 'Gemini 3.0 Flash', url: `${GEMINI_3_0_FLASH_URL}?key=${apiKey}` },
+            { name: 'Gemini 3.1 Pro Preview', url: `${GEMINI_3_1_PRO_URL}?key=${apiKey}` },
+            { name: 'Gemini 3 Flash Preview', url: `${GEMINI_3_FLASH_URL}?key=${apiKey}` },
             { name: 'Gemini 2.5 Pro', url: `${GEMINI_2_5_PRO_URL}?key=${apiKey}` },
             { name: 'Gemini 2.5 Flash', url: `${GEMINI_2_5_FLASH_URL}?key=${apiKey}` }
         ];
@@ -1440,9 +1441,9 @@ IMPORTANT: The above is ACTUAL research data. Ensure all modifications align wit
         }));
 
         const models = [
-            { name: 'Gemini 3.1 Pro Preview', url: GEMINI_3_1_PRO_PREVIEW_URL },
-            { name: 'Gemini 3.0 Pro', url: GEMINI_3_0_PRO_URL },
-            { name: 'Gemini 3.0 Flash', url: GEMINI_3_0_FLASH_URL },
+            { name: 'Gemini 3.1 Pro Preview', url: GEMINI_3_1_PRO_URL },
+            { name: 'Gemini 3 Pro Preview', url: GEMINI_3_PRO_URL },
+            { name: 'Gemini 3 Flash Preview', url: GEMINI_3_FLASH_URL },
             { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
             { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL }
         ];
@@ -1610,8 +1611,8 @@ Gritty and used. Guns and gadgets show signs of wear, oil stains, and scratched 
 `;
 
     const models = [
-        { name: 'Gemini 3.0 Pro', url: GEMINI_3_0_PRO_URL },
-        { name: 'Gemini 3.0 Flash', url: GEMINI_3_0_FLASH_URL },
+        { name: 'Gemini 3.1 Pro Preview', url: GEMINI_3_1_PRO_URL },
+        { name: 'Gemini 3 Flash Preview', url: GEMINI_3_FLASH_URL },
         { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
         { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL }
     ];
@@ -1644,8 +1645,8 @@ export const analyzeImage = async (
     if (!apiKey) return "Analyzed image description...";
 
     const models = [
-        { name: 'Gemini 3.0 Pro', url: GEMINI_3_0_PRO_URL },
-        { name: 'Gemini 3.0 Flash', url: GEMINI_3_0_FLASH_URL },
+        { name: 'Gemini 3.1 Pro Preview', url: GEMINI_3_1_PRO_URL },
+        { name: 'Gemini 3 Flash Preview', url: GEMINI_3_FLASH_URL },
         { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
         { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL }
     ];
@@ -1705,9 +1706,9 @@ export const generateVisualPrompt = async (
     if (!apiKey) return "Please provide an API key.";
 
     const models = [
-        { name: 'Gemini 3.1 Pro Preview', url: GEMINI_3_1_PRO_PREVIEW_URL },
-        { name: 'Gemini 3.0 Pro', url: GEMINI_3_0_PRO_URL },
-        { name: 'Gemini 3.0 Flash', url: GEMINI_3_0_FLASH_URL },
+        { name: 'Gemini 3.1 Pro Preview', url: GEMINI_3_1_PRO_URL },
+        { name: 'Gemini 3 Pro Preview', url: GEMINI_3_PRO_URL },
+        { name: 'Gemini 3 Flash Preview', url: GEMINI_3_FLASH_URL },
         { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
         { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL }
     ];
@@ -2111,9 +2112,9 @@ export const generateText = async (
 
     // Prioritize stable models
     const models = [
-        { name: 'Gemini 3.1 Pro Preview', url: GEMINI_3_1_PRO_PREVIEW_URL },
-        { name: 'Gemini 3.0 Pro', url: GEMINI_3_0_PRO_URL },
-        { name: 'Gemini 3.0 Flash', url: GEMINI_3_0_FLASH_URL },
+        { name: 'Gemini 3.1 Pro Preview', url: GEMINI_3_1_PRO_URL },
+        { name: 'Gemini 3 Pro Preview', url: GEMINI_3_PRO_URL },
+        { name: 'Gemini 3 Flash Preview', url: GEMINI_3_FLASH_URL },
         { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
         { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL }
     ];

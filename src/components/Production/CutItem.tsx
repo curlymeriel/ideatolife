@@ -1101,25 +1101,30 @@ export const CutItem = memo(({
                         manualAssetObjs: manualAssetObjs,
                         initialSpeaker: cut.speaker,
                         initialDialogue: cut.dialogue,
-                        onSave: (result: VisualSettingsResult) => {
-                            const manualAssetIds = result.taggedReferences
+                        onSave: async (result: VisualSettingsResult) => {
+                            const refs = result.taggedReferences || [];
+                            const manualAssetIds = refs
                                 .filter(r => !r.isAuto && assetDefinitions && assetDefinitions[r.id])
                                 .map(r => r.id);
-                            const referenceCutIds = result.taggedReferences
+                            const referenceCutIds = refs
                                 .filter(r => !r.isAuto && r.id.startsWith('cut-'))
                                 .map(r => parseInt(r.id.replace('cut-', ''), 10))
                                 .filter(n => !isNaN(n));
-                            const userRef = result.taggedReferences.find(r => r.id === 'user-ref');
-                            onUpdateCut(cut.id, {
+                            const userRef = refs.find(r => r.id === 'user-ref');
+
+                            // [CRITICAL] Await the async update to ensure IDB storage completes 
+                            // before the studio modal closes and potential refresh occurs.
+                            await onUpdateCut(cut.id, {
                                 visualPrompt: result.visualPrompt,
                                 visualPromptKR: result.visualPromptKR,
                                 videoPrompt: result.videoPrompt,
                                 finalImageUrl: result.finalImageUrl || undefined,
                                 referenceAssetIds: manualAssetIds,
                                 referenceCutIds: referenceCutIds,
-                                userReferenceImage: userRef?.url
+                                userReferenceImage: userRef?.url,
+                                // [USER REQUEST] Automatically confirm/lock the image when saved from Studio
+                                isImageConfirmed: true
                             });
-                            onSave();
                         },
                     }}
                 />
