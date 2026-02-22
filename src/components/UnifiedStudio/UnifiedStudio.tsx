@@ -244,7 +244,8 @@ export const UnifiedStudio = ({
 
                     // Load auto/manual asset references  
                     const loadedRefs: TaggedReference[] = [];
-                    const getUrl = (a: any) => a?.referenceImage || a?.draftImage || a?.masterImage || a?.imageUrl || a?.image || a?.url || null;
+                    // [PRIORITY] referenceImage > masterImage > imageUrl > draftImage to avoid using stale drafts as reference
+                    const getUrl = (a: any) => a?.referenceImage || a?.masterImage || a?.imageUrl || a?.image || a?.url || a?.draftImage || null;
 
                     const processAsset = async (asset: any, isAuto: boolean) => {
                         if (!asset) return;
@@ -254,6 +255,7 @@ export const UnifiedStudio = ({
                             if (isIdbUrl(url)) url = await resolveUrl(url) || url;
                             const refId = asset.id || `${isAuto ? 'auto' : 'manual'}-${Date.now()}-${Math.random()}`;
                             if (url && !loadedRefs.some(r => r.id === refId)) {
+                                console.log(`[UnifiedStudio] Processing ${isAuto ? 'AUTO' : 'MANUAL'} Asset: ${asset.name}`, { type: asset.type, urlSource: imgUrl.substring(0, 50) });
                                 let category = 'style';
                                 if (asset.type === 'character') category = `character-${asset.name}`;
                                 else if (asset.type === 'location') category = `location-${asset.name}`;
@@ -262,6 +264,11 @@ export const UnifiedStudio = ({
                             }
                         }
                     };
+
+                    console.log('[UnifiedStudio] Initializing References with config:', {
+                        manualCount: (config.manualAssetObjs || []).length,
+                        autoCount: (config.autoMatchedAssets || []).length
+                    });
 
                     for (const a of (config.manualAssetObjs || [])) await processAsset(a, false);
                     for (const a of (config.autoMatchedAssets || [])) await processAsset(a, true);
@@ -425,10 +432,19 @@ export const UnifiedStudio = ({
                 )}
 
                 <div className="flex items-center gap-3">
-                    <button onClick={handleSaveAndClose} disabled={handlers.isSaving} className="px-6 py-2.5 bg-[var(--color-primary)] text-black font-black rounded-xl text-sm hover:scale-105 transition-all flex items-center gap-2 shadow-xl disabled:opacity-50 disabled:scale-100">
-                        {handlers.isSaving ? <><Loader2 size={18} className="animate-spin" /> AI 생성중...</> : <><Check size={18} /> SAVE &amp; CLOSE</>}
+                    <button
+                        onClick={handleSaveAndClose}
+                        disabled={handlers.isSaving}
+                        className="px-6 py-2.5 bg-[var(--color-primary)] text-black font-black rounded-xl text-sm hover:scale-105 transition-all flex items-center gap-2 shadow-xl disabled:opacity-50 disabled:scale-100"
+                    >
+                        {handlers.isSaving ? <><Loader2 size={18} className="animate-spin" /> 저장 중...</> : <><Check size={18} /> SAVE & CLOSE</>}
                     </button>
-                    <button onClick={onClose} className="p-2.5 text-gray-500 hover:text-white hover:bg-white/5 rounded-xl transition-all"><X size={24} /></button>
+                    <button
+                        onClick={onClose}
+                        className="p-2.5 text-gray-500 hover:text-white hover:bg-white/5 rounded-xl transition-all"
+                    >
+                        <X size={24} />
+                    </button>
                 </div>
             </div>
 

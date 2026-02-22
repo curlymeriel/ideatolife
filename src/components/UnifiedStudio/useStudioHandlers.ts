@@ -50,7 +50,7 @@ export function useStudioHandlers(props: UseStudioHandlersProps) {
     const [isTranslating, setIsTranslating] = useState(false);
     const [isChatLoading, setIsChatLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
-    const [analyzedImageUrl, setAnalyzedImageUrl] = useState<string | null>(null);
+    const [analyzedImageUrl, setAnalyzedImageUrl] = useState<string | null>(selectedDraft);
     const chatContainerRef = useRef<HTMLDivElement>(null);
 
     // ========================================================================
@@ -78,17 +78,48 @@ export function useStudioHandlers(props: UseStudioHandlersProps) {
     // ========================================================================
 
     const analyzeReferences = useCallback(async () => {
+        // [RESTORE] Only analyze taggedReferences as per user's concept
         const refs = taggedReferences;
-        if (refs.length === 0) return null;
+        console.log('[UnifiedStudio] analyzeReferences triggered. Target Refs:', refs.map(r => ({ name: r.name, url: r.url.substring(0, 30) + '...' })));
+        if (refs.length === 0 || !apiKey) return null;
+
+        const { blobUrlToBase64 } = await import('../../utils/imageStorage');
 
         const results = await Promise.all(refs.map(async (ref) => {
-            const imgData = await resolveUrl(ref.url);
-            const mappingHeader = `Reference Asset: "${ref.name || 'Ref'}" [Categories: ${ref.categories.join(', ')}]`;
-            const analysisPrompt = `Describe the VISUAL FEATURES (face, hair, costume, lighting, material) of this image. If this is a character, focus on their unique facial features so we can maintain identity. If it is an object/prop, focus on its specific design and texture. Return ONLY the description.`;
-            const text = await generateText(analysisPrompt, apiKey, undefined, imgData);
-            return `${mappingHeader}\nDetailed Analysis: ${text}`;
+            try {
+                // [FIX] Ensure we have a Base64 string for Vision analysis
+                // AI cannot "see" blob: or idb:// URLs directly
+                const imgData = await blobUrlToBase64(ref.url);
+                if (!imgData) return null;
+
+                const analysisPrompt = `Perform a RIGID VISUAL INVENTORY of this reference image. 
+                
+                **STRICT ANTI-HALLUCINATION RULES**:
+                1. Describe ONLY what is clearly visible. If you are unsure (e.g., image is blurry), state "Unclear".
+                2. **DO NOT DEFAULT** to "Long hair" or "Black clothing" unless clearly seen. 
+                3. **FACT CHECK**: Double-check the hair length (Short vs Long) and specific clothing type (Blazer vs Hoodie vs V-neck).
+                
+                Format:
+                - Asset Name: ${ref.name || 'Unnamed'}
+                - Role/Category: ${ref.categories.join(', ')}
+                - Character Identity: (Gender, visible age)
+                - Hair Details: (Style, EXACT length - e.g. "Shoulder-length", "Short bob", "Cropped", hair color)
+                - Clothing Details: (Type, Color, Neckline type - EXTREMELY IMPORTANT)
+                - Visible Accessories: (Only if clearly present)
+                
+                Return ONLY the inventory list. No conversational filler.`;
+
+                const text = await generateText(analysisPrompt, apiKey, undefined, [imgData]);
+                return `### REFERENCE IDENTITY: ${ref.name || 'Unnamed'}\n[ASSET ROLE: ${ref.categories.join(', ')}]\n[MANDATORY VISUAL FEATURES]\n${text}`;
+            } catch (err) {
+                console.error(`[analyzeReferences] Failed for ${ref.name}:`, err);
+                return null;
+            }
         }));
-        return results.filter(Boolean).join('\n\n');
+
+        const finalContext = results.filter(Boolean).join('\n\n');
+        console.log('[UnifiedStudio] Final Reference Context sent to AI:', finalContext);
+        return finalContext;
     }, [taggedReferences, apiKey]);
 
     // ========================================================================
@@ -103,15 +134,20 @@ export function useStudioHandlers(props: UseStudioHandlersProps) {
             if (config.mode === 'channelArt') {
                 const { characters = [], strategyContext, type } = config;
                 const systemPrompt = `당신은 유튜브 ${type === 'banner' ? '배너' : '프로필'} 디자인 및 채널 브랜딩 전문가입니다. 채널의 정체성과 참조 이미지의 시각적 특징을 결합하여, AI 이미지 생성을 위한 고품질의 영어 프롬프트를 작성하세요.`;
-                const refImages = taggedReferences.map(ref => {
-                    const matches = ref.url.match(/^data:(.+);base64,(.+)$/);
+
+                const { blobUrlToBase64 } = await import('../../utils/imageStorage');
+                const refImages = await Promise.all(taggedReferences.map(async (ref) => {
+                    const base64 = await blobUrlToBase64(ref.url);
+                    const matches = base64.match(/^data:(.+);base64,(.+)$/);
                     if (matches) return { mimeType: matches[1], data: matches[2] };
                     return null;
-                }).filter(Boolean) as { mimeType: string; data: string }[];
+                }));
+                const validRefImages = refImages.filter(Boolean) as { mimeType: string; data: string }[];
+
 
                 const fullPrompt = `[채널 브랜딩 및 전략 정보]\n${strategyContext}\n\n[사용자 현재 의도]\n${prompt || (type === 'banner' ? 'A professional YouTube banner' : 'A premium profile icon')}\n\n${refContext ? `[참조 이미지 시각적 분석]\n${refContext}` : ''}\n\n[프롬프트 작성 지침]\n1. 브랜딩 정보를 시각적으로 형상화하세요.\n2. 참조 이미지를 100% 반영하세요.\n3. 캐릭터(${characters.map(c => c.name).join(', ')}) 반영.\n4. 오직 1개의 통합된 영어 프롬프트만 출력하세요.`;
 
-                const result = await generateText(fullPrompt, apiKey, undefined, refImages, systemPrompt);
+                const result = await generateText(fullPrompt, apiKey, undefined, validRefImages, systemPrompt);
                 if (result) {
                     const clean = result.replace(/^["']|["']$/g, '').replace(/^(Prompt|Output):\s*/i, '').trim();
                     setPrompt(clean);
@@ -145,10 +181,13 @@ export function useStudioHandlers(props: UseStudioHandlersProps) {
                 }
             } else if (config.mode === 'asset') {
                 // Asset mode: category-based analysis + enhancePrompt
+                const { blobUrlToBase64 } = await import('../../utils/imageStorage');
                 const categoryAnalyses: Record<string, string[]> = {};
                 for (const ref of taggedReferences) {
-                    const matches = ref.url.match(/^data:(.+);base64,(.+)$/);
+                    const base64 = await blobUrlToBase64(ref.url);
+                    const matches = base64.match(/^data:(.+);base64,(.+)$/);
                     if (!matches) continue;
+
                     const cat = ref.categories[0] || 'style';
                     const instruction = {
                         face: 'Focus ONLY on facial features.',
@@ -190,13 +229,35 @@ export function useStudioHandlers(props: UseStudioHandlersProps) {
                 }
             } else {
                 // Visual mode
-                const systemPrompt = "You are a visual director. Enhance the user's prompt by integrating visual analysis from references. Use the format '(Ref: {Asset Name})' to link specific assets. Stay concise and premium.";
-                const fullPrompt = `User Prompt: ${prompt}\n\n${refContext ? `[Reference Analysis]\n${refContext}` : ''}\n\n[Instructions]\n1. Incorporate specific details from named references.\n2. Maintain consistent identity by appending "(Ref: {Asset Name})" after character names.\n3. Expand into a detailed 8k English prompt.\n4. DO NOT include any script dialogue.`;
+                const systemPrompt = `You are a professional visual director. Your task is to expand the user's prompt into a cinematic English prompt while STRICTLY ADHERING to the provided [MANDATORY VISUAL FEATURES].
+                
+                **ABSOLUTE GROUND TRUTH RULE**: 
+                1. The [MANDATORY VISUAL FEATURES] extracted from images are the ONLY source of truth for physical appearance.
+                2. **TEXT DISCARD RULE**: If the [User Request / Original Prompt] describes a person as "Long hair" but the [MANDATORY VISUAL FEATURES] says "Short", you MUST DISCARD the word "Long" and use "Short". 
+                3. **NO CREATIVE DEFAULTING**: Do not assume "Straight hair" or "Black turtleneck" unless explicitly stated in the inventory.
+                4. **IDENTITY PRESERVATION**: Maintain core features (Gender, Hair color/length, Costume color) found in the inventory to ensure 100% consistency.`;
+
+                const fullPrompt = `[User Request / Original Prompt (MAY CONTAIN ERRORS)]
+${prompt}
+
+${refContext ? `[MANDATORY VISUAL FEATURES - GROUND TRUTH]
+${refContext}` : ''}
+
+[Final Instruction]
+1. Expand into a detailed cinematic English visual prompt.
+2. **PRIORITY 1 (IDENTITY)**: You MUST include ALL characters listed in [MANDATORY VISUAL FEATURES] in the final prompt. 
+3. Use "(Ref: {Asset Name})" immediately after the character's first mention for identity mapping.
+4. **PRIORITY 2 (PHYSICALITY)**: Use ONLY the physical features from [MANDATORY VISUAL FEATURES]. Ignore any physical descriptions in [User Request] that contradict the [MANDATORY VISUAL FEATURES]. 
+5. Provide a high-end cinematic description starting directly with the subject.`;
+
                 const result = await generateText(fullPrompt, apiKey, undefined, undefined, systemPrompt);
-                if (result) setPrompt(result.trim());
+                if (result) {
+                    console.log('[UnifiedStudio] AI Expand Result (Refined):', result.trim());
+                    setPrompt(result.trim());
+                }
             }
-        } catch (error) {
-            console.error('AI Expand failed:', error);
+        } catch (err) {
+            console.error('[UnifiedStudio] AI Expand failed:', err);
         } finally {
             setIsExpanding(false);
         }
@@ -214,7 +275,13 @@ export function useStudioHandlers(props: UseStudioHandlersProps) {
             const { cleanPromptForGeneration } = await import('../../utils/promptUtils');
 
             let finalPrompt = prompt;
-            let refImages: string[] = taggedReferences.map(r => r.url);
+            const { blobUrlToBase64 } = await import('../../utils/imageStorage');
+            // [IDENTITY FIX] Resolve ALL references immediately to ensure AI sees facial features
+            let refImages: (string | { name: string, url: string })[] = await Promise.all(taggedReferences.map(async (r) => {
+                return await blobUrlToBase64(r.url);
+            }));
+            refImages = refImages.filter(Boolean);
+
             let ratio = '1:1';
             const model = aiModel === 'PRO' ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image';
 
@@ -226,35 +293,52 @@ export function useStudioHandlers(props: UseStudioHandlersProps) {
                 if (masterStyle) finalPrompt = `[Master Style: ${masterStyle}]\n\n${finalPrompt}`;
                 ratio = config.aspectRatio;
             } else {
-                // Visual & Thumbnail mode: smart ref tag processing
+                // Visual & Thumbnail mode: high-priority ref tagging
+                // [NEW] Resolve ALL references immediately to ensure no idb:// leaks to API
+                const resolvedRefs = await Promise.all(taggedReferences.map(async (r) => {
+                    const base64 = await blobUrlToBase64(r.url);
+                    return { ...r, url: base64 };
+                }));
+
+                // Sort resolved references: Characters first
+                const sortedRefs = [...resolvedRefs].sort((a, b) => {
+                    const isAChar = a.categories.some(c => c.toLowerCase().includes('character')) ? 0 : 1;
+                    const isBChar = b.categories.some(c => c.toLowerCase().includes('character')) ? 0 : 1;
+                    return isAChar - isBChar;
+                });
+
                 const refTagRegex = /\(Ref:\s*(.+?)\)/g;
                 const matches = [...prompt.matchAll(refTagRegex)];
-                const usedRefImages: string[] = [];
-                const nameToIndex = new Map<string, number>();
+                const usedRefImages: { name: string, url: string }[] = [];
+                const addedRefNames = new Set<string>();
 
+                // Process explicitly tagged references first
                 for (const match of matches) {
                     const refName = match[1].trim();
-                    if (!nameToIndex.has(refName)) {
-                        const refObj = taggedReferences.find(r => r.name === refName) || taggedReferences.find(r => r.name?.includes(refName));
+                    if (!addedRefNames.has(refName)) {
+                        const refObj = sortedRefs.find(r => r.name === refName) || sortedRefs.find(r => r.name?.includes(refName));
                         if (refObj) {
-                            let url = refObj.url;
-                            if (url.startsWith('idb://')) url = await resolveUrl(url) || url;
-                            usedRefImages.push(url);
-                            nameToIndex.set(refName, usedRefImages.length);
+                            usedRefImages.push({ name: refName, url: refObj.url });
+                            addedRefNames.add(refName);
                         }
                     }
-                    const idx = nameToIndex.get(refName);
-                    if (idx) finalPrompt = finalPrompt.replace(match[0], `(Reference #${idx})`);
+                    // [NAMED BINDING] We leave the (Ref: Name) tag as is!
                 }
 
-                // Append unused refs
-                for (const r of taggedReferences.filter(r => r.name && !nameToIndex.has(r.name))) {
-                    let url = r.url;
-                    if (url.startsWith('idb://')) url = await resolveUrl(url) || url;
-                    usedRefImages.push(url);
+                // Ensure ALL sorted assets are provided to the model as context
+                for (const r of sortedRefs) {
+                    if (r.name && addedRefNames.has(r.name)) continue;
+
+                    usedRefImages.push({ name: r.name || 'Style Ref', url: r.url });
+                    if (r.name) addedRefNames.add(r.name);
+
+                    // If it's a character but not mentioned in prompt, still nudge the model
+                    if (r.categories.some(c => c.toLowerCase().includes('character'))) {
+                        finalPrompt = `[Context: Featuring (Ref: ${r.name})]\n${finalPrompt}`;
+                    }
                 }
 
-                refImages = usedRefImages.length > 0 ? usedRefImages : refImages;
+                refImages = usedRefImages;
                 ratio = config.mode === 'thumbnail' ? '16:9' : config.aspectRatio;
             }
 
@@ -263,13 +347,17 @@ export function useStudioHandlers(props: UseStudioHandlersProps) {
             const resolved = await Promise.all(result.urls.map((u: string) => resolveUrl(u)));
             const newDrafts = resolved.map((u, i) => u || result.urls[i]);
             setDraftHistory(prev => [...prev, ...newDrafts]);
-            if (newDrafts.length > 0) setSelectedDraft(newDrafts[0]);
+            if (newDrafts.length > 0) {
+                setSelectedDraft(newDrafts[0]);
+                // [NEW] Mark generated image as analyzed so it doesn't trigger auto-analysis on save
+                setAnalyzedImageUrl(newDrafts[0]);
+            }
         } catch (e: any) {
             alert(e.message);
         } finally {
             setIsGenerating(false);
         }
-    }, [config, prompt, taggedReferences, apiKey, masterStyle, aiModel, draftCount, analyzeReferences, setDraftHistory, setSelectedDraft]);
+    }, [config, prompt, taggedReferences, apiKey, masterStyle, aiModel, draftCount, analyzeReferences, setDraftHistory, setSelectedDraft, setAnalyzedImageUrl]);
 
     // ========================================================================
     // CHAT SEND
@@ -336,47 +424,44 @@ export function useStudioHandlers(props: UseStudioHandlersProps) {
         try {
             let finalDescription = prompt;
 
+            // 1. Auto-analyze image if changed
             if (selectedDraft && selectedDraft !== analyzedImageUrl) {
-                console.log('[UnifiedStudio] Automatically analyzing draft image...', selectedDraft);
                 try {
+                    console.log('[UnifiedStudio] Image changed. Running AI analysis...');
                     let analysisImageUrl = selectedDraft;
 
-                    // Handle idb:// URLs
                     if (selectedDraft.startsWith('idb://')) {
-                        console.log('[UnifiedStudio] Resolving idb:// URL for analysis...');
                         analysisImageUrl = await resolveUrl(selectedDraft) || selectedDraft;
                     }
 
-                    if (analysisImageUrl.startsWith('blob:') || analysisImageUrl.startsWith('http')) {
-                        console.log('[UnifiedStudio] Fetching image for analysis:', analysisImageUrl);
+                    // Prepare base64 for analyzeImage if it's a blob/idb
+                    if (analysisImageUrl.startsWith('blob:') || analysisImageUrl.startsWith('idb://')) {
                         const response = await fetch(analysisImageUrl);
                         const blob = await response.blob();
-                        const reader = new FileReader();
-                        const base64 = await new Promise<string>((resolve, reject) => {
+                        analysisImageUrl = await new Promise<string>((resolve) => {
+                            const reader = new FileReader();
                             reader.onloadend = () => resolve(reader.result as string);
-                            reader.onerror = reject;
                             reader.readAsDataURL(blob);
                         });
-                        analysisImageUrl = base64;
                     }
 
                     const analysis = await analyzeImage(analysisImageUrl, apiKey || '');
-                    console.log('[UnifiedStudio] AI Analysis complete:', analysis ? (analysis.substring(0, 50) + '...') : 'FAILED');
-
                     if (analysis) {
                         const marker = "Visual Features:";
                         const cleanPrev = prompt.split(marker)[0].trim();
-                        const newFinalDescription = cleanPrev ? `${cleanPrev}\n\n${marker} ${analysis}` : `${marker} ${analysis}`;
-                        finalDescription = newFinalDescription;
-                        setPrompt(newFinalDescription);
+                        finalDescription = cleanPrev ? `${cleanPrev}\n\n${marker} ${analysis}` : `${marker} ${analysis}`;
+
+                        // [RESTORE] setPrompt here because this only triggers for manual uploads (mismatch with analyzedImageUrl)
+                        setPrompt(finalDescription);
                         setAnalyzedImageUrl(selectedDraft);
-                        console.log('[UnifiedStudio] Prompt updated with analysis.');
+                        console.log('[UnifiedStudio] Manual upload auto-analysis complete.');
                     }
                 } catch (err) {
                     console.error('Auto-analysis during save failed:', err);
                 }
             }
 
+            // 2. Perform Save based on mode
             if (config.mode === 'channelArt') {
                 await config.onSave(selectedDraft || '', finalDescription);
             } else if (config.mode === 'thumbnail') {
@@ -386,7 +471,6 @@ export function useStudioHandlers(props: UseStudioHandlersProps) {
                     draftHistory
                 });
             } else if (config.mode === 'asset') {
-                console.log('[UnifiedStudio] Calling onSave (asset mode) with description:', finalDescription);
                 await config.onSave({
                     description: finalDescription,
                     taggedReferences: taggedReferences as any,
@@ -396,36 +480,36 @@ export function useStudioHandlers(props: UseStudioHandlersProps) {
             } else {
                 // Visual mode: auto-generate video prompt if empty
                 let finalVideoPrompt = videoPrompt;
-                if (!finalVideoPrompt?.trim() && prompt?.trim()) {
-                    console.log('[UnifiedStudio] Auto-generating AI video prompt on save...');
-                    const { assetDefinitions, existingCuts = [], initialSpeaker, initialDialogue } = config;
-
-                    const speakerAsset = assetDefinitions ?
-                        Object.values(assetDefinitions).find((a: any) => a.type === 'character' && a.name?.toLowerCase() === initialSpeaker?.toLowerCase()) as any : null;
-                    const locationAsset = assetDefinitions ?
-                        Object.values(assetDefinitions).find((a: any) => a.type === 'location' && prompt?.toLowerCase().includes(a.name?.toLowerCase())) as any : null;
-                    const propAssets = assetDefinitions ?
-                        Object.values(assetDefinitions).filter((a: any) => a.type === 'prop' && prompt?.toLowerCase().includes(a.name?.toLowerCase())) as any[] : [];
-                    const currentCut = existingCuts.find(c => c.id === config.cutId);
-
-                    const context: VideoMotionContext = {
-                        visualPrompt: prompt,
-                        dialogue: initialDialogue,
-                        emotion: currentCut?.emotion,
-                        audioDuration: currentCut?.estimatedDuration,
-                        speakerInfo: speakerAsset ? { name: speakerAsset.name, visualFeatures: speakerAsset.visualSummary || speakerAsset.description, gender: speakerAsset.gender } : undefined,
-                        locationInfo: locationAsset ? { name: locationAsset.name, visualFeatures: locationAsset.visualSummary || locationAsset.description } : undefined,
-                        propInfo: propAssets.length > 0 ? propAssets.map(p => ({ name: p.name, visualFeatures: p.visualSummary || p.description })) : undefined
-                    };
-
+                if (!finalVideoPrompt?.trim() && finalDescription?.trim()) {
                     try {
+                        console.log('[UnifiedStudio] Auto-generating AI video prompt on save...');
+                        const { assetDefinitions, existingCuts = [], initialSpeaker, initialDialogue } = config;
+
+                        const speakerAsset = assetDefinitions ?
+                            Object.values(assetDefinitions).find((a: any) => a.type === 'character' && a.name?.toLowerCase() === initialSpeaker?.toLowerCase()) as any : null;
+                        const locationAsset = assetDefinitions ?
+                            Object.values(assetDefinitions).find((a: any) => a.type === 'location' && finalDescription?.toLowerCase().includes(a.name?.toLowerCase())) as any : null;
+                        const propAssets = assetDefinitions ?
+                            Object.values(assetDefinitions).filter((a: any) => a.type === 'prop' && finalDescription?.toLowerCase().includes(a.name?.toLowerCase())) as any[] : [];
+                        const currentCut = existingCuts.find(c => c.id === config.cutId);
+
+                        const context: VideoMotionContext = {
+                            visualPrompt: finalDescription,
+                            dialogue: initialDialogue,
+                            emotion: currentCut?.emotion,
+                            audioDuration: currentCut?.estimatedDuration,
+                            speakerInfo: speakerAsset ? { name: speakerAsset.name, visualFeatures: speakerAsset.visualSummary || speakerAsset.description, gender: speakerAsset.gender } : undefined,
+                            locationInfo: locationAsset ? { name: locationAsset.name, visualFeatures: locationAsset.visualSummary || locationAsset.description } : undefined,
+                            propInfo: propAssets.length > 0 ? propAssets.map(p => ({ name: p.name, visualFeatures: p.visualSummary || p.description })) : undefined
+                        };
+
                         finalVideoPrompt = await generateVideoMotionPrompt(context, apiKey);
-                    } catch {
-                        finalVideoPrompt = `${prompt}. Camera slowly pushes in. Subtle atmospheric motion.`;
+                    } catch (vErr) {
+                        console.error('Video prompt generation failed:', vErr);
+                        finalVideoPrompt = `${finalDescription}. Camera slowly pushes in. Subtle atmospheric motion.`;
                     }
                 }
 
-                console.log('[UnifiedStudio] Calling onSave (visual mode) with description:', finalDescription);
                 await config.onSave({
                     visualPrompt: finalDescription,
                     visualPromptKR: promptKR,
@@ -435,10 +519,12 @@ export function useStudioHandlers(props: UseStudioHandlersProps) {
                     withBackground: false
                 } as any);
             }
+        } catch (saveErr) {
+            console.error('[UnifiedStudio] Save failed:', saveErr);
         } finally {
             setIsSaving(false);
         }
-    }, [config, prompt, promptKR, videoPrompt, selectedDraft, draftHistory, taggedReferences, apiKey]);
+    }, [config, prompt, promptKR, videoPrompt, selectedDraft, draftHistory, taggedReferences, apiKey, analyzedImageUrl]);
 
     return {
         isGenerating, isExpanding, isTranslating, isChatLoading, isSaving,

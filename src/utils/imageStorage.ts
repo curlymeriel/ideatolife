@@ -426,6 +426,36 @@ export async function resolveUrl(
 }
 
 /**
+ * Convert any URL (blob:, idb://, data:, http:) to Base64 for AI analysis
+ */
+export async function blobUrlToBase64(url: string | null | undefined): Promise<string> {
+    if (!url) return '';
+    if (url.startsWith('data:')) return url;
+
+    try {
+        // 1. Resolve idb:// if needed
+        let resolved = url;
+        if (isIdbUrl(url)) {
+            resolved = await resolveUrl(url);
+            if (resolved.startsWith('data:')) return resolved;
+        }
+
+        // 2. Fetch blob or http URL and convert to Base64
+        const response = await fetch(resolved);
+        const blob = await response.blob();
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+        });
+    } catch (e) {
+        console.error(`[ImageStorage] Failed to convert URL to base64: ${url}`, e);
+        return '';
+    }
+}
+
+
+/**
  * Revoke a specific idb:// URL's cached Blob URL to free memory
  */
 export function revokeIdbUrl(url: string): void {

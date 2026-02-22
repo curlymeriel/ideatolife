@@ -209,14 +209,38 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
 
     const analyzeReferences = async () => {
         const refs = taggedReferences;
-        if (refs.length === 0) return null;
+        if (refs.length === 0 || !apiKey) return null;
+
+        const { blobUrlToBase64 } = await import('../../utils/imageStorage');
 
         const results = await Promise.all(refs.map(async (ref) => {
-            const imgData = await resolveUrl(ref.url);
-            const mappingHeader = `Reference Asset: "${ref.name}" [Categories: ${ref.categories.join(', ')}]`;
-            const analysisPrompt = `Describe the VISUAL FEATURES (face, hair, costume, lighting, material) of this image. If this is a character, focus on their unique facial features so we can maintain identity. If it is an object/prop, focus on its specific design and texture. Return ONLY the description.`;
-            const text = await generateText(analysisPrompt, apiKey, undefined, imgData);
-            return `${mappingHeader}\nDetailed Analysis: ${text}`;
+            try {
+                // [FIX] Convert blob/idb URL to Base64 for Vision analysis
+                const imgData = await blobUrlToBase64(ref.url);
+                if (!imgData) return null;
+
+                const analysisPrompt = `Perform a RIGID VISUAL INVENTORY of this reference image for identity preservation.
+                
+                **STRICT ANTI-HALLUCINATION RULES**:
+                1. Describe ONLY clearly visible features.
+                2. **FACT CHECK**: Hair length, Clothing type, Neckline, Accessories.
+                3. Do NOT assume generic details.
+                
+                Format:
+                - Asset Name: ${ref.name}
+                - Role/Category: ${ref.categories.join(', ')}
+                - Identity: (Gender, visible age)
+                - Hair: (Style, EXACT length, color)
+                - Outfit: (Type, visible colors, specific neckline)
+                
+                Return ONLY the list.`;
+
+                const text = await generateText(analysisPrompt, apiKey, undefined, [imgData]);
+                return `### REFERENCE IDENTITY: ${ref.name}\n[ASSET ROLE: ${ref.categories.join(', ')}]\n[MANDATORY VISUAL FEATURES]\n${text}`;
+            } catch (err) {
+                console.error(`[VisualSettingsStudio:Analysis] Failed for ${ref.name}:`, err);
+                return null;
+            }
         }));
         return results.filter(Boolean).join('\n\n');
     };
@@ -225,9 +249,27 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
         setIsExpanding(true);
         try {
             const refContext = await analyzeReferences();
-            const systemPrompt = "You are a visual director. Enhance the user's prompt by integrating visual analysis from references. Use the format '(Ref: {Asset Name})' to link specific assets. Stay concise and premium.";
-            // REMOVE videoPrompt from context to prevent dialogue leakage
-            const fullPrompt = `User Prompt: ${visualPrompt}\n\n${refContext ? `[Reference Analysis]\n${refContext}` : ''}\n\n[Instructions]\n1. Incorporate specific details from named references (e.g., "match the lighting from (Ref: My Asset)").\n2. Maintain consistent identity by appending "(Ref: {Asset Name})" after character names.\n3. Expand into a detailed 8k English prompt.\n4. **CRITICAL NEGATIVE CONSTRAINT**: DO NOT include any script dialogue, character quotes, or speech lines. Focus strictly on visual composition and atmosphere.`;
+
+            const systemPrompt = `You are a professional visual director. Expand the user's prompt into a cinematic English prompt while STRICTLY ADHERING to the provided [MANDATORY VISUAL FEATURES].
+            
+            **ABSOLUTE GROUND TRUTH RULE**: 
+            1. The 시각적 특징(MANDATORY VISUAL FEATURES) extracted from images are the ONLY source of truth.
+            2. **TEXT DISCARD RULE**: If the user's prompt contradicts the visual analysis (e.g., user says "Long hair" but image shows "Short"), YOU MUST DISCARD the user's text and use the visual fact.
+            3. Do NOT assume or hallucinate generic clothing or hair styles.
+            4. **NO DIALOGUE**: Do not include any speech or script lines.`;
+
+            const fullPrompt = `[User Request]
+${visualPrompt}
+
+${refContext ? `[MANDATORY VISUAL FEATURES - GROUND TRUTH]
+${refContext}` : ''}
+
+[Final Instruction]
+1. Expand into a detailed cinematic English visual prompt.
+2. **PRIORITY 1 (IDENTITY)**: You MUST include ALL characters listed in [MANDATORY VISUAL FEATURES] in the final prompt. 
+3. Use "(Ref: {Asset Name})" immediately after the character's first mention for identity mapping.
+4. **PRIORITY 2 (PHYSICALITY)**: Use ONLY the physical features from [MANDATORY VISUAL FEATURES]. Ignore any physical descriptions in [User Request] that contradict the [MANDATORY VISUAL FEATURES]. 
+5. Provide a high-end cinematic description starting directly with the subject.`;
 
             const result = await generateText(fullPrompt, apiKey, undefined, undefined, systemPrompt);
             if (result) setVisualPrompt(result.trim());
@@ -237,6 +279,7 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
             setIsExpanding(false);
         }
     };
+
 
     const handleSelectReference = (asset: { url: string; name?: string; type?: string; id?: string }) => {
         // Close selector and open cropper
@@ -282,46 +325,39 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
             const matches = [...visualPrompt.matchAll(refTagRegex)];
 
             // 3. Build Ordered List of used references for the API
-            const usedRefImages: string[] = [];
+            const usedRefImages: { name: string, url: string }[] = [];
             let finalPrompt = visualPrompt;
 
             // Map Name -> Index for replacement
             const nameToIndex = new Map<string, number>();
 
-            // Helper to add ref and get index (1-based)
-            const getOrAddRefIndex = async (name: string): Promise<number | null> => {
-                if (nameToIndex.has(name)) return nameToIndex.get(name)!;
+            // Helper to add ref and get index
+            const getOrAddRef = async (name: string): Promise<boolean> => {
+                const cleanName = name.trim();
+                if (usedRefImages.some(r => r.name === cleanName)) return true;
 
                 // Find matching asset
                 const refObj =
-                    unifiedRefs.find(r => r.name === name) ||
-                    unifiedRefs.find(r => r.name?.includes(name)); // Weak match fallback
+                    unifiedRefs.find(r => r.name === cleanName) ||
+                    unifiedRefs.find(r => r.name?.includes(cleanName));
 
                 if (refObj) {
-                    let url = refObj.url;
-                    if (url.startsWith('idb://')) url = await resolveUrl(url) || url;
-
-                    usedRefImages.push(url);
-                    const newIdx = usedRefImages.length;
-                    nameToIndex.set(name, newIdx);
-                    return newIdx;
+                    const { blobUrlToBase64 } = await import('../../utils/imageStorage');
+                    const base64 = await blobUrlToBase64(refObj.url);
+                    if (base64) {
+                        usedRefImages.push({ name: cleanName, url: base64 });
+                        return true;
+                    }
                 }
-                return null;
+                return false;
             };
 
-            // Process all matches and replace in prompt
-            // work from last to first to avoid offset issues, or just replace strings
-            // actually string replacement is safe if names are unique enough
+            // Process all matches to ensure assets are loaded
             for (const match of matches) {
-                const fullTag = match[0]; // (Ref: Name)
-                const refName = match[1];
-                const cleanName = refName.trim();
-
-                const idx = await getOrAddRefIndex(cleanName);
-                if (idx) {
-                    // Replace (Ref: Name) with (Reference #Idx) for the backend
-                    finalPrompt = finalPrompt.replace(fullTag, `(Reference #${idx})`);
-                }
+                const refName = match[1].trim();
+                await getOrAddRef(refName);
+                // [NAMED BINDING] We leave the (Ref: Name) tag as is!
+                // AI in imageGen.ts now knows how to handle (Ref: Name) directly.
             }
 
             // If no explicit tags found, fall back to sending ALL attached references (legacy behavior logic) 
@@ -330,14 +366,14 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
             // No, "Smart" mode implies specificity. But if user manually added refs and didn't tag them?
             // Let's keep the user's manual refs in the list if they aren't tagged.
             // Wait, if I manually add a ref, I want it used.
-            // Let's APPEND any unused taggedReferences to the end of the list, 
-            // just in case they are needed for style but not explicitly named.
-            const unusedRefs = unifiedRefs.filter(r => r.name && !nameToIndex.has(r.name));
+            // Append unused references for style context
+            const unusedRefs = unifiedRefs.filter(r => r.name && !usedRefImages.some(ui => ui.name === r.name));
             for (const r of unusedRefs) {
-                let url = r.url;
-                if (url.startsWith('idb://')) url = await resolveUrl(url) || url;
-                usedRefImages.push(url);
-                // We don't need to tag them in prompt, just pass them to model
+                const { blobUrlToBase64 } = await import('../../utils/imageStorage');
+                const base64 = await blobUrlToBase64(r.url);
+                if (base64) {
+                    usedRefImages.push({ name: r.name || 'Style Ref', url: base64 });
+                }
             }
 
             const cleaned = cleanPromptForGeneration(finalPrompt);
@@ -566,7 +602,7 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                 }
 
                 const loadedRefs: TaggedReference[] = [];
-                const getAssetImageUrl = (asset: any) => asset?.referenceImage || asset?.draftImage || asset?.masterImage || asset?.imageUrl || asset?.image || asset?.url || null;
+                const getAssetImageUrl = (asset: any) => asset?.masterImage || asset?.referenceImage || asset?.draftImage || asset?.imageUrl || asset?.image || asset?.url || null;
 
                 const processAsset = async (asset: any, isAuto: boolean) => {
                     if (!asset) return;
@@ -574,22 +610,17 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
                     if (imgUrl) {
                         let url = imgUrl;
                         if (isIdbUrl(url)) url = await resolveUrl(url) || url;
-                        // Use raw asset.id to ensure CutItem can recognize it when saving back
-                        const refId = asset.id || `${isAuto ? 'auto' : 'manual'}-${Date.now()}-${Math.random()}`;
-                        if (url && !loadedRefs.some(r => r.id === refId)) {
-                            let category = 'style';
-                            if (asset.type === 'character') category = `character-${asset.name}`;
-                            else if (asset.type === 'location') category = `location-${asset.name}`;
-                            else if (asset.type === 'prop') category = `prop-${asset.name}`;
 
-                            loadedRefs.push({
-                                id: refId,
-                                url,
-                                categories: [category],
-                                name: asset.name,
-                                isAuto
-                            });
-                        }
+                        let category = asset.type || 'unknown';
+                        if (asset.type === 'prop') category = `prop-${asset.name}`;
+
+                        loadedRefs.push({
+                            id: asset.id || `${asset.type}-${asset.name}`,
+                            url,
+                            categories: [category],
+                            name: asset.name,
+                            isAuto
+                        });
                     }
                 };
 
