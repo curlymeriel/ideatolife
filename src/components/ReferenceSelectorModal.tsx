@@ -2,6 +2,34 @@
 import React, { useState, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { X, Upload, Image as ImageIcon, Film, Layers, Monitor } from 'lucide-react';
+import { resolveUrl, isIdbUrl } from '../utils/imageStorage';
+
+const AsyncImage = ({ src, alt, className }: { src: string; alt: string; className: string }) => {
+    const [resolvedSrc, setResolvedSrc] = useState<string>(isIdbUrl(src) ? '' : src);
+    const [hasError, setHasError] = useState(false);
+
+    React.useEffect(() => {
+        let isMounted = true;
+        setHasError(false);
+        if (isIdbUrl(src)) {
+            setResolvedSrc(''); // Clear while loading
+            resolveUrl(src).then(url => {
+                if (isMounted && url) setResolvedSrc(url);
+            }).catch(() => {
+                if (isMounted) setHasError(true);
+            });
+        } else {
+            setResolvedSrc(src);
+        }
+        return () => { isMounted = false; };
+    }, [src]);
+
+    if (hasError || !resolvedSrc) {
+        return <div className={`${className} flex items-center justify-center bg-white/5 text-gray-600 text-[10px]`}>No Preview</div>;
+    }
+
+    return <img src={resolvedSrc} alt={alt} className={className} onError={() => setHasError(true)} />;
+};
 
 interface ReferenceSelectorModalProps {
     isOpen: boolean;
@@ -115,7 +143,7 @@ export const ReferenceSelectorModal: React.FC<ReferenceSelectorModalProps> = ({
                         <div className="grid grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
                             {projectAssets.map((asset) => (
                                 <button key={asset.id} onClick={() => onSelect({ url: asset.url, name: asset.name, type: asset.type, id: asset.id })} className="group relative aspect-square rounded-xl overflow-hidden border border-white/10 hover:border-[var(--color-primary)] transition-all bg-black">
-                                    <img src={asset.url} alt={asset.name} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-all" />
+                                    <AsyncImage src={asset.url} alt={asset.name} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-all" />
                                     <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/90 to-transparent">
                                         <p className="text-[10px] font-bold text-white truncate text-center">{asset.name}</p>
                                         <p className="text-[9px] text-[var(--color-primary)] text-center uppercase tracking-tighter">{asset.type}</p>
@@ -129,8 +157,8 @@ export const ReferenceSelectorModal: React.FC<ReferenceSelectorModalProps> = ({
                     {activeTab === 'cuts' && (
                         <div className="grid grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
                             {pastCuts.map((cut) => (
-                                <button key={cut.id} onClick={() => onSelect({ url: cut.url, name: `Cut #${cut.index}`, type: 'composition', id: `cut-${cut.id}` })} className="group relative aspect-video rounded-xl overflow-hidden border border-white/10 hover:border-[var(--color-primary)] transition-all bg-black">
-                                    <img src={cut.url} alt={`Cut ${cut.index}`} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-all" />
+                                <button key={cut.id} onClick={() => onSelect({ url: cut.url, name: `Cut #${cut.index}`, type: 'composition', id: cut.id })} className="group relative aspect-video rounded-xl overflow-hidden border border-white/10 hover:border-[var(--color-primary)] transition-all bg-black">
+                                    <AsyncImage src={cut.url} alt={`Cut ${cut.index}`} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-all" />
                                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
                                         <span className="px-2 py-1 bg-[var(--color-primary)] text-black text-[10px] font-black rounded">SELECT</span>
                                     </div>
@@ -145,7 +173,7 @@ export const ReferenceSelectorModal: React.FC<ReferenceSelectorModalProps> = ({
                         <div className="grid grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
                             {drafts.map((url, i) => (
                                 <button key={i} onClick={() => onSelect({ url, name: `Draft #${i + 1}`, type: 'style' })} className="group relative aspect-square rounded-xl overflow-hidden border border-white/10 hover:border-[var(--color-primary)] transition-all bg-black">
-                                    <img src={url} alt={`Draft ${i}`} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-all" />
+                                    <AsyncImage src={url} alt={`Draft ${i}`} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-all" />
                                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
                                         <span className="px-2 py-1 bg-[var(--color-primary)] text-black text-[10px] font-black rounded">SELECT</span>
                                     </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useWorkflowStore } from '../store/workflowStore';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, RefreshCw, Image as ImageIcon, Type, Move, ZoomIn, Download, Wand2, Sparkles } from 'lucide-react';
+import { ArrowRight, RefreshCw, Image as ImageIcon, Type, Move, ZoomIn, Download, Wand2, Sparkles, Layers, ImagePlus } from 'lucide-react';
 import html2canvas from 'html2canvas';
 
 import { resolveUrl, isIdbUrl } from '../utils/imageStorage';

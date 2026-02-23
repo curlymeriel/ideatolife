@@ -8,6 +8,7 @@ import { getMatchedAssets } from '../../utils/assetUtils';
 import { resolveUrl, isIdbUrl } from '../../utils/imageStorage';
 import type { AspectRatio } from '../../store/types';
 import { UnifiedStudio, type VisualSettingsResult } from '../UnifiedStudio';
+import { ReferenceSelectorModal } from '../ReferenceSelectorModal';
 
 // Comprehensive Visual prompt helper terms (영문약어: 한글설명)
 const VISUAL_TERMS = {
@@ -98,8 +99,8 @@ export interface CutItemProps {
     onUploadUserReference?: (cutId: number, file: File) => void;
     onAddAsset: (cutId: number, assetId: string) => void;
     onRemoveAsset: (cutId: number, assetId: string) => void;
-    onAddReference: (cutId: number, refId: number) => void;
-    onRemoveReference: (cutId: number, refId: number) => void;
+    onAddReference?: (cutId: number | string, refId: number | string) => void;
+    onRemoveReference?: (cutId: number | string, refId: number | string) => void;
     onToggleAssetSelector: (cutId: number) => void;
     onCloseAssetSelector: () => void;
     onSave: () => void;
@@ -131,11 +132,13 @@ export const CutItem = memo(({
     onGenerateAudio,
     onPlayAudio,
     onGenerateImage,
+    onUploadUserReference,
     onAddAsset,
     onRemoveAsset,
     onAddReference,
     onRemoveReference,
     onToggleAssetSelector,
+    onCloseAssetSelector,
     onSave,
     onDelete,
     onMove,
@@ -389,8 +392,10 @@ export const CutItem = memo(({
     // 1. Manual always comes directly from the ID list
     const manualAssetObjs = useMemo(() => {
         if (!assetDefinitions) return [];
-        return manualAssets.map(id => assetDefinitions[id]).filter(Boolean);
-    }, [manualAssets, assetDefinitions]);
+        const result = manualAssets.map(id => assetDefinitions[id]).filter(Boolean);
+        console.log(`[CutItem ${cut.id}] manualAssets ids:`, manualAssets, 'asset definitions keys:', Object.keys(assetDefinitions), 'resolved:', result);
+        return result;
+    }, [manualAssets, assetDefinitions, cut.id]);
 
     // 2. Auto matches come from the helper, but we filter out ones that are already manually added
     const autoMatchedAssets = useMemo(() => {
@@ -704,40 +709,57 @@ export const CutItem = memo(({
                                                     <X size={8} className="cursor-pointer hover:text-red-400" onClick={() => onRemoveAsset(cut.id, asset.id)} />
                                                 </div>
                                             ))}
-                                            {cut.referenceCutIds?.map((refId: number) => (
+                                            {cut.referenceCutIds?.map((refId: number | string) => (
                                                 <div key={`ref-${refId}`} className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-500/20 text-[8px] text-orange-300 border border-orange-500/30">
                                                     <span>Cut #{refId}</span>
                                                     {onRemoveReference && <X size={8} className="cursor-pointer hover:text-red-400" onClick={() => onRemoveReference(cut.id, refId)} />}
                                                 </div>
                                             ))}
+                                            {cut.userReferenceImage && (
+                                                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-500/20 text-[8px] text-blue-300 border border-blue-500/30">
+                                                    <span className="truncate max-w-[80px]">Custom Ref</span>
+                                                    {onUpdateCut && <X size={8} className="cursor-pointer hover:text-red-400" onClick={() => onUpdateCut(cut.id, { userReferenceImage: undefined })} />}
+                                                </div>
+                                            )}
                                         </div>
-                                        {/* Dropdown */}
-                                        {showAssetSelector && (
-                                            <div className="absolute left-2 right-2 bottom-2 bg-[#222] rounded-lg border border-white/20 p-2 z-50 max-h-[150px] overflow-y-auto grid grid-cols-2 gap-1 shadow-2xl">
-                                                {uniqueAssets.map((asset: any) => (
-                                                    <button key={asset.id} onClick={() => onAddAsset(cut.id, asset.id)} className="text-left px-2 py-1 text-[9px] text-gray-300 hover:bg-white/10 rounded truncate flex items-center gap-2">
-                                                        <div className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] shrink-0" />
-                                                        {asset.name}
-                                                    </button>
-                                                ))}
-                                                {index > 0 && (
-                                                    <div className="col-span-2 mt-1 pt-1 border-t border-white/5">
-                                                        <div className="px-2 py-1 text-[8px] text-gray-500 font-bold uppercase">Previous Cuts</div>
-                                                        <div className="space-y-1">
-                                                            {localScript.slice(0, index).filter(c => c.finalImageUrl).map(prevCut => (
-                                                                <CutReferenceItem
-                                                                    key={prevCut.id}
-                                                                    cut={prevCut}
-                                                                    onSelect={(id) => {
-                                                                        if (onAddReference) onAddReference(cut.id, id);
-                                                                    }}
-                                                                />
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
+                                        {/* Full Asset Selector Modal */}
+                                        <ReferenceSelectorModal
+                                            isOpen={showAssetSelector}
+                                            onClose={onCloseAssetSelector}
+                                            onSelect={(asset) => {
+                                                console.log("[CutItem] onSelect called with asset:", asset);
+                                                const isCut = asset.type === 'composition' || asset.type === 'cut' || (asset.id && typeof asset.id === 'string' && asset.id.startsWith('cut-'));
+                                                if (isCut && asset.id) {
+                                                    // Extract the full cut ID after 'cut-' prefix (e.g. 'cut-S1E1_C8' -> 'S1E1_C8')
+                                                    const refId = asset.id.startsWith('cut-') ? asset.id.slice(4) : asset.id;
+                                                    console.log("[CutItem] isCut matched! refId:", refId, "onAddReference available:", !!onAddReference);
+                                                    if (onAddReference) {
+                                                        console.log("[CutItem] Calling onAddReference with:", cut.id, refId);
+                                                        onAddReference(cut.id, refId);
+                                                    }
+                                                } else if (asset.type === 'user-upload' || (!asset.id && asset.url)) {
+                                                    // Handle user uploads or session drafts (which don't have an ID)
+                                                    if (onUpdateCut && asset.url) onUpdateCut(cut.id, { userReferenceImage: asset.url });
+                                                } else {
+                                                    if (asset.id) {
+                                                        onAddAsset(cut.id, asset.id);
+                                                    }
+                                                }
+                                                onCloseAssetSelector();
+                                            }}
+                                            projectAssets={Object.values(assetDefinitions || {}).map((a: any) => ({
+                                                id: String(a.id),
+                                                name: a.name,
+                                                url: a.referenceImage || a.imageUrl || a.url || '',
+                                                type: a.type
+                                            }))}
+                                            pastCuts={localScript.slice(0, index).filter(c => c.finalImageUrl).map((c, idx) => ({
+                                                id: `cut-${c.id}`,
+                                                url: c.finalImageUrl!,
+                                                index: idx + 1
+                                            }))}
+                                            drafts={[]}
+                                        />
                                     </div>
 
                                     {/* Motion Prompt */}
@@ -1108,8 +1130,7 @@ export const CutItem = memo(({
                                 .map(r => r.id);
                             const referenceCutIds = refs
                                 .filter(r => !r.isAuto && r.id.startsWith('cut-'))
-                                .map(r => parseInt(r.id.replace('cut-', ''), 10))
-                                .filter(n => !isNaN(n));
+                                .map(r => r.id.replace('cut-', ''));
                             const userRef = refs.find(r => r.id === 'user-ref');
 
                             // [CRITICAL] Await the async update to ensure IDB storage completes 
@@ -1133,25 +1154,4 @@ export const CutItem = memo(({
     );
 });
 
-// Mini component for previous cut reference
-const CutReferenceItem = ({ cut, onSelect }: { cut: ScriptCut, onSelect: (id: number) => void }) => {
-    const [imgUrl, setImgUrl] = useState('');
-    useEffect(() => {
-        if (cut.finalImageUrl) {
-            if (isIdbUrl(cut.finalImageUrl)) {
-                resolveUrl(cut.finalImageUrl).then(url => setImgUrl(url || ''));
-            } else {
-                setImgUrl(cut.finalImageUrl);
-            }
-        }
-    }, [cut.finalImageUrl]);
-    if (!imgUrl) return null;
-    return (
-        <button onClick={() => onSelect(cut.id)} className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-white/10 hover:text-white flex items-center gap-2">
-            <div className="w-6 h-6 rounded overflow-hidden shrink-0 border border-white/10">
-                <img src={imgUrl} alt="" className="w-full h-full object-cover" />
-            </div>
-            <span className="text-xs text-gray-400">Cut #{cut.id}</span>
-        </button>
-    );
-};
+// CutReferenceItem removed, unused

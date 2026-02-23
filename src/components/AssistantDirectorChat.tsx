@@ -103,7 +103,7 @@ export const AssistantDirectorChat: React.FC<AssistantDirectorChatProps> = memo(
             }
 
             // 2. Previous Cuts
-            (cut.referenceCutIds || []).forEach((refId: number) => {
+            (cut.referenceCutIds || []).forEach((refId: number | string) => {
                 const refCut = localScript.find(c => c.id === refId);
                 linkedReferences.push({
                     name: `Cut #${refId}`,

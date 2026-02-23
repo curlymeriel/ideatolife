@@ -285,25 +285,37 @@ export const Step6_Final = () => {
 
     // Initialize BGM Audio Elements
     useEffect(() => {
-        // Cleanup old
-        Object.values(bgmRefs.current).forEach(audio => {
-            audio.pause();
-            audio.src = "";
-        });
-        bgmRefs.current = {};
+        const initBGM = async () => {
+            // Cleanup old
+            Object.values(bgmRefs.current).forEach(audio => {
+                audio.pause();
+                audio.src = "";
+            });
+            bgmRefs.current = {};
 
-        if (!bgmTracks || bgmTracks.length === 0) return;
+            if (!bgmTracks || bgmTracks.length === 0) return;
 
-        console.log(`[Step6] Initializing ${bgmTracks.length} BGM tracks`);
+            console.log(`[Step6] Initializing ${bgmTracks.length} BGM tracks`);
 
-        bgmTracks.forEach(track => {
-            if (!track.url) return;
-            const audio = new Audio(track.url);
-            audio.loop = track.loop;
-            audio.volume = track.volume ?? 0.5;
-            audio.preload = 'auto'; // Preload for smooth playback
-            bgmRefs.current[track.id] = audio;
-        });
+            for (const track of bgmTracks) {
+                if (!track.url) continue;
+
+                let finalUrl = track.url;
+                if (isIdbUrl(track.url)) {
+                    finalUrl = await resolveUrl(track.url, { asBlob: true });
+                }
+
+                if (finalUrl) {
+                    const audio = new Audio(finalUrl);
+                    audio.loop = track.loop;
+                    audio.volume = track.volume ?? 0.5;
+                    audio.preload = 'auto'; // Preload for smooth playback
+                    bgmRefs.current[track.id] = audio;
+                }
+            }
+        };
+
+        initBGM();
 
         return () => {
             Object.values(bgmRefs.current).forEach(audio => {
@@ -381,14 +393,17 @@ export const Step6_Final = () => {
     const lastStateUpdateRef = React.useRef<number>(0);
 
     useEffect(() => {
-        const currentScriptJson = JSON.stringify(script.map(c => ({
-            id: c.id,
-            audioUrl: c.audioUrl,
-            sfxUrl: c.sfxUrl, // Include SFX in signature
-            finalImageUrl: c.finalImageUrl,
-            draftImageUrl: c.draftImageUrl,
-            videoUrl: c.videoUrl // Critical: Include videoUrl in dependency check
-        })));
+        const currentScriptJson = JSON.stringify({
+            script: script.map(c => ({
+                id: c.id,
+                audioUrl: c.audioUrl,
+                sfxUrl: c.sfxUrl,
+                finalImageUrl: c.finalImageUrl,
+                draftImageUrl: c.draftImageUrl,
+                videoUrl: c.videoUrl
+            })),
+            bgmTracks: bgmTracks.map(t => ({ id: t.id, url: t.url }))
+        });
 
         if (lastScriptRef.current === currentScriptJson && assetsLoaded) {
             return;
@@ -428,6 +443,21 @@ export const Step6_Final = () => {
                         blobCacheRef.current[thumbnailUrl] = resolved;
                     }
                 } catch (e) { console.error("Failed to process thumbnail:", e); }
+            }
+
+            // Resolve BGM Tracks
+            if (bgmTracks && bgmTracks.length > 0) {
+                for (const track of bgmTracks) {
+                    if (track.url) {
+                        try {
+                            const resolved = await processUrl(track.url);
+                            if (resolved) {
+                                newCache[track.url] = resolved;
+                                blobCacheRef.current[track.url] = resolved;
+                            }
+                        } catch (e) { console.error("Failed to process BGM track:", e); }
+                    }
+                }
             }
 
             // Helper to process a cut and return updates
@@ -1616,7 +1646,11 @@ export const Step6_Final = () => {
                     seriesName: seriesName || '',
                     episodeName: episodeName || '',
                     storylineTable: storylineTable || [],
-                    aspectRatio: aspectRatio || '16:9'
+                    aspectRatio: aspectRatio || '16:9',
+                    bgmTracks: bgmTracks.map(track => ({
+                        ...track,
+                        url: getOptimizedUrl(track.url)
+                    }))
                 }
             );
 

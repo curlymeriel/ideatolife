@@ -1,6 +1,7 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import type { AspectRatio } from '../store/types';
+import { resolveUrl, isIdbUrl } from './imageStorage';
 
 let ffmpegInstance: FFmpeg | null = null;
 
@@ -492,7 +493,13 @@ export async function exportWithFFmpeg(
                 const track = bgmTracks[b];
                 const trackName = `bgm_${b}.mp3`;
                 try {
-                    const bgmData = await fetchFile(track.url);
+                    let finalBgmUrl = track.url;
+                    if (isIdbUrl(track.url)) {
+                        const resolvedBgm = await resolveUrl(track.url, { asBlob: true });
+                        if (resolvedBgm) finalBgmUrl = resolvedBgm;
+                    }
+
+                    const bgmData = await fetchFile(finalBgmUrl);
                     await ffmpeg.writeFile(trackName, bgmData);
 
                     bgmInputs.push('-i', trackName);

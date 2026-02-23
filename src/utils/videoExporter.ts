@@ -18,6 +18,7 @@ export interface ProjectExportInfo {
     episodeName: string;
     storylineTable?: any[];
     aspectRatio?: string;
+    bgmTracks?: any[];
 }
 
 /**
@@ -85,6 +86,23 @@ export async function exportVideo(
         }
     }
 
+    // Download BGM Tracks
+    if (projectInfo?.bgmTracks && projectInfo.bgmTracks.length > 0) {
+        onProgress?.(92, 'Downloading BGM tracks...');
+        for (let b = 0; b < projectInfo.bgmTracks.length; b++) {
+            const track = projectInfo.bgmTracks[b];
+            if (track.url) {
+                try {
+                    const bgmResponse = await fetch(track.url);
+                    const bgmBlob = await bgmResponse.blob();
+                    zip.file(`bgm_${b}.mp3`, bgmBlob);
+                } catch (error) {
+                    console.error(`Failed to fetch BGM ${b}:`, error);
+                }
+            }
+        }
+    }
+
     // Create metadata with video support
     const metadata = {
         pj: {
@@ -110,6 +128,8 @@ export async function exportVideo(
     };
 
     zip.file('metadata.json', JSON.stringify(metadata, null, 2));
+
+    const bgmTracks = projectInfo?.bgmTracks || [];
 
     // Create FFmpeg script for automatic video creation
     const res = getResolution(projectInfo?.aspectRatio);
@@ -147,7 +167,44 @@ ${cuts.map((cut, i) => {
 
 # Then concatenate all segments
 (Get-ChildItem -Filter "*_segment.mp4" | Sort-Object Name | ForEach-Object { "file '$($_.Name)'" }) | Out-File -Encoding utf8 filelist.txt
-ffmpeg -f concat -safe 0 -i filelist.txt -c copy final_video.mp4
+ffmpeg -f concat -safe 0 -i filelist.txt -c copy project_no_bgm.mp4
+
+${bgmTracks.length > 0 ? `# Add BGM tracks
+# We calculate total duration and mix BGM tracks
+# This is a simplified mix. For complex ranges, manual editing is recommended.
+${(() => {
+                let inputs = '-i project_no_bgm.mp4 ';
+                let filter = '';
+                let mixLabels = '[0:a]';
+
+                // Calculate cut start times for BGM alignment
+                const cutStartTimes: number[] = [0];
+                let total = 0;
+                cuts.forEach(c => {
+                    total += c.duration;
+                    cutStartTimes.push(total);
+                });
+
+                bgmTracks.forEach((track, b) => {
+                    const bgmFile = `bgm_${b}.mp3`;
+                    inputs += `-i ${bgmFile} `;
+
+                    // Note: In some parts of the code startCutId is an ID, in others a number.
+                    // Here we assume it's mapped to cut index + 1 or similar.
+                    // Actually, in the store it's usually the 'id' field of the cut.
+                    // Simplified fallback for the script.
+
+                    filter += `[${b + 1}:a]volume=${track.volume || 0.5}[bgm${b}];`;
+                    mixLabels += `[bgm${b}]`;
+                });
+
+                if (bgmTracks.length > 0) {
+                    filter += `${mixLabels}amix=inputs=${bgmTracks.length + 1}:duration=first[aout]`;
+                    return `ffmpeg ${inputs} -filter_complex "${filter}" -map 0:v -map "[aout]" -c:v copy -c:a aac final_video.mp4`;
+                }
+                return '';
+            })()}
+` : 'ffmpeg -f concat -safe 0 -i filelist.txt -c copy final_video.mp4'}
 `;
 
     zip.file('CREATE_VIDEO.ps1', ffmpegScript);

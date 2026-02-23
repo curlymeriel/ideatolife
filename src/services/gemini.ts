@@ -12,7 +12,7 @@ export interface ScriptCut {
     finalImageUrl?: string;        // Final quality image from Step 4
     audioUrl?: string;             // Generated audio from Step 4
     referenceAssetIds?: string[];  // Manual asset selection
-    referenceCutIds?: number[];    // Manual previous cut selection
+    referenceCutIds?: (number | string)[];    // Manual previous cut selection
     userReferenceImage?: string; // New: User provided sketch/reference
     isConfirmed?: boolean;         // DEPRECATED: Use granular locks below
     isAudioConfirmed?: boolean;    // Locks dialogue, speaker, and audio settings

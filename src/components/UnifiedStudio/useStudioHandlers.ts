@@ -515,6 +515,7 @@ ${refContext}` : ''}
                     videoPrompt: finalVideoPrompt,
                     finalImageUrl: selectedDraft,
                     draftHistory,
+                    taggedReferences,
                     withBackground: false
                 } as any);
             }

@@ -106,27 +106,42 @@ export const Step4_PostProduction: React.FC = () => {
 
     // Initialize BGM audio elements
     useEffect(() => {
-        // Cleanup old
-        Object.values(bgmRefs.current).forEach(audio => {
-            audio.pause();
-            audio.src = '';
-        });
-        bgmRefs.current = {};
+        const initBGM = async () => {
+            // Cleanup old
+            Object.values(bgmRefs.current).forEach(audio => {
+                audio.pause();
+                audio.src = '';
+            });
+            bgmRefs.current = {};
 
-        if (!bgmTracks || bgmTracks.length === 0) return;
+            if (!bgmTracks || bgmTracks.length === 0) return;
 
-        bgmTracks.forEach(track => {
-            if (!track.url) return;
-            const audio = new Audio(track.url);
-            audio.loop = track.loop;
-            audio.volume = track.volume ?? 0.5;
-            audio.preload = 'auto';
-            bgmRefs.current[track.id] = audio;
-        });
+            for (const track of bgmTracks) {
+                if (!track.url) continue;
+
+                let finalUrl = track.url;
+                if (isIdbUrl(track.url)) {
+                    finalUrl = await resolveUrl(track.url, { asBlob: true });
+                }
+
+                if (finalUrl) {
+                    const audio = new Audio(finalUrl);
+                    audio.loop = track.loop;
+                    audio.volume = track.volume ?? 0.5;
+                    audio.preload = 'auto';
+                    bgmRefs.current[track.id] = audio;
+                }
+            }
+        };
+
+        initBGM();
 
         return () => {
             Object.values(bgmRefs.current).forEach(audio => {
                 audio.pause();
+                // If it's a blob URL, we should ideally NOT revoke it here yet if it's used elsewhere,
+                // but usually it's fine as the effect re-runs. 
+                // However, Step4 already revokes blob URLs for script audios.
                 audio.src = '';
             });
         };

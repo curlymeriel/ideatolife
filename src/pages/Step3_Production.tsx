@@ -1100,13 +1100,18 @@ export const Step3_Production: React.FC = () => {
         });
     }, [saveToStore]);
 
-    const addCutReference = useCallback((cutId: number, refCutId: number) => {
+    const addCutReference = useCallback((cutId: number | string, refCutId: number | string) => {
+        console.log(`[addCutReference] Called with cutId=${cutId} (type: ${typeof cutId}), refCutId=${refCutId} (type: ${typeof refCutId})`);
         setLocalScript(prev => {
+            console.log(`[addCutReference] Current script cut ids:`, prev.map(c => `${c.id}(type:${typeof c.id})`));
             const updated = prev.map(cut => {
-                if (Number(cut.id) === Number(cutId)) {
+                if (String(cut.id) === String(cutId)) {
                     const currentRefs = cut.referenceCutIds || [];
-                    if (!currentRefs.includes(refCutId)) {
+                    console.log(`[addCutReference] MATCH found for cut ${cut.id}. Current refs:`, currentRefs, `Adding:`, refCutId);
+                    if (!currentRefs.map(String).includes(String(refCutId))) {
                         return { ...cut, referenceCutIds: [...currentRefs, refCutId] };
+                    } else {
+                        console.log(`[addCutReference] refCutId ${refCutId} already in refs, skipping`);
                     }
                 }
                 return cut;
@@ -1118,13 +1123,13 @@ export const Step3_Production: React.FC = () => {
         setShowAssetSelector(null);
     }, [saveToStore, setShowAssetSelector]);
 
-    const removeCutReference = useCallback((cutId: number, refCutId: number) => {
+    const removeCutReference = useCallback((cutId: number | string, refCutId: number | string) => {
         setLocalScript(prev => {
             const updated = prev.map(cut => {
-                if (Number(cut.id) === Number(cutId)) {
+                if (String(cut.id) === String(cutId)) {
                     return {
                         ...cut,
-                        referenceCutIds: (cut.referenceCutIds || []).filter(id => id !== refCutId)
+                        referenceCutIds: (cut.referenceCutIds || []).filter(id => String(id) !== String(refCutId))
                     };
                 }
                 return cut;

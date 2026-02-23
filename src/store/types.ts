@@ -293,7 +293,7 @@ export interface BGMPreset {
     id: string;
     title: string;
     artist?: string;
-    category: 'Cinematic' | 'Happy' | 'Sad' | 'Action' | 'Calm' | 'Corporate' | 'Ambient' | 'Thriller' | 'Epic' | 'Quirky';
+    category: 'Cinematic' | 'Happy' | 'Sad' | 'Action' | 'Calm' | 'Corporate' | 'Ambient' | 'Thriller' | 'Epic' | 'Quirky' | 'AI Generated' | 'Uploaded';
     url: string;
     duration: number;
 }
