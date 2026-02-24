@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useWorkflowStore } from '../store/workflowStore';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, RefreshCw, Image as ImageIcon, Type, Move, ZoomIn, Download, Wand2, Sparkles, Layers, ImagePlus } from 'lucide-react';
+import { ArrowRight, RefreshCw, Image as ImageIcon, Upload, Type, Move, ZoomIn, Download, Wand2, Sparkles, Layers, ImagePlus, X } from 'lucide-react';
 import html2canvas from 'html2canvas';
 
 import { resolveUrl, isIdbUrl } from '../utils/imageStorage';
@@ -19,8 +19,6 @@ export const Step5_Thumbnail: React.FC = () => {
         saveProject,
         aspectRatio,
         script,
-        masterStyle,
-        styleAnchor,
         assetDefinitions
     } = useWorkflowStore() as any;
     const navigate = useNavigate();
@@ -272,6 +270,47 @@ export const Step5_Thumbnail: React.FC = () => {
     }, [targetResolution]); // Re-calculate when resolution changes
 
 
+    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = async () => {
+                const base64 = reader.result as string;
+                setSelectedImage(base64); // Show in UI immediately
+
+                // Save to IDB and store the reference
+                const { saveToIdb } = await import('../utils/imageStorage');
+                const idbUrl = await saveToIdb('images', `${projectId}-thumbnail-bg`, base64);
+                setThumbnail(idbUrl);
+
+                // Reset transform
+                setScale(1);
+                setPosition({ x: 0, y: 0 });
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const handleFrameUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = async () => {
+                const base64 = reader.result as string;
+                // Save to IDB immediately using standardized storage
+                const { saveToIdb } = await import('../utils/imageStorage');
+                const idbUrl = await saveToIdb('images', `${projectId}-thumbnail-frame`, base64);
+
+                setFrameImage(idbUrl);
+                // Also update settings in store immediately
+                setThumbnailSettings({
+                    ...thumbnailSettings,
+                    frameImage: idbUrl
+                });
+            };
+            reader.readAsDataURL(file);
+        }
+    };
 
     const handleSaveThumbnail = async () => {
         if (!contentRef.current) return;
@@ -581,7 +620,78 @@ export const Step5_Thumbnail: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* 1. AI Generation (AI Gen Mode) */}
+                        {/* 1. Image Source (Framing Mode) */}
+                        {mode === 'framing' && (
+                            <div className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
+                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                                    <ImageIcon size={14} /> 1. Background Source
+                                </label>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <label className="cursor-pointer flex flex-col items-center justify-center p-5 border-2 border-dashed border-white/5 hover:border-[var(--color-primary)]/50 hover:bg-[var(--color-primary)]/5 transition-all rounded-2xl group">
+                                        <Upload size={24} className="mb-2 text-gray-500 group-hover:text-[var(--color-primary)] group-hover:scale-110 transition-transform" />
+                                        <span className="text-[10px] font-bold text-gray-500 group-hover:text-white lowercase">upload file</span>
+                                        <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                                    </label>
+
+                                    <button
+                                        onClick={() => setShowCutSelector(true)}
+                                        className="flex flex-col items-center justify-center p-5 border border-white/5 bg-white/5 hover:bg-white/10 hover:border-white/10 transition-all rounded-2xl group"
+                                    >
+                                        <RefreshCw size={24} className="mb-2 text-gray-500 group-hover:text-[var(--color-primary)] group-hover:rotate-180 transition-all duration-500" />
+                                        <span className="text-[10px] font-bold text-gray-500 group-hover:text-white lowercase">from library</span>
+                                    </button>
+                                </div>
+
+                                {/* 2. Frame Overlay */}
+                                <div className="space-y-3 pt-4 border-t border-white/5">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                                            <Layers size={14} /> 2. Frame Overlay
+                                        </label>
+                                        <label className="flex items-center gap-2 cursor-pointer group">
+                                            <span className="text-[10px] text-gray-400 font-bold uppercase group-hover:text-white transition-colors">Show Frame</span>
+                                            <input
+                                                type="checkbox"
+                                                checked={showFrame}
+                                                onChange={(e) => setShowFrame(e.target.checked)}
+                                                className="w-3.5 h-3.5 rounded bg-black/40 border-white/20 checked:bg-[var(--color-primary)] checked:border-[var(--color-primary)] focus:ring-[var(--color-primary)]/50 focus:ring-offset-black transition-all cursor-pointer"
+                                            />
+                                        </label>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <label className="cursor-pointer flex flex-col items-center justify-center p-4 border-2 border-dashed border-white/5 hover:border-yellow-500/50 hover:bg-yellow-500/5 transition-all rounded-2xl group">
+                                            <Upload size={20} className="mb-2 text-gray-500 group-hover:text-yellow-400 group-hover:scale-110 transition-transform" />
+                                            <span className="text-[10px] font-bold text-gray-500 group-hover:text-white lowercase">upload frame</span>
+                                            <input type="file" accept="image/*" className="hidden" onChange={handleFrameUpload} />
+                                        </label>
+
+                                        <button
+                                            onClick={() => setFrameImage('/frame_bg.svg')}
+                                            className="flex flex-col items-center justify-center p-4 border border-white/5 bg-white/5 hover:bg-white/10 hover:border-white/10 transition-all rounded-2xl group"
+                                        >
+                                            <RefreshCw size={20} className="mb-2 text-gray-500 group-hover:text-yellow-400 group-hover:rotate-180 transition-all duration-500" />
+                                            <span className="text-[10px] font-bold text-gray-500 group-hover:text-white lowercase">reset default</span>
+                                        </button>
+                                    </div>
+                                    {resolvedFrameImage && resolvedFrameImage !== '/frame_bg.svg' && (
+                                        <div className="relative aspect-video rounded-xl overflow-hidden border border-yellow-500/30 bg-black/40">
+                                            <img src={resolvedFrameImage} alt="Current Frame" className="w-full h-full object-contain" />
+                                            <div className="absolute top-2 right-2">
+                                                <button
+                                                    onClick={() => setFrameImage('/frame_bg.svg')}
+                                                    className="p-1.5 bg-red-500/80 text-white rounded-full hover:bg-red-500 transition-colors"
+                                                >
+                                                    <X size={12} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* AI Generation (AI Gen Mode) */}
                         {mode === 'ai-gen' && (
                             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500 h-full flex flex-col items-center justify-center">
                                 <div className="text-center space-y-4">

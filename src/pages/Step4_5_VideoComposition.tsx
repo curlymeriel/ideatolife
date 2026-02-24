@@ -5,7 +5,7 @@ import {
     Video, Upload, Play, Edit3, Check, X, Loader2,
     ChevronLeft, ChevronRight, FileVideo, Image as ImageIcon, Film,
     Lock, Download, Zap, RefreshCw, FolderOpen,
-    Volume2, Sparkles, AlertCircle, Trash2, AlertTriangle
+    Volume2, Sparkles, AlertCircle, Trash2, AlertTriangle, Music
 } from 'lucide-react';
 
 import { VideoTrimmer } from '../components/Production/VideoTrimmer';
@@ -840,12 +840,11 @@ const AudioComparisonModal = React.memo<{
     const handleSourceChange = (source: 'video' | 'tts') => {
         setSelectedAudioSource(source);
 
-        // [HEALING] If the newly selected source has 0 volume, restore it to 1.0
+        // [HEALING] Only initialize if the value is missing (undefined/null)
         setVolumes(prev => {
             const currentVol = prev[source];
-            // If volume is undefined or very low, boost it to 1.0 so user can hear it
-            if (typeof currentVol !== 'number' || currentVol < 0.05) {
-                console.log(`[AudioModal] Healing volume for ${source}: ${currentVol} -> 1.0`);
+            if (currentVol === undefined || currentVol === null) {
+                console.log(`[AudioModal] Initializing volume for ${source} -> 1.0`);
                 return { ...prev, [source]: 1.0 };
             }
             return prev;
@@ -870,7 +869,7 @@ const AudioComparisonModal = React.memo<{
                 <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)] bg-[var(--color-bg)]">
                     <h3 className="text-lg font-bold text-white flex items-center gap-2">
                         <Video size={20} className="text-[var(--color-primary)]" />
-                        Cut #{previewCut.id} - Unified Media Editor
+                        Cut #{previewCut.id} - 미디어 편집기
                     </h3>
                     <button
                         onClick={onClose}
@@ -998,7 +997,7 @@ const AudioComparisonModal = React.memo<{
                     <div className="px-4 py-3 bg-[var(--color-bg)] border-b border-[var(--color-border)] w-full max-w-full">
                         <div className="flex items-center mb-2">
                             <span className="text-sm font-semibold text-white">
-                                Duration: {(previewCut.videoTrim ? previewCut.videoTrim.end - previewCut.videoTrim.start : videoDuration).toFixed(1)}s
+                                재생 시간: {(previewCut.videoTrim ? previewCut.videoTrim.end - previewCut.videoTrim.start : videoDuration).toFixed(1)}s
                             </span>
                         </div>
                         <VideoTrimmer
@@ -1024,29 +1023,89 @@ const AudioComparisonModal = React.memo<{
                             <div className="flex items-center justify-between mb-3">
                                 <div className="flex items-center gap-2 text-sm font-semibold text-white">
                                     <Volume2 size={14} className="text-[var(--color-primary)]" />
-                                    <span>Audio Source (오디오 소스)</span>
+                                    <span>오디오 소스 선택</span>
                                 </div>
                                 <div className="flex bg-black/40 p-1 rounded-lg border border-white/5">
                                     <button
                                         onClick={() => handleSourceChange('video')}
                                         className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${selectedAudioSource === 'video' ? 'bg-white/10 text-[var(--color-primary)]' : 'text-gray-500 hover:text-gray-300'}`}
                                     >
-                                        ORIGINAL VIDEO
+                                        원본 영상 소리
                                     </button>
                                     <button
                                         onClick={() => handleSourceChange('tts')}
                                         className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${selectedAudioSource === 'tts' ? 'bg-white/10 text-[var(--color-primary)]' : 'text-gray-500 hover:text-gray-300'}`}
                                     >
-                                        AI VOICE (TTS)
+                                        AI 목소리
                                     </button>
                                 </div>
                             </div>
                             <div className="text-[10px] leading-relaxed text-[var(--color-text-muted)] space-y-1">
                                 {selectedAudioSource === 'video' ? (
-                                    <p>• <b>원본 영상 오디오</b>: 비디오 파일에 포함된 소리를 사용합니다. (Default Volume: 100%)</p>
+                                    <p>• <b>원본 영상 오디오</b>: 비디오 파일에 포함된 소리를 사용합니다.</p>
                                 ) : (
-                                    <p>• <b>AI Voice (TTS)</b>: 캐릭터 목소리를 사용하고, 영상 소리는 음소거됩니다. (Default Volume: 100%)</p>
+                                    <p>• <b>AI Voice (TTS)</b>: 캐릭터 목소리를 사용하고, 영상 소리는 음소거됩니다.</p>
                                 )}
+                            </div>
+
+                            {/* Volume Slider for Active Source */}
+                            <div className="mt-4 pt-4 border-t border-white/5">
+                                <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-1.5 text-xs text-white/80">
+                                        <Volume2 size={12} className="text-[var(--color-primary)]" />
+                                        <span>{selectedAudioSource === 'video' ? '원본 영상 볼륨' : 'AI 목소리 볼륨'}</span>
+                                    </div>
+                                    <span className="text-xs font-mono text-[var(--color-primary)]">
+                                        {Math.round((volumes[selectedAudioSource] ?? 1) * 100)}%
+                                    </span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.05"
+                                    value={volumes[selectedAudioSource] ?? 1}
+                                    onChange={(e) => {
+                                        const val = parseFloat(e.target.value);
+                                        setVolumes(prev => ({ ...prev, [selectedAudioSource]: val }));
+                                    }}
+                                    className="w-full h-1.5 bg-black/40 rounded-full appearance-none cursor-pointer accent-[var(--color-primary)]"
+                                />
+                                <div className="flex justify-between mt-1 px-1">
+                                    <span className="text-[9px] text-gray-500">Mute</span>
+                                    <span className="text-[9px] text-gray-500">50%</span>
+                                    <span className="text-[9px] text-gray-500">100%</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Row B: Background Music Volume */}
+                        <div className="p-4 bg-[var(--color-bg)] rounded-xl border border-[var(--color-border)]">
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                                    <Music size={14} className="text-[var(--color-primary)]" />
+                                    <span>BGM Balance (배경 음악 밸런스)</span>
+                                </div>
+                                <span className="text-xs font-mono text-[var(--color-primary)]">
+                                    {Math.round((volumes.bgm || 0) * 100)}%
+                                </span>
+                            </div>
+                            <input
+                                type="range"
+                                min="0"
+                                max="1"
+                                step="0.05"
+                                value={volumes.bgm || 0}
+                                onChange={(e) => {
+                                    const val = parseFloat(e.target.value);
+                                    setVolumes(prev => ({ ...prev, bgm: val }));
+                                }}
+                                className="w-full h-1.5 bg-black/40 rounded-full appearance-none cursor-pointer accent-[var(--color-primary)]"
+                            />
+                            <div className="flex justify-between mt-1 px-1">
+                                <span className="text-[9px] text-gray-500">Mute</span>
+                                <span className="text-[9px] text-gray-500">50%</span>
+                                <span className="text-[9px] text-gray-500">100%</span>
                             </div>
                         </div>
 
@@ -1067,20 +1126,20 @@ const AudioComparisonModal = React.memo<{
                             <div className="flex items-center justify-between mb-3">
                                 <div className="flex items-center gap-2 text-sm font-semibold text-white">
                                     <Sparkles size={14} className="text-[var(--color-primary)]" />
-                                    <span>Duration Master (재생 시간 기준)</span>
+                                    <span>영상 재생 기준</span>
                                 </div>
                                 <div className="flex bg-black/40 p-1 rounded-lg border border-white/5">
                                     <button
                                         onClick={() => setDurationMaster('audio')}
                                         className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${durationMaster === 'audio' ? 'bg-white/10 text-[var(--color-primary)]' : 'text-gray-500 hover:text-gray-300'}`}
                                     >
-                                        AUDIO (Default)
+                                        오디오 길이에 맞춤
                                     </button>
                                     <button
                                         onClick={() => setDurationMaster('video')}
                                         className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${durationMaster === 'video' ? 'bg-white/10 text-[var(--color-primary)]' : 'text-gray-500 hover:text-gray-300'}`}
                                     >
-                                        VIDEO TRIM
+                                        편집한 영상에 맞춤
                                     </button>
                                 </div>
                             </div>

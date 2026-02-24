@@ -122,7 +122,9 @@ export async function exportVideo(
             sfxVolume: cut.sfxVolume || 0.3,
             sfxName: cut.sfxName || '',
             sfxDescription: cut.sfxDescription || '',
-            hasVideoClip: !!cut.videoUrl
+            hasVideoClip: !!cut.videoUrl,
+            audioVolumes: (cut as any).audioVolumes || { video: 1, tts: 1, bgm: 1 },
+            useVideoAudio: !!(cut as any).useVideoAudio
         })),
         totalDuration: cuts.reduce((sum, cut) => sum + cut.duration, 0)
     };

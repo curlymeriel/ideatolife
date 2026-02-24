@@ -65,10 +65,10 @@ export const AudioMixer: React.FC<AudioMixerProps> = ({ volumes = { video: 1, tt
 
             {/* BGM Volume (Cut-specific) */}
             <div className="flex items-center gap-2 flex-1 border-l border-white/10 pl-4 opacity-70 hover:opacity-100 transition-opacity">
-                <Music size={14} className="text-pink-400" />
+                <Music size={14} className="text-[var(--color-primary)]" />
                 <div className="flex-1 flex flex-col">
                     <div className="flex justify-between text-[10px] text-gray-400 mb-1">
-                        <span>BGM (Cut)</span>
+                        <span>BGM Balance</span>
                         <span>{Math.round(volumes.bgm * 100)}%</span>
                     </div>
                     <input
@@ -78,7 +78,7 @@ export const AudioMixer: React.FC<AudioMixerProps> = ({ volumes = { video: 1, tt
                         step="0.1"
                         value={volumes.bgm}
                         onChange={(e) => handleChange('bgm', parseFloat(e.target.value))}
-                        className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-pink-500"
+                        className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-[var(--color-primary)]"
                     />
                 </div>
             </div>

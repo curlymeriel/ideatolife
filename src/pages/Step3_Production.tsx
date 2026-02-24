@@ -18,7 +18,6 @@ import { getMatchedAssets } from '../utils/assetUtils';
 import { linkCutsToStoryline } from '../utils/storylineUtils';
 import { saveToIdb, generateCutImageKey, generateAudioKey, resolveUrl } from '../utils/imageStorage';
 
-const EMPTY_SCRIPT: ScriptCut[] = [];
 
 export const Step3_Production: React.FC = () => {
     // OPTIMIZED SELECTORS: Individual selectors prevent the entire component 
@@ -938,22 +937,24 @@ export const Step3_Production: React.FC = () => {
     }, [handleGenerateAudio, localScriptRef, setBatchLoading]);
 
     const handleBatchGenerate = useCallback(async () => {
-        const cutsToGenerate = localScriptRef.current.filter(c =>
-            (!c.audioUrl && c.speaker !== 'SILENT') || !c.finalImageUrl
-        );
-        if (cutsToGenerate.length === 0) return alert('이미 모든 자산이 생성되었습니다.');
+        const cutsToGenerate = localScriptRef.current.filter(c => {
+            const needsAudio = !c.audioUrl && c.speaker !== 'SILENT' && !c.isAudioConfirmed;
+            const needsImage = !c.finalImageUrl && !c.isImageConfirmed;
+            return needsAudio || needsImage;
+        });
+        if (cutsToGenerate.length === 0) return alert('이미 모든 자산이 생성되었거나 잠겨 있습니다.');
 
         if (!confirm(`${cutsToGenerate.length}개 컷의 누락된 자산을 일괄 생성하시겠습니까?`)) return;
 
         setBatchLoading(true);
         try {
             for (const cut of cutsToGenerate) {
-                // Generate Audio if missing (and not silent)
-                if (!cut.audioUrl && cut.speaker !== 'SILENT' && cut.dialogue) {
+                // Generate Audio if missing (and not silent and not locked)
+                if (!cut.audioUrl && cut.speaker !== 'SILENT' && cut.dialogue && !cut.isAudioConfirmed) {
                     await handleGenerateAudio(cut.id, cut.dialogue);
                 }
-                // Generate Image if missing
-                if (!cut.finalImageUrl) {
+                // Generate Image if missing (and not locked)
+                if (!cut.finalImageUrl && !cut.isImageConfirmed) {
                     await handleGenerateFinalImage(cut.id, cut.visualPrompt || '');
                 }
             }
@@ -1035,9 +1036,19 @@ export const Step3_Production: React.FC = () => {
 
     const toggleAudioConfirm = useCallback((cutId: number) => {
         setLocalScript(prev => {
-            const updated = prev.map(cut =>
-                Number(cut.id) === Number(cutId) ? { ...cut, isAudioConfirmed: !cut.isAudioConfirmed } : cut
-            );
+            const updated = prev.map(cut => {
+                if (Number(cut.id) === Number(cutId)) {
+                    // [MIGRATION] Handle legacy isConfirmed flag by migrating it to granular locks
+                    const currentLock = cut.isAudioConfirmed ?? !!cut.isConfirmed;
+                    return {
+                        ...cut,
+                        isAudioConfirmed: !currentLock,
+                        // If we are touching granular locks, ensure legacy flag is cleared to avoid confusion
+                        isConfirmed: false
+                    };
+                }
+                return cut;
+            });
             localScriptRef.current = updated;
             saveToStore(updated);
             return updated;
@@ -1048,8 +1059,15 @@ export const Step3_Production: React.FC = () => {
         setLocalScript(prev => {
             const updated = prev.map(cut => {
                 if (Number(cut.id) === Number(cutId)) {
-                    const newIsConfirmed = !cut.isImageConfirmed;
-                    let updates: Partial<typeof cut> = { isImageConfirmed: newIsConfirmed };
+                    // [MIGRATION] Handle legacy isConfirmed flag
+                    const currentLock = cut.isImageConfirmed ?? !!cut.isConfirmed;
+                    const newIsConfirmed = !currentLock;
+
+                    let updates: Partial<typeof cut> = {
+                        isImageConfirmed: newIsConfirmed,
+                        isConfirmed: false // Clear legacy flag
+                    };
+
                     if (newIsConfirmed && !cut.videoPrompt) {
                         const basePrompt = cut.visualPrompt || '';
                         const motionSuffix = '. Camera slowly pushes in. Subtle atmospheric motion.';
@@ -1620,8 +1638,8 @@ export const Step3_Production: React.FC = () => {
                                     key={cut.id}
                                     cut={cut}
                                     index={index}
-                                    isAudioConfirmed={!!(cut.isAudioConfirmed || cut.isConfirmed)}
-                                    isImageConfirmed={!!(cut.isImageConfirmed || cut.isConfirmed)}
+                                    isAudioConfirmed={!!cut.isAudioConfirmed}
+                                    isImageConfirmed={!!cut.isImageConfirmed}
                                     showAssetSelector={showAssetSelector === cut.id}
                                     assetDefinitions={assetDefinitions}
                                     localScript={localScript}

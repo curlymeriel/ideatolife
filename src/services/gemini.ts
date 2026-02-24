@@ -679,8 +679,8 @@ ${trendInsights.thumbnail ? (typeof trendInsights.thumbnail === 'string' ? `- Ïç
                                 userReferenceImage: lockedOriginal.userReferenceImage,
                                 isImageConfirmed: true,
                             } : {}),
-                            // Preserve general confirmation flag if it was fully locked
-                            isConfirmed: lockedOriginal.isConfirmed,
+                            // Migrate legacy isConfirmed to granular locks and clear it
+                            isConfirmed: false,
                             estimatedDuration: (isAudioLocked || isImageLocked) ? lockedOriginal.estimatedDuration : Number(cut.estimatedDuration)
                         };
                     }

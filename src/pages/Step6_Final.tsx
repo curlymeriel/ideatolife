@@ -734,6 +734,23 @@ export const Step6_Final = () => {
                             }
                         }
                     }
+
+                    // [CRITICAL FIX] Ensure per-cut volumes are ALWAYS enforced (prevents browser/external resets)
+                    if (videoEl && !videoEl.muted) {
+                        const targetVol = Math.max(0, Math.min(1, cut?.audioVolumes?.video ?? 1.0));
+                        if (Math.abs(videoEl.volume - targetVol) > 0.05) {
+                            videoEl.volume = targetVol;
+                        }
+                    }
+                }
+
+                // TTS Volume Enforcement
+                const currentPlayer = getPlayerForIndex(foundIndex);
+                if (currentPlayer && !currentPlayer.muted) {
+                    const targetVol = Math.max(0, Math.min(1, script[foundIndex]?.audioVolumes?.tts ?? 1.0));
+                    if (Math.abs(currentPlayer.volume - targetVol) > 0.05) {
+                        currentPlayer.volume = targetVol;
+                    }
                 }
 
                 animationFrameId = requestAnimationFrame(updateLoop);
@@ -827,7 +844,7 @@ export const Step6_Final = () => {
             if (shouldUseVideoAudio) {
                 // Ensure unmutes
                 videoEl.muted = false;
-                videoEl.volume = 1.0;
+                videoEl.volume = Math.max(0, Math.min(1, cut.audioVolumes?.video ?? 1.0));
             } else {
                 // Ensure muted if we're using TTS (to avoid bg noise)
                 videoEl.muted = true;
@@ -908,8 +925,8 @@ export const Step6_Final = () => {
                                 currentPlayer.currentTime = 0;
                             }
 
-                            // FORCE RESET VOLUME/MUTE to ensure audible playback
-                            currentPlayer.volume = 1;
+                            // Apply per-cut volume from Step 4.5 settings
+                            currentPlayer.volume = Math.max(0, Math.min(1, currentCut?.audioVolumes?.tts ?? 1));
                             currentPlayer.muted = false;
 
                             // console.log(`[Audio ${currentCutIndex}] Playing on ${currentCutIndex % 2 === 0 ? 'A' : 'B'} (Vol:${currentPlayer.volume})`);
@@ -1826,7 +1843,10 @@ export const Step6_Final = () => {
                                                     console.log(`[Step6:VideoA] Loaded Cut ${indexA}`);
                                                     const shouldUnmute = script[indexA].useVideoAudio && script[indexA].videoUrl;
                                                     e.currentTarget.muted = !shouldUnmute;
-                                                    if (shouldUnmute) e.currentTarget.volume = 1;
+                                                    if (shouldUnmute) {
+                                                        const vol = script[indexA].audioVolumes?.video ?? 1;
+                                                        e.currentTarget.volume = Math.max(0, Math.min(1, vol));
+                                                    }
                                                 }}
                                                 onTimeUpdate={(e) => handleVideoTimeUpdate(e, indexA)}
                                                 onWaiting={() => { isBufferingRef.current = true; console.log(`[Video ${indexA}:SlotA] Buffering...`); }}
@@ -1879,7 +1899,10 @@ export const Step6_Final = () => {
                                                     console.log(`[Step6:VideoB] Loaded Cut ${indexB}`);
                                                     const shouldUnmute = script[indexB].useVideoAudio && script[indexB].videoUrl;
                                                     e.currentTarget.muted = !shouldUnmute;
-                                                    if (shouldUnmute) e.currentTarget.volume = 1;
+                                                    if (shouldUnmute) {
+                                                        const vol = script[indexB].audioVolumes?.video ?? 1;
+                                                        e.currentTarget.volume = Math.max(0, Math.min(1, vol));
+                                                    }
                                                 }}
                                                 onTimeUpdate={(e) => handleVideoTimeUpdate(e, indexB)}
                                                 onWaiting={() => { isBufferingRef.current = true; console.log(`[Video ${indexB}:SlotB] Buffering...`); }}

@@ -323,9 +323,11 @@ export async function exportWithFFmpeg(
                     if (shouldUseVideoAudio) {
                         // Use a complex map that falls back to silence if 0:a is missing
                         // In Attempt 0, we try to use 0:a. If it fails due to missing track, Attempt 1 (Transcode) will provide a reliable track.
-                        currentFilters += `[0:a]volume=1.0[a_base];[2:a]volume=${sfxVol}[a_sfx];[a_base][a_sfx]amix=inputs=2:duration=first[aout]`;
+                        const videoVol = cut.audioVolumes?.video ?? 1.0;
+                        currentFilters += `[0:a]volume=${videoVol}[a_base];[2:a]volume=${sfxVol}[a_sfx];[a_base][a_sfx]amix=inputs=2:duration=first[aout]`;
                     } else {
-                        currentFilters += `[1:a]volume=1.0[a_base];[2:a]volume=${sfxVol}[a_sfx];[a_base][a_sfx]amix=inputs=2:duration=first[aout]`;
+                        const ttsVol = cut.audioVolumes?.tts ?? 1.0;
+                        currentFilters += `[1:a]volume=${ttsVol}[a_base];[2:a]volume=${sfxVol}[a_sfx];[a_base][a_sfx]amix=inputs=2:duration=first[aout]`;
                     }
 
                     // EXEC

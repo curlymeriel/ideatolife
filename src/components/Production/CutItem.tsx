@@ -96,7 +96,6 @@ export interface CutItemProps {
     onGenerateAudio: (id: number, dialogue: string) => void;
     onPlayAudio: (id: number) => void;
     onGenerateImage: (id: number, prompt: string) => void;
-    onUploadUserReference?: (cutId: number, file: File) => void;
     onAddAsset: (cutId: number, assetId: string) => void;
     onRemoveAsset: (cutId: number, assetId: string) => void;
     onAddReference?: (cutId: number | string, refId: number | string) => void;
@@ -132,7 +131,6 @@ export const CutItem = memo(({
     onGenerateAudio,
     onPlayAudio,
     onGenerateImage,
-    onUploadUserReference,
     onAddAsset,
     onRemoveAsset,
     onAddReference,
@@ -404,19 +402,6 @@ export const CutItem = memo(({
             .filter((asset: any) => !manualAssets.includes(asset.id));
     }, [allMatchedResults, manualAssets]);
 
-    // Unique assets for selector
-    const uniqueAssets = useMemo(() => {
-        if (!assetDefinitions) return [];
-        return Object.values(assetDefinitions).reduce((acc: any[], current: any) => {
-            const existingIndex = acc.findIndex(item => item.name.toLowerCase() === current.name.toLowerCase());
-            if (existingIndex === -1) {
-                acc.push(current);
-            } else if (!acc[existingIndex].referenceImage && current.referenceImage) {
-                acc[existingIndex] = current;
-            }
-            return acc;
-        }, []).sort((a: any, b: any) => a.name.localeCompare(b.name));
-    }, [assetDefinitions]);
 
     // Calculated values
     const hasImage = !!cut.finalImageUrl;
@@ -1144,7 +1129,8 @@ export const CutItem = memo(({
                                 referenceCutIds: referenceCutIds,
                                 userReferenceImage: userRef?.url,
                                 // [USER REQUEST] Automatically confirm/lock the image when saved from Studio
-                                isImageConfirmed: true
+                                isImageConfirmed: true,
+                                isConfirmed: false // Clear legacy flag
                             });
                         },
                     }}
