@@ -1191,18 +1191,20 @@ const AudioComparisonModal = React.memo<{
                             // [FIX] Ensure videoDuration is valid before calculating trim
                             const dur = videoDuration > 0 ? videoDuration : (previewCut.videoDuration || previewCut.estimatedDuration || 5);
 
-                            // [FIX] Use localTrim instead of stale previewCut prop
                             let finalTrim = localTrim;
 
                             if (finalTrim) {
+                                // If end is 0 (uninitialized), use the full video duration
+                                const effectiveEnd = finalTrim.end > 0 ? finalTrim.end : dur;
                                 // Clamp trim to current video duration to prevent out-of-bounds export errors
                                 const clampedStart = Math.max(0, Math.min(finalTrim.start, dur - 0.1));
-                                const clampedEnd = Math.max(clampedStart + 0.1, Math.min(finalTrim.end, dur));
+                                const clampedEnd = Math.max(clampedStart + 0.1, Math.min(effectiveEnd, dur));
                                 finalTrim = { start: clampedStart, end: clampedEnd };
                             }
 
                             const updates: Partial<ScriptCut> = {
                                 useVideoAudio: selectedAudioSource === 'video',
+                                audioConfig: { primarySource: selectedAudioSource === 'video' ? 'video' : 'tts' },
                                 audioVolumes: volumes,
                                 videoTrim: finalTrim,
                                 cutDurationMaster: durationMaster

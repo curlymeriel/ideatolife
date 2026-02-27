@@ -152,6 +152,27 @@ const getEmptyProjectState = (id: string, apiKeys: any = {}): ProjectData => ({
 
 // Debounce map to track pending saves per project
 const pendingSaves = new Map<string, NodeJS.Timeout>();
+// Map to keep the actual save function for flush-on-unload
+const pendingSaveFns = new Map<string, () => Promise<void>>();
+
+// [FIX] Flush all pending saves on page unload/hide to prevent data loss
+if (typeof window !== 'undefined') {
+    const flushPendingSaves = () => {
+        pendingSaves.forEach((timeout, _projectId) => {
+            clearTimeout(timeout);
+        });
+        pendingSaves.clear();
+        // Execute all pending save functions synchronously (best-effort)
+        pendingSaveFns.forEach((saveFn) => {
+            try { saveFn(); } catch (e) { console.error('[Store] Flush save failed:', e); }
+        });
+        pendingSaveFns.clear();
+    };
+    window.addEventListener('beforeunload', flushPendingSaves);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') flushPendingSaves();
+    });
+}
 
 // Cross-tab synchronization
 const syncChannel = new BroadcastChannel('idea-lab-sync');
@@ -187,8 +208,8 @@ const saveProjectToDisk = async (project: ProjectData) => {
         clearTimeout(pendingSaves.get(projectId));
     }
 
-    // Set new timeout (debounce)
-    const timeout = setTimeout(async () => {
+    // The actual save logic, extracted for flush-on-unload
+    const doSave = async () => {
         // Safety valve: If saving takes > 30s, force idle to prevent stuck UI
         const safetyTimer = setTimeout(() => {
             if (useWorkflowStore.getState().saveStatus === 'saving') {
@@ -201,9 +222,9 @@ const saveProjectToDisk = async (project: ProjectData) => {
         try {
             useWorkflowStore.getState().setSaveStatus('saving'); // Start saving
 
-            // OPTIMIZATION: We no longer do JIT migration here because it's O(N) and blocks the main thread.
-            // Migration is now handled strictly in loadProjectFromDisk (once) and 
-            // setScript/updateAsset (incrementally when data enters the store).
+            // DEBUG: Track dialogue newlines before save
+            const newlineCount = project.script?.filter(c => c.dialogue?.includes('\n')).length || 0;
+            console.log(`[Store] Saving project ${projectId} to disk. Newlines detected in ${newlineCount} cuts.`);
 
             await idbSet(getProjectKey(projectId), project);
             console.log(`[Store] Saved project ${projectId} to disk (Throttle: 1000ms).`);
@@ -212,7 +233,6 @@ const saveProjectToDisk = async (project: ProjectData) => {
             syncChannel.postMessage({ type: 'PROJECT_SAVED', projectId });
 
             // 🔄 Auto Cloud Sync: If user is logged in, sync to Firebase
-            // TODO: In the future, only sync if 'dirty' to further reduce overhead
             if (isFirebaseConfigured() && auth?.currentUser) {
                 try {
                     console.log(`[Store] Auto-syncing to cloud for user: ${auth.currentUser.email}`);
@@ -231,6 +251,7 @@ const saveProjectToDisk = async (project: ProjectData) => {
             }, 2000);
 
             pendingSaves.delete(projectId);
+            pendingSaveFns.delete(projectId);
         } catch (e) {
             console.error(`[Store] Failed to save project ${projectId} to disk:`, e);
             useWorkflowStore.getState().setSaveStatus('error');
@@ -238,6 +259,14 @@ const saveProjectToDisk = async (project: ProjectData) => {
         } finally {
             clearTimeout(safetyTimer);
         }
+    };
+
+    // Register save fn for flush-on-unload
+    pendingSaveFns.set(projectId, doSave);
+
+    // Set new timeout (debounce)
+    const timeout = setTimeout(async () => {
+        await doSave();
     }, 1000); // 1 second coalescing window
 
     pendingSaves.set(projectId, timeout);
@@ -967,37 +996,117 @@ export const useWorkflowStore = create<WorkflowStore>()(
                 const state = get() as any;
                 const currentId = state.id;
 
-                // [PROACTIVE OPTIMIZATION] Scan for large Base64 strings and move to IDB before they hit the store
-                const sanitizedScript = [...script];
-                const { saveToIdb, generateAudioKey, generateCutImageKey } = await import('../utils/imageStorage');
-
-                for (let i = 0; i < sanitizedScript.length; i++) {
-                    const cut = sanitizedScript[i];
-                    if (cut.audioUrl?.startsWith('data:') && cut.audioUrl.length > 50000) {
-                        try {
-                            const idbUrl = await saveToIdb('audio', generateAudioKey(currentId, cut.id), cut.audioUrl);
-                            sanitizedScript[i] = { ...sanitizedScript[i], audioUrl: idbUrl };
-                        } catch (e) { console.error("[Sanitizer] Audio failed", e); }
-                    }
-                    if (cut.finalImageUrl?.startsWith('data:') && cut.finalImageUrl.length > 50000) {
-                        try {
-                            const idbUrl = await saveToIdb('images', generateCutImageKey(currentId, cut.id, 'final' as any), cut.finalImageUrl);
-                            sanitizedScript[i] = { ...sanitizedScript[i], finalImageUrl: idbUrl };
-                        } catch (e) { console.error("[Sanitizer] Final image failed", e); }
-                    }
+                // [DEBUG] Track dialogue line breaks through setScript
+                const dialoguesWithBreaks = script.filter((c: any) => c.dialogue?.includes('\n'));
+                if (dialoguesWithBreaks.length > 0) {
+                    console.log(`[setScript DEBUG] ✅ Phase 1: Input has ${dialoguesWithBreaks.length} cuts with \\n in dialogue`);
+                } else {
+                    console.log(`[setScript DEBUG] ⚠️ Phase 1: Input has 0 cuts with \\n`);
                 }
 
-                // Update nextCutId based on max ID in the new script to prevent collisions
-                const maxId = sanitizedScript.reduce((max, cut) => Math.max(max, cut.id || 0), 0);
+                // [PHASE 1] Immediate sync update: set script to store FIRST, before any async work.
+                // This ensures dialogue edits (including line breaks) are persisted immediately
+                // and won't be overwritten by stale async completions from batch generation.
+                const maxId = script.reduce((max, cut) => Math.max(max, cut.id || 0), 0);
+                const linkedScript = linkCutsToStoryline(script, state.storylineTable);
 
-                // Automatically link cuts to storyline
-                const linkedScript = linkCutsToStoryline(sanitizedScript, state.storylineTable);
+                // [CRITICAL FIX] Preserve dialogue line breaks from current state
+                // If the current store has dialogue with newlines but incoming script doesn't,
+                // keep the current dialogue to prevent line break loss.
+                const currentScript = state.script || [];
+                const currentDialogueMap = new Map<number, string>();
+                currentScript.forEach((c: any) => {
+                    if (c.dialogue?.includes('\n')) {
+                        currentDialogueMap.set(c.id, c.dialogue);
+                    }
+                });
+
+                const protectedScript = currentDialogueMap.size > 0
+                    ? linkedScript.map((cut: any) => {
+                        const preservedDialogue = currentDialogueMap.get(cut.id);
+                        if (preservedDialogue && !cut.dialogue?.includes('\n')) {
+                            console.log(`[setScript] 🛡️ Preserving dialogue newlines for cut ${cut.id}`);
+                            return { ...cut, dialogue: preservedDialogue };
+                        }
+                        return cut;
+                    })
+                    : linkedScript;
+
                 set({
-                    script: linkedScript,
+                    script: protectedScript,
                     nextCutId: Math.max(state.nextCutId || 1, maxId + 1),
                     isDirty: true
                 });
                 get().saveProject();
+
+                // [PHASE 2] Async sanitization: scan for large Base64 strings and move to IDB.
+                // This runs AFTER the script is already saved, so it cannot lose user edits.
+                const { saveToIdb, generateAudioKey, generateCutImageKey } = await import('../utils/imageStorage');
+                const patches: Record<number, Partial<ScriptCut>> = {};
+
+                for (const cut of script) {
+                    const updates: Partial<ScriptCut> = {};
+                    if (cut.audioUrl?.startsWith('data:') && cut.audioUrl.length > 50000) {
+                        try {
+                            updates.audioUrl = await saveToIdb('audio', generateAudioKey(currentId, cut.id), cut.audioUrl);
+                        } catch (e) { console.error("[Sanitizer] Audio failed", e); }
+                    }
+                    if (cut.finalImageUrl?.startsWith('data:') && cut.finalImageUrl.length > 50000) {
+                        try {
+                            updates.finalImageUrl = await saveToIdb('images', generateCutImageKey(currentId, cut.id, 'final' as any), cut.finalImageUrl);
+                        } catch (e) { console.error("[Sanitizer] Final image failed", e); }
+                    }
+                    if (Object.keys(updates).length > 0) {
+                        patches[cut.id] = updates;
+                    }
+                }
+
+                // [PHASE 3] Patch ONLY the sanitized URLs into the LATEST state.
+                // Uses set() updater function to read the freshest state, preventing
+                // any race condition from overwriting dialogue or other user edits.
+                if (Object.keys(patches).length > 0) {
+                    console.log(`[setScript DEBUG] 🩹 Patching ${Object.keys(patches).length} cuts with sanitized URLs...`);
+                    set((latestState: any) => {
+                        const latestScript = Array.isArray(latestState.script) ? latestState.script : [];
+
+                        // [DEBUG] Check if latestState already lost newlines
+                        const latestBreaks = latestScript.filter((c: any) => c.dialogue?.includes('\n')).length;
+                        console.log(`[setScript DEBUG] 🔍 Current state in Phase 3 has ${latestBreaks} cuts with \\n`);
+
+                        const patchedScript = latestScript.map((c: any) => {
+                            const patch = patches[c.id];
+                            if (!patch) return c;
+
+                            const result = { ...c };
+                            let changed = false;
+
+                            // Audio URL Patch: Only if current field is still volatile Base64
+                            if (patch.audioUrl && (c.audioUrl?.startsWith('data:') || !c.audioUrl)) {
+                                result.audioUrl = patch.audioUrl;
+                                changed = true;
+                            }
+
+                            // Image URL Patch: Only if current field is still volatile Base64
+                            if (patch.finalImageUrl && (c.finalImageUrl?.startsWith('data:') || !c.finalImageUrl)) {
+                                result.finalImageUrl = patch.finalImageUrl;
+                                changed = true;
+                            }
+
+                            return changed ? result : c;
+                        });
+                        const patchedBreaks = patchedScript.filter((c: any) => c.dialogue?.includes('\n')).length;
+                        if (patchedBreaks < latestBreaks) {
+                            console.error(`[setScript DEBUG] 🚨 CRITICAL: Phase 3 mapping is flattening dialogue! ${latestBreaks} -> ${patchedBreaks}`);
+                        } else if (patchedBreaks > 0) {
+                            console.log(`[setScript DEBUG] ✅ Phase 3 map preserved ${patchedBreaks} newlines.`);
+                        }
+
+                        return { script: patchedScript, isDirty: true };
+                    });
+                    get().saveProject();
+                } else {
+                    console.log(`[setScript DEBUG] ℹ️ Phase 3 skipped (no patches).`);
+                }
             },
             setTtsModel: (model: TtsModel) => {
                 set({ ttsModel: model, isDirty: true });
@@ -1157,10 +1266,19 @@ export const useWorkflowStore = create<WorkflowStore>()(
                     }
                 }
 
+                // [CRITICAL] Memory-only state often contains the freshest dialogue edits.
+                // We must check if the memory state has newlines BEFORE we do any merging.
+                let mergedScript = state.script;
+                const memoryBreaks = (mergedScript || []).filter((c: any) => c.dialogue?.includes('\n'));
+                if (memoryBreaks.length > 0) {
+                    console.log(`[saveProject DEBUG] 🧠 Memory state has ${memoryBreaks.length} cuts with \\n before merge`);
+                } else {
+                    console.log(`[saveProject DEBUG] 🧠 Memory state is FLAT (0 newlines) before merge`);
+                }
+
                 // Merge script: preserve existing URLs and confirmed flags if current state has null/false
                 // ONLY if we actually loaded existingData
                 // IMPORTANT: Match by cut.id, NOT by array index, to prevent data corruption after cut deletion
-                let mergedScript = state.script;
                 if (existingData?.script && Array.isArray(state.script)) {
                     // Build a lookup map from existing disk data by cut.id for O(1) access
                     const existingCutMap = new Map<number, any>();
@@ -1189,6 +1307,9 @@ export const useWorkflowStore = create<WorkflowStore>()(
                             isImageConfirmed: cut.isImageConfirmed ?? existingCut.isImageConfirmed,
                             isAudioConfirmed: cut.isAudioConfirmed ?? existingCut.isAudioConfirmed,
                             isVideoConfirmed: cut.isVideoConfirmed ?? existingCut.isVideoConfirmed,
+                            // [CRITICAL FIX] Preserve manually edited dialogue (including line breaks)
+                            // If memory state missing dialogue but disk has it, restore it.
+                            dialogue: cut.dialogue ?? existingCut.dialogue,
                         };
                     });
                 }
@@ -1247,6 +1368,14 @@ export const useWorkflowStore = create<WorkflowStore>()(
                     currentStep: state.currentStep,
                     bgmTracks: state.bgmTracks || [],
                 };
+
+                // [DEBUG] Check dialogue line breaks before saving to disk
+                const dialoguesWithBreaks = (projectData.script || []).filter((c: any) => c.dialogue?.includes('\n'));
+                if (dialoguesWithBreaks.length > 0) {
+                    console.log(`[saveProject DEBUG] ✅ Passing ${dialoguesWithBreaks.length} cuts with \\n to saveProjectToDisk`);
+                } else {
+                    console.log(`[saveProject DEBUG] ⚠️ No cuts with \\n found in projectData.script before saveProjectToDisk`);
+                }
 
                 await saveProjectToDisk(projectData);
 
@@ -2353,9 +2482,25 @@ export const useWorkflowStore = create<WorkflowStore>()(
                                     return;
                                 }
 
+                                // [CRITICAL FIX] Protect in-memory dialogue with newlines
+                                // from being overwritten by stale disk data
+                                const currentScript = useWorkflowStore.getState().script;
+                                let scriptToSet = fullData.script || [];
+                                if (currentScript && Array.isArray(currentScript) && currentScript.length > 0) {
+                                    const memoryMap = new Map(currentScript.map((c: any) => [c.id, c]));
+                                    scriptToSet = scriptToSet.map((diskCut: any) => {
+                                        const memoryCut = memoryMap.get(diskCut.id);
+                                        if (memoryCut?.dialogue?.includes('\n') && !diskCut.dialogue?.includes('\n')) {
+                                            console.log(`[Store] 🛡️ onRehydrate: Preserving newlines in dialogue for cut ${diskCut.id}`);
+                                            return { ...diskCut, dialogue: memoryCut.dialogue };
+                                        }
+                                        return diskCut;
+                                    });
+                                }
+
                                 // Only update script and asset data (preserve UI state)
                                 useWorkflowStore.setState({
-                                    script: fullData.script || [],
+                                    script: scriptToSet,
                                     assetDefinitions: fullData.assetDefinitions || {},
                                     chatHistory: fullData.chatHistory || [],
                                     productionChatHistory: fullData.productionChatHistory || [],

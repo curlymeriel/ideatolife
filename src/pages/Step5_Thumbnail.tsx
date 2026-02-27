@@ -504,7 +504,7 @@ export const Step5_Thumbnail: React.FC = () => {
                             className="relative z-0"
                             style={{
                                 backgroundColor: textBgShape !== 'none' ? bgRgba : 'transparent',
-                                padding: textBgShape !== 'none' ? (textBgShape === 'full-width' ? '32px 100vw' : '32px 48px') : '0',
+                                padding: textBgShape !== 'none' ? (textBgShape === 'full-width' ? `${Math.round(titleSize * 0.7)}px 100vw ${Math.round(titleSize * 1.1)}px` : `${Math.round(titleSize * 0.7)}px ${Math.round(titleSize * 0.8)}px ${Math.round(titleSize * 1.1)}px`) : '0',
                                 marginLeft: textBgShape === 'full-width' ? '-100vw' : '0',
                                 marginRight: textBgShape === 'full-width' ? '-100vw' : '0',
                                 borderRadius: textBgShape === 'rounded' ? '32px' : '0',
@@ -519,7 +519,7 @@ export const Step5_Thumbnail: React.FC = () => {
                                 style={{
                                     fontFamily: `${titleFont}, Arial, sans-serif`,
                                     fontSize: `${titleSize}px`,
-                                    lineHeight: 1.1,
+                                    lineHeight: 1.5,
                                     color: textColor,
                                     textShadow: '0 4px 20px rgba(0,0,0,0.7)',
                                     fontWeight: 'bold',

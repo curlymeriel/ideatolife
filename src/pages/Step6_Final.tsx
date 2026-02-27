@@ -227,8 +227,8 @@ export const Step6_Final = () => {
         if (cut.videoTrim) {
             const { start = 0, end = 0 } = cut.videoTrim;
             const trimDuration = end - start;
-            // Fallback: If trim end is 0 or less than start, use reported videoDuration if available
-            if (trimDuration > 0) {
+            // Fallback: If trim is suspiciously small (<= 0.2s), it was likely corrupted. Rely on videoDuration.
+            if (trimDuration > 0.2) {
                 videoDur = trimDuration;
             } else if (cut.videoDuration && cut.videoDuration > 0) {
                 videoDur = cut.videoDuration;
@@ -1378,8 +1378,21 @@ export const Step6_Final = () => {
     const prepareRecordingCuts = (includeVideo: boolean): RecordingCut[] => {
         console.log(`[Step6:Prepare] Preparing cuts with includeVideo=${includeVideo}. Script length: ${script.length}`);
 
+        // [FIX] FFmpeg-safe URL resolver: Unlike getOptimizedUrl which returns undefined for
+        // unresolved idb:// URLs (correct for UI rendering), FFmpeg's fetchAssetResilient
+        // can resolve idb:// URLs directly. So we keep the original URL as fallback.
+        const getExportUrl = (originalUrl?: string): string | undefined => {
+            if (!originalUrl) return undefined;
+            const optimized = getOptimizedUrl(originalUrl);
+            if (optimized) return optimized;
+            // getOptimizedUrl returned undefined → the URL is likely an unresolved idb://
+            // Pass it through so FFmpeg's fetchAssetResilient can handle it
+            console.log(`[Step6:Prepare] getExportUrl fallback: passing original URL through: ${originalUrl.substring(0, 60)}`);
+            return originalUrl;
+        };
+
         const mappedCuts: RecordingCut[] = script.map((cut, index) => {
-            const imgUrl = getOptimizedUrl(cut.finalImageUrl || cut.draftImageUrl);
+            const imgUrl = getExportUrl(cut.finalImageUrl || cut.draftImageUrl);
             if (!imgUrl) {
                 console.warn(`[Step6:Prepare] Cut ${index} has no resolved image URL!`, {
                     final: cut.finalImageUrl,
@@ -1388,37 +1401,37 @@ export const Step6_Final = () => {
                 });
             }
 
-            // [DIAGNOSTIC] Detailed video URL logging for debugging black screen issues
-            const resolvedVideoUrl = includeVideo ? getOptimizedUrl(cut.videoUrl) : undefined;
+            // [FIX] Use getExportUrl instead of getOptimizedUrl for video
+            const resolvedVideoUrl = includeVideo ? getExportUrl(cut.videoUrl) : undefined;
             if (includeVideo && cut.videoUrl) {
-                const cachedUrl = blobCacheRef.current[cut.videoUrl] || blobCache[cut.videoUrl];
-                console.log(`[Step6:Prepare] Cut ${index} VIDEO DIAGNOSTIC:`, {
+                console.log(`[Step6:Prepare] Cut ${index} VIDEO:`, {
                     originalUrl: cut.videoUrl?.substring(0, 80),
-                    cachedInBlobCache: !!cachedUrl,
-                    cachedUrlPrefix: cachedUrl?.substring(0, 30),
                     resolvedUrl: resolvedVideoUrl?.substring(0, 50),
                     isResolved: !!resolvedVideoUrl,
-                    videoTrim: cut.videoTrim,
-                    useVideoAudio: cut.useVideoAudio,
-                    videoSource: (cut as any).videoSource,
+                    isFallbackIdb: resolvedVideoUrl?.startsWith('idb://'),
                 });
-                if (!resolvedVideoUrl) {
-                    console.error(`[Step6:Prepare] ❌ Cut ${index} VIDEO URL LOST! Original: "${cut.videoUrl?.substring(0, 80)}". This cut will render as IMAGE-ONLY in export!`);
-                }
             }
 
             return {
                 imageUrl: imgUrl || '',
                 videoUrl: resolvedVideoUrl,
                 videoTrim: cut.videoTrim,
-                audioUrl: getOptimizedUrl(cut.audioUrl),
-                sfxUrl: getOptimizedUrl(cut.sfxUrl),
+                audioUrl: getExportUrl(cut.audioUrl),
+                sfxUrl: getExportUrl(cut.sfxUrl),
                 sfxVolume: cut.sfxVolume,
                 useVideoAudio: cut.useVideoAudio,
+                audioVolumes: cut.audioVolumes,
+                audioConfig: cut.audioConfig,
+                cutDurationMaster: cut.cutDurationMaster,
                 duration: getCutDuration(index),
                 dialogue: cut.dialogue,
                 speaker: cut.speaker,
-                id: cut.id // Critical for BGM sync
+                id: cut.id, // Critical for BGM sync
+                // [FIX] Store original URLs for resilient FFmpeg fetching fallback
+                _original_image: cut.finalImageUrl || cut.draftImageUrl,
+                _original_video: cut.videoUrl,
+                _original_audio: cut.audioUrl,
+                _original_sfx: cut.sfxUrl
             };
         });
 
@@ -1776,13 +1789,13 @@ export const Step6_Final = () => {
     const getSubtitleClasses = () => {
         switch (aspectRatio) {
             case '9:16': // Shorts / Reels (Occupies ~31% of 16:9 width)
-                return { container: "bottom-32", inner: "max-w-[28%] px-4", text: "text-base md:text-lg" };
+                return { container: "bottom-32", inner: "max-w-[28%] px-2", text: "text-base md:text-lg" };
             case '1:1': // Square (Occupies ~56% of 16:9 width)
-                return { container: "bottom-24", inner: "max-w-[50%] px-6", text: "text-xl md:text-2xl" };
+                return { container: "bottom-24", inner: "max-w-[50%] px-3", text: "text-xl md:text-2xl" };
             case '4:5': // Vertical Feed (Occupies ~45% of 16:9 width)
-                return { container: "bottom-28", inner: "max-w-[40%] px-4", text: "text-lg md:text-xl" };
+                return { container: "bottom-28", inner: "max-w-[40%] px-2", text: "text-lg md:text-xl" };
             default: // 16:9 (Landscape)
-                return { container: "bottom-16", inner: "max-w-4xl px-12", text: "text-xl md:text-2xl" };
+                return { container: "bottom-16", inner: "max-w-4xl px-4", text: "text-xl md:text-2xl" };
         }
     };
 
@@ -2008,8 +2021,8 @@ export const Step6_Final = () => {
             {
                 !showThumbnail && showSubtitles && script[currentCutIndex] && (
                     <div className={`absolute left-0 w-full flex justify-center z-40 pointer-events-none transition-opacity duration-300 ${getSubtitleClasses().container}`}>
-                        <div className={`bg-black/50 backdrop-blur-sm py-3 md:py-4 rounded-xl text-center ${getSubtitleClasses().inner}`}>
-                            <p className={`${getSubtitleClasses().text} text-white font-medium drop-shadow-md whitespace-pre-wrap leading-relaxed`}>
+                        <div className={`bg-black/40 backdrop-blur-md py-4 md:py-5 rounded-2xl text-center border border-white/10 ${getSubtitleClasses().inner}`}>
+                            <p className={`${getSubtitleClasses().text} text-white font-bold drop-shadow-lg whitespace-pre-wrap leading-relaxed px-2`}>
                                 {script[currentCutIndex].dialogue}
                             </p>
                         </div>

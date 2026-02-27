@@ -11,6 +11,7 @@ export interface RecordingCut {
     sfxUrl?: string;      // Sound effect URL
     sfxVolume?: number;   // SFX volume (0.0 to 1.0, default 0.3)
     useVideoAudio?: boolean; // If true, use video's embedded audio instead of TTS
+    audioVolumes?: { video?: number; tts?: number; bgm?: number }; // Per-cut volume settings
     duration: number; // seconds
     dialogue?: string;
     speaker?: string;
@@ -251,9 +252,9 @@ export async function recordCanvasVideo(
             if (showSubtitles && cut.dialogue) {
                 // ... (Subtitle logic preserved) ...
                 const isVertical = aspectRatio === '9:16';
-                const fontSize = isVertical ? 25 : 36;
-                const lineHeight = isVertical ? 34 : 48;
-                ctx.font = `bold ${fontSize}px sans-serif`;
+                const fontSize = isVertical ? 48 : 64; // Match premium scale
+                const lineHeight = fontSize * 1.35;
+                ctx.font = `700 ${fontSize}px "Inter", "Noto Sans KR", sans-serif`;
 
                 const paragraphs = cut.dialogue.split('\n');
                 const lines: string[] = [];
@@ -275,22 +276,22 @@ export async function recordCanvasVideo(
                 });
 
                 if (lines.length > 0) {
-                    const paddingX = 40;
-                    const paddingY = 20;
+                    const paddingX = fontSize * 0.4; // [FIX] Tighter horizontal padding
+                    const paddingY = fontSize * 0.4;
                     const totalTextHeight = lines.length * lineHeight;
                     let maxLineWidth = 0;
                     lines.forEach(l => maxLineWidth = Math.max(maxLineWidth, ctx.measureText(l).width));
 
-                    const boxWidth = maxLineWidth + (paddingX * 2);
+                    const boxWidth = Math.min(width * 0.94, maxLineWidth + (paddingX * 2));
                     const boxHeight = totalTextHeight + (paddingY * 2);
-                    const bottomMargin = 80;
+                    const bottomMargin = isVertical ? 300 : 180; // Match Step 6 positioning
                     const startY = height - bottomMargin - boxHeight;
                     const centerX = width / 2;
 
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'; // [FIX] Higher transparency
                     if (ctx.roundRect) {
                         ctx.beginPath();
-                        ctx.roundRect(centerX - boxWidth / 2, startY, boxWidth, boxHeight, 16);
+                        ctx.roundRect(centerX - boxWidth / 2, startY, boxWidth, boxHeight, 20); // Premium rounding
                         ctx.fill();
                     } else {
                         ctx.fillRect(centerX - boxWidth / 2, startY, boxWidth, boxHeight);

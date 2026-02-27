@@ -53,6 +53,11 @@ export interface ScriptCut {
     };
     cutDurationMaster?: 'audio' | 'video'; // 'audio' (default) = audio length wins, video loops/freezes. 'video' = video trim length wins, audio cuts off.
 
+    // [NEW] Default Audio source
+    audioConfig?: {
+        primarySource?: 'tts' | 'video';
+    };
+
     // [NEW] Advanced Audio Mixing (0.0 - 1.0)
     audioVolumes?: {
         video: number; // Original video sound

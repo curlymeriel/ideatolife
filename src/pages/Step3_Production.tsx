@@ -78,17 +78,69 @@ export const Step3_Production: React.FC = () => {
         setLocalScript(prev => {
             const newScript = script || [];
             if (JSON.stringify(prev) === JSON.stringify(newScript)) return prev;
+
+            // [DEBUG] Track dialogue line breaks during sync
+            const prevBreaks = prev.filter(c => c.dialogue?.includes('\n')).length;
+            const newBreaks = newScript.filter(c => c.dialogue?.includes('\n')).length;
+
+            if (prevBreaks !== newBreaks) {
+                console.log(`[Step3 Sync DEBUG] ⚠️ Dialogue \\n count changed: ${prevBreaks} → ${newBreaks}`);
+            } else if (newBreaks > 0) {
+                console.log(`[Step3 Sync DEBUG] ✅ Syncing script with ${newBreaks} cuts containing \\n`);
+            }
+
+            // [CRITICAL FIX] Per-cut dialogue preservation: merge new data but keep
+            // local dialogue if it has more newlines than the incoming version.
+            // This prevents ALL scenarios where stale/flat data overwrites user's manual line breaks.
+            if (prev.length > 0) {
+                const prevMap = new Map(prev.map(c => [c.id, c]));
+                let anyPreserved = false;
+                const merged = newScript.map(newCut => {
+                    const prevCut = prevMap.get(newCut.id);
+                    if (prevCut) {
+                        const prevNewlines = (prevCut.dialogue?.match(/\n/g) || []).length;
+                        const newNewlines = ((newCut.dialogue || '').match(/\n/g) || []).length;
+                        if (prevNewlines > 0 && newNewlines < prevNewlines) {
+                            console.warn(`[Step3 Sync] 🛡️ Preserving dialogue newlines for cut ${newCut.id}. Local: ${prevNewlines}, Store: ${newNewlines}`);
+                            anyPreserved = true;
+                            return { ...newCut, dialogue: prevCut.dialogue };
+                        }
+                    }
+                    return newCut;
+                });
+                if (anyPreserved) return merged;
+            }
+
             return newScript;
         });
     }, [projectId, script]);
 
     // --- PERSISTENCE HELPER ---
     const saveToStore = useCallback((currentScript: ScriptCut[]) => {
+        const breaks = currentScript.filter(c => c.dialogue?.includes('\n')).length;
+        console.log(`[Step3 saveToStore] 📤 Saving ${currentScript.length} cuts (${breaks} with \\n) to store.`);
         setScript(currentScript);
     }, [setScript]);
 
     const handleSave = useCallback(() => {
         saveToStore(localScriptRef.current);
+    }, [saveToStore]);
+
+    // [FIX] Flush local script to store on page unload/visibility-hidden
+    // This ensures dialogue edits (including line breaks) are saved before navigation
+    useEffect(() => {
+        const flush = () => {
+            saveToStore(localScriptRef.current);
+        };
+        const handleVisChange = () => {
+            if (document.visibilityState === 'hidden') flush();
+        };
+        window.addEventListener('beforeunload', flush);
+        document.addEventListener('visibilitychange', handleVisChange);
+        return () => {
+            window.removeEventListener('beforeunload', flush);
+            document.removeEventListener('visibilitychange', handleVisChange);
+        };
     }, [saveToStore]);
 
     // --- DERIVED DATA ---

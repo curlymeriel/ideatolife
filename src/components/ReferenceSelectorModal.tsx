@@ -38,6 +38,7 @@ interface ReferenceSelectorModalProps {
     projectAssets: Array<{ id: string; name: string; url: string; type: string }>;
     pastCuts: Array<{ id: string; url: string; index: number }>;
     drafts: string[];
+    onUpload?: (file: File) => void;
     defaultTab?: 'computer' | 'assets' | 'cuts' | 'drafts';
     title?: string;
 }
@@ -49,6 +50,7 @@ export const ReferenceSelectorModal: React.FC<ReferenceSelectorModalProps> = ({
     projectAssets,
     pastCuts,
     drafts,
+    onUpload,
     defaultTab = 'computer',
     title = 'Select Reference Image'
 }) => {
@@ -66,6 +68,12 @@ export const ReferenceSelectorModal: React.FC<ReferenceSelectorModalProps> = ({
     const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
+
+        if (onUpload) {
+            onUpload(file);
+            return;
+        }
+
         const reader = new FileReader();
         reader.onloadend = () => {
             onSelect({ url: reader.result as string, name: 'Upload', type: 'style' });

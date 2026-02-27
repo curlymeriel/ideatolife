@@ -126,7 +126,7 @@ export const createProjectSlice: StateCreator<ProjectSlice> = (set, get) => ({
     })),
 
     setScript: async (script) => {
-        // [PHASE 1] Initial Sync Update: reflective of the UI's intent immediately
+        // [PHASE 1] Initial Sync Update
         const maxId = script.reduce((max, cut) => Math.max(max, cut.id || 0), 0);
         set((state) => ({
             script: script,
@@ -134,18 +134,11 @@ export const createProjectSlice: StateCreator<ProjectSlice> = (set, get) => ({
             isDirty: true
         }));
 
-        // CRITICAL FIX: Save to disk IMMEDIATELY after Phase 1, BEFORE any async work.
-        // This guarantees the script is persisted even if:
-        // 1. The async sanitization in Phase 2 takes time
-        // 2. Another saveProject() call resets isDirty during that time
-        // 3. The caller doesn't await this async function
         (get() as any).saveProject?.();
 
-        // [PHASE 2] Async Sanitization: scan for large data and move to IDB
+        // [PHASE 2] Async Sanitization
         const currentId = (get() as any).id;
         const { saveToIdb, generateAudioKey, generateCutImageKey } = await import('../utils/imageStorage');
-
-        // Capture the version of the script we are processing
         const originalScriptForSanitization = [...script];
         const patches: Record<number, Partial<ScriptCut>> = {};
 
@@ -174,36 +167,26 @@ export const createProjectSlice: StateCreator<ProjectSlice> = (set, get) => ({
             }
         }
 
-        // [PHASE 3] Final Patch Update: Merge back ONLY the sanitized URLs into the LATEST state.
+        // [PHASE 3] Final Patch Update
         if (Object.keys(patches).length > 0) {
-            set((state) => {
-                const latestScript = Array.isArray(state.script) ? state.script : [];
-                const patchedScript = latestScript.map(c => {
-                    const patch = patches[c.id];
-                    if (!patch) return c;
-
-                    const result = { ...c };
-                    let changed = false;
-
-                    if (patch.audioUrl && c.audioUrl?.startsWith('data:')) {
-                        result.audioUrl = patch.audioUrl;
-                        changed = true;
-                    }
-                    if (patch.finalImageUrl && c.finalImageUrl?.startsWith('data:')) {
-                        result.finalImageUrl = patch.finalImageUrl;
-                        changed = true;
-                    }
-                    if (patch.draftImageUrl && c.draftImageUrl?.startsWith('data:')) {
-                        result.draftImageUrl = patch.draftImageUrl;
-                        changed = true;
-                    }
-
-                    return changed ? result : c;
-                });
-                return { script: patchedScript, isDirty: true };
+            const currentState = get().script;
+            const finalScript = currentState.map(cut => {
+                const patch = patches[cut.id];
+                if (patch) {
+                    return {
+                        ...cut,
+                        ...patch,
+                        dialogue: cut.dialogue, // LIVE dialogue takes precedence
+                        isAudioConfirmed: cut.isAudioConfirmed,
+                        isImageConfirmed: cut.isImageConfirmed
+                    };
+                }
+                return cut;
             });
-            // Save again after patching Base64→IDB URLs
+
+            set({ script: finalScript, isDirty: true });
             (get() as any).saveProject?.();
+            console.log("[Store] Script patched while preserving live user edits.");
         }
     },
 
@@ -214,14 +197,12 @@ export const createProjectSlice: StateCreator<ProjectSlice> = (set, get) => ({
     setAssets: (assets) => set({ assets, isDirty: true }),
 
     updateAsset: async (cutId, asset) => {
-        // PROACTIVE OPTIMIZATION: If adding a large image/audio to a cut asset, move to IDB first
         let sanitizedAsset = { ...asset };
         const currentId = (get() as any).id;
         let wasModified = false;
 
         const { saveToIdb, generateAudioKey, generateCutImageKey } = await import('../utils/imageStorage');
 
-        // Check for common asset image fields
         const imageFields: (keyof Asset & string)[] = ['imageUrl', 'audioUrl'];
         for (const field of imageFields) {
             const val = sanitizedAsset[field];
@@ -254,8 +235,6 @@ export const createProjectSlice: StateCreator<ProjectSlice> = (set, get) => ({
 
     cleanupOrphanedAssets: () => set((state) => {
         const validIds = new Set<string>();
-
-        // Collect all valid IDs from Step 1 data
         state.characters?.forEach(c => validIds.add(c.id));
         state.seriesLocations?.forEach(l => validIds.add(l.id));
         state.episodeCharacters?.forEach(c => validIds.add(c.id));
@@ -263,76 +242,31 @@ export const createProjectSlice: StateCreator<ProjectSlice> = (set, get) => ({
         state.seriesProps?.forEach(p => validIds.add(p.id));
         state.episodeProps?.forEach(p => validIds.add(p.id));
 
-        // SAFETY CHECK: If no valid IDs found, skip cleanup entirely
-        // This prevents accidental deletion when Step1 data is empty or being modified
-        if (validIds.size === 0) {
-            console.log(`[Cleanup] Skipped - no valid IDs found in Step1 data (possible data migration in progress)`);
-            return {};
-        }
+        if (validIds.size === 0) return {};
 
-        // 1. Clean assetDefinitions
         const currentAssetDefs = state.assetDefinitions || {};
         const cleanedAssetDefs: Record<string, any> = {};
-        let assetDefCount = 0;
-
-        // SAFETY CHECK: If orphan ratio is too high (>50%), skip cleanup
-        const totalAssets = Object.keys(currentAssetDefs).length;
-        const orphanCount = Object.keys(currentAssetDefs).filter(id => !validIds.has(id)).length;
-        if (totalAssets > 0 && orphanCount > totalAssets * 0.5) {
-            console.warn(`[Cleanup] Skipped - too many orphans (${orphanCount}/${totalAssets}). This may indicate a data sync issue.`);
-            return {};
-        }
-
-        Object.entries(currentAssetDefs).forEach(([id, asset]) => {
-            if (validIds.has(id)) {
-                cleanedAssetDefs[id] = asset;
-            } else {
-                assetDefCount++;
-                console.log(`[Cleanup] Removed orphaned asset definition: ${id} (${asset.name})`);
-            }
+        Object.entries(currentAssetDefs).forEach(([id, def]) => {
+            if (validIds.has(id)) cleanedAssetDefs[id] = def;
         });
 
-        // 2. Clean visualAssets (Step 1/2 prompts)
-        const currentVisuals = state.visualAssets || {};
-        const cleanedVisuals: Record<string, any> = {};
-        let visualCount = 0;
-
-        Object.entries(currentVisuals).forEach(([id, asset]) => {
-            if (validIds.has(id)) {
-                cleanedVisuals[id] = asset;
-            } else {
-                visualCount++;
-                console.log(`[Cleanup] Removed orphaned visual asset: ${id} (${asset.name})`);
-            }
+        const currentVisualAssets = state.visualAssets || {};
+        const cleanedVisualAssets: Record<string, any> = {};
+        Object.entries(currentVisualAssets).forEach(([id, asset]) => {
+            if (validIds.has(id)) cleanedVisualAssets[id] = asset;
         });
 
-        // 3. Clean assets (Step 5 Production assets - keyed by cut ID)
-        // Note: Cut IDs are different from character IDs, they are tied to script length.
-        const currentProdAssets = state.assets || {};
-        const cleanedProdAssets: Record<string, any> = {};
-        let prodCount = 0;
-        const validCutIds = new Set((state.script || []).map(c => String(c.id)));
-
-        Object.entries(currentProdAssets).forEach(([id, asset]) => {
-            if (validCutIds.has(id)) {
-                cleanedProdAssets[id] = asset;
-            } else {
-                prodCount++;
-                console.log(`[Cleanup] Removed orphaned production asset for cut: ${id}`);
-            }
+        const currentAssets = state.assets || {};
+        const cleanedAssets: Record<string, any> = {};
+        Object.entries(currentAssets).forEach(([id, asset]) => {
+            if (validIds.has(id)) cleanedAssets[id] = asset;
         });
 
-        const totalCleaned = assetDefCount + visualCount + prodCount;
-
-        if (totalCleaned > 0) {
-            console.log(`[Cleanup] Complete. Removed ${totalCleaned} orphans. (${assetDefCount} defs, ${visualCount} visuals, ${prodCount} prod)`);
-            return {
-                assetDefinitions: cleanedAssetDefs,
-                visualAssets: cleanedVisuals,
-                assets: cleanedProdAssets
-            };
-        }
-
-        return {};
+        return {
+            assetDefinitions: cleanedAssetDefs,
+            visualAssets: cleanedVisualAssets,
+            assets: cleanedAssets,
+            isDirty: true
+        };
     }),
 });

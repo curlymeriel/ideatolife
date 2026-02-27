@@ -108,6 +108,7 @@ export interface CutItemProps {
     onInsert: (id: number) => void;
     onOpenSfxModal?: (cutId: number) => void;
     onRemoveSfx?: (cutId: number) => void;
+    onUploadUserReference?: (cutId: number, file: File) => Promise<void>;
     apiKey?: string;
     masterStyle?: string;
 }
@@ -143,6 +144,7 @@ export const CutItem = memo(({
     onInsert,
     onOpenSfxModal,
     onRemoveSfx,
+    onUploadUserReference,
     apiKey,
     masterStyle
 }: CutItemProps) => {
@@ -196,18 +198,36 @@ export const CutItem = memo(({
 
     const isAudioVisible = isAudioManualExpand;
 
-    // Sync local state with cut changes (but not while editing)
+    // Keep local state in sync with store, BUT only if not focused
     useEffect(() => {
-        if (!isFocusedRef.current) setLocalDialogue(cut.dialogue || '');
-    }, [cut.dialogue]);
+        if (!isFocusedRef.current) {
+            const storeDialogue = cut.dialogue || '';
+            if (storeDialogue !== localDialogue) {
+                // [CRITICAL] Protect any dialogue with line breaks from being overwritten
+                // by a "flat" version from the store. If local has MORE newlines than store,
+                // the store likely received stale data - push local back to fix it.
+                const localNewlines = (localDialogue.match(/\n/g) || []).length;
+                const storeNewlines = (storeDialogue.match(/\n/g) || []).length;
+                if (localNewlines > 0 && storeNewlines < localNewlines) {
+                    console.warn(`[CutItem] 🛡️ Blocking sync that would reduce newlines for cut ${cut.id}. Local: ${localNewlines}, Store: ${storeNewlines}. Pushing local back to store.`);
+                    // Push local state back to store to fix the discrepancy
+                    onUpdateCut(cut.id, { dialogue: localDialogue });
+                    return;
+                }
+                setLocalDialogue(storeDialogue);
+            }
+        }
+    }, [cut.dialogue, cut.id]);
 
     useEffect(() => {
         if (!isVisualPromptFocusedRef.current) setLocalVisualPrompt(cut.visualPrompt || '');
     }, [cut.visualPrompt]);
 
     useEffect(() => {
-        if (!isActingDirectionFocusedRef.current) setLocalActingDirection(cut.actingDirection || '');
-    }, [cut.actingDirection]);
+        if (!isActingDirectionFocusedRef.current) {
+            setLocalActingDirection(cut.actingDirection || '');
+        }
+    }, [cut.actingDirection, cut.id]);
 
     // Resolve IDB URLs
     useEffect(() => {
@@ -246,33 +266,64 @@ export const CutItem = memo(({
 
     // Debounced dialogue update
     const dialogueDebounceRef = useRef<any>(null);
+    const flushDialogue = useCallback(() => {
+        if (dialogueDebounceRef.current) {
+            clearTimeout(dialogueDebounceRef.current);
+            dialogueDebounceRef.current = null;
+            onUpdateCut(cut.id, { dialogue: localDialogue });
+        }
+    }, [cut.id, localDialogue, onUpdateCut]);
+
     const handleDialogueChange = useCallback((value: string) => {
         setLocalDialogue(value);
 
         if (dialogueDebounceRef.current) clearTimeout(dialogueDebounceRef.current);
         dialogueDebounceRef.current = setTimeout(() => {
+            dialogueDebounceRef.current = null;
+            const hasNewline = value.includes('\n');
+            if (hasNewline) {
+                console.log(`[CutItem] 📝 Sending updated dialogue with \\n to parent. Length: ${value.length}`);
+            }
             onUpdateCut(cut.id, { dialogue: value });
         }, 500); // 500ms debounce
     }, [cut.id, onUpdateCut]);
 
     // Debounced visual prompt update
     const visualDebounceRef = useRef<any>(null);
+    const flushVisualPrompt = useCallback(() => {
+        if (visualDebounceRef.current) {
+            clearTimeout(visualDebounceRef.current);
+            visualDebounceRef.current = null;
+            onUpdateCut(cut.id, { visualPrompt: localVisualPrompt, visualPromptKR: undefined });
+        }
+    }, [cut.id, localVisualPrompt, onUpdateCut]);
+
     const handleVisualPromptChange = useCallback((value: string) => {
         setLocalVisualPrompt(value);
 
         if (visualDebounceRef.current) clearTimeout(visualDebounceRef.current);
         visualDebounceRef.current = setTimeout(() => {
+            visualDebounceRef.current = null;
             onUpdateCut(cut.id, { visualPrompt: value, visualPromptKR: undefined });
         }, 500);
     }, [cut.id, onUpdateCut]);
 
     // Debounced acting direction update
     const actingDebounceRef = useRef<any>(null);
+    const flushActingDirection = useCallback(() => {
+        if (actingDebounceRef.current) {
+            clearTimeout(actingDebounceRef.current);
+            actingDebounceRef.current = null;
+            onUpdateCut(cut.id, { actingDirection: localActingDirection });
+        }
+    }, [cut.id, localActingDirection, onUpdateCut]);
+
     const handleActingDirectionChange = useCallback((value: string) => {
         setLocalActingDirection(value);
 
         if (actingDebounceRef.current) clearTimeout(actingDebounceRef.current);
         actingDebounceRef.current = setTimeout(() => {
+            actingDebounceRef.current = null;
             onUpdateCut(cut.id, { actingDirection: value });
         }, 500);
     }, [cut.id, onUpdateCut]);
@@ -620,7 +671,11 @@ export const CutItem = memo(({
                                                 disabled={isImageConfirmed}
                                                 onChange={(e) => handleVisualPromptChange(e.target.value)}
                                                 onFocus={() => { isVisualPromptFocusedRef.current = true; }}
-                                                onBlur={() => { isVisualPromptFocusedRef.current = false; onSave(); }}
+                                                onBlur={() => {
+                                                    isVisualPromptFocusedRef.current = false;
+                                                    flushVisualPrompt();
+                                                    onSave();
+                                                }}
                                                 placeholder="Scene description..."
                                             />
                                             {cut.visualPromptKR && (
@@ -743,6 +798,7 @@ export const CutItem = memo(({
                                                 url: c.finalImageUrl!,
                                                 index: idx + 1
                                             }))}
+                                            onUpload={(file: File) => onUploadUserReference?.(cut.id, file)}
                                             drafts={[]}
                                         />
                                     </div>
@@ -869,6 +925,7 @@ export const CutItem = memo(({
                             onFocus={() => { isFocusedRef.current = true; }}
                             onBlur={() => {
                                 isFocusedRef.current = false;
+                                flushDialogue();
                                 onSave();
                             }}
                             placeholder="Dialogue..."
@@ -924,6 +981,7 @@ export const CutItem = memo(({
                                 onFocus={() => { isActingDirectionFocusedRef.current = true; }}
                                 onBlur={() => {
                                     isActingDirectionFocusedRef.current = false;
+                                    flushActingDirection();
                                     onSave();
                                 }}
                                 placeholder="Acting direction (e.g., Speak slowly / 슬픈 목소리로)"
