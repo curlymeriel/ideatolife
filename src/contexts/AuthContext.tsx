@@ -9,8 +9,7 @@ import React, { createContext, useContext, useEffect, useState, useRef } from 'r
 import type { ReactNode } from 'react';
 import type { User } from 'firebase/auth';
 import {
-    signInWithRedirect,
-    getRedirectResult,
+    signInWithPopup,
     signOut as firebaseSignOut,
     onAuthStateChanged,
 } from 'firebase/auth';
@@ -54,36 +53,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
 
         isAuthInitialized.current = true;
-        console.log('[Auth] Initializing Auth State (Once)...');
+        console.log('[Auth] Initializing Auth State...');
 
+        // 안전 장치: 인증 상태 확인이 너무 오래 걸릴 경우 로딩 해제 (10초)
         const timeoutId = setTimeout(() => {
-            console.warn('[Auth] Redirect check safety timeout reached.');
+            console.warn('[Auth] Auth initialization safety timeout reached.');
             setLoading(false);
-        }, 12000); // 12초로 조금 더 여유를 둡니다.
+        }, 10000);
 
-        const handleRedirect = async () => {
-            try {
-                console.log('[Auth] getRedirectResult: Start');
-                const result = await getRedirectResult(auth!);
-                if (result) {
-                    console.log('[Auth] getRedirectResult: Success', result.user.email);
-                    setUser(result.user);
-                } else {
-                    console.log('[Auth] getRedirectResult: No result (Direct access)');
-                }
-            } catch (error: any) {
-                console.error('[Auth] getRedirectResult: Error', error.code, error.message);
-                if (error.code === 'auth/unauthorized-domain') {
-                    setError('이 도메인은 Firebase 콘솔에서 승인이 필요합니다.');
-                } else {
-                    setError(`로그인 결과 처리 실패: ${error.message}`);
-                }
-            } finally {
-                clearTimeout(timeoutId);
-            }
-        };
-
-        handleRedirect();
+        // Removed handleRedirect logic
 
         const unsubscribe = onAuthStateChanged(
             auth!,
@@ -108,7 +86,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         };
     }, [isConfigured]); // loading 제거하여 루프 방지
 
-    // 리다이렉트 방식 로그인 (coi-serviceworker COOP 호환성 처리)
+    // 팝업 방식 로그인 (vercel.json의 same-origin-allow-popups 설정으로 COOP 호환)
     const signInWithGoogle = async (): Promise<void> => {
         if (!isConfigured || !auth || !googleProvider) {
             setError('Firebase가 설정되지 않았습니다.');
@@ -116,13 +94,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
 
         try {
-            console.log('[Auth] Starting Google Sign-In (Redirect)...');
+            console.log('[Auth] Starting Google Sign-In (Popup)...');
             setError(null);
             setLoading(true);
-            await signInWithRedirect(auth!, googleProvider!);
+            const result = await signInWithPopup(auth!, googleProvider!);
+            console.log('[Auth] Popup sign-in success:', result.user.email);
+            // onAuthStateChanged에서 처리되지만 즉각적인 피드백을 위해 set
+            setUser(result.user);
         } catch (error: any) {
-            console.error('[Auth] Google sign-in redirect start error:', error);
-            setError(`로그인 시작 실패: ${error.message}`);
+            console.error('[Auth] Google sign-in error:', error.code, error.message);
+            if (error.code === 'auth/popup-closed-by-user') {
+                setError('로그인이 취소되었습니다.');
+            } else if (error.code === 'auth/popup-blocked') {
+                setError('팝업이 차단되었습니다. 브라우저 설정에서 팝업을 허용해주세요.');
+            } else if (error.code === 'auth/unauthorized-domain') {
+                setError('이 도메인은 Firebase 콘솔에서 승인이 필요합니다.');
+            } else {
+                setError(`로그인 실패: ${error.message}`);
+            }
+        } finally {
             setLoading(false);
         }
     };
