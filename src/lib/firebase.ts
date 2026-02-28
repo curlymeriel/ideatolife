@@ -12,9 +12,14 @@ import { getFirestore, type Firestore } from 'firebase/firestore';
 import { getStorage, type FirebaseStorage } from 'firebase/storage';
 
 // Firebase 설정
+// 배포 환경에서는 동일 도메인 프록시(/__/auth)를 사용하기 위해 authDomain을 현재 호스트로 설정합니다.
+const isProduction = typeof window !== 'undefined' &&
+    !window.location.hostname.includes('localhost') &&
+    !window.location.hostname.includes('127.0.0.1');
+
 const firebaseConfig = {
     apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
+    authDomain: isProduction ? window.location.hostname : (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || ''),
     projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || '',
     storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
     messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',

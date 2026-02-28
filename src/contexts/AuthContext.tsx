@@ -10,7 +10,6 @@ import type { ReactNode } from 'react';
 import type { User } from 'firebase/auth';
 import {
     signInWithPopup,
-    signInWithRedirect,
     getRedirectResult,
     signOut as firebaseSignOut,
     onAuthStateChanged,
@@ -54,105 +53,69 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             return;
         }
 
-        const version = '2026-02-28-V5';
+        const version = '2026-02-28-V6';
         console.log(`[Auth] VERSION: ${version} - Initializing...`);
 
-        // 1. 서비스 워커가 리다이렉트를 방해할 수 있으므로 미사용 서비스 워커 제거
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistrations().then(registrations => {
-                for (let registration of registrations) {
-                    console.log('[Auth] Cleaning up stale service worker:', registration.scope);
-                    registration.unregister();
+        // 1. 상태 감시 리스너
+        const unsubscribe = onAuthStateChanged(
+            auth!,
+            (user) => {
+                console.log('[Auth] V6 - onAuthStateChanged:', user ? user.email : 'null');
+                setUser(user);
+                setLoading(false);
+                setError(null);
+            },
+            (error) => {
+                console.error('[Auth] V6 - onAuthStateChanged Error:', error);
+                setError(error.message);
+                setLoading(false);
+            }
+        );
+
+        // 2. 혹시나 진행 중인 리다이렉트 결과가 있다면 처리 (백업용)
+        if (!isAuthInitialized.current) {
+            isAuthInitialized.current = true;
+            getRedirectResult(auth!).then((result) => {
+                if (result) {
+                    console.log('[Auth] V6 - Found redirect result:', result.user.email);
+                    setUser(result.user);
                 }
+            }).catch(err => {
+                console.error('[Auth] V6 - Redirect check error:', err);
             });
         }
 
-        // 2. 인증 상태 리스너 내부 로직
-        const setupListener = () => {
-            return onAuthStateChanged(
-                auth!,
-                (user) => {
-                    console.log('[Auth] onAuthStateChanged firing:', user ? user.email : 'null');
-                    setUser(user);
-                    setLoading(false);
-                    setError(null);
-                },
-                (error) => {
-                    console.error('[Auth] onAuthStateChanged Error:', error);
-                    setError(error.message);
-                    setLoading(false);
-                }
-            );
-        };
-
-        // 3. 리다이렉트 결과 체크 및 리스너 등록 (순서 제어)
-        if (!isAuthInitialized.current) {
-            isAuthInitialized.current = true;
-            console.log('[Auth] Starting V5 verification flow...');
-
-            const initAuth = async () => {
-                try {
-                    console.log('[Auth] V5 - getRedirectResult START');
-                    const result = await getRedirectResult(auth!);
-                    if (result) {
-                        console.log('[Auth] V5 - Found redirected user:', result.user.email);
-                        setUser(result.user);
-                    } else {
-                        console.log('[Auth] V5 - No pending redirect result found.');
-                    }
-                } catch (error: any) {
-                    console.error('[Auth] V5 - Redirect Error:', error.code, error.message);
-                    if (error.code === 'auth/unauthorized-domain') {
-                        setError('Firebase Console에서 이 도메인(Vercel)을 승인해야 합니다.');
-                    }
-                } finally {
-                    console.log('[Auth] V5 - Initial check complete, setting up listener.');
-                    setupListener();
-                }
-            };
-
-            initAuth();
-        } else {
-            // StrictMode 리마운트 시 리스너 재설정
-            const unsubscribe = setupListener();
-            return () => unsubscribe();
-        }
+        return () => unsubscribe();
     }, [isConfigured]);
 
-    // 하이브리드 로그인 방식 (Localhost: Popup, Production: Redirect)
+    // 통합 로그인 방식 (Proxy 덕분에 로컬/배포 모두 Popup 가능!)
     const signInWithGoogle = async (): Promise<void> => {
         if (!isConfigured || !auth || !googleProvider) {
             setError('Firebase가 설정되지 않았습니다.');
             return;
         }
 
-        const isLocalhost =
-            window.location.hostname === 'localhost' ||
-            window.location.hostname === '127.0.0.1';
-
         try {
+            console.log('[Auth] V6 - Starting Google Sign-In (Popup Mode)...');
             setError(null);
             setLoading(true);
 
-            if (isLocalhost) {
-                console.log('[Auth] V5 - Starting Login (Popup Mode)...');
-                const result = await signInWithPopup(auth!, googleProvider!);
-                console.log('[Auth] V5 - Popup success:', result.user.email);
-                setUser(result.user);
-            } else {
-                console.log('[Auth] V5 - Starting Login (Redirect Mode)...');
-                // 리다이렉트 전 명시적으로 상태를 비울 수도 있음
-                await signInWithRedirect(auth!, googleProvider!);
-            }
+            // 동일 도메인 프록시가 설정되어 있어 COOP/COEP 환경에서도 팝업이 작동합니다.
+            const result = await signInWithPopup(auth!, googleProvider!);
+            console.log('[Auth] V6 - Success:', result.user.email);
+            setUser(result.user);
         } catch (error: any) {
-            console.error('[Auth] V5 - Login Error:', error.code, error.message);
+            console.error('[Auth] V6 - Error:', error.code, error.message);
             if (error.code === 'auth/popup-closed-by-user') {
                 setError('로그인이 취소되었습니다.');
+            } else if (error.code === 'auth/popup-blocked') {
+                setError('팝업이 차단되었습니다. 브라우저 설정에서 팝업을 허용해주세요.');
+            } else if (error.code === 'auth/cancelled-popup-request') {
+                console.log('[Auth] Popup request cancelled (Handled).');
             } else {
                 setError(`로그인 실패: ${error.message}`);
             }
         } finally {
-            // 리다이렉트 방식에서는 페이지가 이동되므로 finally가 큰 의미가 없으나, 팝업 방식에서는 필수
             setLoading(false);
         }
     };
