@@ -9,6 +9,7 @@ import React, { createContext, useContext, useEffect, useState, useRef } from 'r
 import type { ReactNode } from 'react';
 import type { User } from 'firebase/auth';
 import {
+    signInWithPopup,
     signInWithRedirect,
     getRedirectResult,
     signOut as firebaseSignOut,
@@ -48,40 +49,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const isAuthInitialized = useRef(false);
 
     useEffect(() => {
-        if (!isConfigured || !auth || isAuthInitialized.current) {
-            if (!isConfigured || !auth) setLoading(false);
+        if (!isConfigured || !auth) {
+            setLoading(false);
             return;
         }
 
-        isAuthInitialized.current = true;
-        console.log('[Auth] Initializing Auth State (Redirect Mode)...');
+        console.log('[Auth] Setting up Auth State listener...');
 
-        // 안전 장치: 인증 상태 확인이 너무 오래 걸릴 경우 로딩 해제 (10초)
-        const timeoutId = setTimeout(() => {
-            console.warn('[Auth] Auth initialization safety timeout reached.');
-            setLoading(false);
-        }, 10000);
-
-        const handleRedirectResult = async () => {
-            try {
-                console.log('[Auth] Checking getRedirectResult...');
-                const result = await getRedirectResult(auth!);
-                if (result) {
-                    console.log('[Auth] Redirect sign-in success:', result.user.email);
-                    setUser(result.user);
-                }
-            } catch (error: any) {
-                console.error('[Auth] Redirect sign-in error:', error.code, error.message);
-                if (error.code === 'auth/unauthorized-domain') {
-                    setError('이 도메인은 Firebase 콘솔에서 승인이 필요합니다.');
-                } else {
-                    setError(`로그인 처리 중 오류: ${error.message}`);
-                }
-            }
-        };
-
-        handleRedirectResult();
-
+        // 1. 인증 상태 리스너 (StrictMode 호환을 위해 매번 등록/해제)
         const unsubscribe = onAuthStateChanged(
             auth!,
             (user) => {
@@ -89,37 +64,78 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 setUser(user);
                 setLoading(false);
                 setError(null);
-                clearTimeout(timeoutId);
             },
             (error) => {
                 console.error('[Auth] onAuthStateChanged Error:', error);
                 setError(error.message);
                 setLoading(false);
-                clearTimeout(timeoutId);
             }
         );
 
+        // 2. 리다이렉트 결과 처리는 단 한 번만 수행
+        if (!isAuthInitialized.current) {
+            isAuthInitialized.current = true;
+            console.log('[Auth] Initializing Auth State (One-time Redirect Check)...');
+
+            const handleRedirectResultTask = async () => {
+                try {
+                    console.log('[Auth] Checking getRedirectResult (Internal)...');
+                    const result = await getRedirectResult(auth!);
+                    if (result) {
+                        console.log('[Auth] Redirect result found:', result.user.email);
+                        setUser(result.user);
+                    }
+                } catch (error: any) {
+                    console.error('[Auth] Redirect processing error:', error.code, error.message);
+                    if (error.code === 'auth/unauthorized-domain') {
+                        setError('이 도메인은 Firebase 콘솔에서 승인이 필요합니다.');
+                    }
+                }
+            };
+
+            handleRedirectResultTask();
+        }
+
         return () => {
+            console.log('[Auth] Cleaning up Auth State listener...');
             unsubscribe();
-            clearTimeout(timeoutId);
         };
     }, [isConfigured]);
 
-    // 리다이렉트 방식 로그인 (FFmpeg 보안 헤더 COOP와 공존 가능한 유일한 방식)
+    // 하이브리드 로그인 방식 (Localhost: Popup, Production: Redirect)
     const signInWithGoogle = async (): Promise<void> => {
         if (!isConfigured || !auth || !googleProvider) {
             setError('Firebase가 설정되지 않았습니다.');
             return;
         }
 
+        const isLocalhost =
+            window.location.hostname === 'localhost' ||
+            window.location.hostname === '127.0.0.1';
+
         try {
-            console.log('[Auth] Starting Google Sign-In (Redirect Mode)...');
             setError(null);
             setLoading(true);
-            await signInWithRedirect(auth!, googleProvider!);
+
+            if (isLocalhost) {
+                console.log('[Auth] Starting Google Sign-In (Popup Mode for local)...');
+                const result = await signInWithPopup(auth!, googleProvider!);
+                console.log('[Auth] Popup sign-in success:', result.user.email);
+                setUser(result.user);
+            } else {
+                console.log('[Auth] Starting Google Sign-In (Redirect Mode for production)...');
+                await signInWithRedirect(auth!, googleProvider!);
+            }
         } catch (error: any) {
             console.error('[Auth] Google sign-in error:', error.code, error.message);
-            setError(`로그인 시작 실패: ${error.message}`);
+            if (error.code === 'auth/popup-closed-by-user') {
+                setError('로그인이 취소되었습니다.');
+            } else if (error.code === 'auth/popup-blocked') {
+                setError('팝업이 차단되었습니다. 브라우저 설정에서 팝업을 허용해주세요.');
+            } else {
+                setError(`로그인 실패: ${error.message}`);
+            }
+        } finally {
             setLoading(false);
         }
     };
