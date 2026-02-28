@@ -328,8 +328,6 @@ ${refContext}` : ''}
             const usedRefImages: { name: string, url: string }[] = [];
             let finalPrompt = visualPrompt;
 
-            // Map Name -> Index for replacement
-            const nameToIndex = new Map<string, number>();
 
             // Helper to add ref and get index
             const getOrAddRef = async (name: string): Promise<boolean> => {

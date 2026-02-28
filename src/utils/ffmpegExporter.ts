@@ -22,7 +22,7 @@ export interface ExportOptions {
 /**
  * 추출 파라미터 옵션
  */
-interface FrameExtractionOptions {
+export interface FrameExtractionOptions {
     fps: number;
     width: number;
     height: number;
@@ -35,7 +35,7 @@ interface FrameExtractionOptions {
  * 브라우저 네이티브 API (HTMLVideoElement + Canvas)를 사용하여
  * WebM 등 비디오에서 지정된 FPS로 JPEG 프레임 시퀀스를 추출합니다.
  */
-async function extractVideoFrames(videoUrl: string, options: FrameExtractionOptions): Promise<Uint8Array[]> {
+export async function extractVideoFrames(videoUrl: string, options: FrameExtractionOptions): Promise<Uint8Array[]> {
     return new Promise((resolve, reject) => {
         const video = document.createElement('video');
         video.crossOrigin = 'anonymous';
