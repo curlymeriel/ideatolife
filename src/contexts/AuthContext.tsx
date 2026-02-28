@@ -9,7 +9,8 @@ import React, { createContext, useContext, useEffect, useState, useRef } from 'r
 import type { ReactNode } from 'react';
 import type { User } from 'firebase/auth';
 import {
-    signInWithPopup,
+    signInWithRedirect,
+    getRedirectResult,
     signOut as firebaseSignOut,
     onAuthStateChanged,
 } from 'firebase/auth';
@@ -53,7 +54,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
 
         isAuthInitialized.current = true;
-        console.log('[Auth] Initializing Auth State...');
+        console.log('[Auth] Initializing Auth State (Redirect Mode)...');
 
         // 안전 장치: 인증 상태 확인이 너무 오래 걸릴 경우 로딩 해제 (10초)
         const timeoutId = setTimeout(() => {
@@ -61,7 +62,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             setLoading(false);
         }, 10000);
 
-        // Removed handleRedirect logic
+        const handleRedirectResult = async () => {
+            try {
+                console.log('[Auth] Checking getRedirectResult...');
+                const result = await getRedirectResult(auth!);
+                if (result) {
+                    console.log('[Auth] Redirect sign-in success:', result.user.email);
+                    setUser(result.user);
+                }
+            } catch (error: any) {
+                console.error('[Auth] Redirect sign-in error:', error.code, error.message);
+                if (error.code === 'auth/unauthorized-domain') {
+                    setError('이 도메인은 Firebase 콘솔에서 승인이 필요합니다.');
+                } else {
+                    setError(`로그인 처리 중 오류: ${error.message}`);
+                }
+            }
+        };
+
+        handleRedirectResult();
 
         const unsubscribe = onAuthStateChanged(
             auth!,
@@ -84,9 +103,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             unsubscribe();
             clearTimeout(timeoutId);
         };
-    }, [isConfigured]); // loading 제거하여 루프 방지
+    }, [isConfigured]);
 
-    // 팝업 방식 로그인 (vercel.json의 same-origin-allow-popups 설정으로 COOP 호환)
+    // 리다이렉트 방식 로그인 (FFmpeg 보안 헤더 COOP와 공존 가능한 유일한 방식)
     const signInWithGoogle = async (): Promise<void> => {
         if (!isConfigured || !auth || !googleProvider) {
             setError('Firebase가 설정되지 않았습니다.');
@@ -94,25 +113,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
 
         try {
-            console.log('[Auth] Starting Google Sign-In (Popup)...');
+            console.log('[Auth] Starting Google Sign-In (Redirect Mode)...');
             setError(null);
             setLoading(true);
-            const result = await signInWithPopup(auth!, googleProvider!);
-            console.log('[Auth] Popup sign-in success:', result.user.email);
-            // onAuthStateChanged에서 처리되지만 즉각적인 피드백을 위해 set
-            setUser(result.user);
+            await signInWithRedirect(auth!, googleProvider!);
         } catch (error: any) {
             console.error('[Auth] Google sign-in error:', error.code, error.message);
-            if (error.code === 'auth/popup-closed-by-user') {
-                setError('로그인이 취소되었습니다.');
-            } else if (error.code === 'auth/popup-blocked') {
-                setError('팝업이 차단되었습니다. 브라우저 설정에서 팝업을 허용해주세요.');
-            } else if (error.code === 'auth/unauthorized-domain') {
-                setError('이 도메인은 Firebase 콘솔에서 승인이 필요합니다.');
-            } else {
-                setError(`로그인 실패: ${error.message}`);
-            }
-        } finally {
+            setError(`로그인 시작 실패: ${error.message}`);
             setLoading(false);
         }
     };
