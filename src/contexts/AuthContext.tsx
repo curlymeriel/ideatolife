@@ -9,7 +9,8 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { User } from 'firebase/auth';
 import {
-    signInWithPopup,
+    signInWithRedirect,
+    getRedirectResult,
     signOut as firebaseSignOut,
     onAuthStateChanged,
 } from 'firebase/auth';
@@ -52,6 +53,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
         console.log('[Auth] Setting up auth state listener...');
 
+        // 리다이렉트 로그인 결과 확인
+        getRedirectResult(auth!).catch((error) => {
+            console.error('[Auth] Redirect sign-in error:', error);
+            setError(`로그인 실패: ${error.message}`);
+        });
+
         const unsubscribe = onAuthStateChanged(
             auth!,
             (user) => {
@@ -70,7 +77,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return () => unsubscribe();
     }, [isConfigured]);
 
-    // 팝업 방식 로그인 (coi-serviceworker가 COOP 호환성 처리)
+    // 리다이렉트 방식 로그인 (coi-serviceworker COOP 호환성 처리)
     const signInWithGoogle = async (): Promise<void> => {
         if (!isConfigured || !auth || !googleProvider) {
             setError('Firebase가 설정되지 않았습니다.');
@@ -78,21 +85,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
 
         try {
-            console.log('[Auth] Starting Google Sign-In (Popup)...');
+            console.log('[Auth] Starting Google Sign-In (Redirect)...');
             setError(null);
             setLoading(true);
-            const result = await signInWithPopup(auth!, googleProvider!);
-            console.log('[Auth] Popup sign-in completed:', result.user.email);
+            await signInWithRedirect(auth!, googleProvider!);
         } catch (error: any) {
-            console.error('[Auth] Google sign-in error:', error.code, error.message);
-            if (error.code === 'auth/popup-closed-by-user') {
-                setError('로그인이 취소되었습니다.');
-            } else if (error.code === 'auth/popup-blocked') {
-                setError('팝업이 차단되었습니다. 팝업 허용 후 다시 시도해주세요.');
-            } else {
-                setError(`로그인 실패: ${error.message}`);
-            }
-        } finally {
+            console.error('[Auth] Google sign-in redirect start error:', error);
+            setError(`로그인 시작 실패: ${error.message}`);
             setLoading(false);
         }
     };
