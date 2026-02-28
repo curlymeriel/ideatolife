@@ -54,64 +54,69 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             return;
         }
 
-        const version = '2026-02-28-V4'; // 버전 마커 추가
-        console.log(`[Auth] VERSION: ${version} - Setting up listener...`);
+        const version = '2026-02-28-V5';
+        console.log(`[Auth] VERSION: ${version} - Initializing...`);
 
-        // 1. 상태 감시 (항상 실행)
-        const unsubscribe = onAuthStateChanged(
-            auth!,
-            (user) => {
-                console.log('[Auth] onAuthStateChanged firing:', user ? user.email : 'null');
-                setUser(user);
-                setLoading(false);
-                setError(null);
-            },
-            (error) => {
-                console.error('[Auth] onAuthStateChanged Error:', error);
-                setError(error.message);
-                setLoading(false);
-            }
-        );
+        // 1. 서비스 워커가 리다이렉트를 방해할 수 있으므로 미사용 서비스 워커 제거
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(registrations => {
+                for (let registration of registrations) {
+                    console.log('[Auth] Cleaning up stale service worker:', registration.scope);
+                    registration.unregister();
+                }
+            });
+        }
 
-        // 2. 초기 리다이렉트 결과 체크 (딱 한 번)
+        // 2. 인증 상태 리스너 내부 로직
+        const setupListener = () => {
+            return onAuthStateChanged(
+                auth!,
+                (user) => {
+                    console.log('[Auth] onAuthStateChanged firing:', user ? user.email : 'null');
+                    setUser(user);
+                    setLoading(false);
+                    setError(null);
+                },
+                (error) => {
+                    console.error('[Auth] onAuthStateChanged Error:', error);
+                    setError(error.message);
+                    setLoading(false);
+                }
+            );
+        };
+
+        // 3. 리다이렉트 결과 체크 및 리스너 등록 (순서 제어)
         if (!isAuthInitialized.current) {
             isAuthInitialized.current = true;
-            console.log('[Auth] Starting V4 initialization flow...');
+            console.log('[Auth] Starting V5 verification flow...');
 
-            // 안전 장치: initialization이 너무 길어지면 강제 해제
-            const timeoutId = setTimeout(() => {
-                console.warn('[Auth] V4 - initialization safety timeout reached.');
-                setLoading(false);
-            }, 12000);
-
-            const checkRedirect = async () => {
+            const initAuth = async () => {
                 try {
-                    console.log('[Auth] getRedirectResult: Start');
+                    console.log('[Auth] V5 - getRedirectResult START');
                     const result = await getRedirectResult(auth!);
                     if (result) {
-                        console.log('[Auth] getRedirectResult: Found User', result.user.email);
+                        console.log('[Auth] V5 - Found redirected user:', result.user.email);
                         setUser(result.user);
                     } else {
-                        console.log('[Auth] getRedirectResult: No pending redirect result');
+                        console.log('[Auth] V5 - No pending redirect result found.');
                     }
                 } catch (error: any) {
-                    console.error('[Auth] getRedirectResult Exception:', error.code, error.message);
+                    console.error('[Auth] V5 - Redirect Error:', error.code, error.message);
                     if (error.code === 'auth/unauthorized-domain') {
-                        setError('Firebase Console에서 이 도메인을 승인해야 합니다.');
+                        setError('Firebase Console에서 이 도메인(Vercel)을 승인해야 합니다.');
                     }
                 } finally {
-                    clearTimeout(timeoutId);
-                    // result가 없더라도 onAuthStateChanged가 최종적으로 setLoading(false)를 할 것임
+                    console.log('[Auth] V5 - Initial check complete, setting up listener.');
+                    setupListener();
                 }
             };
 
-            checkRedirect();
+            initAuth();
+        } else {
+            // StrictMode 리마운트 시 리스너 재설정
+            const unsubscribe = setupListener();
+            return () => unsubscribe();
         }
-
-        return () => {
-            console.log('[Auth] Cleaning up listener...');
-            unsubscribe();
-        };
     }, [isConfigured]);
 
     // 하이브리드 로그인 방식 (Localhost: Popup, Production: Redirect)
@@ -130,24 +135,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             setLoading(true);
 
             if (isLocalhost) {
-                console.log('[Auth] Starting Google Sign-In (Popup Mode for local)...');
+                console.log('[Auth] V5 - Starting Login (Popup Mode)...');
                 const result = await signInWithPopup(auth!, googleProvider!);
-                console.log('[Auth] Popup sign-in success:', result.user.email);
+                console.log('[Auth] V5 - Popup success:', result.user.email);
                 setUser(result.user);
             } else {
-                console.log('[Auth] Starting Google Sign-In (Redirect Mode for production)...');
+                console.log('[Auth] V5 - Starting Login (Redirect Mode)...');
+                // 리다이렉트 전 명시적으로 상태를 비울 수도 있음
                 await signInWithRedirect(auth!, googleProvider!);
             }
         } catch (error: any) {
-            console.error('[Auth] Google sign-in error:', error.code, error.message);
+            console.error('[Auth] V5 - Login Error:', error.code, error.message);
             if (error.code === 'auth/popup-closed-by-user') {
                 setError('로그인이 취소되었습니다.');
-            } else if (error.code === 'auth/popup-blocked') {
-                setError('팝업이 차단되었습니다. 브라우저 설정에서 팝업을 허용해주세요.');
             } else {
                 setError(`로그인 실패: ${error.message}`);
             }
         } finally {
+            // 리다이렉트 방식에서는 페이지가 이동되므로 finally가 큰 의미가 없으나, 팝업 방식에서는 필수
             setLoading(false);
         }
     };
