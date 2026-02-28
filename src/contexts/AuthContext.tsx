@@ -54,13 +54,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             return;
         }
 
-        console.log('[Auth] Setting up Auth State listener...');
+        const version = '2026-02-28-V4'; // 버전 마커 추가
+        console.log(`[Auth] VERSION: ${version} - Setting up listener...`);
 
-        // 1. 인증 상태 리스너 (StrictMode 호환을 위해 매번 등록/해제)
+        // 1. 상태 감시 (항상 실행)
         const unsubscribe = onAuthStateChanged(
             auth!,
             (user) => {
-                console.log('[Auth] onAuthStateChanged:', user ? user.email : 'null');
+                console.log('[Auth] onAuthStateChanged firing:', user ? user.email : 'null');
                 setUser(user);
                 setLoading(false);
                 setError(null);
@@ -72,32 +73,43 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             }
         );
 
-        // 2. 리다이렉트 결과 처리는 단 한 번만 수행
+        // 2. 초기 리다이렉트 결과 체크 (딱 한 번)
         if (!isAuthInitialized.current) {
             isAuthInitialized.current = true;
-            console.log('[Auth] Initializing Auth State (One-time Redirect Check)...');
+            console.log('[Auth] Starting V4 initialization flow...');
 
-            const handleRedirectResultTask = async () => {
+            // 안전 장치: initialization이 너무 길어지면 강제 해제
+            const timeoutId = setTimeout(() => {
+                console.warn('[Auth] V4 - initialization safety timeout reached.');
+                setLoading(false);
+            }, 12000);
+
+            const checkRedirect = async () => {
                 try {
-                    console.log('[Auth] Checking getRedirectResult (Internal)...');
+                    console.log('[Auth] getRedirectResult: Start');
                     const result = await getRedirectResult(auth!);
                     if (result) {
-                        console.log('[Auth] Redirect result found:', result.user.email);
+                        console.log('[Auth] getRedirectResult: Found User', result.user.email);
                         setUser(result.user);
+                    } else {
+                        console.log('[Auth] getRedirectResult: No pending redirect result');
                     }
                 } catch (error: any) {
-                    console.error('[Auth] Redirect processing error:', error.code, error.message);
+                    console.error('[Auth] getRedirectResult Exception:', error.code, error.message);
                     if (error.code === 'auth/unauthorized-domain') {
-                        setError('이 도메인은 Firebase 콘솔에서 승인이 필요합니다.');
+                        setError('Firebase Console에서 이 도메인을 승인해야 합니다.');
                     }
+                } finally {
+                    clearTimeout(timeoutId);
+                    // result가 없더라도 onAuthStateChanged가 최종적으로 setLoading(false)를 할 것임
                 }
             };
 
-            handleRedirectResultTask();
+            checkRedirect();
         }
 
         return () => {
-            console.log('[Auth] Cleaning up Auth State listener...');
+            console.log('[Auth] Cleaning up listener...');
             unsubscribe();
         };
     }, [isConfigured]);
