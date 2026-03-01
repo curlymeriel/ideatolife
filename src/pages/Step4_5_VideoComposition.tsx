@@ -1667,12 +1667,12 @@ export const Step4_5_VideoComposition: React.FC = () => {
                 // Otherwise, use visual prompt and conditionally append dialogue.
                 let prompt = cut.videoPrompt || cut.visualPrompt || '';
 
-                // Only append dialogue if the speaker is explicitly mentioned in the prompt.
-                // This prevents attaching dialogue to landscape shots or other characters, which can confuse the AI/Safety filters.
-                if (!cut.videoPrompt && cut.dialogue && cut.speaker) {
+                // Always append dialogue if the speaker is in the scene to enable lip-syncing.
+                // We check the original visualPrompt because AI-generated videoPrompt often drops the exact Korean name.
+                if (cut.dialogue && cut.speaker) {
                     const speakerName = cut.speaker.toLowerCase();
-                    const promptText = prompt.toLowerCase();
-                    if (promptText.includes(speakerName)) {
+                    const visualPromptText = (cut.visualPrompt || '').toLowerCase();
+                    if (visualPromptText.includes(speakerName) && !prompt.includes(cut.dialogue)) {
                         prompt += `. Character speaking: "${cut.dialogue}"`;
                     }
                 }
