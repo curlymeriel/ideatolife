@@ -17,7 +17,7 @@ export const generateImage = async (
     apiKey: string,
     referenceImages?: (string | ReferenceImage)[],
     aspectRatio?: string,
-    modelName: string = 'gemini-3-pro-image-preview',
+    modelName: string = 'gemini-3.1-flash-image-preview',
     candidateCount: number = 1
 ): Promise<{ urls: string[] }> => {
     if (!apiKey) {
@@ -138,8 +138,12 @@ The following images define the visual identity of the characters and assets.
         };
         const apiAspectRatio = getApiAspectRatio(ratio);
 
+        const baseUrl = typeof window !== 'undefined' && window.location.hostname === 'localhost'
+            ? '/api/google-ai/v1beta/models/'
+            : 'https://generativelanguage.googleapis.com/v1beta/models/';
+
         const response = await axios.post(
-            `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`,
+            `${baseUrl}${currentModel}:generateContent?key=${apiKey}`,
             {
                 contents: [{ parts: parts }],
                 generationConfig: {
