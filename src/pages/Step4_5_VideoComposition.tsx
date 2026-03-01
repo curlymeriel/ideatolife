@@ -1449,7 +1449,8 @@ export const Step4_5_VideoComposition: React.FC = () => {
                             video: 1.0 // [FIX] Force volume to 1.0 on new upload to avoid silence from previous state
                         }
                     } : c
-                )
+                ),
+                isDirty: true
             }));
             console.log(`[Video Upload] Cut ${cutId}: State updated with videoUrl "${idbUrl}"`);
             await useWorkflowStore.getState().saveProject();
@@ -1789,7 +1790,8 @@ export const Step4_5_VideoComposition: React.FC = () => {
                                     video: 1.0
                                 }
                             } : c
-                        )
+                        ),
+                        isDirty: true
                     }));
 
                     // [CRITICAL FIX] Save project immediately after each success to prevent data loss on navigation/refresh
