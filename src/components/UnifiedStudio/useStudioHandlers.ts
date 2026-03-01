@@ -28,7 +28,7 @@ interface UseStudioHandlersProps {
     setChatInput: (v: string) => void;
     chatIntent: 'image' | 'prompt';
     draftCount: number;
-    aiModel: 'PRO' | 'STD';
+    aiModel: 'ULTRA' | 'PRO' | 'STD';
     currentMask: string | null;
 }
 
@@ -283,7 +283,7 @@ ${refContext}` : ''}
             refImages = refImages.filter(Boolean);
 
             let ratio = '1:1';
-            const model = aiModel === 'PRO' ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image';
+            const model = aiModel === 'ULTRA' ? 'gemini-3.1-flash-image-preview' : aiModel === 'PRO' ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image';
 
             if (config.mode === 'channelArt') {
                 const analysisContext = await analyzeReferences();
@@ -376,7 +376,7 @@ ${refContext}` : ''}
                 const mappingMeta = taggedReferences.map((r, i) => `[Visual Reference #${i + 1}]: ${r.name || 'Ref'} (Tags: ${r.categories.join(',')})`).join('\n');
                 const enhancedInstruction = `### EDIT TARGET\nModify the Primary Draft (IMAGE_0) based on the instruction below.\n\n### VISUAL CONTEXT MAPPING\n${mappingMeta}\n\n### USER INSTRUCTION\n${chatInput}`;
 
-                const editModel = aiModel === 'PRO' ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image';
+                const editModel = aiModel === 'ULTRA' ? 'gemini-3.1-flash-image-preview' : aiModel === 'PRO' ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image';
                 const result = await editImageWithChat(selectedDraft, enhancedInstruction, apiKey, currentMask, refImages.filter(Boolean) as string[], editModel);
                 if (result.image) {
                     setDraftHistory(prev => [...prev, result.image!]);

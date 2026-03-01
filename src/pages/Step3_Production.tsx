@@ -170,9 +170,9 @@ export const Step3_Production: React.FC = () => {
     ];
 
     const IMAGE_MODELS = [
-        { value: 'gemini-3-pro-image-preview', label: 'Gemini 3.0 Pro', cost: '$$$$', hint: '최고 품질 프리미엄 이미지 생성' },
-        { value: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash', cost: '$', hint: '빠르고 효율적인 표준 모델' },
-        { value: 'gemini-2.5-pro-image', label: 'Gemini 2.5 Pro', cost: '$$$', hint: '고품질 프리미엄 이미지 생성' },
+        { value: 'gemini-3.1-flash-image-preview', label: 'Gemini 3.1 Flash', cost: '$$$$$', hint: '최고 품질 프리미엄 이미지 생성 (가장 빠른 속도)' },
+        { value: 'gemini-3-pro-image-preview', label: 'Gemini 3.0 Pro', cost: '$$$$', hint: '고품질 프리미엄 이미지 생성' },
+        { value: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash', cost: '$$', hint: '빠른 속도, 표준 품질' },
     ];
 
     // Helper: Get default voice for language, gender, and TTS model

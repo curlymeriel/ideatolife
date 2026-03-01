@@ -48,7 +48,7 @@ export const UnifiedStudio = ({
     const [taggedReferences, setTaggedReferences] = useState<TaggedReference[]>([]);
 
     const [draftCount, setDraftCount] = useState(2);
-    const [aiModel, setAiModel] = useState<'PRO' | 'STD'>(mode === 'asset' ? 'PRO' : 'STD');
+    const [aiModel, setAiModel] = useState<'ULTRA' | 'PRO' | 'STD'>(mode === 'asset' ? 'PRO' : 'STD');
 
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
     const [chatInput, setChatInput] = useState('');
@@ -553,7 +553,7 @@ export const UnifiedStudio = ({
                             <div className="p-6 border-t border-white/5 bg-white/[0.01]">
                                 <div className="flex items-center justify-between mb-4">
                                     <div className="flex gap-1.5 p-1 bg-white/5 rounded-xl border border-white/5">
-                                        {['PRO', 'STD'].map(m => (
+                                        {['ULTRA', 'PRO', 'STD'].map(m => (
                                             <button key={m} onClick={() => setAiModel(m as any)} className={`px-4 py-1.5 rounded-lg text-[10px] font-black transition-all ${aiModel === m ? 'bg-white/20 text-white shadow-lg scale-105' : 'text-gray-500 hover:text-gray-300'}`}>{m}</button>
                                         ))}
                                     </div>

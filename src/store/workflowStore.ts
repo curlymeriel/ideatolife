@@ -135,7 +135,7 @@ const getEmptyProjectState = (id: string, apiKeys: any = {}): ProjectData => ({
     assetDefinitions: {},
     script: [],
     ttsModel: 'gemini-tts',
-    imageModel: 'gemini-3-pro-image-preview',
+    imageModel: 'gemini-3.1-flash-image-preview',
     assets: {},
     currentStep: 1,
     bgmTracks: [],

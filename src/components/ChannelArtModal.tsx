@@ -61,7 +61,7 @@ export const ChannelArtModal: React.FC<ChannelArtModalProps> = ({
     const [isGridView, setIsGridView] = useState(false);
     const [koreanTranslation, setKoreanTranslation] = useState('');
     const [isTranslating, setIsTranslating] = useState(false);
-    const [selectedModel, setSelectedModel] = useState('gemini-3-pro-image-preview');
+    const [selectedModel, setSelectedModel] = useState('gemini-3.1-flash-image-preview');
     const [pendingCrop, setPendingCrop] = useState<{ url: string; aspectRatio: string } | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -591,6 +591,7 @@ ${referenceContext ? `[참조 이미지 정보]\n${referenceContext}` : ''}
                                         <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest pl-1 block">AI Model</span>
                                         <div className="flex bg-white/5 p-1 rounded-xl border border-white/5 gap-0.5">
                                             {[
+                                                { id: 'gemini-3.1-flash-image-preview', label: 'ULTRA' },
                                                 { id: 'gemini-3-pro-image-preview', label: 'PRO' },
                                                 { id: 'gemini-2.5-flash-image', label: 'STD' }
                                             ].map(model => (

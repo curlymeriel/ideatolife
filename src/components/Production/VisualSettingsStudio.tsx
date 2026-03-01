@@ -113,7 +113,7 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
     const [isExpanding, setIsExpanding] = useState(false);
     const [isTranslating, setIsTranslating] = useState(false);
     const [draftCount, setDraftCount] = useState(2);
-    const [aiModel, setAiModel] = useState<'PRO' | 'STD'>('STD');
+    const [aiModel, setAiModel] = useState<'ULTRA' | 'PRO' | 'STD'>('STD');
 
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
     const [chatInput, setChatInput] = useState('');
@@ -375,7 +375,7 @@ ${refContext}` : ''}
             }
 
             const cleaned = cleanPromptForGeneration(finalPrompt);
-            const model = aiModel === 'PRO' ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image';
+            const model = aiModel === 'ULTRA' ? 'gemini-3.1-flash-image-preview' : aiModel === 'PRO' ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image';
 
             const result = await generateImage(cleaned, apiKey, usedRefImages, aspectRatio, model, draftCount);
             const resolved = await Promise.all(result.urls.map(u => resolveUrl(u)));
@@ -899,7 +899,7 @@ ${refContext}` : ''}
                             <div className="p-6 border-t border-white/5 bg-white/[0.01]">
                                 <div className="flex items-center justify-between mb-4">
                                     <div className="flex gap-1.5 p-1 bg-white/5 rounded-xl border border-white/5">
-                                        {['PRO', 'STD'].map(m => (
+                                        {['ULTRA', 'PRO', 'STD'].map(m => (
                                             <button key={m} onClick={() => setAiModel(m as any)} className={`px-4 py-1.5 rounded-lg text-[10px] font-black transition-all ${aiModel === m ? 'bg-white/20 text-white shadow-lg scale-105' : 'text-gray-500 hover:text-gray-300'}`}>{m}</button>
                                         ))}
                                     </div>

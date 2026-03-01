@@ -86,7 +86,7 @@ const sampleProjectDefaults = {
     visualAssets: {},
     script: [],
     ttsModel: 'gemini-tts' as const,
-    imageModel: 'gemini-3-pro-image-preview' as const,
+    imageModel: 'gemini-3.1-flash-image-preview' as const,
     assets: {},
     currentStep: 1,
     bgmTracks: [],

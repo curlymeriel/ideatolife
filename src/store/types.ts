@@ -5,7 +5,7 @@ import type { ScriptCut, ChatMessage } from '../services/gemini';
 // ====================
 
 export type TtsModel = 'standard' | 'wavenet' | 'neural2' | 'chirp3-hd' | 'gemini-tts';
-export type ImageModel = 'gemini-3-pro-image-preview' | 'gemini-2.5-flash-image' | 'gemini-2.5-pro-image' | 'gemini-3.0-flash-image' | 'imagen-3';
+export type ImageModel = 'gemini-3.1-flash-image-preview' | 'gemini-3-pro-image-preview' | 'gemini-2.5-flash-image' | 'gemini-2.5-pro-image' | 'gemini-3.0-flash-image' | 'imagen-3';
 export type AspectRatio = '16:9' | '9:16' | '1:1' | '2.35:1' | '4:5' | '21:9' | '4:3' | '3:4';
 
 export interface ApiKeys {

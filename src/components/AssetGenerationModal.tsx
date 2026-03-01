@@ -100,8 +100,8 @@ export const AssetGenerationModal: React.FC<AssetGenerationModalProps> = ({
     // AI Expander state
     const [isExpanding, setIsExpanding] = useState(false);
 
-    // Model selection state (PRO = gemini-3-pro-image-preview, STD = gemini-2.5-flash-image)
-    const [selectedModel, setSelectedModel] = useState<'PRO' | 'STD'>('PRO');
+    // Model selection state (ULTRA = gemini-3.1-flash-image-preview, PRO = gemini-3-pro-image-preview, STD = gemini-2.5-flash-image)
+    const [selectedModel, setSelectedModel] = useState<'ULTRA' | 'PRO' | 'STD'>('PRO');
 
     // [New] Resolved assets state for IDB url support
     const [resolvedAssets, setResolvedAssets] = useState<{ id: string, name: string, url: string, type: string }[]>([]);
@@ -410,9 +410,7 @@ export const AssetGenerationModal: React.FC<AssetGenerationModalProps> = ({
                 cleanedPrompt,
                 apiKey,
                 refImages.length > 0 ? refImages : undefined,
-                aspectRatio,
-                selectedModel === 'PRO' ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image',
-                draftCount
+                selectedModel === 'ULTRA' ? 'gemini-3.1-flash-image-preview' : selectedModel === 'PRO' ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image',
             );
 
             // Resolve and ADD to history (not replace)
@@ -840,13 +838,14 @@ SUGGESTED_PROMPT: [your improved English prompt]
                                 <span className="text-[10px] text-gray-500">Model:</span>
                                 <div className="flex bg-white/5 p-0.5 rounded-lg border border-white/5 gap-0.5">
                                     {[
+                                        { id: 'ULTRA' as const, label: 'ULTRA', hint: 'Gemini 3.1 Flash' },
                                         { id: 'PRO' as const, label: 'PRO', hint: 'Gemini 3 Pro' },
                                         { id: 'STD' as const, label: 'STD', hint: 'Gemini 2.5 Flash' }
                                     ].map(model => (
                                         <button
                                             key={model.id}
                                             onClick={() => setSelectedModel(model.id)}
-                                            className={`px-2 py-1 text-[10px] font-bold rounded transition-all ${selectedModel === model.id ? 'bg-[var(--color-primary)] text-black' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}
+                                            className={`px-2 py-1 text-[10px] font-bold rounded transition-all flex-[1] ${selectedModel === model.id ? 'bg-[var(--color-primary)] text-black' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}
                                             title={model.hint}
                                         >
                                             {model.label}
@@ -1058,14 +1057,16 @@ SUGGESTED_PROMPT: [your improved English prompt]
             </div>
 
             {/* Crop Modal */}
-            {showCropModal && imageToCrop && (
-                <ImageCropModal
-                    imageSrc={imageToCrop}
-                    onConfirm={handleCropConfirm}
-                    onCancel={() => { setShowCropModal(false); setImageToCrop(null); }}
-                    aspectRatio={aspectRatio}
-                />
-            )}
-        </div>
+            {
+                showCropModal && imageToCrop && (
+                    <ImageCropModal
+                        imageSrc={imageToCrop}
+                        onConfirm={handleCropConfirm}
+                        onCancel={() => { setShowCropModal(false); setImageToCrop(null); }}
+                        aspectRatio={aspectRatio}
+                    />
+                )
+            }
+        </div >
     );
 };
