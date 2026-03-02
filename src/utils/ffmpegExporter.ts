@@ -470,7 +470,9 @@ export async function exportWithFFmpeg(
         // If user wants 'video' audio, we only use it if video exists.
         const useVideoAudio = audioSource === 'video' && hasVideo;
         // Should we use TTS?
-        const useTtsAudio = audioSource === 'tts' && hasTtsAudio;
+        // [FIX] If video audio was requested but no video exists, fall back to TTS
+        const useTtsAudio = (audioSource === 'tts' && hasTtsAudio) ||
+            (audioSource === 'video' && !hasVideo && hasTtsAudio);
 
         try {
             // Write input files with resilient fetching
@@ -610,8 +612,10 @@ export async function exportWithFFmpeg(
                     let audioInputIndex = 1;
 
                     if (useVideoMode && useVideoAudio) {
-                        // Use original video's audio track as primary audio
-                        currentInputs.push('-i', vidInputFile);
+                        // [FIX] Apply same trim to audio input for proper sync
+                        const trimStart = (cut as any).videoTrim?.start || 0;
+                        const duration = Math.max(0.1, cut.duration);
+                        currentInputs.push('-ss', String(trimStart), '-t', String(duration), '-i', vidInputFile);
                         audioInputIndex++;
                     } else if (useTtsAudio) {
                         // Use TTS
