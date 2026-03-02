@@ -417,15 +417,36 @@ export const Step6_Final = () => {
             setLoadingProgress({ current: 0, total: script.length });
             const newCache: Record<string, string> = {};
 
-            const processUrl = async (url: string) => {
+            const processUrl = async (url: string, retryContext?: string) => {
                 // Optimization: If it's already a resolved format, return as is.
                 if (!url || url.startsWith('blob:') || url.startsWith('http')) return url;
 
                 // Handle idb:// URLs - resolve from IndexedDB
                 if (isIdbUrl(url)) {
                     // [IMPORTANT] Use asBlob: true to leverage centralized caching and prevent ERR_FILE_NOT_FOUND
-                    const resolved = await resolveUrl(url, { asBlob: true });
-                    return resolved || undefined;
+                    // [FIX] Retry logic for video URLs - IDB access can transiently fail
+                    const MAX_RETRIES = 2;
+                    const RETRY_DELAY = 500;
+                    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+                        try {
+                            const resolved = await resolveUrl(url, { asBlob: true });
+                            if (resolved) return resolved;
+                            // resolveUrl returned empty string - data missing from IDB
+                            if (attempt < MAX_RETRIES) {
+                                console.warn(`[Step6:processUrl] Attempt ${attempt + 1}/${MAX_RETRIES + 1} failed for ${retryContext || url.substring(0, 80)} - retrying in ${RETRY_DELAY}ms...`);
+                                await new Promise(r => setTimeout(r, RETRY_DELAY));
+                            }
+                        } catch (err) {
+                            if (attempt < MAX_RETRIES) {
+                                console.warn(`[Step6:processUrl] Attempt ${attempt + 1}/${MAX_RETRIES + 1} threw error for ${retryContext || url.substring(0, 80)}:`, err);
+                                await new Promise(r => setTimeout(r, RETRY_DELAY));
+                            } else {
+                                console.error(`[Step6:processUrl] All ${MAX_RETRIES + 1} attempts failed for ${retryContext || url.substring(0, 80)}:`, err);
+                            }
+                        }
+                    }
+                    console.error(`[Step6:processUrl] ❌ FAILED to resolve IDB URL after ${MAX_RETRIES + 1} attempts: ${url}`);
+                    return undefined;
                 }
 
                 return url;
@@ -492,7 +513,14 @@ export const Step6_Final = () => {
                     if (cut.draftImageUrl) addToCache(cut.draftImageUrl, await processUrl(cut.draftImageUrl));
 
                     // 4. Video
-                    if (cut.videoUrl) addToCache(cut.videoUrl, await processUrl(cut.videoUrl));
+                    if (cut.videoUrl) {
+                        const resolvedVideo = await processUrl(cut.videoUrl, `Cut#${index} video`);
+                        if (resolvedVideo) {
+                            addToCache(cut.videoUrl, resolvedVideo);
+                        } else {
+                            console.error(`[Step6] ⚠️ Cut ${index}: Video resolve FAILED. URL: ${cut.videoUrl.substring(0, 80)}. This video will NOT play in hybrid mode.`);
+                        }
+                    }
 
                 } catch (e) {
                     console.error(`[Step6] Error processing cut ${index}:`, e);
@@ -565,6 +593,19 @@ export const Step6_Final = () => {
                 setIsAllAssetsLoaded(true);
             } else {
                 setIsAllAssetsLoaded(true);
+            }
+
+            // [FIX] Summary: Log any video URLs that failed to resolve
+            const unresolvedVideos = script.filter(c => {
+                if (!c.videoUrl || !isIdbUrl(c.videoUrl)) return false;
+                // Check if this video made it into the cache
+                const cached = newCache[c.videoUrl] || blobCacheRef.current[c.videoUrl];
+                return !cached || cached.startsWith('idb://');
+            });
+            if (unresolvedVideos.length > 0) {
+                console.error(`[Step6] ❌ ${unresolvedVideos.length} video(s) failed to resolve from IDB. These will NOT play in hybrid mode:`,
+                    unresolvedVideos.map(c => ({ id: c.id, url: c.videoUrl?.substring(0, 80) }))
+                );
             }
         };
 

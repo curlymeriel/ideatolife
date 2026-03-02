@@ -1667,13 +1667,27 @@ export const Step4_5_VideoComposition: React.FC = () => {
                 // Otherwise, use visual prompt and conditionally append dialogue.
                 let prompt = cut.videoPrompt || cut.visualPrompt || '';
 
-                // Always append dialogue if the speaker is in the scene to enable lip-syncing.
-                // We check the original visualPrompt because AI-generated videoPrompt often drops the exact Korean name.
+                // Append dialogue for lip-syncing based on provider capabilities.
+                // Veo 3.x models support native audio/lip-sync → always append dialogue.
+                // Other models → only append if speaker is visible in the scene (check visualPrompt).
                 if (cut.dialogue && cut.speaker) {
-                    const speakerName = cut.speaker.toLowerCase();
-                    const visualPromptText = (cut.visualPrompt || '').toLowerCase();
-                    if (visualPromptText.includes(speakerName) && !prompt.includes(cut.dialogue)) {
-                        prompt += `. Character speaking: "${cut.dialogue}"`;
+                    const veoModelInfo = selectedProvider === 'gemini-veo'
+                        ? getVeoModels().find(m => m.id === (getVeoModels().map(v => v.id).includes(selectedVeoModel) ? selectedVeoModel : 'veo-3.1-generate-preview'))
+                        : null;
+                    const isAudioCapableModel = veoModelInfo?.supportsAudio ?? false;
+
+                    if (isAudioCapableModel) {
+                        // Veo 3.x: Native audio/lip-sync supported → always append dialogue
+                        if (!prompt.includes(cut.dialogue)) {
+                            prompt += `. Character speaking: "${cut.dialogue}"`;
+                        }
+                    } else {
+                        // Non-audio models (Veo 2.0, Replicate, KieAI) → only if speaker is in visual prompt
+                        const speakerName = cut.speaker.toLowerCase();
+                        const visualPromptText = (cut.visualPrompt || '').toLowerCase();
+                        if (visualPromptText.includes(speakerName) && !prompt.includes(cut.dialogue)) {
+                            prompt += `. Character speaking: "${cut.dialogue}"`;
+                        }
                     }
                 }
 
@@ -1695,7 +1709,7 @@ export const Step4_5_VideoComposition: React.FC = () => {
 
                     const result = await generateVideoWithVeo(apiKey, {
                         prompt,
-                        imageUrl: effectiveModel === 'veo-3.1-generate-preview' ? imageUrl : undefined,
+                        imageUrl: getVeoModels().find(m => m.id === effectiveModel)?.supportsImageToVideo ? imageUrl : undefined,
                         model: effectiveModel,
                         aspectRatio: aspectRatio || '16:9', // Use project aspect ratio
                         duration: veoMaxDuration, // Always request max duration
@@ -1727,7 +1741,7 @@ export const Step4_5_VideoComposition: React.FC = () => {
 
                     const result = await generateVideo(apiKey, {
                         prompt,
-                        imageUrl: selectedReplicateModel.includes('i2v') ? imageUrl : undefined,
+                        imageUrl: getVideoModels().find(m => m.id === selectedReplicateModel)?.supportsImageToVideo ? imageUrl : undefined,
                         model: selectedReplicateModel as VideoModel,
                         aspectRatio: aspectRatio || '16:9', // Use project aspect ratio
                         duration: replicateMaxDuration, // Always request max duration
@@ -1980,14 +1994,21 @@ export const Step4_5_VideoComposition: React.FC = () => {
                                     </div>
                                 )}
 
-                                {/* Feature Badge */}
+                                {/* Feature Badge - Dynamic from model info */}
                                 <div className="flex gap-2 flex-wrap">
-                                    {selectedVeoModel === 'veo-3.1-generate-preview' && (
-                                        <>
-                                            <span className="px-2 py-1 bg-[var(--color-primary-dim)] text-[var(--color-primary)] text-xs rounded-full">4K 지원</span>
-                                            <span className="px-2 py-1 bg-gray-500/20 text-gray-300 text-xs rounded-full">Image-to-Video</span>
-                                            <span className="px-2 py-1 bg-green-500/20 text-green-300 text-xs rounded-full">Native Audio</span>
-                                        </>
+                                    {(() => {
+                                        const modelInfo = getVeoModels().find(m => m.id === selectedVeoModel);
+                                        if (!modelInfo) return null;
+                                        return modelInfo.features.map(f => (
+                                            <span key={f} className={`px-2 py-1 text-xs rounded-full ${f.includes('4K') ? 'bg-[var(--color-primary-dim)] text-[var(--color-primary)]'
+                                                    : f.includes('Audio') ? 'bg-green-500/20 text-green-300'
+                                                        : f.includes('Fast') ? 'bg-yellow-500/20 text-yellow-300'
+                                                            : 'bg-gray-500/20 text-gray-300'
+                                                }`}>{f}</span>
+                                        ));
+                                    })()}
+                                    {getVeoModels().find(m => m.id === selectedVeoModel)?.supportsImageToVideo && (
+                                        <span className="px-2 py-1 bg-gray-500/20 text-gray-300 text-xs rounded-full">Image-to-Video</span>
                                     )}
                                 </div>
                             </div>
