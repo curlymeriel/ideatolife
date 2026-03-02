@@ -18,7 +18,7 @@ export default defineConfig({
   //   proxy: { ... }
   server: {
     headers: {
-      "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+      "Cross-Origin-Opener-Policy": "same-origin",
       "Cross-Origin-Embedder-Policy": "credentialless",
     },
     proxy: {

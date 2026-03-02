@@ -945,8 +945,13 @@ export const CutItem = memo(({
 
                             {/* Generate / Regenerate Button */}
                             <button
-                                onClick={() => onGenerateAudio(cut.id, cut.dialogue)}
-                                disabled={audioLoading || !cut.dialogue || isAudioConfirmed}
+                                onClick={() => {
+                                    // [FIX] Flush debounced dialogue to sync store, then use localDialogue
+                                    // which always has the latest user-typed text (cut.dialogue may be stale)
+                                    flushDialogue();
+                                    onGenerateAudio(cut.id, localDialogue);
+                                }}
+                                disabled={audioLoading || !localDialogue || isAudioConfirmed}
                                 className={`flex items-center justify-center w-8 h-8 rounded-full transition-all border ${isAudioConfirmed
                                     ? 'opacity-30 cursor-not-allowed border-white/5'
                                     : audioLoading

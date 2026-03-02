@@ -1022,7 +1022,16 @@ export async function exportWithFFmpeg(
 }
 
 export function isFFmpegSupported(): boolean {
-    return typeof SharedArrayBuffer !== 'undefined';
+    const sabAvailable = typeof SharedArrayBuffer !== 'undefined';
+    const coiActive = typeof window !== 'undefined' && (window as any).crossOriginIsolated;
+    console.log(`[FFmpeg] Support check: SharedArrayBuffer=${sabAvailable}, crossOriginIsolated=${coiActive}`);
+    if (!sabAvailable) {
+        console.warn('[FFmpeg] SharedArrayBuffer NOT available. Check COOP/COEP headers. Current:', {
+            coop: document.head?.querySelector?.('meta[http-equiv="Cross-Origin-Opener-Policy"]')?.getAttribute?.('content'),
+            crossOriginIsolated: coiActive
+        });
+    }
+    return sabAvailable;
 }
 
 export async function preloadFFmpeg(
