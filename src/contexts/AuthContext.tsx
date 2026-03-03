@@ -65,6 +65,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 setUser(user);
                 setLoading(false);
                 setError(null);
+
+                // 기존 세션이든 신규 로그인이든, 로그인 상태면 로컬→클라우드 자동 동기화
+                if (user) {
+                    migrateAllToCloud(user.uid).then(() => {
+                        console.log('[Auth] Auto cloud sync completed on session restore.');
+                    }).catch(err => {
+                        console.error('[Auth] Auto cloud sync failed (non-blocking):', err);
+                    });
+                }
             },
             (error) => {
                 console.error('[Auth] V6 - onAuthStateChanged Error:', error);
