@@ -1688,7 +1688,36 @@ export const useWorkflowStore = create<WorkflowStore>()(
 
                     console.log(`[Store] Project ${id} loaded successfully. State fully replaced and cleaned.`);
                 } else {
-                    console.error(`[Store] Project ${id} not found on disk.`);
+                    // 로컬에 없으면 클라우드에서 자동 다운로드 시도
+                    if (isFirebaseConfigured() && auth?.currentUser) {
+                        console.log(`[Store] Project ${id} not on disk. Trying cloud download...`);
+                        try {
+                            const cloudDb = await import('../services/cloudDatabase');
+                            const cloudData = await cloudDb.loadProject(auth.currentUser.uid, id);
+                            if (cloudData) {
+                                // 클라우드에서 받은 데이터를 로컬 IDB에 저장
+                                await idbSet(getProjectKey(id), cloudData);
+                                console.log(`[Store] Downloaded project ${id} from cloud. Loading...`);
+
+                                const currentState = get() as any;
+                                const preservedSavedProjects = currentState.savedProjects || {};
+                                const freshBaseState = getEmptyProjectState(id, cloudData.apiKeys || currentState.apiKeys);
+                                set({
+                                    ...freshBaseState,
+                                    ...cloudData,
+                                    storylineTable: cloudData.storylineTable || [],
+                                    savedProjects: preservedSavedProjects,
+                                } as any);
+
+                                get().cleanupOrphanedAssets();
+                                console.log(`[Store] Cloud project ${id} loaded successfully.`);
+                                return;
+                            }
+                        } catch (cloudErr) {
+                            console.error(`[Store] Cloud download failed:`, cloudErr);
+                        }
+                    }
+                    console.error(`[Store] Project ${id} not found on disk or cloud.`);
                     alert("Failed to load project data. It may be missing or corrupted.");
                 }
             },
