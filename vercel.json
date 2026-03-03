@@ -1,34 +1,15 @@
 {
-    "rewrites": [
-        {
-            "source": "/__/auth/:path*",
-            "destination": "https://ideatolife-meriel.firebaseapp.com/__/auth/:path*"
-        }
-    ],
     "headers": [
         {
-            "source": "/((?!__/auth).*)",
+            "source": "/(.*)",
             "headers": [
                 {
                     "key": "Cross-Origin-Opener-Policy",
-                    "value": "same-origin"
+                    "value": "same-origin-allow-popups"
                 },
                 {
                     "key": "Cross-Origin-Embedder-Policy",
                     "value": "credentialless"
-                }
-            ]
-        },
-        {
-            "source": "/__/auth/:path*",
-            "headers": [
-                {
-                    "key": "Cross-Origin-Opener-Policy",
-                    "value": "unsafe-none"
-                },
-                {
-                    "key": "Cross-Origin-Embedder-Policy",
-                    "value": "unsafe-none"
                 }
             ]
         }
