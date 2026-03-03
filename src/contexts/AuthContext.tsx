@@ -15,6 +15,7 @@ import {
     onAuthStateChanged,
 } from 'firebase/auth';
 import { auth, googleProvider, isFirebaseConfigured } from '../lib/firebase';
+import { migrateAllToCloud } from '../utils/cloudMigration';
 
 interface AuthContextType {
     user: User | null;
@@ -104,6 +105,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             const result = await signInWithPopup(auth!, googleProvider!);
             console.log('[Auth] V6 - Success:', result.user.email);
             setUser(result.user);
+
+            // 로그인 성공 후 로컬 프로젝트를 클라우드에 자동 동기화 (백그라운드, UI 비차단)
+            migrateAllToCloud(result.user.uid).then(() => {
+                console.log('[Auth] Auto cloud sync completed.');
+            }).catch(err => {
+                console.error('[Auth] Auto cloud sync failed (non-blocking):', err);
+            });
         } catch (error: any) {
             console.error('[Auth] V6 - Error:', error.code, error.message);
             if (error.code === 'auth/popup-closed-by-user') {
