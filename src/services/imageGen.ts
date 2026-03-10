@@ -17,7 +17,7 @@ export const generateImage = async (
     apiKey: string,
     referenceImages?: (string | ReferenceImage)[],
     aspectRatio?: string,
-    modelName: string = 'gemini-3.1-flash-image-preview',
+    modelName: string = 'gemini-2.5-flash-image',
     candidateCount: number = 1
 ): Promise<{ urls: string[] }> => {
     if (!apiKey) {
@@ -32,9 +32,8 @@ export const generateImage = async (
     }
 
     const fallbackModels = [
-        'gemini-2.5-pro-image',
-        'gemini-2.5-flash-image',
-        'gemini-3.0-flash-image'
+        'gemini-3-pro-image-preview',
+        'gemini-2.5-flash-image'
     ];
 
     const allModels = [modelName];
