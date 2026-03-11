@@ -1,4 +1,4 @@
-﻿import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useWorkflowStore } from '../store/workflowStore';
 import { generateScript, DEFAULT_SCRIPT_INSTRUCTIONS, DEFAULT_VIDEO_PROMPT_INSTRUCTIONS, detectGender } from '../services/gemini';
 import type { ScriptCut } from '../services/gemini';
@@ -7,7 +7,7 @@ import { generateSpeech, type VoiceConfig } from '../services/tts';
 import { generateGeminiSpeech, getDefaultGeminiVoice, isGeminiTtsVoice, GEMINI_TTS_VOICES } from '../services/geminiTts';
 
 import { useNavigate } from 'react-router-dom';
-import { Wand2, Loader2, ArrowRight, Lock, Unlock, Settings, Mic, Image, Sparkles, Sliders, Bot } from 'lucide-react';
+import { Wand2, Loader2, ArrowRight, Lock, Unlock, Mic, Image, Sparkles, Bot, FileText } from 'lucide-react';
 import { CutItem } from '../components/Production/CutItem';
 import { SfxSearchModal } from '../components/Production/SfxSearchModal';
 import { AiInstructionHelper } from '../components/Production/AiInstructionHelper';
@@ -61,11 +61,12 @@ export const Step3_Production: React.FC = () => {
     const [sfxModalCutId, setSfxModalCutId] = useState<number | null>(null);
     const [batchLoading, setBatchLoading] = useState(false);
     const [isChatOpen, setIsChatOpen] = useState(false);
-    const [isAiInstructionsOpen, setIsAiInstructionsOpen] = useState(false);
+
     const [customInstructions, setCustomInstructions] = useState(DEFAULT_SCRIPT_INSTRUCTIONS);
     const [isInstructionsModalOpen, setIsInstructionsModalOpen] = useState(false);
     const [videoPromptInstructions, setVideoPromptInstructions] = useState(DEFAULT_VIDEO_PROMPT_INSTRUCTIONS);
     const [isVideoInstructionsModalOpen, setIsVideoInstructionsModalOpen] = useState(false);
+    const [activeSubTab, setActiveSubTab] = useState<'script' | 'image' | 'audio'>('script');
 
     // Ref to keep track of latest script for stable callbacks
     const localScriptRef = useRef(localScript);
@@ -1019,6 +1020,42 @@ export const Step3_Production: React.FC = () => {
         }
     }, [handleGenerateAudio, handleGenerateFinalImage, setBatchLoading]);
 
+    const handleBatchGenerateImages = useCallback(async () => {
+        const cutsToGenerate = localScriptRef.current.filter(c => !c.finalImageUrl && !c.isImageConfirmed);
+        if (cutsToGenerate.length === 0) return alert('이미 모든 이미지가 생성되었거나 잠겨 있습니다.');
+        if (!confirm(`${cutsToGenerate.length}개 컷의 이미지를 일괄 생성하시겠습니까?`)) return;
+        setBatchLoading(true);
+        try {
+            for (const cut of cutsToGenerate) {
+                await handleGenerateFinalImage(cut.id, cut.visualPrompt || '');
+            }
+            alert('이미지 일괄 생성이 완료되었습니다.');
+        } catch (e: any) {
+            console.error('Batch image generation error:', e);
+            alert(`이미지 일괄 생성 중 오류 발생: ${e.message}`);
+        } finally {
+            setBatchLoading(false);
+        }
+    }, [handleGenerateFinalImage, setBatchLoading]);
+
+    const handleBatchGenerateAllAudio = useCallback(async () => {
+        const cutsToGenerate = localScriptRef.current.filter(c => !c.audioUrl && c.speaker !== 'SILENT' && c.dialogue && !c.isAudioConfirmed);
+        if (cutsToGenerate.length === 0) return alert('이미 모든 오디오가 생성되었거나 잠겨 있습니다.');
+        if (!confirm(`${cutsToGenerate.length}개 컷의 오디오를 일괄 생성하시겠습니까?`)) return;
+        setBatchLoading(true);
+        try {
+            for (const cut of cutsToGenerate) {
+                await handleGenerateAudio(cut.id, cut.dialogue);
+            }
+            alert('오디오 일괄 생성이 완료되었습니다.');
+        } catch (e: any) {
+            console.error('Batch audio generation error:', e);
+            alert(`오디오 일괄 생성 중 오류 발생: ${e.message}`);
+        } finally {
+            setBatchLoading(false);
+        }
+    }, [handleGenerateAudio, setBatchLoading]);
+
 
     const handleBulkLockAudio = useCallback((speaker: string, lock: boolean) => {
         setLocalScript(prev => {
@@ -1314,357 +1351,239 @@ export const Step3_Production: React.FC = () => {
 
     return (
         <>
-            <div className="flex gap-6 h-[calc(100vh-120px)]">
-                {/* LEFT SIDEBAR - widened to 30% / max 420px for better visibility */}
-                <div className="w-[30%] min-w-[320px] max-w-[420px] flex flex-col gap-4 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-[var(--color-border)] scrollbar-track-transparent">
-
-                    {/* Header with Stats */}
-                    <div className="glass-panel p-4">
-                        <div className="flex flex-col gap-3">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <h2 className="text-2xl font-bold text-white tracking-tight">Production</h2>
-                                    <p className="text-xs text-[var(--color-text-muted)] mt-1">컷별로 자산(오디오,이미지)을 생성하고 준비되면 확정하세요.</p>
-                                </div>
-                                <div className="flex flex-col items-end gap-2">
-                                    <button
-                                        onClick={handleGenerateScript}
-                                        disabled={loading}
-                                        className="px-3 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary)]/80 text-black text-xs font-bold rounded-lg flex items-center gap-1.5 transition-all shrink-0 shadow-md"
-                                        title={localScript.length > 0 ? 'Regenerate Script' : 'Generate Script'}
-                                    >
-                                        {loading ? <Loader2 className="animate-spin" size={14} /> : <Wand2 size={14} />}
-                                        <span className="hidden sm:inline">Script</span>
-                                    </button>
-                                    {localScript.length > 0 && (
-                                        <div className="text-right">
-                                            <div className="text-xs font-bold text-[var(--color-primary)]">{progressPercent}% Ready</div>
-                                            <div className="text-[10px] text-[var(--color-text-muted)]">{confirmedCount}/{totalCount} confirmed</div>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Batch Generation Button */}
-                            {localScript.length > 0 && (progressPercent < 100) && (
+            <div className="flex flex-col h-[calc(100vh-120px)]">
+                {/* === SUB-TAB BAR === */}
+                <div className="flex items-center gap-4 mb-4">
+                    <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-full border border-white/10">
+                        {([
+                            { id: 'script' as const, num: 1, label: 'Script', Icon: FileText },
+                            { id: 'image' as const, num: 2, label: 'Image', Icon: Image },
+                            { id: 'audio' as const, num: 3, label: 'Audio', Icon: Mic },
+                        ]).map((tab, i, arr) => (
+                            <React.Fragment key={tab.id}>
                                 <button
-                                    onClick={handleBatchGenerate}
+                                    onClick={() => setActiveSubTab(tab.id)}
+                                    className={`px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-tight transition-all hover:scale-105 flex items-center gap-1.5 ${activeSubTab === tab.id
+                                        ? 'bg-[var(--color-primary)]/40 text-[var(--color-primary)] border border-[var(--color-primary)]/50 shadow-[0_0_15px_rgba(255,173,117,0.3)]'
+                                        : 'text-gray-500 hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)]'
+                                        }`}
+                                >
+                                    <tab.Icon size={12} />
+                                    #{tab.num} {tab.label}
+                                </button>
+                                {i < arr.length - 1 && <span className="text-white/10 text-[10px] font-bold">/</span>}
+                            </React.Fragment>
+                        ))}
+                    </div>
+
+                    {/* Progress + Next Step */}
+                    <div className="flex items-center gap-3 ml-auto">
+                        {localScript.length > 0 && (
+                            <div className="flex items-center gap-3 text-xs">
+                                <span className="text-[var(--color-primary)] font-bold">{progressPercent}% Ready</span>
+                                <span className="text-[var(--color-text-muted)]">{confirmedCount}/{totalCount} confirmed</span>
+                            </div>
+                        )}
+                        {localScript.length > 0 && (
+                            <button
+                                onClick={handleApprove}
+                                className="btn-primary flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-sm shadow-lg hover:shadow-[0_0_20px_rgba(255,159,89,0.4)] hover:scale-[1.02] transition-all"
+                            >
+                                Next Step <ArrowRight size={16} />
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {/* === TAB SETTINGS PANEL === */}
+                <div className="glass-panel p-4 mb-4">
+                    {/* --- #1 SCRIPT TAB --- */}
+                    {activeSubTab === 'script' && (
+                        <div className="flex items-center gap-4 flex-wrap">
+                            <button
+                                onClick={handleGenerateScript}
+                                disabled={loading}
+                                className="px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary)]/80 text-black text-xs font-bold rounded-lg flex items-center gap-1.5 transition-all shrink-0 shadow-md"
+                                title={localScript.length > 0 ? '대본 재생성' : '대본 일괄 생성'}
+                            >
+                                {loading ? <Loader2 className="animate-spin" size={14} /> : <Wand2 size={14} />}
+                                {localScript.length > 0 ? '대본 재생성' : '대본 일괄 생성'}
+                            </button>
+
+
+
+                            <div className="h-6 w-px bg-white/10 mx-1" />
+
+                            {/* Bulk Lock Controls */}
+                            {localScript.length > 0 && (
+                                <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[9px] text-gray-500 uppercase font-bold tracking-wider">Audio ({audioLockedCount}/{audioGeneratedCount})</span>
+                                        <button onClick={lockAllAudio} className="w-6 h-6 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded flex items-center justify-center transition-all hover:scale-110" title="일괄 잠금"><Lock size={10} strokeWidth={2.5} /></button>
+                                        <button onClick={unlockAllAudio} className="w-6 h-6 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded flex items-center justify-center transition-all hover:scale-110" title="일괄 해제"><Unlock size={10} strokeWidth={2.5} /></button>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[9px] text-gray-500 uppercase font-bold tracking-wider">Image ({imageLockedCount}/{imageGeneratedCount})</span>
+                                        <button onClick={lockAllImages} className="w-6 h-6 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded flex items-center justify-center transition-all hover:scale-110" title="일괄 잠금"><Lock size={10} strokeWidth={2.5} /></button>
+                                        <button onClick={unlockAllImages} className="w-6 h-6 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded flex items-center justify-center transition-all hover:scale-110" title="일괄 해제"><Unlock size={10} strokeWidth={2.5} /></button>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="h-6 w-px bg-white/10 mx-1" />
+
+                            {/* AI Instructions */}
+                            <button onClick={() => setIsInstructionsModalOpen(true)} className="px-3 py-1.5 text-[10px] font-bold text-white bg-white/5 border border-white/10 rounded-lg hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-all flex items-center gap-1.5">
+                                <Sparkles size={10} /> Script/Image 지시문 ✏️
+                            </button>
+                            <button onClick={() => setIsVideoInstructionsModalOpen(true)} className="px-3 py-1.5 text-[10px] font-bold text-white bg-white/5 border border-white/10 rounded-lg hover:border-purple-500 hover:text-purple-400 transition-all flex items-center gap-1.5">
+                                <Sparkles size={10} /> Video 지시문 ✏️
+                            </button>
+                        </div>
+                    )}
+
+                    {/* --- #2 IMAGE TAB --- */}
+                    {activeSubTab === 'image' && (
+                        <div className="flex items-center gap-4 flex-wrap">
+                            <div className="flex items-center gap-2">
+                                <Image size={14} className="text-[var(--color-primary)]" />
+                                <span className="text-xs text-white font-bold uppercase tracking-wider">이미지 AI 모델</span>
+                            </div>
+                            <select
+                                className="bg-[var(--color-surface)] border border-[var(--color-border)] text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)] min-w-[240px]"
+                                value={imageModel}
+                                onChange={(e) => setImageModel(e.target.value as any)}
+                            >
+                                {IMAGE_MODELS.map(model => (
+                                    <option key={model.value} value={model.value}>{model.label} {model.cost}</option>
+                                ))}
+                            </select>
+                            <span className="text-[10px] text-[var(--color-text-muted)]">
+                                {IMAGE_MODELS.find(m => m.value === imageModel)?.hint}
+                            </span>
+
+                            {/* Batch Image Generate */}
+                            {localScript.length > 0 && (
+                                <button
+                                    onClick={handleBatchGenerateImages}
                                     disabled={batchLoading || loading}
-                                    className="w-full mt-2 py-2 bg-gradient-to-r from-[var(--color-primary)] to-[#FF9A5C] text-black text-xs font-bold rounded-lg flex items-center justify-center gap-2 shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:brightness-110"
+                                    className="px-4 py-2 bg-gradient-to-r from-[var(--color-primary)] to-[#FF9A5C] text-black text-xs font-bold rounded-lg flex items-center gap-2 shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:brightness-110"
                                 >
                                     {batchLoading ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
-                                    미생성 자산 일괄 생성하기 ({localScript.filter(c => (!c.audioUrl && c.speaker !== 'SILENT') || !c.finalImageUrl).length})
+                                    이미지 일괄 생성 ({localScript.filter(c => !c.finalImageUrl && !c.isImageConfirmed).length})
                                 </button>
                             )}
 
-                            {/* Bulk Lock Buttons - Inside header for visibility before regeneration */}
+                            <div className="h-6 w-px bg-white/10 mx-1" />
+
                             {localScript.length > 0 && (
-                                <div className="pt-3 border-t border-white/5 flex gap-4">
-                                    {/* Left Side: Title & Description */}
-                                    <div className="flex-1 flex flex-col justify-center gap-1">
-                                        <span className="text-[10px] uppercase tracking-widest font-black text-[var(--color-primary)] opacity-80 flex items-center gap-2">
-                                            <Lock size={10} />
-                                            이미 생성된 자산 일괄 잠금/해제
-                                        </span>
-                                        <span className="text-[10px] text-gray-500 pl-3.5 leading-snug">
-                                            - 스크립트 재생성 전, 유지하고 싶은 자산을 잠금 설정하세요.
-                                        </span>
-                                    </div>
-
-                                    {/* Right Side: Controls */}
-                                    <div className="flex-1 flex flex-col gap-2 justify-center">
-                                        {/* Row 1: Audio */}
-                                        <div className="flex items-center justify-end gap-3">
-                                            <span className="text-[9px] text-gray-500 uppercase font-bold tracking-wider">Audio ({audioLockedCount}/{audioGeneratedCount})</span>
-                                            <div className="flex gap-1.5">
-                                                <button
-                                                    onClick={lockAllAudio}
-                                                    className="w-7 h-7 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded-lg flex items-center justify-center transition-all hover:scale-105"
-                                                    title="일괄 잠금"
-                                                >
-                                                    <Lock size={12} strokeWidth={2.5} />
-                                                </button>
-                                                <button
-                                                    onClick={unlockAllAudio}
-                                                    className="w-7 h-7 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded-lg flex items-center justify-center transition-all hover:scale-105"
-                                                    title="일괄 해제"
-                                                >
-                                                    <Unlock size={12} strokeWidth={2.5} />
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        {/* Row 2: Image */}
-                                        <div className="flex items-center justify-end gap-3">
-                                            <span className="text-[9px] text-gray-500 uppercase font-bold tracking-wider">Image ({imageLockedCount}/{imageGeneratedCount})</span>
-                                            <div className="flex gap-1.5">
-                                                <button
-                                                    onClick={lockAllImages}
-                                                    className="w-7 h-7 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded-lg flex items-center justify-center transition-all hover:scale-105"
-                                                    title="일괄 잠금"
-                                                >
-                                                    <Lock size={12} strokeWidth={2.5} />
-                                                </button>
-                                                <button
-                                                    onClick={unlockAllImages}
-                                                    className="w-7 h-7 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded-lg flex items-center justify-center transition-all hover:scale-105"
-                                                    title="일괄 해제"
-                                                >
-                                                    <Unlock size={12} strokeWidth={2.5} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[9px] text-gray-500 uppercase font-bold tracking-wider">Image Lock ({imageLockedCount}/{imageGeneratedCount})</span>
+                                    <button onClick={lockAllImages} className="w-6 h-6 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded flex items-center justify-center transition-all hover:scale-110" title="일괄 잠금"><Lock size={10} strokeWidth={2.5} /></button>
+                                    <button onClick={unlockAllImages} className="w-6 h-6 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded flex items-center justify-center transition-all hover:scale-110" title="일괄 해제"><Unlock size={10} strokeWidth={2.5} /></button>
                                 </div>
                             )}
-                        </div>
-                    </div>
 
-                    {/* INTEGRATED PRODUCTION SETTINGS */}
-                    <div className="glass-panel p-4 space-y-5">
-                        <div className="flex items-center justify-between">
-                            <span className="text-sm font-bold text-white flex items-center gap-2">
-                                <Settings size={14} className="text-white" />
-                                이미지/오디오 생성 AI모델 세팅
-                            </span>
+                            <p className="w-full text-[10px] text-gray-500 mt-1">💡 각 컷의 🖼 버튼으로 개별 이미지를 재생성하거나, 이미지를 클릭해 Visual Studio에서 상세 편집할 수 있습니다.</p>
                         </div>
+                    )}
 
-                        <div className="grid grid-cols-[70px_1fr] gap-3 items-start">
-                            <div className="flex items-center gap-1.5 pt-2 justify-end">
-                                <Image size={11} className="text-white" />
-                                <span className="text-[11px] text-white font-bold uppercase tracking-wider">이미지</span>
-                            </div>
-                            <div className="space-y-1">
+                    {/* --- #3 AUDIO TAB --- */}
+                    {activeSubTab === 'audio' && (
+                        <div className="space-y-3">
+                            <div className="flex items-center gap-4 flex-wrap">
+                                <div className="flex items-center gap-2">
+                                    <Mic size={14} className="text-[var(--color-primary)]" />
+                                    <span className="text-xs text-white font-bold uppercase tracking-wider">TTS 모델</span>
+                                </div>
                                 <select
-                                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
-                                    value={imageModel}
-                                    onChange={(e) => setImageModel(e.target.value as any)}
-                                >
-                                    {IMAGE_MODELS.map(model => (
-                                        <option key={model.value} value={model.value}>
-                                            {model.label} {model.cost}
-                                        </option>
-                                    ))}
-                                </select>
-                                <span className="text-[10px] text-[var(--color-text-muted)] block">
-                                    {IMAGE_MODELS.find(m => m.value === imageModel)?.hint}
-                                </span>
-                            </div>
-                        </div>
-
-                        <div className="h-px bg-white/5 my-2" />
-
-                        <div className="grid grid-cols-[70px_1fr] gap-3 items-start">
-                            <div className="flex items-center gap-1.5 pt-2 justify-end">
-                                <Mic size={11} className="text-white" />
-                                <span className="text-[11px] text-white font-bold uppercase tracking-wider">오디오</span>
-                            </div>
-                            <div className="space-y-1">
-                                <select
-                                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
+                                    className="bg-[var(--color-surface)] border border-[var(--color-border)] text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)] min-w-[240px]"
                                     value={ttsModel}
                                     onChange={(e) => setTtsModel(e.target.value as any)}
                                 >
                                     {TTS_MODELS.map(model => (
-                                        <option key={model.value} value={model.value}>
-                                            {model.label} {model.cost}
-                                        </option>
+                                        <option key={model.value} value={model.value}>{model.label} {model.cost}</option>
                                     ))}
                                 </select>
-                                <span className="text-[10px] text-[var(--color-text-muted)] block mb-3">
+                                <span className="text-[10px] text-[var(--color-text-muted)]">
                                     {TTS_MODELS.find(m => m.value === ttsModel)?.hint}
                                 </span>
-                            </div>
-                        </div>
-                    </div>
 
-                    {/* BULK AUDIO SUB-PANEL - MOVED OUT OF GRID to use full sidebar width */}
-                    {localScript.length > 0 && (
-                        <div className="mt-2 p-3 bg-black/20 rounded-lg border border-white/5 space-y-3">
-                            <div className="text-[10px] text-gray-400 font-bold flex items-center gap-1 uppercase tracking-wider">
-                                <Sliders size={11} className="text-white" />
-                                <span className="text-[11px] text-white font-bold uppercase tracking-wider">일괄 오디오 세팅</span>
-                            </div>
+                                {/* Batch Audio Generate */}
+                                {localScript.length > 0 && (
+                                    <button
+                                        onClick={handleBatchGenerateAllAudio}
+                                        disabled={batchLoading || loading}
+                                        className="px-4 py-2 bg-gradient-to-r from-[var(--color-primary)] to-[#FF9A5C] text-black text-xs font-bold rounded-lg flex items-center gap-2 shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:brightness-110"
+                                    >
+                                        {batchLoading ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
+                                        오디오 일괄 생성 ({localScript.filter(c => !c.audioUrl && c.speaker !== 'SILENT' && c.dialogue && !c.isAudioConfirmed).length})
+                                    </button>
+                                )}
 
-                            {/* Global Settings */}
-                            <div className="grid grid-cols-2 gap-2">
-                                <select
-                                    className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs text-white focus:border-[var(--color-primary)] outline-none"
-                                    value={currentLanguage}
-                                    onChange={(e) => applyToAll('language', e.target.value || undefined)}
-                                >
+                                <div className="h-6 w-px bg-white/10 mx-1" />
+
+                                {/* Global language/speed */}
+                                <select className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs text-white focus:border-[var(--color-primary)] outline-none" value={currentLanguage} onChange={(e) => applyToAll('language', e.target.value || undefined)}>
                                     <option value="">🌐 언어: 자동</option>
                                     <option value="ko-KR">🇰🇷 한국어</option>
                                     <option value="en-US">🇺🇸 영어</option>
                                 </select>
-                                <select
-                                    className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs text-white focus:border-[var(--color-primary)] outline-none"
-                                    value={currentSpeed}
-                                    onChange={(e) => applyToAll('voiceSpeed', e.target.value ? parseFloat(e.target.value) : undefined)}
-                                >
+                                <select className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs text-white focus:border-[var(--color-primary)] outline-none" value={currentSpeed} onChange={(e) => applyToAll('voiceSpeed', e.target.value ? parseFloat(e.target.value) : undefined)}>
                                     <option value="">⚡ 속도: 자동</option>
-                                    <option value="0.85">85% 느리게</option>
-                                    <option value="1.0">100% 보통</option>
-                                    <option value="1.15">115% 빠르게</option>
+                                    <option value="0.85">85%</option>
+                                    <option value="1.0">100%</option>
+                                    <option value="1.15">115%</option>
                                 </select>
+
+                                <div className="h-6 w-px bg-white/10 mx-1" />
+
+                                {localScript.length > 0 && (
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[9px] text-gray-500 uppercase font-bold tracking-wider">Audio Lock ({audioLockedCount}/{audioGeneratedCount})</span>
+                                        <button onClick={lockAllAudio} className="w-6 h-6 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded flex items-center justify-center transition-all hover:scale-110" title="일괄 잠금"><Lock size={10} strokeWidth={2.5} /></button>
+                                        <button onClick={unlockAllAudio} className="w-6 h-6 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded flex items-center justify-center transition-all hover:scale-110" title="일괄 해제"><Unlock size={10} strokeWidth={2.5} /></button>
+                                    </div>
+                                )}
                             </div>
 
-                            {/* Per Speaker */}
-
-                            <div className="space-y-2 pt-2 border-t border-[var(--color-border)]">
-                                <div className="text-[9px] text-[var(--color-text-muted)] uppercase font-bold">화자별 보이스 설정</div>
-                                <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
+                            {/* Per-Speaker Voice Settings */}
+                            {localScript.length > 0 && speakers.length > 0 && (
+                                <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-[var(--color-border)] scrollbar-track-transparent">
                                     {speakers.map(([speaker, settings]) => {
                                         const currentVoice = settings.voiceId || getDefaultGeminiVoice(settings.gender);
                                         return (
-                                            <div key={speaker} className="bg-[var(--color-surface)] p-2 rounded border border-[var(--color-border)] space-y-2">
+                                            <div key={speaker} className="bg-[var(--color-surface)] p-2.5 rounded-lg border border-[var(--color-border)] space-y-2 min-w-[220px] flex-shrink-0">
                                                 <div className="flex items-center gap-2">
                                                     <span className="flex-1 text-xs text-white truncate font-medium" title={speaker}>{speaker}</span>
                                                     <span className="text-[10px] text-gray-500">{settings.cutCount} cuts</span>
                                                 </div>
-                                                <div className="flex items-center gap-1">
-                                                    <div className="flex-1 space-y-1">
-                                                        <select
-                                                            className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-1.5 py-1 text-[10px] text-white outline-none"
-                                                            value={currentVoice}
-                                                            onChange={(e) => applyVoiceToSpeaker(speaker, e.target.value)}
-                                                        >
-                                                            {VOICE_OPTIONS.map(group => (
-                                                                <optgroup key={group.optgroup} label={group.optgroup}>
-                                                                    {group.options.map(v => (
-                                                                        <option key={v.value} value={v.value}>{v.label}</option>
-                                                                    ))}
-                                                                </optgroup>
-                                                            ))}
-                                                        </select>
-                                                        <div className="flex gap-1">
-                                                            <select
-                                                                className="flex-1 bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-1 py-0.5 text-[9px] text-gray-400 outline-none"
-                                                                value={settings.voiceSpeed ?? ''}
-                                                                onChange={(e) => applyToSpeaker(speaker, 'voiceSpeed', e.target.value === '' ? undefined : parseFloat(e.target.value))}
-                                                            >
-                                                                <option value="">속도: 자동</option>
-                                                                <option value="0.8">0.8x</option>
-                                                                <option value="0.9">0.9x</option>
-                                                                <option value="1.0">1.0x</option>
-                                                                <option value="1.1">1.1x</option>
-                                                            </select>
-                                                            <select
-                                                                className="flex-1 bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-1 py-0.5 text-[9px] text-gray-400 outline-none"
-                                                                value={settings.age || 'adult'}
-                                                                onChange={(e) => applyToSpeaker(speaker, 'voiceAge', e.target.value)}
-                                                            >
-                                                                <option value="child">Child</option>
-                                                                <option value="young">Young</option>
-                                                                <option value="adult">Adult</option>
-                                                                <option value="senior">Senior</option>
-                                                            </select>
-                                                        </div>
-                                                    </div>
-                                                    <button
-                                                        onClick={() => playVoiceSample(currentVoice || '')}
-                                                        disabled={sampleLoading === currentVoice}
-                                                        className={`px-2 py-2 rounded text-[12px] font-bold self-start transition-all ${sampleLoading === currentVoice
-                                                            ? 'bg-gray-500/20 text-gray-400 cursor-wait animate-pulse'
-                                                            : 'bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30'
-                                                            }`}
-                                                        title={sampleLoading === currentVoice ? 'Generating sample...' : 'Play voice sample'}
-                                                    >
+                                                <select className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-1.5 py-1 text-[10px] text-white outline-none" value={currentVoice} onChange={(e) => applyVoiceToSpeaker(speaker, e.target.value)}>
+                                                    {VOICE_OPTIONS.map(group => (<optgroup key={group.optgroup} label={group.optgroup}>{group.options.map(v => (<option key={v.value} value={v.value}>{v.label}</option>))}</optgroup>))}
+                                                </select>
+                                                <div className="flex gap-1">
+                                                    <select className="flex-1 bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-1 py-0.5 text-[9px] text-gray-400 outline-none" value={settings.voiceSpeed ?? ''} onChange={(e) => applyToSpeaker(speaker, 'voiceSpeed', e.target.value === '' ? undefined : parseFloat(e.target.value))}>
+                                                        <option value="">속도: 자동</option><option value="0.8">0.8x</option><option value="0.9">0.9x</option><option value="1.0">1.0x</option><option value="1.1">1.1x</option>
+                                                    </select>
+                                                    <select className="flex-1 bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-1 py-0.5 text-[9px] text-gray-400 outline-none" value={settings.age || 'adult'} onChange={(e) => applyToSpeaker(speaker, 'voiceAge', e.target.value)}>
+                                                        <option value="child">Child</option><option value="young">Young</option><option value="adult">Adult</option><option value="senior">Senior</option>
+                                                    </select>
+                                                    <button onClick={() => playVoiceSample(currentVoice || '')} disabled={sampleLoading === currentVoice} className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all ${sampleLoading === currentVoice ? 'bg-gray-500/20 text-gray-400 cursor-wait animate-pulse' : 'bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30'}`} title="Play sample">
                                                         {sampleLoading === currentVoice ? '⏳' : '🔊'}
                                                     </button>
                                                 </div>
-                                                {/* Bulk Operations Row */}
                                                 <div className="flex gap-1 pt-1 border-t border-white/5">
-                                                    <button
-                                                        onClick={() => handleBulkGenerateAudio(speaker)}
-                                                        className="flex-1 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 hover:text-orange-300 text-[10px] py-1 rounded flex items-center justify-center gap-1 transition-colors font-medium border border-orange-500/30"
-                                                        title="해당 화자의 잠금 해제된 모든 컷 오디오 생성"
-                                                    >
-                                                        <Wand2 size={10} />
-                                                        일괄 생성
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleBulkLockAudio(speaker, true)}
-                                                        className="w-7 h-7 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded-lg flex items-center justify-center transition-all hover:scale-105"
-                                                        title="일괄 잠금"
-                                                    >
-                                                        <Lock size={12} strokeWidth={2.5} />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleBulkLockAudio(speaker, false)}
-                                                        className="w-7 h-7 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded-lg flex items-center justify-center transition-all hover:scale-105"
-                                                        title="일괄 해제"
-                                                    >
-                                                        <Unlock size={12} strokeWidth={2.5} />
-                                                    </button>
+                                                    <button onClick={() => handleBulkGenerateAudio(speaker)} className="flex-1 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 text-[10px] py-1 rounded flex items-center justify-center gap-1 transition-colors font-medium border border-orange-500/30"><Wand2 size={10} /> 일괄 생성</button>
+                                                    <button onClick={() => handleBulkLockAudio(speaker, true)} className="w-6 h-6 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded flex items-center justify-center transition-all hover:scale-110"><Lock size={10} strokeWidth={2.5} /></button>
+                                                    <button onClick={() => handleBulkLockAudio(speaker, false)} className="w-6 h-6 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded flex items-center justify-center transition-all hover:scale-110"><Unlock size={10} strokeWidth={2.5} /></button>
                                                 </div>
                                             </div>
                                         );
                                     })}
                                 </div>
-                            </div>
+                            )}
                         </div>
                     )}
-
-
-                    {/* System Instruction Management Panel */}
-                    <div className="p-4 space-y-3 border-none shadow-none bg-transparent">
-                        <div
-                            className="flex items-center justify-between mb-1 cursor-pointer group"
-                            onClick={() => setIsAiInstructionsOpen(!isAiInstructionsOpen)}
-                        >
-                            <span className="text-sm font-bold text-white flex items-center gap-2 group-hover:text-[var(--color-primary)] transition-colors">
-                                <Sparkles size={14} className="text-white group-hover:text-[var(--color-primary)] transition-colors" />
-                                사용자별 AI작가 시스템 지시문 관리
-                            </span>
-                            <span className="text-gray-500 group-hover:text-white transition-colors">
-                                {isAiInstructionsOpen ? '▲' : '▼'}
-                            </span>
-                        </div>
-
-                        {isAiInstructionsOpen && (
-                            <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
-                                {/* 1) Script / Image Prompt Instructions */}
-                                <button
-                                    onClick={() => setIsInstructionsModalOpen(true)}
-                                    className="w-full flex items-center justify-between p-3 bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)] rounded-lg transition-colors group text-left"
-                                >
-                                    <span className="text-xs font-medium text-white group-hover:text-[var(--color-primary)] transition-colors">
-                                        Script/Image
-                                    </span>
-                                    <span className="text-[10px] text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-2 py-1 rounded">
-                                        Edit ✏️
-                                    </span>
-                                </button>
-
-                                {/* 2) Video Prompt Instructions */}
-                                <button
-                                    onClick={() => setIsVideoInstructionsModalOpen(true)}
-                                    className="w-full flex items-center justify-between p-3 bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)] rounded-lg transition-colors group text-left"
-                                >
-                                    <span className="text-xs font-medium text-white group-hover:text-[var(--color-primary)] transition-colors">
-                                        Video
-                                    </span>
-                                    <span className="text-[10px] text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-2 py-1 rounded">
-                                        Edit ✏️
-                                    </span>
-                                </button>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Next Step Button */}
-                    {
-                        localScript.length > 0 && (
-                            <button
-                                onClick={handleApprove}
-                                className="w-full btn-primary flex items-center justify-center gap-2 py-3 rounded-xl font-bold shadow-lg hover:shadow-[0_0_20px_rgba(255,159,89,0.4)] hover:scale-[1.02] transition-all"
-                            >
-                                Next Step
-                                <ArrowRight size={20} />
-                            </button>
-                        )
-                    }
                 </div>
 
                 <div className="flex-1 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-[var(--color-border)] scrollbar-track-transparent">
@@ -1684,7 +1603,7 @@ export const Step3_Production: React.FC = () => {
                             </button>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 pb-20">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5 pb-20">
                             {localScript.map((cut, index) => (
                                 <CutItem
                                     key={cut.id}
