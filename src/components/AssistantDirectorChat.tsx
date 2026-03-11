@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, memo } from 'react';
-import { Bot, X, Sparkles, Send, Loader2 } from 'lucide-react';
+import { Bot, X, Sparkles, Send, Loader2, Trash2 } from 'lucide-react';
 import { ChatMessageItem } from './ChatMessageItem';
 import { consultAssistantDirector, type ChatMessage as AiChatMessage } from '../services/gemini';
 import { useWorkflowStore } from '../store/workflowStore';
@@ -41,7 +41,9 @@ export const AssistantDirectorChat: React.FC<AssistantDirectorChatProps> = memo(
     })));
 
     const productionChatHistory = useWorkflowStore(state => state.productionChatHistory);
+    const productionChatEpisodeKey = useWorkflowStore(state => (state as any).productionChatEpisodeKey);
     const setProductionChatHistory = useWorkflowStore(state => state.setProductionChatHistory);
+    const setProductionChatEpisodeKey = useWorkflowStore(state => (state as any).setProductionChatEpisodeKey);
 
     const [chatInput, setChatInput] = useState('');
     const [isConsulting, setIsConsulting] = useState(false);
@@ -50,6 +52,29 @@ export const AssistantDirectorChat: React.FC<AssistantDirectorChatProps> = memo(
     const scrollToBottom = () => {
         chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
+
+    // 마운트 시: 저장된 에피소드 키와 현재 에피소드 비교 → 불일치 시 자동 초기화
+    useEffect(() => {
+        const currentKey = `${projectContext.episodeNumber ?? ''}-${projectContext.episodeName ?? ''}`;
+        if (productionChatEpisodeKey && productionChatEpisodeKey !== currentKey) {
+            setProductionChatHistory([]);
+        }
+        if (setProductionChatEpisodeKey) {
+            setProductionChatEpisodeKey(currentKey);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // 마운트 시 1회만 실행
+
+    // 에피소드가 런타임에 바뀌면 채팅 기록 초기화
+    const prevEpisodeKeyRef = useRef<string | null>(null);
+    useEffect(() => {
+        const episodeKey = `${projectContext.episodeNumber ?? ''}-${projectContext.episodeName ?? ''}`;
+        if (prevEpisodeKeyRef.current !== null && prevEpisodeKeyRef.current !== episodeKey) {
+            setProductionChatHistory([]);
+            if (setProductionChatEpisodeKey) setProductionChatEpisodeKey(episodeKey);
+        }
+        prevEpisodeKeyRef.current = episodeKey;
+    }, [projectContext.episodeNumber, projectContext.episodeName]);
 
     useEffect(() => {
         if (isOpen) {
@@ -284,12 +309,25 @@ export const AssistantDirectorChat: React.FC<AssistantDirectorChatProps> = memo(
                             </div>
                         </div>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="p-2 hover:bg-white/5 rounded-lg text-gray-400 hover:text-white transition-colors"
-                    >
-                        <X size={20} />
-                    </button>
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => {
+                                if (window.confirm('채팅 기록을 초기화할까요?')) {
+                                    setProductionChatHistory([]);
+                                }
+                            }}
+                            title="채팅 초기화"
+                            className="p-2 hover:bg-white/5 rounded-lg text-gray-600 hover:text-red-400 transition-colors"
+                        >
+                            <Trash2 size={16} />
+                        </button>
+                        <button
+                            onClick={onClose}
+                            className="p-2 hover:bg-white/5 rounded-lg text-gray-400 hover:text-white transition-colors"
+                        >
+                            <X size={20} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Chat Messages */}

@@ -29,6 +29,7 @@ export interface ProjectSlice extends Omit<ProjectData, 'id' | 'lastModified' | 
     setAssets: (assets: Record<string, Asset[]>) => void;
     updateAsset: (cutId: number, asset: Partial<Asset>) => void;
     setProductionChatHistory: (history: ChatMessage[]) => void;
+    setProductionChatEpisodeKey: (key: string) => void;
     setBGMTracks: (tracks: BGMTrack[]) => void;
     cleanupOrphanedAssets: () => void;
     setDirty: (dirty: boolean) => void;
@@ -58,6 +59,7 @@ const sampleProjectDefaults = {
     },
     chatHistory: [],
     productionChatHistory: [],
+    productionChatEpisodeKey: '',
     thumbnailUrl: null,
     thumbnailSettings: {
         mode: 'framing' as const,
@@ -230,6 +232,7 @@ export const createProjectSlice: StateCreator<ProjectSlice> = (set, get) => ({
     },
 
     setProductionChatHistory: (history) => set({ productionChatHistory: history, isDirty: true }),
+    setProductionChatEpisodeKey: (key) => set({ productionChatEpisodeKey: key } as any),
 
     setBGMTracks: (tracks) => set({ bgmTracks: tracks, isDirty: true }),
 
