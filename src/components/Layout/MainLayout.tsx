@@ -344,13 +344,14 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                 {showApiConfig && (
                                     <div className="px-4 pb-4 space-y-3 animate-fade-in bg-[rgba(0,0,0,0.2)] border-b border-[var(--color-border)]">
                                         <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Gemini API Key</label>
+                                            <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">Gemini API Key (쉼표로 여러 개 등록 가능)</label>
                                             <input
-                                                type="password"
+                                                type="text"
                                                 className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-2 py-1 text-xs text-white focus:border-[var(--color-primary)] outline-none"
                                                 value={apiKeys?.gemini || ''}
                                                 onChange={(e) => setApiKeys({ ...apiKeys, gemini: e.target.value })}
-                                                placeholder="Required"
+                                                placeholder="Key1, Key2, ..."
+                                                title="Type multiple API keys separated by commas if you are hitting rate limits"
                                             />
                                         </div>
                                         <div className="space-y-1">

@@ -15,107 +15,125 @@ export interface GeminiMusicConfig {
  */
 export const generateGeminiMusic = async (
     config: GeminiMusicConfig,
-    apiKey: string
+    apiKeysRaw: string | string[]
 ): Promise<{ idbUrl: string; duration: number }> => {
-    if (!apiKey) {
+    if (!apiKeysRaw) {
         throw new Error('🔑 Gemini API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.');
     }
+
+    const apiKeys = Array.isArray(apiKeysRaw) ? apiKeysRaw : apiKeysRaw.split(',').map(k => k.trim()).filter(Boolean);
+    if (apiKeys.length === 0) throw new Error("At least one valid API key is required");
 
     if (!config.prompt || config.prompt.trim().length === 0) {
         throw new Error('Prompt is required for music generation');
     }
 
-    try {
-        console.log(`[Gemini Music] Generating with model: ${GEMINI_MUSIC_MODEL}`);
+    let lastError: any = null;
 
-        // System instruction to guide the model towards music generation
-        const systemInstruction = "You are a professional music composer. Generate high-quality background music (instrumental) based on the user's description. The output should be only the audio data.";
+    for (const apiKey of apiKeys) {
+        try {
+            console.log(`[Gemini Music] Generating with key ${apiKey.substring(0, 5)}... Model: ${GEMINI_MUSIC_MODEL}`);
 
-        const response = await axios.post(
-            `${GEMINI_MUSIC_URL}?key=${apiKey}`,
-            {
-                contents: [{
-                    parts: [{
-                        text: config.prompt
-                    }]
-                }],
-                system_instruction: {
-                    parts: [{ text: systemInstruction }]
+            // System instruction to guide the model towards music generation
+            const systemInstruction = "You are a professional music composer. Generate high-quality background music (instrumental) based on the user's description. The output should be only the audio data.";
+
+            const response = await axios.post(
+                `${GEMINI_MUSIC_URL}?key=${apiKey}`,
+                {
+                    contents: [{
+                        parts: [{
+                            text: config.prompt
+                        }]
+                    }],
+                    system_instruction: {
+                        parts: [{ text: systemInstruction }]
+                    },
+                    generationConfig: {
+                        response_modalities: ['AUDIO'],
+                    },
+                    safetySettings: [
+                        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                    ]
                 },
-                generationConfig: {
-                    responseModalities: ['AUDIO'],
-                },
-                safetySettings: [
-                    { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-                    { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-                    { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-                    { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
-                ]
-            },
-            {
-                headers: { 'Content-Type': 'application/json' },
-                timeout: 180000 // 3 minutes for generation
+                {
+                    headers: { 'Content-Type': 'application/json' },
+                    timeout: 180000 // 3 minutes for generation
+                }
+            );
+
+            if (response.data.error) {
+                if (response.data.error.code === 429) {
+                    console.warn(`[Gemini Music] 429 Rate Limit for key ${apiKey.substring(0, 5)}... Trying next key.`);
+                    continue;
+                }
+                throw new Error(`Gemini API Error: ${response.data.error.message}`);
             }
-        );
 
-        if (response.data.error) {
-            throw new Error(`Gemini API Error: ${response.data.error.message}`);
-        }
+            const candidate = response.data.candidates?.[0];
+            if (candidate?.finishReason === 'SAFETY') {
+                throw new Error('🚫 프롬프트 내용이 안전 정책에 의해 차단되었습니다. 내용을 수정한 후 다시 시도해주세요.');
+            }
 
-        const candidate = response.data.candidates?.[0];
-        if (candidate?.finishReason === 'SAFETY') {
-            throw new Error('🚫 프롬프트 내용이 안전 정책에 의해 차단되었습니다. 내용을 수정한 후 다시 시도해주세요.');
-        }
+            const audioPart = candidate?.content?.parts?.find(
+                (p: any) => p.inlineData?.mimeType?.startsWith('audio/')
+            );
+            const textPart = candidate?.content?.parts?.find((p: any) => p.text);
 
-        const audioPart = candidate?.content?.parts?.find(
-            (p: any) => p.inlineData?.mimeType?.startsWith('audio/')
-        );
-        const textPart = candidate?.content?.parts?.find((p: any) => p.text);
+            let rawData: string;
+            let mimeType: string;
 
-        let rawData: string;
-        let mimeType: string;
+            if (!audioPart?.inlineData?.data) {
+                console.warn('[Gemini Music] No native audio part found. Checking for text-wrapped data...');
 
-        if (!audioPart?.inlineData?.data) {
-            console.warn('[Gemini Music] No native audio part found. Checking for text-wrapped data...');
+                if (textPart?.text) {
+                    // Regex to find data URL in text (markdown or raw)
+                    const dataUrlMatch = textPart.text.match(/data:audio\/[^;]+;base64,[a-zA-Z0-9+/=]+/);
 
-            if (textPart?.text) {
-                // Regex to find data URL in text (markdown or raw)
-                const dataUrlMatch = textPart.text.match(/data:audio\/[^;]+;base64,[a-zA-Z0-9+/=]+/);
-
-                if (dataUrlMatch) {
-                    console.log('[Gemini Music] ✨ Successfully extracted audio data URL from text response.');
-                    const dataUrl = dataUrlMatch[0];
-                    rawData = dataUrl.split(',')[1];
-                    mimeType = dataUrl.split(';')[0].split(':')[1] || 'audio/mpeg';
+                    if (dataUrlMatch) {
+                        console.log('[Gemini Music] ✨ Successfully extracted audio data URL from text response.');
+                        const dataUrl = dataUrlMatch[0];
+                        rawData = dataUrl.split(',')[1];
+                        mimeType = dataUrl.split(';')[0].split(':')[1] || 'audio/mpeg';
+                    } else {
+                        console.error('[Gemini Music] Model responded with text instead:', textPart.text);
+                        throw new Error(`Gemini API가 음악 대신 텍스트로 응답했습니다: "${textPart.text.substring(0, 50)}..."`);
+                    }
                 } else {
-                    console.error('[Gemini Music] Model responded with text instead:', textPart.text);
-                    throw new Error(`Gemini API가 음악 대신 텍스트로 응답했습니다: "${textPart.text.substring(0, 50)}..."`);
+                    console.error('[Gemini Music] No audio data or parsable text found.');
+                    console.error('[Gemini Music] Full Response:', JSON.stringify(response.data, null, 2));
+                    throw new Error('Gemini API 응답에 오디오 데이터가 없습니다.');
                 }
             } else {
-                console.error('[Gemini Music] No audio data or parsable text found.');
-                console.error('[Gemini Music] Full Response:', JSON.stringify(response.data, null, 2));
-                throw new Error('Gemini API 응답에 오디오 데이터가 없습니다.');
+                rawData = audioPart.inlineData.data;
+                mimeType = audioPart.inlineData.mimeType || 'audio/mpeg';
             }
-        } else {
-            rawData = audioPart.inlineData.data;
-            mimeType = audioPart.inlineData.mimeType || 'audio/mpeg';
+
+            // Save to IDB
+            const dataUrl = `data:${mimeType};base64,${rawData}`;
+            const timestamp = Date.now();
+            const key = `ai_bgm_${timestamp}`;
+            const idbUrl = await saveToIdb('audio', key, dataUrl);
+
+            // Get duration (optional but helpful)
+            const duration = await getAudioDuration(dataUrl);
+
+            return { idbUrl, duration };
+
+        } catch (error: any) {
+            const status = error.response?.status;
+            if (status === 429) {
+                console.warn(`[Gemini Music] 429 Rate Limit for key ${apiKey.substring(0, 5)}... Trying next key.`);
+                continue;
+            }
+            console.error('[Gemini Music] Generation attempt failed:', error.response?.data?.error?.message || error.message);
+            lastError = error;
         }
-
-        // Save to IDB
-        const dataUrl = `data:${mimeType};base64,${rawData}`;
-        const timestamp = Date.now();
-        const key = `ai_bgm_${timestamp}`;
-        const idbUrl = await saveToIdb('audio', key, dataUrl);
-
-        // Get duration (optional but helpful)
-        const duration = await getAudioDuration(dataUrl);
-
-        return { idbUrl, duration };
-
-    } catch (error: any) {
-        console.error('[Gemini Music] Generation failed:', error);
-        throw error;
     }
+
+    throw lastError || new Error('All API keys failed for music generation.');
 };
 
 /**

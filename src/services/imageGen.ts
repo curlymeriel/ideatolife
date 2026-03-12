@@ -12,15 +12,141 @@ export interface ReferenceImage {
 /**
  * Main Image Generation Service
  */
+/**
+ * Helper to try generating a single image with a specific model and key
+ */
+const tryGenerateWithModel = async (currentModel: string, prompt: string, ratio: string, refImages: ReferenceImage[], apiKey: string): Promise<string | null> => {
+    const parts: any[] = [];
+
+    if (refImages.length > 0) {
+        parts.push({
+            text: `### MANDATORY VISUAL ANCHORS (ABSOLUTE SOURCE OF TRUTH)
+The following images define the visual identity of the characters and assets. 
+1. The identities in these images are the ABSOLUTE VISUAL TRUTH. 
+2. **IGNORE ANY TEXT DESCRIPTIONS** in the prompt that contradict the provided images.
+3. Every time the prompt mentions "(Ref: Name)", you MUST perfectly replicate the facial features, hair style, bone structure, and specific visual identity shown in the corresponding image below.
+4. **NO HALLUCINATIONS**: Do NOT add glasses, hats, or accessories unless they are clearly visible in the reference image.
+5. **COSTUME CONSISTENCY**: Replicate the clothing shown in the reference image exactly.
+
+---
+`
+        });
+
+        for (let i = 0; i < refImages.length; i++) {
+            const ref = refImages[i];
+            const referenceImage = ref.url;
+            const refName = ref.name || `Asset_${i + 1}`;
+            let mimeType = 'image/jpeg';
+            let data = '';
+
+            if (referenceImage.startsWith('data:')) {
+                const commaIdx = referenceImage.indexOf(',');
+                if (commaIdx !== -1) {
+                    const header = referenceImage.substring(0, commaIdx);
+                    mimeType = header.match(/:(.*?);/)?.[1] || 'image/jpeg';
+                    data = referenceImage.substring(commaIdx + 1);
+                }
+            } else if (referenceImage.startsWith('http') || referenceImage.startsWith('blob:')) {
+                try {
+                    const res = await fetch(referenceImage);
+                    const blob = await res.blob();
+                    mimeType = blob.type || 'image/jpeg';
+                    data = await new Promise<string>((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                            const result = reader.result as string;
+                            resolve(result.split(',')[1]);
+                        };
+                        reader.onerror = reject;
+                        reader.readAsDataURL(blob);
+                    });
+                } catch (e) {
+                    console.error(`[ImageGen] Failed to fetch reference image ${i + 1}:`, e);
+                    continue;
+                }
+            }
+
+            if (data) {
+                if (mimeType === 'application/octet-stream' || !mimeType.startsWith('image/')) {
+                    mimeType = 'image/jpeg';
+                }
+
+                parts.push({ text: `### REFERENCE: ${refName}` });
+                parts.push({
+                    inlineData: {
+                        mimeType: mimeType,
+                        data: data
+                    }
+                });
+            }
+        }
+
+        const tailAnchor = `\n\n---
+### FINAL VISUAL REMINDER (MANDATORY):
+1. Review all provided reference images again.
+2. The character identity and facial features MUST match the corresponding (Ref: Name) exhibit exactly.
+3. Priority is Visual Identity Preservation > Text Description.
+4. DO NOT DRIFT from the provided character faces.`;
+
+        parts.push({ text: `\n--- \n### SCENE TO GENERATE:\n${prompt}${tailAnchor}` });
+    } else {
+        parts.push({ text: `Generate an image of: ${prompt}` });
+    }
+
+    const getApiAspectRatio = (r?: string): string => {
+        if (!r) return '16:9';
+        const ratioMap: Record<string, string> = {
+            '16:9': '16:9', '9:16': '9:16', '1:1': '1:1', '2.35:1': '21:9',
+            '21:9': '21:9', '4:3': '4:3', '3:4': '3:4', '3:2': '3:2',
+            '2:3': '2:3', '5:4': '5:4', '4:5': '4:5'
+        };
+        return ratioMap[r] || '16:9';
+    };
+    const apiAspectRatio = getApiAspectRatio(ratio);
+
+    const baseUrl = typeof window !== 'undefined' && window.location.hostname === 'localhost'
+        ? '/api/google-ai/v1beta/models/'
+        : 'https://generativelanguage.googleapis.com/v1beta/models/';
+
+    const response = await axios.post(
+        `${baseUrl}${currentModel}:generateContent?key=${apiKey}`,
+        {
+            contents: [{ parts: parts }],
+            generationConfig: {
+                response_modalities: ["IMAGE", "TEXT"],
+                image_config: { aspect_ratio: apiAspectRatio },
+                candidate_count: 1
+            }
+        },
+        {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: 60000
+        }
+    );
+
+    if (response.data && response.data.candidates?.[0]?.content?.parts) {
+        const imagePart = response.data.candidates[0].content.parts.find((part: any) =>
+            part.inlineData && part.inlineData.mimeType.startsWith('image/')
+        );
+        if (imagePart) {
+            return `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
+        }
+    }
+    throw new Error('No image data found in response');
+};
+
+/**
+ * Main Image Generation Service
+ */
 export const generateImage = async (
     _prompt: string,
-    apiKey: string,
+    apiKeysRaw: string | string[],
     referenceImages?: (string | ReferenceImage)[],
     aspectRatio?: string,
-    modelName: string = 'gemini-2.5-flash-image',
+    modelName: string = 'gemini-3-pro-image-preview',
     candidateCount: number = 1
 ): Promise<{ urls: string[] }> => {
-    if (!apiKey) {
+    if (!apiKeysRaw) {
         return new Promise((resolve) => {
             setTimeout(() => {
                 const mockUrls = Array.from({ length: candidateCount }).map((_, i) =>
@@ -31,6 +157,9 @@ export const generateImage = async (
         });
     }
 
+    const apiKeys = Array.isArray(apiKeysRaw) ? apiKeysRaw : apiKeysRaw.split(',').map(k => k.trim()).filter(Boolean);
+    if (apiKeys.length === 0) throw new Error("At least one valid API key is required");
+
     const fallbackModels = [
         'gemini-3-pro-image-preview',
         'gemini-2.5-flash-image'
@@ -40,133 +169,6 @@ export const generateImage = async (
     fallbackModels.forEach(m => {
         if (m !== modelName) allModels.push(m);
     });
-
-    // Helper to try generating a single image with a specific model
-    const tryGenerateWithModel = async (currentModel: string, prompt: string, ratio: string, refImages: ReferenceImage[]): Promise<string | null> => {
-        const parts: any[] = [];
-
-        if (refImages.length > 0) {
-            parts.push({
-                text: `### MANDATORY VISUAL ANCHORS (ABSOLUTE SOURCE OF TRUTH)
-The following images define the visual identity of the characters and assets. 
-1. The identities in these images are the ABSOLUTE VISUAL TRUTH. 
-2. **IGNORE ANY TEXT DESCRIPTIONS** in the prompt that contradict the provided images.
-3. Every time the prompt mentions "(Ref: Name)", you MUST perfectly replicate the facial features, hair style, bone structure, and specific visual identity shown in the corresponding image below.
-4. **NO HALLUCINATIONS**: Do NOT add glasses, hats, or accessories unless they are clearly visible in the reference image.
-5. **COSTUME CONSISTENCY**: Replicate the clothing shown in the reference image exactly.
-
----
-`
-            });
-
-            for (let i = 0; i < refImages.length; i++) {
-                const ref = refImages[i];
-                const referenceImage = ref.url;
-                const refName = ref.name || `Asset_${i + 1}`;
-                let mimeType = 'image/jpeg';
-                let data = '';
-
-                if (referenceImage.startsWith('data:')) {
-                    const commaIdx = referenceImage.indexOf(',');
-                    if (commaIdx !== -1) {
-                        const header = referenceImage.substring(0, commaIdx);
-                        mimeType = header.match(/:(.*?);/)?.[1] || 'image/jpeg';
-                        data = referenceImage.substring(commaIdx + 1);
-                    }
-                } else if (referenceImage.startsWith('http') || referenceImage.startsWith('blob:')) {
-                    try {
-                        // Browser-safe fetch and base64 conversion
-                        const res = await fetch(referenceImage);
-                        const blob = await res.blob();
-                        mimeType = blob.type || 'image/jpeg';
-                        data = await new Promise<string>((resolve, reject) => {
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                                const result = reader.result as string;
-                                resolve(result.split(',')[1]);
-                            };
-                            reader.onerror = reject;
-                            reader.readAsDataURL(blob);
-                        });
-                    } catch (e) {
-                        console.error(`[ImageGen] Failed to fetch reference image ${i + 1}:`, e);
-                        continue;
-                    }
-                }
-
-                if (data) {
-                    if (mimeType === 'application/octet-stream' || !mimeType.startsWith('image/')) {
-                        mimeType = 'image/jpeg';
-                    }
-
-                    parts.push({ text: `### REFERENCE: ${refName}` });
-                    parts.push({
-                        inlineData: {
-                            mimeType: mimeType,
-                            data: data
-                        }
-                    });
-                }
-            }
-            // [DIAGNOSTIC] Log delivery confirmation
-            const imagePartCount = parts.filter(p => p.inlineData).length;
-            const namesSent = refImages.map(r => r.name).join(', ');
-            console.log(`[ImageGen] Sending ${imagePartCount} reference images to API... (Names: ${namesSent})`);
-
-            // [TRIPLE ANCHORING - TAIL]
-            const tailAnchor = `\n\n---
-### FINAL VISUAL REMINDER (MANDATORY):
-1. Review all provided reference images again.
-2. The character identity and facial features MUST match the corresponding (Ref: Name) exhibit exactly.
-3. Priority is Visual Identity Preservation > Text Description.
-4. DO NOT DRIFT from the provided character faces.`;
-
-            parts.push({ text: `\n--- \n### SCENE TO GENERATE:\n${prompt}${tailAnchor}` });
-        } else {
-            parts.push({ text: `Generate an image of: ${prompt}` });
-        }
-
-        const getApiAspectRatio = (r?: string): string => {
-            if (!r) return '16:9';
-            const ratioMap: Record<string, string> = {
-                '16:9': '16:9', '9:16': '9:16', '1:1': '1:1', '2.35:1': '21:9',
-                '21:9': '21:9', '4:3': '4:3', '3:4': '3:4', '3:2': '3:2',
-                '2:3': '2:3', '5:4': '5:4', '4:5': '4:5'
-            };
-            return ratioMap[r] || '16:9';
-        };
-        const apiAspectRatio = getApiAspectRatio(ratio);
-
-        const baseUrl = typeof window !== 'undefined' && window.location.hostname === 'localhost'
-            ? '/api/google-ai/v1beta/models/'
-            : 'https://generativelanguage.googleapis.com/v1beta/models/';
-
-        const response = await axios.post(
-            `${baseUrl}${currentModel}:generateContent?key=${apiKey}`,
-            {
-                contents: [{ parts: parts }],
-                generationConfig: {
-                    responseModalities: ["IMAGE", "TEXT"],
-                    imageConfig: { aspectRatio: apiAspectRatio },
-                    candidateCount: 1
-                }
-            },
-            {
-                headers: { 'Content-Type': 'application/json' },
-                timeout: 60000
-            }
-        );
-
-        if (response.data && response.data.candidates?.[0]?.content?.parts) {
-            const imagePart = response.data.candidates[0].content.parts.find((part: any) =>
-                part.inlineData && part.inlineData.mimeType.startsWith('image/')
-            );
-            if (imagePart) {
-                return `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
-            }
-        }
-        throw new Error('No image data found in response');
-    };
 
     const refImagesArray = referenceImages
         ? referenceImages
@@ -181,19 +183,31 @@ The following images define the visual identity of the characters and assets.
     let lastError: any = null;
 
     for (const model of allModels) {
-        try {
-            const urls: string[] = [];
-            for (let i = 0; i < candidateCount; i++) {
-                const url = await tryGenerateWithModel(model, _prompt, aspectRatio || '16:9', refImagesArray);
-                if (url) urls.push(url);
-                if (i < candidateCount - 1) await new Promise(r => setTimeout(r, 500));
+        for (const apiKey of apiKeys) {
+            try {
+                const urls: string[] = [];
+                for (let i = 0; i < candidateCount; i++) {
+                    console.log(`[ImageGen] Generating with model ${model} (Key: ${apiKey.substring(0, 5)}...) Draft ${i + 1}/${candidateCount}`);
+                    const url = await tryGenerateWithModel(model, _prompt, aspectRatio || '16:9', refImagesArray, apiKey);
+                    if (url) urls.push(url);
+                    if (i < candidateCount - 1) await new Promise(r => setTimeout(r, 500));
+                }
+
+                if (urls.length > 0) return { urls };
+
+            } catch (error: any) {
+                const status = error.response?.status;
+                const errorMsg = error.response?.data?.error?.message || error.message;
+                
+                if (status === 429) {
+                    console.warn(`[ImageGen] 429 Rate Limit for model ${model} with key ${apiKey.substring(0, 5)}... Retrying with next key.`);
+                    continue; // Try next key
+                }
+                
+                console.warn(`[ImageGen] Model ${model} failed with key ${apiKey.substring(0, 5)}...:`, errorMsg);
+                lastError = error;
+                // For other errors, we also try next key
             }
-
-            if (urls.length > 0) return { urls };
-
-        } catch (error: any) {
-            console.warn(`[ImageGen] Model ${model} failed:`, error.response?.data?.error?.message || error.message);
-            lastError = error;
         }
     }
 
@@ -204,7 +218,7 @@ The following images define the visual identity of the characters and assets.
         errorMessage = `API Error (${lastError.response.status}): ${lastError.response.data.error?.message}`;
     }
 
-    throw new Error(`All image generation models failed. Last error: ${errorMessage}`);
+    throw new Error(`All image generation models and keys failed. Last error: ${errorMessage}`);
 };
 
 /**
@@ -213,12 +227,14 @@ The following images define the visual identity of the characters and assets.
 export const editImageWithChat = async (
     imageUrl: string,
     instruction: string,
-    apiKey: string,
+    apiKeysRaw: string | string[],
     maskImage?: string | null,
     referenceImages?: string[],
     modelName: string = 'gemini-2.5-flash-image'
 ): Promise<{ image?: string; explanation: string }> => {
-    if (!apiKey) return { explanation: 'API key is required for image editing.' };
+    if (!apiKeysRaw) return { explanation: 'API key is required for image editing.' };
+    const apiKeys = Array.isArray(apiKeysRaw) ? apiKeysRaw : apiKeysRaw.split(',').map(k => k.trim()).filter(Boolean);
+    if (apiKeys.length === 0) return { explanation: 'Valid API key is required.' };
 
     try {
         let imageData: string;
@@ -284,33 +300,72 @@ export const editImageWithChat = async (
             });
         }
 
-        const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{ parts: requestParts }],
-                    generationConfig: { responseModalities: ["IMAGE", "TEXT"] }
-                })
-            }
-        );
+        const fallbackModels = [
+            'gemini-3-pro-image-preview',
+            'gemini-2.5-flash-image'
+        ];
+        const allModels = [modelName, ...fallbackModels.filter(m => m !== modelName)];
+        
+        let lastErrorMsg = '';
 
-        const data = await response.json();
-        const parts = data.candidates?.[0]?.content?.parts || [];
-        let editedImage: string | undefined;
-        let explanation = '이미지를 수정했습니다.';
+        for (const model of allModels) {
+            for (const apiKey of apiKeys) {
+                try {
+                    console.log(`[ImageEdit] Trying model: ${model} with key: ${apiKey.substring(0, 5)}...`);
+                    const response = await fetch(
+                        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+                        {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                contents: [{ parts: requestParts }],
+                                generationConfig: { response_modalities: ["IMAGE", "TEXT"] }
+                            })
+                        }
+                    );
 
-        for (const part of parts) {
-            if (part.inlineData && part.inlineData.mimeType?.startsWith('image/')) {
-                editedImage = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                    const data = await response.json();
+                    
+                    if (data.error) {
+                        if (data.error.code === 429) {
+                            console.warn(`[ImageEdit] 429 Rate Limit on model ${model} with key ${apiKey.substring(0, 5)}... Trying next key/model.`);
+                            lastErrorMsg = 'API 사용량이 초과되었습니다 (Rate Limit). 여러 키를 시도했지만 모두 실패했습니다.';
+                            continue; // Try next key or model
+                        }
+                        console.error(`[ImageEdit] API Error on ${model}:`, data.error);
+                        lastErrorMsg = `편집 실패: ${data.error.message}`;
+                        continue;
+                    }
+
+                    console.log('[ImageEdit] Main API Response Success on model:', model);
+                    const parts = data.candidates?.[0]?.content?.parts || [];
+                    let editedImage: string | undefined;
+                    let explanation = '이미지를 수정했습니다.';
+
+                    for (const part of parts) {
+                        if (part.inlineData && part.inlineData.mimeType?.startsWith('image/')) {
+                            editedImage = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                        }
+                        if (part.text) explanation = part.text;
+                    }
+
+                    if (editedImage) {
+                        return { image: editedImage, explanation };
+                    }
+
+                    console.warn(`[ImageEdit] No image returned from ${model}, moving to next option.`);
+                } catch (err: any) {
+                    console.error(`[ImageEdit] Network/Fetch Error on ${model}:`, err);
+                    lastErrorMsg = `네트워크 오류: ${err.message}`;
+                }
             }
-            if (part.text) explanation = part.text;
         }
 
-        return { image: editedImage, explanation };
+        // If we exhausted all models and keys and got here:
+        return { explanation: lastErrorMsg || '이미지 생성에 실패했습니다 (모든 모델/키 시도 실패).' };
+
     } catch (error: any) {
-        console.error('[ImageEdit] Error:', error);
+        console.error('[ImageEdit] Critical Error:', error);
         return { explanation: `편집 중 오류 발생: ${error.message || 'Unknown error'}` };
     }
 };

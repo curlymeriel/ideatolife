@@ -56,102 +56,118 @@ export interface GeminiTtsConfig {
  */
 export const generateGeminiSpeech = async (
     text: string,
-    apiKey: string,
+    apiKeysRaw: string | string[],
     config: GeminiTtsConfig
 ): Promise<Blob | string> => {
-    if (!apiKey) {
+    if (!apiKeysRaw) {
         throw new Error('🔑 Gemini API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.');
     }
+
+    const apiKeys = Array.isArray(apiKeysRaw) ? apiKeysRaw : apiKeysRaw.split(',').map(k => k.trim()).filter(Boolean);
+    if (apiKeys.length === 0) throw new Error("At least one valid API key is required");
 
     if (!text || text.trim().length === 0) {
         throw new Error('Text is required for speech generation');
     }
 
-    try {
-        let promptText = text;
-        const styleInstructions: string[] = [];
-        if (config.actingDirection) styleInstructions.push(config.actingDirection);
+    let lastError: any = null;
 
-        // Inject numeric hints as natural language if they deviate from normal
-        if (config.rate && (config.rate > 1.05 || config.rate < 0.95)) {
-            const speedTerm = config.rate > 1.0 ? 'fast' : 'slow';
-            styleInstructions.push(`Speak ${speedTerm} (speed: ${config.rate}x)`);
-        }
-        if (config.volume && (config.volume > 1.05 || config.volume < 0.95)) {
-            const volTerm = config.volume > 1.0 ? 'loud' : 'soft';
-            styleInstructions.push(`Speak ${volTerm} (volume: ${config.volume}x)`);
-        }
+    for (const apiKey of apiKeys) {
+        try {
+            let promptText = text;
+            const styleInstructions: string[] = [];
+            if (config.actingDirection) styleInstructions.push(config.actingDirection);
 
-        if (styleInstructions.length > 0) {
-            promptText = `[Style: ${styleInstructions.join(', ')}]\n\n"${text}"`;
-        }
-
-        console.log(`[Gemini TTS v9.9] Requesting: voice=${config.voiceName}, lang=${config.languageCode}`);
-
-        const response = await axios.post(
-            `${GEMINI_TTS_URL}?key=${apiKey}`,
-            {
-                contents: [{ parts: [{ text: promptText }] }],
-                generationConfig: {
-                    responseModalities: ['AUDIO'],
-                    speechConfig: {
-                        voiceConfig: {
-                            prebuiltVoiceConfig: {
-                                voiceName: config.voiceName
-                            }
-                        },
-                        languageCode: config.languageCode
-                    }
-                },
-                safetySettings: [
-                    { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-                    { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-                    { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-                    { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
-                ]
-            },
-            {
-                headers: { 'Content-Type': 'application/json' },
-                timeout: 120000
+            // Inject numeric hints as natural language if they deviate from normal
+            if (config.rate && (config.rate > 1.05 || config.rate < 0.95)) {
+                const speedTerm = config.rate > 1.0 ? 'fast' : 'slow';
+                styleInstructions.push(`Speak ${speedTerm} (speed: ${config.rate}x)`);
             }
-        );
+            if (config.volume && (config.volume > 1.05 || config.volume < 0.95)) {
+                const volTerm = config.volume > 1.0 ? 'loud' : 'soft';
+                styleInstructions.push(`Speak ${volTerm} (volume: ${config.volume}x)`);
+            }
 
-        if (response.data.error) {
-            throw new Error(`Gemini API Error: ${response.data.error.message}`);
+            if (styleInstructions.length > 0) {
+                promptText = `[Style: ${styleInstructions.join(', ')}]\n\n"${text}"`;
+            }
+
+            console.log(`[Gemini TTS v9.9] Requesting with key ${apiKey.substring(0, 5)}...: voice=${config.voiceName}, lang=${config.languageCode}`);
+
+            const response = await axios.post(
+                `${GEMINI_TTS_URL}?key=${apiKey}`,
+                {
+                    contents: [{ parts: [{ text: promptText }] }],
+                    generationConfig: {
+                        response_modalities: ['AUDIO'],
+                        speechConfig: {
+                            voiceConfig: {
+                                prebuiltVoiceConfig: {
+                                    voiceName: config.voiceName
+                                }
+                            },
+                            languageCode: config.languageCode
+                        }
+                    },
+                    safetySettings: [
+                        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                    ]
+                },
+                {
+                    headers: { 'Content-Type': 'application/json' },
+                    timeout: 120000
+                }
+            );
+
+            if (response.data.error) {
+                if (response.data.error.code === 429) {
+                    console.warn(`[Gemini TTS] 429 Rate Limit for key ${apiKey.substring(0, 5)}... Trying next key.`);
+                    continue;
+                }
+                throw new Error(`Gemini API Error: ${response.data.error.message}`);
+            }
+
+            const candidate = response.data.candidates?.[0];
+            if (candidate?.finishReason === 'SAFETY') {
+                throw new Error('🚫 내용이 안전 정책에 의해 차단되었습니다. 대사 내용을 확인해주세요.');
+            }
+
+            const audioPart = candidate?.content?.parts?.find(
+                (p: any) => p.inlineData?.mimeType?.startsWith('audio/')
+            );
+
+            if (!audioPart?.inlineData?.data) {
+                throw new Error('Gemini TTS 응답에 오디오 데이터가 없습니다.');
+            }
+
+            const rawData = audioPart.inlineData.data;
+            const mimeType = audioPart.inlineData.mimeType || '';
+
+            // v9.9: Wrapping as 48kHz Stereo (Pure Binary/Blob Pipeline)
+            if (mimeType.includes('L16') || mimeType.includes('pcm')) {
+                const rateMatch = mimeType.match(/rate=(\d+)/);
+                const rate = rateMatch ? parseInt(rateMatch[1], 10) : 24000;
+                console.log(`[Gemini TTS v9.9] Processing PCM -> 48kHz Stereo (Source: ${rate}Hz)`);
+                return await wrapPcmInWav(rawData, rate, config.volume);
+            }
+
+            return `data:${mimeType};base64,${rawData}`;
+
+        } catch (error: any) {
+            const status = error.response?.status;
+            if (status === 429) {
+                console.warn(`[Gemini TTS] 429 Rate Limit for key ${apiKey.substring(0, 5)}... Trying next key.`);
+                continue;
+            }
+            console.error('[Gemini TTS] Generation attempt failed:', error.response?.data?.error?.message || error.message);
+            lastError = error;
         }
-
-        const candidate = response.data.candidates?.[0];
-        if (candidate?.finishReason === 'SAFETY') {
-            throw new Error('🚫 내용이 안전 정책에 의해 차단되었습니다. 대사 내용을 확인해주세요.');
-        }
-
-        const audioPart = candidate?.content?.parts?.find(
-            (p: any) => p.inlineData?.mimeType?.startsWith('audio/')
-        );
-
-        console.log('[Gemini TTS] Raw Response Data:', JSON.stringify(response.data, null, 2));
-
-        if (!audioPart?.inlineData?.data) {
-            throw new Error('Gemini TTS 응답에 오디오 데이터가 없습니다.');
-        }
-
-        const rawData = audioPart.inlineData.data;
-        const mimeType = audioPart.inlineData.mimeType || '';
-
-        // v9.9: Wrapping as 48kHz Stereo (Pure Binary/Blob Pipeline)
-        if (mimeType.includes('L16') || mimeType.includes('pcm')) {
-            const rateMatch = mimeType.match(/rate=(\d+)/);
-            const rate = rateMatch ? parseInt(rateMatch[1], 10) : 24000;
-            console.log(`[Gemini TTS v9.9] Processing PCM -> 48kHz Stereo (Source: ${rate}Hz)`);
-            return await wrapPcmInWav(rawData, rate, config.volume);
-        }
-
-        return `data:${mimeType};base64,${rawData}`;
-
-    } catch (error: any) {
-        console.error('[Gemini TTS] v9.9 Generation failed:', error);
-        throw error;
     }
+
+    throw lastError || new Error('All API keys failed for TTS generation.');
 };
 
 /**

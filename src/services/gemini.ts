@@ -159,7 +159,7 @@ const GEMINI_3_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/mod
 const GEMINI_2_5_PRO_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent';
 const GEMINI_2_5_FLASH_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
-const GEMINI_API_URL = GEMINI_3_1_PRO_URL;
+// YouTube Trend Analysis Functions (Step 0)
 
 
 import type { StrategicAnalysis, StrategyInsight, YouTubeTrendVideo, ChannelAnalysis, TrendAnalysisInsights } from '../store/types';
@@ -382,7 +382,7 @@ export const generateScript = async (
     episodeName: string,
     targetDuration: number,
     stylePrompts: any,
-    apiKey: string,
+    apiKeysRaw?: string | string[],
     episodePlot?: string,
     characters?: any[],
     locations?: any[],
@@ -393,7 +393,7 @@ export const generateScript = async (
     preferredModel?: string, // NEW: Optional preferred model name
     trendInsights?: any // NEW: Trend analysis insights from Step 0
 ): Promise<ScriptCut[]> => {
-    if (!apiKey) {
+    if (!apiKeysRaw) {
         // Mock response
         return new Promise((resolve) => {
             setTimeout(() => {
@@ -423,6 +423,9 @@ export const generateScript = async (
             }, 2000);
         });
     }
+
+    const apiKeys = Array.isArray(apiKeysRaw) ? apiKeysRaw : apiKeysRaw.split(',').map(k => k.trim()).filter(Boolean);
+    if (apiKeys.length === 0) throw new Error("At least one valid API key is required");
 
     try {
         // Helper to get Step 2 asset definition
@@ -581,48 +584,19 @@ ${trendInsights.thumbnail ? (typeof trendInsights.thumbnail === 'string' ? `- �
 ` : ''}
 `;
 
-        // Base model list (fallback order)
-        const baseModels = [
-            { name: 'Gemini 3.1 Pro Preview', url: GEMINI_3_1_PRO_URL },
-            { name: 'Gemini 3 Pro Preview', url: GEMINI_3_PRO_URL },
-            { name: 'Gemini 3 Flash Preview', url: GEMINI_3_FLASH_URL },
-            { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
-            { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL }
-        ];
+        // Use centralized generateText for API call + multi-key rotation + model fallback
+        const generatedText = await generateText(finalPrompt, apiKeys, 'application/json', undefined, undefined, {
+            temperature: 0.7,
+            preferredModel: preferredModel
+        });
 
-        // Prioritize preferredModel if specified
-        let models = [...baseModels];
-        if (preferredModel) {
-            const preferredIndex = baseModels.findIndex(m =>
-                m.name.toLowerCase().includes(preferredModel.toLowerCase()) ||
-                m.url.includes(preferredModel)
-            );
-            if (preferredIndex > 0) {
-                const preferred = baseModels[preferredIndex];
-                models = [preferred, ...baseModels.filter((_, i) => i !== preferredIndex)];
-                console.log(`[Gemini] Prioritizing preferred model: ${preferred.name}`);
-            }
-        }
+        if (!generatedText) throw new Error("API returned an empty response.");
 
-        let lastError: any = null;
+        const jsonStr = generatedText.replace(/```json\n?|\n?```/g, '').trim();
+        const rawScript = JSON.parse(jsonStr);
 
-        for (const model of models) {
-            try {
-                console.log(`[Gemini] Generating Script with model: ${model.name}`);
-                const response = await axios.post(
-                    `${model.url}?key=${apiKey}`,
-                    {
-                        contents: [{ parts: [{ text: finalPrompt }] }]
-                    },
-                    { timeout: 120000 } // 120 second timeout for complex script generation
-                );
-
-                let generatedText = response.data.candidates[0].content.parts[0].text;
-                const jsonStr = generatedText.replace(/```json\n?|\n?```/g, '').trim();
-                const rawScript = JSON.parse(jsonStr);
-
-                // Support both direct array and object with 'cuts' property
-                const validScript = Array.isArray(rawScript) ? rawScript : (rawScript.cuts || []);
+        // Support both direct array and object with 'cuts' property
+        const validScript = Array.isArray(rawScript) ? rawScript : (rawScript.cuts || []);
                 if (!validScript || validScript.length === 0) throw new Error("Parsed script is empty");
 
                 // Create a list of valid speaker names for normalization
@@ -841,16 +815,6 @@ ${trendInsights.thumbnail ? (typeof trendInsights.thumbnail === 'string' ? `- �
                         estimatedDuration: Number(cut.estimatedDuration)
                     };
                 });
-            } catch (error: any) {
-                console.warn(`[Gemini] Script generation failed with ${model.name}:`, error.message);
-                lastError = error;
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-        }
-
-        console.error("All Script Generation Models Failed:", lastError);
-        throw lastError; // Re-throw the last error to be caught by the UI
-
     } catch (error) {
         console.error('Gemini Consultation Failed:', error);
         throw error;
@@ -859,10 +823,10 @@ ${trendInsights.thumbnail ? (typeof trendInsights.thumbnail === 'string' ? `- �
 
 export const analyzeCompetitorStrategy = async (
     videos: any[],
-    apiKey: string,
+    apiKeysRaw: string | string[],
     queryContext: string
 ): Promise<StrategicAnalysis> => {
-    if (!apiKey) {
+    if (!apiKeysRaw) {
         return {
             targetAudience: "초기 단계의 크리에이터 및 성장을 꿈꾸는 유튜브 시청층",
             hookPatterns: ["질문으로 시작하기", "결과물 먼저 보여주기", "반전 있는 썸네일"],
@@ -907,7 +871,7 @@ ${JSON.stringify(videos.map(v => ({ title: v.title, channel: v.channelName, view
     try {
         const text = await generateText(
             prompt,
-            apiKey,
+            apiKeysRaw,
             "application/json",
             undefined, // no images
             undefined, // no system instruction (it's in prompt)
@@ -924,11 +888,11 @@ ${JSON.stringify(videos.map(v => ({ title: v.title, channel: v.channelName, view
 export const generateStrategyInsight = async (
     trendSnapshot: any,
     competitorSnapshot: any,
-    apiKey: string,
+    apiKeysRaw: string | string[],
     chatHistory?: Array<{ role: 'user' | 'model', text: string }>, // NEW: context from discussion
     existingStrategy?: StrategyInsight // NEW: base for updates
 ): Promise<StrategyInsight> => {
-    if (!apiKey) {
+    if (!apiKeysRaw) {
         // Mock success response
         return {
             id: 'mock-strategy',
@@ -1089,7 +1053,7 @@ If the "User's Strategic Direction (from Chat)" implies a change (e.g. AI propos
     try {
         const generatedText = await generateText(
             prompt,
-            apiKey,
+            apiKeysRaw,
             "application/json",
             undefined, // no images
             undefined, // no separate system instruction
@@ -1125,11 +1089,11 @@ import { DEFAULT_CONSULTANT_INSTRUCTION } from '../data/personaTemplates';
 export const consultStory = async (
     history: ChatMessage[],
     context: ProjectContext,
-    apiKey: string,
+    apiKeysRaw: string | string[],
     customInstruction?: string
 ): Promise<ConsultationResult> => {
-    console.log("[Gemini Service] consultStory called. Has API Key:", !!apiKey, "Key length:", apiKey?.length);
-    if (!apiKey) {
+    console.log("[Gemini Service] consultStory called. Has API Key:", !!apiKeysRaw);
+    if (!apiKeysRaw) {
         // Mock response for dev without key
         return new Promise((resolve) => {
             setTimeout(() => {
@@ -1249,50 +1213,18 @@ IMPORTANT: The above data is REAL market research from Step 0. Do NOT treat it a
             };
         }));
 
-        const modelsToTry = [
-            { name: 'Gemini 3.1 Pro Preview', url: `${GEMINI_3_1_PRO_URL}?key=${apiKey}` },
-            { name: 'Gemini 3 Flash Preview', url: `${GEMINI_3_FLASH_URL}?key=${apiKey}` },
-            { name: 'Gemini 2.5 Pro', url: `${GEMINI_2_5_PRO_URL}?key=${apiKey}` },
-            { name: 'Gemini 2.5 Flash', url: `${GEMINI_2_5_FLASH_URL}?key=${apiKey}` }
-        ];
-
-        let lastError: any = null;
-        let bestResponse: any = null;
-
-        for (const model of modelsToTry) {
-            try {
-                console.log(`[Gemini] Consulting AI with model: ${model.name}`);
-                bestResponse = await axios.post(
-                    model.url,
-                    {
-                        contents: [
-                            {
-                                role: 'user',
-                                parts: [{ text: systemInstruction }]
-                            },
-                            ...contents
-                        ],
-                        generationConfig: {
-                            temperature: 0.9,
-                            response_mime_type: "application/json"
-                        }
-                    },
-                    { timeout: 30000 } // 30 second timeout
-                );
-                if (bestResponse) break; // Success!
-            } catch (e: any) {
-                lastError = e;
-                const status = e.response?.status;
-                const msg = e.response?.data?.error?.message || e.message;
-                console.warn(`[Gemini] Model ${model.name} failed (${status}): ${msg}`);
-            }
-        }
-
-        if (!bestResponse) {
-            throw lastError || new Error("All Gemini models failed to respond.");
-        }
-
-        const generatedText = bestResponse.data.candidates[0].content.parts[0].text;
+        const generatedText = await generateText(
+            null,
+            apiKeysRaw,
+            "application/json",
+            undefined,
+            systemInstruction,
+            {
+                temperature: 0.9,
+                response_mime_type: "application/json"
+            },
+            contents
+        );
 
         try {
             const parsed = JSON.parse(generatedText);
@@ -1329,11 +1261,11 @@ IMPORTANT: The above data is REAL market research from Step 0. Do NOT treat it a
 export const consultAssistantDirector = async (
     history: ChatMessage[],
     context: ProjectContext & { currentScript: ScriptCut[]; storylineTable?: any[] },
-    apiKey: string,
+    apiKeysRaw: string | string[],
     customInstruction?: string
 ): Promise<ConsultationResult> => {
     console.log("[Gemini Service] consultAssistantDirector called.");
-    if (!apiKey) {
+    if (!apiKeysRaw) {
         return {
             reply: "API 키가 없어 모의 응답을 반환합니다. 1번 컷의 대사를 수정했습니다.",
             modifiedScript: [
@@ -1445,14 +1377,6 @@ IMPORTANT: The above is ACTUAL research data. Ensure all modifications align wit
             };
         }));
 
-        const models = [
-            { name: 'Gemini 3.1 Pro Preview', url: GEMINI_3_1_PRO_URL },
-            { name: 'Gemini 3 Pro Preview', url: GEMINI_3_PRO_URL },
-            { name: 'Gemini 3 Flash Preview', url: GEMINI_3_FLASH_URL },
-            { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
-            { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL }
-        ];
-
         // 1. Truncate history (Last 10 messages)
         const recentHistory = contents.length > 10 ? contents.slice(-10) : contents;
 
@@ -1495,40 +1419,20 @@ IMPORTANT: The above is ACTUAL research data. Ensure all modifications align wit
 
         const sanitizedHistory = sanitizeContents(validRoleHistory);
 
-        let lastError: any = null;
-        let bestResponse: any = null;
+        const responseText = await generateText(
+            null,
+            apiKeysRaw,
+            "application/json",
+            undefined,
+            systemInstruction,
+            {
+                temperature: 0.7,
+                response_mime_type: "application/json"
+            },
+            sanitizedHistory
+        );
 
-        for (const model of models) {
-            try {
-                console.log(`[Gemini] Consulting Assistant Director with model: ${model.name}`);
-                const response = await axios.post(
-                    `${model.url}?key=${apiKey}`,
-                    {
-                        system_instruction: {
-                            parts: [{ text: systemInstruction }]
-                        },
-                        contents: sanitizedHistory,
-                        generationConfig: {
-                            temperature: 0.7,
-                            response_mime_type: "application/json"
-                        }
-                    },
-                    { timeout: 60000 }
-                );
-                bestResponse = response;
-                break;
-            } catch (error: any) {
-                const apiError = error.response?.data?.error || error.message;
-                console.warn(`[Gemini] Assistant Director failed with ${model.name}:`, apiError);
-                lastError = error;
-            }
-        }
-
-        if (!bestResponse) {
-            throw lastError || new Error("All Assistant Director models failed.");
-        }
-
-        const generatedText = bestResponse.data.candidates[0].content.parts[0].text;
+        const generatedText = responseText;
         const parsed = JSON.parse(generatedText);
 
         return {
@@ -1546,9 +1450,9 @@ export const enhancePrompt = async (
     basePrompt: string,
     type: 'character' | 'location' | 'style',
     context: string,
-    apiKey: string
+    apiKeysRaw: string | string[]
 ): Promise<string> => {
-    if (!apiKey) return basePrompt + " (Enhanced)";
+    if (!apiKeysRaw) return basePrompt + " (Enhanced)";
 
     const prompt = `
 Enhance the following short description into a detailed, high-quality visual prompt.
@@ -1615,46 +1519,22 @@ Gritty and used. Guns and gadgets show signs of wear, oil stains, and scratched 
 `}
 `;
 
-    const models = [
-        { name: 'Gemini 3.1 Pro Preview', url: GEMINI_3_1_PRO_URL },
-        { name: 'Gemini 3 Flash Preview', url: GEMINI_3_FLASH_URL },
-        { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
-        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL }
-    ];
-
-    let lastError: any = null;
-
-    for (const model of models) {
-        try {
-            const response = await axios.post(
-                `${model.url}?key=${apiKey}`,
-                {
-                    contents: [{ parts: [{ text: prompt }] }]
-                }
-            );
-            return response.data.candidates[0].content.parts[0].text.trim();
-        } catch (error: any) {
-            console.warn(`[Gemini] Enhancement failed with ${model.name}:`, error.message);
-            lastError = error;
-        }
-    }
-
-    console.error("All Enhancement Models Failed:", lastError);
-    return basePrompt;
+    const result = await generateText(
+        prompt,
+        apiKeysRaw,
+        undefined,
+        undefined,
+        undefined,
+        { temperature: 0.7 }
+    );
+    return result?.trim() || basePrompt;
 };
 
 export const analyzeImage = async (
     imageBase64: string,
-    apiKey: string
+    apiKeysRaw: string | string[]
 ): Promise<string> => {
-    if (!apiKey) return "Analyzed image description...";
-
-    const models = [
-        { name: 'Gemini 3.1 Pro Preview', url: GEMINI_3_1_PRO_URL },
-        { name: 'Gemini 3 Flash Preview', url: GEMINI_3_FLASH_URL },
-        { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
-        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL }
-    ];
+    if (!apiKeysRaw) return "Analyzed image description...";
 
     // Dynamic MIME type extraction
     const match = imageBase64.match(/^data:(.+);base64,(.+)$/);
@@ -1668,59 +1548,31 @@ export const analyzeImage = async (
         cleanBase64 = imageBase64.split(',')[1] || imageBase64;
     }
 
-    let lastError: any = null;
-
-    for (const model of models) {
-        try {
-            console.log(`[Gemini] Analyzing image with model: ${model.name}`);
-            const response = await axios.post(
-                `${model.url}?key=${apiKey}`,
-                {
-                    contents: [{
-                        parts: [
-                            { text: "Describe this image in high detail, focusing on visual style, lighting, colors, and composition. This description will be used as a prompt to generate similar images. Return ONLY the description." },
-                            {
-                                inlineData: {
-                                    mimeType: mimeType,
-                                    data: cleanBase64
-                                }
-                            }
-                        ]
-                    }]
-                }
-            );
-            return response.data.candidates[0].content.parts[0].text.trim();
-        } catch (error: any) {
-            console.warn(`[Gemini] Analysis failed with ${model.name}:`, error.message);
-            lastError = error;
-            // Continue to next model
-        }
+    try {
+        return await generateText(
+            "Describe this image in high detail, focusing on visual style, lighting, colors, and composition. This description will be used as a prompt to generate similar images. Return ONLY the description.",
+            apiKeysRaw,
+            undefined,
+            [{ mimeType: mimeType, data: cleanBase64 }],
+            undefined,
+            { temperature: 0.7 }
+        );
+    } catch (error: any) {
+        console.error('[Gemini] Image analysis failed:', error);
+        return `Failed to analyze image: ${error.message}`;
     }
-
-    console.error("All Image Analysis Models Failed:", lastError);
-    const msg = lastError?.response?.data?.error?.message || lastError?.message || "Unknown error";
-    return `Failed to analyze image (All models overloaded/failed): ${msg}`;
 };
 
 export const generateVisualPrompt = async (
     context: string,
     referenceImages: string[], // Base64 strings
-    apiKey: string,
+    apiKeysRaw: string | string[],
     trendInsights?: any // NEW: Trend analysis insights from Step 0
 ): Promise<string> => {
-    if (!apiKey) return "Please provide an API key.";
+    if (!apiKeysRaw) return "Please provide an API key.";
 
-    const models = [
-        { name: 'Gemini 3.1 Pro Preview', url: GEMINI_3_1_PRO_URL },
-        { name: 'Gemini 3 Pro Preview', url: GEMINI_3_PRO_URL },
-        { name: 'Gemini 3 Flash Preview', url: GEMINI_3_FLASH_URL },
-        { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
-        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL }
-    ];
-
-    const parts: any[] = [
-        {
-            text: `You are a world-class Visual Director and Prompt Engineer. 
+    const visualPromptTemplate = `
+You are a world-class Visual Director and Prompt Engineer. 
 Your goal is to write a highly detailed, single-paragraph image generation prompt for a YouTube thumbnail.
 
 INPUT CONTEXT:
@@ -1750,7 +1602,11 @@ ${trendInsights?.thumbnail ? (
     - Recommendations: ${(trendInsights.thumbnail.recommendations || []).join('; ') || 'N/A'}
     → Incorporate these trending thumbnail patterns into the visual prompt.`
                 ) : ''}
-`
+`;
+
+    const parts: any[] = [
+        {
+            text: visualPromptTemplate
         }
     ];
 
@@ -1776,31 +1632,34 @@ ${trendInsights?.thumbnail ? (
         });
     });
 
-    let lastError = "Unknown Error";
-
-    for (const modelUrl of models) {
-        try {
-            console.log(`[Gemini] Trying visual prompt with model: ${modelUrl.name}`);
-            const response = await axios.post(
-                `${modelUrl.url}?key=${apiKey}`,
-                {
-                    contents: [{ parts }]
-                }
-            );
-
-            if (response.data && response.data.candidates && response.data.candidates.length > 0) {
-                return response.data.candidates[0].content.parts[0].text.trim();
+    try {
+        const inlineImages = referenceImages.map(base64 => {
+            const match = base64.match(/^data:(.+);base64,(.+)$/);
+            let mimeType = "image/jpeg";
+            let data = base64;
+            if (match) {
+                mimeType = match[1];
+                data = match[2];
+            } else {
+                data = base64.split(',')[1] || base64;
             }
-        } catch (error: any) {
-            const status = error.response?.status;
-            const msg = error.response?.data?.error?.message || error.message;
-            console.warn(`[Gemini] Model failed: ${modelUrl} (${status}) - ${msg}`);
-            lastError = `${status}: ${msg}`;
-            // Continue to next model
-        }
-    }
+            return { mimeType, data };
+        });
 
-    return `Failed to generate visual prompt. Last Error: ${lastError}`;
+        const promptText = trendInsights ? `${visualPromptTemplate}\n\n[Trend Insights]: ${JSON.stringify(trendInsights)}` : visualPromptTemplate;
+
+        return await generateText(
+            promptText,
+            apiKeysRaw,
+            undefined,
+            inlineImages,
+            undefined,
+            { temperature: 0.7 }
+        );
+    } catch (error: any) {
+        console.error('[Gemini] Visual prompt generation failed:', error);
+        return `Failed to generate visual prompt: ${error.message}`;
+    }
 };
 
 /**
@@ -1810,9 +1669,9 @@ export const modifyInstructionWithAI = async (
     currentInstruction: string,
     userRequest: string,
     instructionType: 'script' | 'video',
-    apiKey: string
+    apiKeysRaw: string | string[]
 ): Promise<{ success: boolean; modifiedInstruction?: string; explanation?: string; error?: string }> => {
-    if (!apiKey) {
+    if (!apiKeysRaw) {
         return { success: false, error: 'API key is required' };
     }
 
@@ -1846,22 +1705,20 @@ ${currentInstruction}
 Please modify the instructions according to the user's request.`;
 
     try {
-        const response = await axios.post(
-            `${GEMINI_API_URL}?key=${apiKey}`,
+        const generatedText = await generateText(
+            null,
+            apiKeysRaw,
+            "application/json",
+            undefined,
+            systemPrompt,
             {
-                contents: [
-                    { role: 'user', parts: [{ text: systemPrompt }] },
-                    { role: 'model', parts: [{ text: 'Understood. I will modify the instructions based on the user request and return the result as JSON.' }] },
-                    { role: 'user', parts: [{ text: userPrompt }] }
-                ],
-                generationConfig: {
-                    temperature: 0.7,
-                    response_mime_type: "application/json"
-                }
-            }
+                temperature: 0.7,
+                response_mime_type: "application/json"
+            },
+            [
+                { role: 'user', parts: [{ text: userPrompt }] }
+            ]
         );
-
-        const generatedText = response.data.candidates[0].content.parts[0].text;
         const parsed = JSON.parse(generatedText);
 
         return {
@@ -1880,10 +1737,10 @@ Please modify the instructions according to the user's request.`;
 
 export const consultSupport = async (
     history: ChatMessage[],
-    apiKey: string,
+    apiKeysRaw: string | string[],
     systemPrompt: string
 ): Promise<string> => {
-    if (!apiKey) {
+    if (!apiKeysRaw) {
         return "죄송합니다. API 키가 설정되지 않아 답변할 수 없습니다. 설정 메뉴에서 Gemini API Key를 입력해주세요.";
     }
 
@@ -1895,7 +1752,7 @@ export const consultSupport = async (
 
         return await generateText(
             null,
-            apiKey,
+            apiKeysRaw,
             undefined,
             undefined,
             systemPrompt,
@@ -1920,10 +1777,10 @@ export const consultSupport = async (
  */
 export const analyzeTrendVideos = async (
     videos: YouTubeTrendVideo[],
-    apiKey: string,
+    apiKeysRaw: string | string[],
     targetLanguage: string = 'ko'
 ): Promise<{ insights: TrendAnalysisInsights; translations: Record<string, string>; keywordMeanings: Record<string, string> }> => {
-    if (!apiKey) {
+    if (!apiKeysRaw) {
         return {
             insights: {
                 thumbnail: { recommendations: ['API 키가 필요합니다.'] },
@@ -2020,7 +1877,7 @@ Respond in Korean. Be specific and actionable. Return ONLY raw JSON.`;
     try {
         const generatedText = await generateText(
             prompt,
-            apiKey,
+            apiKeysRaw,
             "application/json",
             undefined, // no images
             undefined, // no separate system instruction
@@ -2054,10 +1911,10 @@ Respond in Korean. Be specific and actionable. Return ONLY raw JSON.`;
  * Analyze user's channel and provide improvement suggestions
  */
 export const analyzeChannelForInsights = async (
-    apiKey: string,
+    apiKeysRaw: string | string[],
     channel: ChannelAnalysis
 ): Promise<string> => {
-    if (!apiKey) {
+    if (!apiKeysRaw) {
         return "API 키가 필요합니다.";
     }
 
@@ -2092,7 +1949,7 @@ Write in Korean. Be specific and actionable. Format with headers and bullet poin
     try {
         return await generateText(
             prompt,
-            apiKey,
+            apiKeysRaw,
             undefined, // no specific mime type
             undefined, // no images
             undefined, // no separate system instruction
@@ -2106,16 +1963,18 @@ Write in Korean. Be specific and actionable. Format with headers and bullet poin
 
 export const generateText = async (
     prompt: string | null,
-    apiKey: string,
+    apiKeysRaw: string | string[],
     responseMimeType?: string,
     images?: any,
     systemInstruction?: string,
     generationConfig?: any,
     history?: any[]
 ): Promise<string> => {
-    if (!apiKey) return "API Key is missing.";
+    if (!apiKeysRaw) return "API Key is missing.";
 
-    // Prioritize stable models
+    const apiKeys = Array.isArray(apiKeysRaw) ? apiKeysRaw : apiKeysRaw.split(',').map(k => k.trim()).filter(Boolean);
+    if (apiKeys.length === 0) return "API Key is missing.";
+
     const models = [
         { name: 'Gemini 3.1 Pro Preview', url: GEMINI_3_1_PRO_URL },
         { name: 'Gemini 3 Pro Preview', url: GEMINI_3_PRO_URL },
@@ -2124,9 +1983,21 @@ export const generateText = async (
         { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL }
     ];
 
-    let lastError: any = null;
+    // Support for preferredModel prioritization
+    const finalModels = [...models];
+    if (generationConfig?.preferredModel) {
+        const preferredIndex = models.findIndex(m =>
+            m.name.toLowerCase().includes(generationConfig.preferredModel.toLowerCase()) ||
+            m.url.toLowerCase().includes(generationConfig.preferredModel.toLowerCase())
+        );
+        if (preferredIndex > -1) {
+            const [preferred] = finalModels.splice(preferredIndex, 1);
+            finalModels.unshift(preferred);
+            console.log(`[Gemini] Prioritizing preferred model in generateText: ${preferred.name}`);
+        }
+    }
 
-    // Prepare contents
+    let lastError: any = null;
     let contents: any[] = [];
     if (history && history.length > 0) {
         contents = [...history];
@@ -2135,8 +2006,6 @@ export const generateText = async (
         }
     } else {
         const parts: any[] = [{ text: prompt || "" }];
-
-        // Normalize images
         let normalizedImages: { mimeType: string; data: string }[] = [];
         if (images) {
             if (typeof images === 'string') {
@@ -2159,19 +2028,21 @@ export const generateText = async (
         contents = [{ role: 'user', parts }];
     }
 
-    const MAX_RETRIES = 3;
-    const tryWithModel = async (modelName: string, modelUrl: string): Promise<string | null> => {
-        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    for (const model of finalModels) {
+        for (const apiKey of apiKeys) {
             try {
+                // Filter out non-API fields from generationConfig
+                const { preferredModel, ...validConfig } = generationConfig || {};
+
                 const response = await axios.post(
-                    `${modelUrl}?key=${apiKey}`,
+                    `${model.url}?key=${apiKey}`,
                     {
                         contents,
                         system_instruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
                         generationConfig: {
-                            temperature: generationConfig?.temperature ?? 0.7,
-                            response_mime_type: responseMimeType || generationConfig?.response_mime_type,
-                            ...generationConfig
+                            temperature: 0.7,
+                            ...validConfig,
+                            response_mime_type: responseMimeType || validConfig.response_mime_type || undefined
                         }
                     },
                     { timeout: 120000 }
@@ -2180,25 +2051,17 @@ export const generateText = async (
             } catch (error: any) {
                 lastError = error;
                 const status = error.response?.status;
-                if (status === 429 && attempt < MAX_RETRIES) {
-                    const waitTime = Math.pow(2, attempt) * 1000;
-                    console.warn(`[Gemini] 429 Rate Limit on ${modelName}. Retrying in ${waitTime / 1000}s...`);
-                    await new Promise(r => setTimeout(r, waitTime));
-                    continue;
+                if (status === 429) {
+                    console.warn(`[Gemini] 429 Rate Limit on ${model.name} with key ${apiKey.substring(0, 5)}...`);
+                    continue; // Try next key for SAME model
                 }
-                console.warn(`[Gemini] ${modelName} failed:`, error.message);
-                return null;
+                console.warn(`[Gemini] ${model.name} failed with key ${apiKey.substring(0, 5)}...:`, error.message);
+                // For other errors, we still continue to try next keys/models
             }
         }
-        return null;
-    };
-
-    for (const model of models) {
-        const result = await tryWithModel(model.name, model.url);
-        if (result) return result;
     }
 
-    throw lastError || new Error("All models failed");
+    throw lastError || new Error("All models and keys failed");
 };
 
 // ============================================================================
@@ -2286,9 +2149,9 @@ function suggestCameraWorkForEmotion(emotion?: string): string[] {
  */
 export const generateVideoMotionPrompt = async (
     context: VideoMotionContext,
-    apiKey: string
+    apiKeysRaw: string | string[]
 ): Promise<string> => {
-    if (!apiKey) {
+    if (!apiKeysRaw) {
         // Fallback for no API key
         const basePrompt = context.visualPrompt || '';
         return `${basePrompt}. Camera slowly pushes in. Subtle atmospheric motion. Character breathes naturally. No background music.`;
@@ -2400,7 +2263,7 @@ Generate a single, cohesive video motion prompt (3-5 sentences) that:
 Output ONLY the motion prompt text. End with "No background music. Ambient sounds only."`;
 
     try {
-        const result = await generateText(prompt, apiKey, undefined, undefined, undefined, { temperature: 0.7 });
+        const result = await generateText(prompt, apiKeysRaw, undefined, undefined, undefined, { temperature: 0.7 });
         let finalPrompt = result?.trim() || `${context.visualPrompt}. Camera holds steady. Subtle atmospheric motion.`;
 
         // ENFORCE: Always append negative suffix if not present
