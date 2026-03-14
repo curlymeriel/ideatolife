@@ -42,7 +42,8 @@ export const BatchGenerationPanel: React.FC<BatchGenerationPanelProps> = ({
 }) => {
     const [generationType, setGenerationType] = useState<GenerationType>('both');
     const [targetType, setTargetType] = useState<TargetType>('incomplete');
-    const [maxConcurrent, setMaxConcurrent] = useState(3);
+    // [HYBRID SMART THROTTLING] API 쿼터 보호를 위해 무조건 1개씩 순차 실행되도록 강제
+    const maxConcurrent = 1;
 
     // Calculate target cut IDs based on selection
     const targetCutIds = useMemo(() => {
@@ -133,20 +134,6 @@ export const BatchGenerationPanel: React.FC<BatchGenerationPanelProps> = ({
                                 </button>
                             ))}
                         </div>
-                    </div>
-
-                    {/* Concurrency */}
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-400 w-16">동시 실행:</span>
-                        <input
-                            type="range"
-                            min={1}
-                            max={5}
-                            value={maxConcurrent}
-                            onChange={(e) => setMaxConcurrent(Number(e.target.value))}
-                            className="w-24 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-                        />
-                        <span className="text-xs text-white w-8">{maxConcurrent}개</span>
                     </div>
 
                     {/* Start Button */}

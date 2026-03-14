@@ -12,10 +12,18 @@ export interface ReferenceImage {
 /**
  * Main Image Generation Service
  */
+export type ImageModel = 'gemini-3-pro-image-preview' | 'gemini-3.1-flash-image-preview' | 'gemini-2.5-flash-image' | string;
 /**
  * Helper to try generating a single image with a specific model and key
  */
-const tryGenerateWithModel = async (currentModel: string, prompt: string, ratio: string, refImages: ReferenceImage[], apiKey: string): Promise<string | null> => {
+const tryGenerateWithModel = async (
+    currentModel: string, 
+    prompt: string, 
+    ratio: string, 
+    refImages: ReferenceImage[], 
+    apiKey: string,
+    signal?: AbortSignal
+): Promise<string | null> => {
     const parts: any[] = [];
 
     if (refImages.length > 0) {
@@ -120,7 +128,8 @@ The following images define the visual identity of the characters and assets.
         },
         {
             headers: { 'Content-Type': 'application/json' },
-            timeout: 60000
+            timeout: 60000,
+            signal: signal
         }
     );
 
@@ -141,10 +150,11 @@ The following images define the visual identity of the characters and assets.
 export const generateImage = async (
     _prompt: string,
     apiKeysRaw: string | string[],
-    referenceImages?: (string | ReferenceImage)[],
-    aspectRatio?: string,
-    modelName: string = 'gemini-3-pro-image-preview',
-    candidateCount: number = 1
+    referenceImages?: (string | ReferenceImage)[] | null,
+    aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3',
+    modelName: ImageModel = 'gemini-3-pro-image-preview',
+    candidateCount: number = 1,
+    abortSignal?: AbortSignal
 ): Promise<{ urls: string[] }> => {
     if (!apiKeysRaw) {
         return new Promise((resolve) => {
@@ -157,12 +167,21 @@ export const generateImage = async (
         });
     }
 
-    const apiKeys = Array.isArray(apiKeysRaw) ? apiKeysRaw : apiKeysRaw.split(',').map(k => k.trim()).filter(Boolean);
+    // [HYBRID SMART THROTTLING] 강제로 후보 이미지 수를 1장으로 제한하여 API 쿼터 고갈 방지
+    const effectiveCandidateCount = 1;
+
+    let apiKeys = Array.isArray(apiKeysRaw) ? apiKeysRaw : apiKeysRaw.split(',').map(k => k.trim()).filter(Boolean);
     if (apiKeys.length === 0) throw new Error("At least one valid API key is required");
 
-    const fallbackModels = [
+    // [STABILITY FIX] Shuffle API keys for each request to prevent thundering herd on the first key
+    apiKeys = [...apiKeys].sort(() => Math.random() - 0.5);
+    console.log(`[ImageGen] Starting with ${apiKeys.length} keys in randomized order (Free Tier optimization)`);
+
+    // [STABILITY FIX] Expanded model list including all available image models
+    const fallbackModels: string[] = [
+        'gemini-3.1-flash-image-preview', // NEW: Latest, fast
         'gemini-3-pro-image-preview',
-        'gemini-2.5-flash-image'
+        'gemini-2.5-flash-image',
     ];
 
     const allModels = [modelName];
@@ -181,16 +200,44 @@ export const generateImage = async (
         : [];
 
     let lastError: any = null;
+    // Track which models were 429'd to add inter-model delay
+    let consecutiveModelFailures = 0;
 
     for (const model of allModels) {
+        if (abortSignal?.aborted) throw new Error("AbortError");
+
+        // [STABILITY FIX] If previous model was fully rate-limited, wait before trying next model
+        if (consecutiveModelFailures > 0) {
+            const interModelCooldown = 30000 + Math.floor(Math.random() * 10000); // 30-40s
+            console.warn(`[ImageGen] 🔁 All keys exhausted for previous model. Inter-model cooldown: ${Math.round(interModelCooldown / 1000)}s before trying ${model}...`);
+            await new Promise(r => {
+                const timer = setTimeout(r, interModelCooldown);
+                abortSignal?.addEventListener('abort', () => { clearTimeout(timer); r(null); }, { once: true });
+            });
+            if (abortSignal?.aborted) throw new Error("AbortError");
+        }
+
+        let modelAllKeysRateLimited = true; // Assume all rate limited until a key succeeds or non-429 error
+
         for (const apiKey of apiKeys) {
+            if (abortSignal?.aborted) throw new Error("AbortError");
+            
             try {
                 const urls: string[] = [];
-                for (let i = 0; i < candidateCount; i++) {
-                    console.log(`[ImageGen] Generating with model ${model} (Key: ${apiKey.substring(0, 5)}...) Draft ${i + 1}/${candidateCount}`);
-                    const url = await tryGenerateWithModel(model, _prompt, aspectRatio || '16:9', refImagesArray, apiKey);
+                for (let i = 0; i < effectiveCandidateCount; i++) {
+                    if (abortSignal?.aborted) throw new Error("AbortError");
+                    console.log(`[ImageGen] Generating with model ${model} (Key: ${apiKey.substring(0, 5)}...) Draft ${i + 1}/${effectiveCandidateCount}`);
+                    const url = await tryGenerateWithModel(model, _prompt, aspectRatio || '16:9', refImagesArray, apiKey, abortSignal);
                     if (url) urls.push(url);
-                    if (i < candidateCount - 1) await new Promise(r => setTimeout(r, 500));
+                    if (i < effectiveCandidateCount - 1) {
+                        await new Promise(r => {
+                            const timer = setTimeout(r, 500);
+                            abortSignal?.addEventListener('abort', () => {
+                                clearTimeout(timer);
+                                r(null);
+                            }, { once: true });
+                        });
+                    }
                 }
 
                 if (urls.length > 0) return { urls };
@@ -199,15 +246,29 @@ export const generateImage = async (
                 const status = error.response?.status;
                 const errorMsg = error.response?.data?.error?.message || error.message;
                 
+                if (error.name === 'AbortError' || error.message === 'AbortError') throw error;
+
                 if (status === 429) {
+                    // [RESTORED] Original behavior: immediately try next key on 429
+                    // Do NOT add delay here — let the key rotation happen instantly.
+                    // Inter-model delay is handled separately below.
                     console.warn(`[ImageGen] 429 Rate Limit for model ${model} with key ${apiKey.substring(0, 5)}... Retrying with next key.`);
-                    continue; // Try next key
+                    lastError = error;
+                    continue; // Try next key immediately
                 }
                 
+                // Non-429 error: this model had a real issue, not just rate limit
+                modelAllKeysRateLimited = false;
                 console.warn(`[ImageGen] Model ${model} failed with key ${apiKey.substring(0, 5)}...:`, errorMsg);
                 lastError = error;
-                // For other errors, we also try next key
             }
+        }
+
+        // Track whether we should add inter-model cooldown
+        if (modelAllKeysRateLimited) {
+            consecutiveModelFailures++;
+        } else {
+            consecutiveModelFailures = 0; // Reset if a model had non-429 errors
         }
     }
 

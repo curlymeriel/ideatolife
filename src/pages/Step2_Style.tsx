@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Wand2, Save, Type, ImageIcon, Upload, Loader2, CheckCircle, ChevronDown, AlertCircle, RotateCcw, User, MapPin, Bug, Package, ArrowRight, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useWorkflowStore, type AssetDefinition } from '../store/workflowStore';
@@ -11,6 +11,9 @@ import { UnifiedStudio, type AssetGenerationResult } from '../components/Unified
 export const Step2_Style: React.FC = () => {
     const store = useWorkflowStore();
     const navigate = useNavigate();
+    
+    // [STABILITY FIX] Manage AI request cancellation
+    const abortControllerRef = useRef<AbortController | null>(null);
 
     const {
         id: projectId,
@@ -178,6 +181,11 @@ export const Step2_Style: React.FC = () => {
             if (isSeriesComplete) setIsSeriesOpen(false);
             if (isEpisodeComplete) setIsEpisodeOpen(false);
         }
+        return () => {
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+            }
+        };
     }, [isHydrated, isSeriesComplete, isEpisodeComplete]);
 
     const handleSaveAsset = async (overrideData?: { description?: string, referenceImage?: string | null, draftImage?: string | null }) => {
@@ -273,9 +281,23 @@ export const Step2_Style: React.FC = () => {
 
     const handleMagicExpand = async () => {
         if (!description) return;
+        
+        // Cancel existing request if any
+        if (abortControllerRef.current) abortControllerRef.current.abort();
+        abortControllerRef.current = new AbortController();
+        
         setIsProcessing(true);
         try {
             let context = `Series: ${seriesName}, Episode: ${episodeName}`;
+            
+            // [AI QUALITY FIX] 명시적으로 '확장 대상'의 정체성과 역할을 최상단에 주입
+            if (selectedAssetId !== 'master_style') {
+                context += `\n\n--- TARGET ASSET TO EXPAND ---\n`;
+                context += `Name: ${selectedAssetName}\n`;
+                context += `Role/Category: ${selectedAssetType}\n`;
+                context += `------------------------------\n`;
+            }
+
             if (selectedAssetId !== 'master_style' && safeMasterStyle.description) {
                 context += `\nMaster Visual Style: ${safeMasterStyle.description}`;
             }
@@ -292,10 +314,15 @@ export const Step2_Style: React.FC = () => {
             }
 
             const assetTypeForAi = selectedAssetType === 'master' ? 'style' : (selectedAssetType === 'prop' ? 'character' : selectedAssetType);
-            const enhanced = await enhancePrompt(description, assetTypeForAi as any, context, apiKeys?.gemini || '');
+            const enhanced = await enhancePrompt(description, assetTypeForAi as any, context, apiKeys?.gemini || '', abortControllerRef.current.signal);
             setDescription(enhanced);
-        } catch (error) {
+        } catch (error: any) {
             console.error("Enhance failed", error);
+            if (error.response?.status === 429) {
+                alert("API 사용량이 초과되었습니다. 잠시 후(약 20~30초) 다시 시도해 주세요.");
+            } else {
+                alert(`AI 확장에 실패했습니다: ${error.message || 'Unknown error'}`);
+            }
         } finally {
             setIsProcessing(false);
         }
@@ -325,9 +352,13 @@ export const Step2_Style: React.FC = () => {
         setImageToCrop(null);
 
         if (croppingTarget === 'reference') {
+            // Cancel existing request if any
+            if (abortControllerRef.current) abortControllerRef.current.abort();
+            abortControllerRef.current = new AbortController();
+
             setIsProcessing(true);
             try {
-                const analysis = await analyzeImage(croppedImage, apiKeys?.gemini || '');
+                const analysis = await analyzeImage(croppedImage, apiKeys?.gemini || '', abortControllerRef.current.signal);
                 setDescription(prev => {
                     const prefix = "Visual Features: ";
                     if (!prev) return prefix + analysis;
@@ -335,8 +366,12 @@ export const Step2_Style: React.FC = () => {
                     if (prev.includes(marker)) return prev.split(marker)[0] + marker + " " + analysis;
                     return prev + marker + " " + analysis;
                 });
-            } catch (error) {
+            } catch (error: any) {
                 console.error("Analysis failed", error);
+                if (error.name === 'AbortError' || error.message === 'AbortError') return;
+                if (error.response?.status === 429) {
+                    alert("API 사용량이 초과되었습니다. 잠시 후(약 20~30초) 다시 시도해 주세요.");
+                }
             } finally {
                 setIsProcessing(false);
             }
@@ -350,9 +385,14 @@ export const Step2_Style: React.FC = () => {
 
     const handleExpandFromImage = async () => {
         if (!referenceImage) return;
+
+        // Cancel existing request if any
+        if (abortControllerRef.current) abortControllerRef.current.abort();
+        abortControllerRef.current = new AbortController();
+
         setIsProcessing(true);
         try {
-            const analysis = await analyzeImage(referenceImage, apiKeys?.gemini || '');
+            const analysis = await analyzeImage(referenceImage, apiKeys?.gemini || '', abortControllerRef.current.signal);
             let context = `Series: ${seriesName}, Episode: ${episodeName}`;
             if (selectedAssetId !== 'master_style' && safeMasterStyle.description) {
                 context += `\nMaster Visual Style: ${safeMasterStyle.description}`;
@@ -369,10 +409,16 @@ export const Step2_Style: React.FC = () => {
                 if (props) context += `\n\n[Existing Props Reference]\n${props}`;
             }
 
-            const structured = await enhancePrompt(analysis, 'style', context, apiKeys?.gemini || '');
+            const structured = await enhancePrompt(analysis, 'style', context, apiKeys?.gemini || '', abortControllerRef.current.signal);
             setDescription(structured);
-        } catch (error) {
+        } catch (error: any) {
             console.error("Analysis expansion failed", error);
+            if (error.name === 'AbortError' || error.message === 'AbortError') return;
+            if (error.response?.status === 429) {
+                alert("API 사용량이 초과되었습니다. 잠시 후(약 20~30초) 다시 시도해 주세요.");
+            } else {
+                alert(`이미지 분석 및 확장에 실패했습니다: ${error.message || 'Unknown error'}`);
+            }
         } finally {
             setIsProcessing(false);
         }

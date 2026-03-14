@@ -1450,7 +1450,8 @@ export const enhancePrompt = async (
     basePrompt: string,
     type: 'character' | 'location' | 'style',
     context: string,
-    apiKeysRaw: string | string[]
+    apiKeysRaw: string | string[],
+    signal?: AbortSignal
 ): Promise<string> => {
     if (!apiKeysRaw) return basePrompt + " (Enhanced)";
 
@@ -1462,7 +1463,8 @@ Context: ${context}
 Base Description: "${basePrompt}"
 
 **CRITICAL INSTRUCTION:**
-- If the "Base Description" contains specific headers or categories (e.g., [Face], [Costume], [Master Style]), **YOU MUST PRESERVE THESE HEADERS** in your output.
+- The Context may contain a "Target Asset to Expand" section with its Name and Role/Category. **Focus entirely on expanding visuals related to this specific asset and its role.**
+- If the "Base Description" contains specific headers or categories (e.g., [Face], [Costume], [Role: prop]), **YOU MUST PRESERVE THESE HEADERS EXACTLY** in your output.
 - Expand the content *under* each header with high-quality visual details.
 - Do NOT merge separate categories into a single paragraph. Keep them distinct.
 
@@ -1525,14 +1527,20 @@ Gritty and used. Guns and gadgets show signs of wear, oil stains, and scratched 
         undefined,
         undefined,
         undefined,
-        { temperature: 0.7 }
+        { 
+            temperature: 0.7,
+            preferredModel: '3.1 Pro Preview' // [QUALITY RESTORE] Explicitly target Pro for better reasoning and prompt expansion
+        },
+        undefined,
+        signal
     );
     return result?.trim() || basePrompt;
 };
 
 export const analyzeImage = async (
     imageBase64: string,
-    apiKeysRaw: string | string[]
+    apiKeysRaw: string | string[],
+    signal?: AbortSignal
 ): Promise<string> => {
     if (!apiKeysRaw) return "Analyzed image description...";
 
@@ -1555,7 +1563,12 @@ export const analyzeImage = async (
             undefined,
             [{ mimeType: mimeType, data: cleanBase64 }],
             undefined,
-            { temperature: 0.7 }
+            { 
+                temperature: 0.7,
+                preferredModel: '3.1 Pro Preview' // [QUALITY RESTORE] Use Pro for detailed image analysis
+            },
+            undefined,
+            signal
         );
     } catch (error: any) {
         console.error('[Gemini] Image analysis failed:', error);
@@ -1968,19 +1981,26 @@ export const generateText = async (
     images?: any,
     systemInstruction?: string,
     generationConfig?: any,
-    history?: any[]
+    history?: any[],
+    signal?: AbortSignal
 ): Promise<string> => {
+    if (signal?.aborted) throw new Error("AbortError");
     if (!apiKeysRaw) return "API Key is missing.";
 
-    const apiKeys = Array.isArray(apiKeysRaw) ? apiKeysRaw : apiKeysRaw.split(',').map(k => k.trim()).filter(Boolean);
-    if (apiKeys.length === 0) return "API Key is missing.";
+    const apiKeysRawList = Array.isArray(apiKeysRaw) ? apiKeysRaw : apiKeysRaw.split(',').map(k => k.trim()).filter(Boolean);
+    if (apiKeysRawList.length === 0) return "API Key is missing.";
 
+    // [STABILITY FIX] Shuffle keys for generateText as well
+    const apiKeys = [...apiKeysRawList].sort(() => Math.random() - 0.5);
+
+    // [QUALITY RESTORE] 대사 및 스토리라인 유지를 위해 추론 능력이 뛰어난 Pro 모델을 다시 최우선으로 배치
+    // 단답형이나 단순 확장은 함수 호출부에서 preferredModel: '2.5 Flash'로 오버라이드하여 쿼터를 아낌
     const models = [
         { name: 'Gemini 3.1 Pro Preview', url: GEMINI_3_1_PRO_URL },
         { name: 'Gemini 3 Pro Preview', url: GEMINI_3_PRO_URL },
-        { name: 'Gemini 3 Flash Preview', url: GEMINI_3_FLASH_URL },
         { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
-        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL }
+        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },
+        { name: 'Gemini 3 Flash Preview', url: GEMINI_3_FLASH_URL },
     ];
 
     // Support for preferredModel prioritization
@@ -2030,6 +2050,7 @@ export const generateText = async (
 
     for (const model of finalModels) {
         for (const apiKey of apiKeys) {
+            if (signal?.aborted) throw new Error("AbortError");
             try {
                 // Filter out non-API fields from generationConfig
                 const { preferredModel, ...validConfig } = generationConfig || {};
@@ -2045,14 +2066,35 @@ export const generateText = async (
                             response_mime_type: responseMimeType || validConfig.response_mime_type || undefined
                         }
                     },
-                    { timeout: 120000 }
+                    { 
+                        timeout: 120000,
+                        signal: signal 
+                    }
                 );
                 return response.data.candidates[0].content.parts[0].text;
             } catch (error: any) {
+                if (axios.isCancel(error) || error.name === 'AbortError') {
+                    throw error;
+                }
                 lastError = error;
                 const status = error.response?.status;
                 if (status === 429) {
                     console.warn(`[Gemini] 429 Rate Limit on ${model.name} with key ${apiKey.substring(0, 5)}...`);
+                    
+                    // Throttle retry to prevent rapid key cycling when all keys are likely limited
+                    // Increased to 3-5 seconds for better recovery on free tier
+                    const cooldown = 3000 + Math.floor(Math.random() * 2000);
+                    await new Promise(resolve => {
+                        const timer = setTimeout(resolve, cooldown);
+                        signal?.addEventListener('abort', () => {
+                            clearTimeout(timer);
+                            resolve(null);
+                        }, { once: true });
+                    });
+                    
+                    // [CRITICAL] Check if aborted during cooldown before proceeding
+                    if (signal?.aborted) throw new Error("AbortError");
+                    
                     continue; // Try next key for SAME model
                 }
                 console.warn(`[Gemini] ${model.name} failed with key ${apiKey.substring(0, 5)}...:`, error.message);

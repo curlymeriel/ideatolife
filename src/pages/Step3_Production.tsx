@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import axios from 'axios';
 import { useWorkflowStore } from '../store/workflowStore';
 import { generateScript, DEFAULT_SCRIPT_INSTRUCTIONS, DEFAULT_VIDEO_PROMPT_INSTRUCTIONS, detectGender } from '../services/gemini';
 import type { ScriptCut } from '../services/gemini';
@@ -17,6 +18,8 @@ import { AssistantDirectorChat } from '../components/AssistantDirectorChat';
 import { getMatchedAssets } from '../utils/assetUtils';
 import { linkCutsToStoryline } from '../utils/storylineUtils';
 import { saveToIdb, generateCutImageKey, generateAudioKey, resolveUrl } from '../utils/imageStorage';
+import { runBatchGeneration, runSequentialBatchGeneration, type BatchTask } from '../utils/batchGenerationEngine';
+import { BatchGenerationPanel } from '../components/Production/BatchGenerationPanel';
 
 
 export const Step3_Production: React.FC = () => {
@@ -67,6 +70,11 @@ export const Step3_Production: React.FC = () => {
     const [videoPromptInstructions, setVideoPromptInstructions] = useState(DEFAULT_VIDEO_PROMPT_INSTRUCTIONS);
     const [isVideoInstructionsModalOpen, setIsVideoInstructionsModalOpen] = useState(false);
     const [activeSubTab, setActiveSubTab] = useState<'script' | 'image' | 'audio'>('script');
+
+    // Batch Generation Engine States
+    const [batchTasks, setBatchTasks] = useState<BatchTask[]>([]);
+    const [batchPhase, setBatchPhase] = useState<'image' | 'audio' | undefined>();
+    const batchAbortControllerRef = useRef<AbortController | null>(null);
 
     // Ref to keep track of latest script for stable callbacks
     const localScriptRef = useRef(localScript);
@@ -141,6 +149,11 @@ export const Step3_Production: React.FC = () => {
         return () => {
             window.removeEventListener('beforeunload', flush);
             document.removeEventListener('visibilitychange', handleVisChange);
+            // [STABILITY FIX] Cleanup ongoing batch operations on unmount
+            if (batchAbortControllerRef.current) {
+                console.log('[Step3] Aborting pending batch tasks due to unmount');
+                batchAbortControllerRef.current.abort();
+            }
         };
     }, [saveToStore]);
 
@@ -323,7 +336,8 @@ export const Step3_Production: React.FC = () => {
 
 
 
-    const handleGenerateFinalImage = useCallback(async (cutId: number, prompt: string) => {
+    const handleGenerateFinalImage = useCallback(async (cutId: number, prompt: string, signal?: AbortSignal) => {
+        if (signal?.aborted) return;
         setImageLoading(prev => ({ ...prev, [cutId]: true }));
         try {
             console.log(`[Image ${cutId}] Visual Prompt:`, prompt);
@@ -452,8 +466,10 @@ export const Step3_Production: React.FC = () => {
                 finalPrompt,
                 apiKeys.gemini,
                 resolvedReferenceImages.length > 0 ? resolvedReferenceImages : undefined,
-                aspectRatio,
-                imageModel
+                aspectRatio as any,
+                imageModel as any,
+                1,
+                signal
             );
 
             // Save first image to IndexedDB and get idb:// reference URL
@@ -469,15 +485,20 @@ export const Step3_Production: React.FC = () => {
 
             console.log(`[Image ${cutId}] ✅ Generated and saved to IndexedDB`);
         } catch (error: any) {
-            console.error(`[Image ${cutId}] ❌ Generation failed:`, error);
-            alert(`이미지 생성 실패: ${error.message}`);
+            if (error.name === 'AbortError' || error.message === 'AbortError' || axios.isCancel(error)) {
+                console.log(`[Image ${cutId}] Generation aborted safely.`);
+            } else {
+                console.error(`[Image ${cutId}] ❌ Generation failed:`, error);
+                alert(`이미지 생성 실패: ${error.message}`);
+            }
         } finally {
             setImageLoading(prev => ({ ...prev, [cutId]: false }));
         }
     }, [projectId, apiKeys.gemini, aspectRatio, imageModel, assetDefinitions, masterStyle, styleAnchor]);
 
 
-    const handleGenerateAudio = useCallback(async (cutId: number, dialogue: string) => {
+    const handleGenerateAudio = useCallback(async (cutId: number, dialogue: string, signal?: AbortSignal) => {
+        if (signal?.aborted) return;
         setAudioLoading(prev => ({ ...prev, [cutId]: true }));
         try {
             console.log(`[Audio ${cutId}] Generating for dialogue:`, dialogue);
@@ -663,8 +684,10 @@ export const Step3_Production: React.FC = () => {
             console.log(`[Audio ${cutId}] VoiceConfig:`, voiceConfig);
 
             const apiKeyToUse = (apiKeys.googleCloud || apiKeys.gemini)?.trim() || '';
+            if (signal?.aborted) return;
             const audioDataUrl = await generateSpeech(dialogue, voiceName, apiKeyToUse, model, voiceConfig);
 
+            if (signal?.aborted) return;
             // Save to IndexedDB
             const audioKey = generateAudioKey(projectId, cutId);
             const idbAudioUrl = await saveToIdb('audio', audioKey, audioDataUrl);
@@ -691,8 +714,12 @@ export const Step3_Production: React.FC = () => {
                 return updated;
             });
         } catch (error: any) {
-            console.error(`[Audio ${cutId}] Failed:`, error);
-            alert(`Audio generation failed: ${error.message}`);
+            if (error.name === 'AbortError' || error.message === 'AbortError' || axios.isCancel(error)) {
+                console.log(`[Audio ${cutId}] Generation aborted safely.`);
+            } else {
+                console.error(`[Audio ${cutId}] Failed:`, error);
+                alert(`Audio generation failed: ${error.message}`);
+            }
         } finally {
             setAudioLoading(prev => ({ ...prev, [cutId]: false }));
         }
@@ -972,89 +999,101 @@ export const Step3_Production: React.FC = () => {
         });
     }, [saveToStore]);
 
-    const handleBulkGenerateAudio = useCallback(async (speaker: string) => {
-        const cutsToGenerate = localScriptRef.current.filter(c => c.speaker === speaker && !c.isAudioConfirmed && c.dialogue);
-        if (cutsToGenerate.length === 0) return alert('생성할 컷이 없거나 모두 잠겨있습니다.');
+    const handleCancelBatch = useCallback(() => {
+        if (batchAbortControllerRef.current) {
+            batchAbortControllerRef.current.abort();
+            batchAbortControllerRef.current = null;
+            setBatchLoading(false);
+            setBatchPhase(undefined);
+            console.log('[Step3] Batch generation cancelled by user');
+        }
+    }, []);
+
+    const handleStartSmartBatch = useCallback(async (type: 'image' | 'audio' | 'both', targetCutIds: number[], maxConcurrentNum: number) => {
+        if (batchLoading) return;
 
         setBatchLoading(true);
+        setBatchTasks([]);
+        batchAbortControllerRef.current = new AbortController();
+
+        const commonConfig = {
+            maxConcurrent: maxConcurrentNum,
+            maxRetries: 2,
+            retryDelayMs: 2000,
+            interTaskDelayMs: 15000, // [HYBRID SMART THROTTLING] 15s gap between starts for extreme stability API
+            abortSignal: batchAbortControllerRef.current.signal,
+            onProgress: (tasks: BatchTask[]) => setBatchTasks(tasks),
+        };
+
         try {
-            for (const cut of cutsToGenerate) {
-                await handleGenerateAudio(cut.id, cut.dialogue);
+            if (type === 'both') {
+                await runSequentialBatchGeneration(
+                    targetCutIds,
+                    async (id) => {
+                        const cut = localScriptRef.current.find(c => c.id === id);
+                        if (cut) await handleGenerateFinalImage(id, cut.visualPrompt || '', commonConfig.abortSignal);
+                    },
+                    async (id) => {
+                        const cut = localScriptRef.current.find(c => c.id === id);
+                        if (cut && cut.dialogue) await handleGenerateAudio(id, cut.dialogue, commonConfig.abortSignal);
+                    },
+                    {
+                        ...commonConfig,
+                        onPhaseChange: (phase) => setBatchPhase(phase),
+                        onComplete: (imgs, auds) => {
+                            setBatchLoading(false);
+                            setBatchPhase(undefined);
+                            alert(`일괄 생성 완료: 이미지 ${imgs.filter(t => t.status === 'success').length}개, 오디오 ${auds.filter(t => t.status === 'success').length}개 완성`);
+                        }
+                    }
+                );
+            } else if (type === 'image') {
+                setBatchPhase('image');
+                await runBatchGeneration(
+                    targetCutIds,
+                    'image',
+                    async (id) => {
+                        const cut = localScriptRef.current.find(c => c.id === id);
+                        if (cut) await handleGenerateFinalImage(id, cut.visualPrompt || '', commonConfig.abortSignal);
+                    },
+                    {
+                        ...commonConfig,
+                        onComplete: () => {
+                            setBatchLoading(false);
+                            setBatchPhase(undefined);
+                            alert('이미지 일괄 생성이 완료되었습니다.');
+                        }
+                    }
+                );
+            } else if (type === 'audio') {
+                setBatchPhase('audio');
+                await runBatchGeneration(
+                    targetCutIds,
+                    'audio',
+                    async (id) => {
+                        const cut = localScriptRef.current.find(c => c.id === id);
+                        if (cut && cut.dialogue) await handleGenerateAudio(id, cut.dialogue, commonConfig.abortSignal);
+                    },
+                    {
+                        ...commonConfig,
+                        onComplete: () => {
+                            setBatchLoading(false);
+                            setBatchPhase(undefined);
+                            alert('오디오 일괄 생성이 완료되었습니다.');
+                        }
+                    }
+                );
             }
-            alert(`${speaker}의 오디오 생성이 완료되었습니다.`);
-        } catch (e) {
-            console.error('Bulk audio error:', e);
-        } finally {
-            setBatchLoading(false);
-        }
-    }, [handleGenerateAudio, localScriptRef, setBatchLoading]);
-
-    const handleBatchGenerate = useCallback(async () => {
-        const cutsToGenerate = localScriptRef.current.filter(c => {
-            const needsAudio = !c.audioUrl && c.speaker !== 'SILENT' && !c.isAudioConfirmed;
-            const needsImage = !c.finalImageUrl && !c.isImageConfirmed;
-            return needsAudio || needsImage;
-        });
-        if (cutsToGenerate.length === 0) return alert('이미 모든 자산이 생성되었거나 잠겨 있습니다.');
-
-        if (!confirm(`${cutsToGenerate.length}개 컷의 누락된 자산을 일괄 생성하시겠습니까?`)) return;
-
-        setBatchLoading(true);
-        try {
-            for (const cut of cutsToGenerate) {
-                // Generate Audio if missing (and not silent and not locked)
-                if (!cut.audioUrl && cut.speaker !== 'SILENT' && cut.dialogue && !cut.isAudioConfirmed) {
-                    await handleGenerateAudio(cut.id, cut.dialogue);
-                }
-                // Generate Image if missing (and not locked)
-                if (!cut.finalImageUrl && !cut.isImageConfirmed) {
-                    await handleGenerateFinalImage(cut.id, cut.visualPrompt || '');
-                }
+        } catch (error: any) {
+            if (error.message === 'AbortError') {
+                console.log('[Step3] Batch process aborted safely.');
+            } else {
+                console.error('[Step3] Batch generation error:', error);
+                alert(`일괄 생성 중 오류가 발생했습니다: ${error.message}`);
+                setBatchLoading(false);
             }
-            alert('일괄 생성이 완료되었습니다.');
-        } catch (e: any) {
-            console.error('Batch generation error:', e);
-            alert(`일괄 생성 중 오류 발생: ${e.message}`);
-        } finally {
-            setBatchLoading(false);
         }
-    }, [handleGenerateAudio, handleGenerateFinalImage, setBatchLoading]);
-
-    const handleBatchGenerateImages = useCallback(async () => {
-        const cutsToGenerate = localScriptRef.current.filter(c => !c.finalImageUrl && !c.isImageConfirmed);
-        if (cutsToGenerate.length === 0) return alert('이미 모든 이미지가 생성되었거나 잠겨 있습니다.');
-        if (!confirm(`${cutsToGenerate.length}개 컷의 이미지를 일괄 생성하시겠습니까?`)) return;
-        setBatchLoading(true);
-        try {
-            for (const cut of cutsToGenerate) {
-                await handleGenerateFinalImage(cut.id, cut.visualPrompt || '');
-            }
-            alert('이미지 일괄 생성이 완료되었습니다.');
-        } catch (e: any) {
-            console.error('Batch image generation error:', e);
-            alert(`이미지 일괄 생성 중 오류 발생: ${e.message}`);
-        } finally {
-            setBatchLoading(false);
-        }
-    }, [handleGenerateFinalImage, setBatchLoading]);
-
-    const handleBatchGenerateAllAudio = useCallback(async () => {
-        const cutsToGenerate = localScriptRef.current.filter(c => !c.audioUrl && c.speaker !== 'SILENT' && c.dialogue && !c.isAudioConfirmed);
-        if (cutsToGenerate.length === 0) return alert('이미 모든 오디오가 생성되었거나 잠겨 있습니다.');
-        if (!confirm(`${cutsToGenerate.length}개 컷의 오디오를 일괄 생성하시겠습니까?`)) return;
-        setBatchLoading(true);
-        try {
-            for (const cut of cutsToGenerate) {
-                await handleGenerateAudio(cut.id, cut.dialogue);
-            }
-            alert('오디오 일괄 생성이 완료되었습니다.');
-        } catch (e: any) {
-            console.error('Batch audio generation error:', e);
-            alert(`오디오 일괄 생성 중 오류 발생: ${e.message}`);
-        } finally {
-            setBatchLoading(false);
-        }
-    }, [handleGenerateAudio, setBatchLoading]);
+    }, [batchLoading, handleGenerateFinalImage, handleGenerateAudio]);
 
 
     const handleBulkLockAudio = useCallback((speaker: string, lock: boolean) => {
@@ -1462,16 +1501,18 @@ export const Step3_Production: React.FC = () => {
                                 {IMAGE_MODELS.find(m => m.value === imageModel)?.hint}
                             </span>
 
-                            {/* Batch Image Generate */}
+                            {/* Batch Generation Panel */}
                             {localScript.length > 0 && (
-                                <button
-                                    onClick={handleBatchGenerateImages}
-                                    disabled={batchLoading || loading}
-                                    className="px-4 py-2 bg-gradient-to-r from-[var(--color-primary)] to-[#FF9A5C] text-black text-xs font-bold rounded-lg flex items-center gap-2 shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:brightness-110"
-                                >
-                                    {batchLoading ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
-                                    이미지 일괄 생성 ({localScript.filter(c => !c.finalImageUrl && !c.isImageConfirmed).length})
-                                </button>
+                                <div className="w-full mt-2">
+                                    <BatchGenerationPanel
+                                        cuts={localScript}
+                                        onStartBatch={handleStartSmartBatch}
+                                        onCancel={handleCancelBatch}
+                                        isRunning={batchLoading}
+                                        tasks={batchTasks}
+                                        currentPhase={batchPhase}
+                                    />
+                                </div>
                             )}
 
                             <div className="h-6 w-px bg-white/10 mx-1" />
@@ -1509,16 +1550,18 @@ export const Step3_Production: React.FC = () => {
                                     {TTS_MODELS.find(m => m.value === ttsModel)?.hint}
                                 </span>
 
-                                {/* Batch Audio Generate */}
+                                {/* Batch Generation Panel */}
                                 {localScript.length > 0 && (
-                                    <button
-                                        onClick={handleBatchGenerateAllAudio}
-                                        disabled={batchLoading || loading}
-                                        className="px-4 py-2 bg-gradient-to-r from-[var(--color-primary)] to-[#FF9A5C] text-black text-xs font-bold rounded-lg flex items-center gap-2 shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:brightness-110"
-                                    >
-                                        {batchLoading ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
-                                        오디오 일괄 생성 ({localScript.filter(c => !c.audioUrl && c.speaker !== 'SILENT' && c.dialogue && !c.isAudioConfirmed).length})
-                                    </button>
+                                    <div className="w-full mt-2">
+                                        <BatchGenerationPanel
+                                            cuts={localScript}
+                                            onStartBatch={handleStartSmartBatch}
+                                            onCancel={handleCancelBatch}
+                                            isRunning={batchLoading}
+                                            tasks={batchTasks}
+                                            currentPhase={batchPhase}
+                                        />
+                                    </div>
                                 )}
 
                                 <div className="h-6 w-px bg-white/10 mx-1" />
@@ -1573,7 +1616,7 @@ export const Step3_Production: React.FC = () => {
                                                     </button>
                                                 </div>
                                                 <div className="flex gap-1 pt-1 border-t border-white/5">
-                                                    <button onClick={() => handleBulkGenerateAudio(speaker)} className="flex-1 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 text-[10px] py-1 rounded flex items-center justify-center gap-1 transition-colors font-medium border border-orange-500/30"><Wand2 size={10} /> 일괄 생성</button>
+                                                    <button onClick={() => handleStartSmartBatch('audio', [Number(settings.voiceId)], 1)} className="flex-1 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 text-[10px] py-1 rounded flex items-center justify-center gap-1 transition-colors font-medium border border-orange-500/30"><Wand2 size={10} /> 일괄 생성</button>
                                                     <button onClick={() => handleBulkLockAudio(speaker, true)} className="w-6 h-6 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded flex items-center justify-center transition-all hover:scale-110"><Lock size={10} strokeWidth={2.5} /></button>
                                                     <button onClick={() => handleBulkLockAudio(speaker, false)} className="w-6 h-6 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded flex items-center justify-center transition-all hover:scale-110"><Unlock size={10} strokeWidth={2.5} /></button>
                                                 </div>

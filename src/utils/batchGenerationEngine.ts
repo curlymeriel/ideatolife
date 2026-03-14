@@ -23,6 +23,7 @@ export interface BatchConfig {
     maxConcurrent: number;      // 동시 실행 수 (기본: 3)
     maxRetries: number;         // 최대 재시도 횟수 (기본: 2)
     retryDelayMs: number;       // 재시도 대기 시간 (기본: 1000ms)
+    interTaskDelayMs?: number;  // 작업 시작 간 최소 지연 시간 (기본: 0)
     onProgress: (tasks: BatchTask[]) => void;
     onTaskComplete?: (task: BatchTask) => void;
     onComplete: (tasks: BatchTask[]) => void;
@@ -33,6 +34,7 @@ const DEFAULT_CONFIG: Partial<BatchConfig> = {
     maxConcurrent: 3,
     maxRetries: 2,
     retryDelayMs: 1000,
+    interTaskDelayMs: 200, // 기본적으로 200ms 지연
 };
 
 /**
@@ -119,6 +121,12 @@ export async function runBatchGeneration(
         // Start new tasks up to maxConcurrent
         while (runningPromises.length < maxConcurrent! && pendingTasks.length > 0) {
             const task = pendingTasks.shift()!;
+            
+            // Apply inter-task delay
+            if (mergedConfig.interTaskDelayMs! > 0 && runningPromises.length > 0) {
+                await delay(mergedConfig.interTaskDelayMs!);
+            }
+
             const promise = executeWithRetry(task).then(() => {
                 const idx = runningPromises.indexOf(promise);
                 if (idx !== -1) runningPromises.splice(idx, 1);
