@@ -1048,6 +1048,9 @@ export const Step5_Thumbnail: React.FC = () => {
                                 characters: [],
                                 initialPrompt: aiPrompt,
                                 initialUrl: selectedImage || undefined,
+                                aspectRatio: aspectRatio,
+                                existingCuts: script,
+                                assetDefinitions: assetDefinitions,
                                 strategyContext: {},
                                 onSave: async (result: any) => {
                                     const url = result.url;

@@ -129,8 +129,11 @@ export interface ThumbnailConfig {
     mode: 'thumbnail';
     initialPrompt: string;
     initialUrl?: string;
+    aspectRatio: AspectRatio; // 추가
     strategyContext: any; // trendInsights.thumbnail
     characters?: Array<{ name: string }>;
+    existingCuts?: ScriptCut[]; // Reference Selector용
+    assetDefinitions?: any;    // Key Visuals용
     onSave: (result: ThumbnailResult) => void;
 }
 

@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import axios from 'axios';
 import { useWorkflowStore } from '../store/workflowStore';
 import { generateScript, DEFAULT_SCRIPT_INSTRUCTIONS, DEFAULT_VIDEO_PROMPT_INSTRUCTIONS, detectGender } from '../services/gemini';
@@ -1393,48 +1394,51 @@ export const Step3_Production: React.FC = () => {
     return (
         <>
             <div className="flex flex-col h-[calc(100vh-120px)]">
-                {/* === SUB-TAB BAR === */}
-                <div className="flex items-center gap-4 mb-4">
-                    <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-full border border-white/10">
-                        {([
-                            { id: 'script' as const, num: 1, label: 'Script', Icon: FileText },
-                            { id: 'image' as const, num: 2, label: 'Image', Icon: Image },
-                            { id: 'audio' as const, num: 3, label: 'Audio', Icon: Mic },
-                        ]).map((tab, i, arr) => (
-                            <React.Fragment key={tab.id}>
-                                <button
-                                    onClick={() => setActiveSubTab(tab.id)}
-                                    className={`px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-tight transition-all hover:scale-105 flex items-center gap-1.5 ${activeSubTab === tab.id
-                                        ? 'bg-[var(--color-primary)]/40 text-[var(--color-primary)] border border-[var(--color-primary)]/50 shadow-[0_0_15px_rgba(255,173,117,0.3)]'
-                                        : 'text-gray-500 hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)]'
-                                        }`}
-                                >
-                                    <tab.Icon size={12} />
-                                    #{tab.num} {tab.label}
-                                </button>
-                                {i < arr.length - 1 && <span className="text-white/10 text-[10px] font-bold">/</span>}
-                            </React.Fragment>
-                        ))}
-                    </div>
-
-                    {/* Progress + Next Step */}
-                    <div className="flex items-center gap-3 ml-auto">
-                        {localScript.length > 0 && (
-                            <div className="flex items-center gap-3 text-xs">
-                                <span className="text-[var(--color-primary)] font-bold">{progressPercent}% Ready</span>
-                                <span className="text-[var(--color-text-muted)]">{confirmedCount}/{totalCount} confirmed</span>
+                    {/* === Header Portal for Tab Menu === */}
+                    {document.getElementById('header-portal-target') && createPortal(
+                        <div className="flex items-center gap-4 ml-6">
+                            <div className="flex items-center gap-1.5 px-2 py-1.5 bg-[#1C1C1E] border border-white/5 rounded-full shadow-inner">
+                                {([
+                                    { id: 'script' as const, num: 1, label: 'SCRIPT', Icon: FileText },
+                                    { id: 'image' as const, num: 2, label: 'IMAGE', Icon: Image },
+                                    { id: 'audio' as const, num: 3, label: 'AUDIO', Icon: Mic },
+                                ]).map((tab, i, arr) => (
+                                    <React.Fragment key={tab.id}>
+                                        <button
+                                            onClick={() => setActiveSubTab(tab.id)}
+                                            className={`px-4 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${activeSubTab === tab.id
+                                                ? 'bg-[#C17042] text-white shadow-[0_0_15px_rgba(193,112,66,0.3)]'
+                                                : 'text-gray-500 hover:text-gray-300'
+                                                }`}
+                                        >
+                                            <tab.Icon size={13} className={activeSubTab === tab.id ? 'text-white' : 'text-gray-500'} />
+                                            #{tab.num} {tab.label}
+                                        </button>
+                                        {i < arr.length - 1 && <span className="text-gray-600/50 text-[10px] mx-1">/</span>}
+                                    </React.Fragment>
+                                ))}
                             </div>
-                        )}
-                        {localScript.length > 0 && (
-                            <button
-                                onClick={handleApprove}
-                                className="btn-primary flex items-center gap-2 px-5 py-2 rounded-xl font-bold text-sm shadow-lg hover:shadow-[0_0_20px_rgba(255,159,89,0.4)] hover:scale-[1.02] transition-all"
-                            >
-                                Next Step <ArrowRight size={16} />
-                            </button>
-                        )}
-                    </div>
-                </div>
+
+                            {/* Progress + Next Step */}
+                            <div className="flex items-center gap-3">
+                                {localScript.length > 0 && (
+                                    <div className="flex items-center gap-2 text-xs">
+                                        <span className="text-[var(--color-primary)] font-bold">{progressPercent}% Ready</span>
+                                        <span className="text-[var(--color-text-muted)] hidden xl:inline">({confirmedCount}/{totalCount} confirmed)</span>
+                                    </div>
+                                )}
+                                {localScript.length > 0 && (
+                                    <button
+                                        onClick={handleApprove}
+                                        className="btn-primary flex items-center gap-1.5 px-4 py-1.5 rounded-full font-bold text-[11px] uppercase tracking-wider shadow hover:shadow-[0_0_15px_rgba(255,159,89,0.4)] hover:scale-[1.02] transition-all"
+                                    >
+                                        Next <ArrowRight size={14} />
+                                    </button>
+                                )}
+                            </div>
+                        </div>,
+                        document.getElementById('header-portal-target')!
+                    )}
 
                 {/* === TAB SETTINGS PANEL === */}
                 <div className="glass-panel p-4 mb-4">
@@ -1485,13 +1489,13 @@ export const Step3_Production: React.FC = () => {
 
                     {/* --- #2 IMAGE TAB --- */}
                     {activeSubTab === 'image' && (
-                        <div className="flex items-center gap-4 flex-wrap">
+                        <div className="flex items-center gap-3 flex-wrap">
                             <div className="flex items-center gap-2">
                                 <Image size={14} className="text-[var(--color-primary)]" />
-                                <span className="text-xs text-white font-bold uppercase tracking-wider">이미지 AI 모델</span>
+                                <span className="text-xs text-white font-bold uppercase tracking-wider">AI 모델</span>
                             </div>
                             <select
-                                className="bg-[var(--color-surface)] border border-[var(--color-border)] text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)] min-w-[240px]"
+                                className="bg-[var(--color-surface)] border border-[var(--color-border)] text-white rounded-lg px-3 py-1.5 text-xs outline-none focus:border-[var(--color-primary)] min-w-[180px]"
                                 value={imageModel}
                                 onChange={(e) => setImageModel(e.target.value as any)}
                             >
@@ -1499,48 +1503,48 @@ export const Step3_Production: React.FC = () => {
                                     <option key={model.value} value={model.value}>{model.label} {model.cost}</option>
                                 ))}
                             </select>
-                            <span className="text-[10px] text-[var(--color-text-muted)]">
+                            <span className="text-[10px] text-[var(--color-text-muted)] hidden xl:inline">
                                 {IMAGE_MODELS.find(m => m.value === imageModel)?.hint}
                             </span>
 
-                            {/* Batch Generation Panel */}
+                            <div className="h-5 w-px bg-white/10" />
+
+                            {/* Inline Batch Generation */}
                             {localScript.length > 0 && (
-                                <div className="w-full mt-2">
-                                    <BatchGenerationPanel
-                                        cuts={localScript}
-                                        onStartBatch={handleStartSmartBatch}
-                                        onCancel={handleCancelBatch}
-                                        isRunning={batchLoading}
-                                        tasks={batchTasks}
-                                        currentPhase={batchPhase}
-                                    />
-                                </div>
+                                <BatchGenerationPanel
+                                    cuts={localScript}
+                                    batchType="image"
+                                    onStartBatch={handleStartSmartBatch}
+                                    onCancel={handleCancelBatch}
+                                    isRunning={batchLoading}
+                                    tasks={batchTasks}
+                                    currentPhase={batchPhase}
+                                />
                             )}
 
-                            <div className="h-6 w-px bg-white/10 mx-1" />
+                            <div className="h-5 w-px bg-white/10" />
 
                             {localScript.length > 0 && (
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[9px] text-gray-500 uppercase font-bold tracking-wider">Image Lock ({imageLockedCount}/{imageGeneratedCount})</span>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-[9px] text-[var(--color-text-muted)] uppercase font-bold tracking-wider">Lock ({imageLockedCount}/{imageGeneratedCount})</span>
                                     <button onClick={lockAllImages} className="w-6 h-6 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded flex items-center justify-center transition-all hover:scale-110" title="일괄 잠금"><Lock size={10} strokeWidth={2.5} /></button>
                                     <button onClick={unlockAllImages} className="w-6 h-6 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded flex items-center justify-center transition-all hover:scale-110" title="일괄 해제"><Unlock size={10} strokeWidth={2.5} /></button>
                                 </div>
                             )}
-
-                            <p className="w-full text-[10px] text-gray-500 mt-1">💡 각 컷의 🖼 버튼으로 개별 이미지를 재생성하거나, 이미지를 클릭해 Visual Studio에서 상세 편집할 수 있습니다.</p>
                         </div>
                     )}
 
                     {/* --- #3 AUDIO TAB --- */}
                     {activeSubTab === 'audio' && (
-                        <div className="space-y-3">
-                            <div className="flex items-center gap-4 flex-wrap">
+                        <div className="space-y-2">
+                            {/* Row 1: TTS Model + Inline Batch + Language/Speed + Lock */}
+                            <div className="flex items-center gap-3 flex-wrap">
                                 <div className="flex items-center gap-2">
                                     <Mic size={14} className="text-[var(--color-primary)]" />
                                     <span className="text-xs text-white font-bold uppercase tracking-wider">TTS 모델</span>
                                 </div>
                                 <select
-                                    className="bg-[var(--color-surface)] border border-[var(--color-border)] text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)] min-w-[240px]"
+                                    className="bg-[var(--color-surface)] border border-[var(--color-border)] text-white rounded-lg px-3 py-1.5 text-xs outline-none focus:border-[var(--color-primary)] min-w-[180px]"
                                     value={ttsModel}
                                     onChange={(e) => setTtsModel(e.target.value as any)}
                                 >
@@ -1548,80 +1552,92 @@ export const Step3_Production: React.FC = () => {
                                         <option key={model.value} value={model.value}>{model.label} {model.cost}</option>
                                     ))}
                                 </select>
-                                <span className="text-[10px] text-[var(--color-text-muted)]">
+                                <span className="text-[10px] text-[var(--color-text-muted)] hidden xl:inline">
                                     {TTS_MODELS.find(m => m.value === ttsModel)?.hint}
                                 </span>
 
-                                {/* Batch Generation Panel */}
+                                <div className="h-5 w-px bg-white/10" />
+
+                                {/* Inline Batch Generation */}
                                 {localScript.length > 0 && (
-                                    <div className="w-full mt-2">
-                                        <BatchGenerationPanel
-                                            cuts={localScript}
-                                            onStartBatch={handleStartSmartBatch}
-                                            onCancel={handleCancelBatch}
-                                            isRunning={batchLoading}
-                                            tasks={batchTasks}
-                                            currentPhase={batchPhase}
-                                        />
-                                    </div>
+                                    <BatchGenerationPanel
+                                        cuts={localScript}
+                                        batchType="audio"
+                                        onStartBatch={handleStartSmartBatch}
+                                        onCancel={handleCancelBatch}
+                                        isRunning={batchLoading}
+                                        tasks={batchTasks}
+                                        currentPhase={batchPhase}
+                                    />
                                 )}
 
-                                <div className="h-6 w-px bg-white/10 mx-1" />
+                                <div className="h-5 w-px bg-white/10" />
 
                                 {/* Global language/speed */}
-                                <select className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs text-white focus:border-[var(--color-primary)] outline-none" value={currentLanguage} onChange={(e) => applyToAll('language', e.target.value || undefined)}>
-                                    <option value="">🌐 언어: 자동</option>
+                                <select className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 text-[10px] text-white focus:border-[var(--color-primary)] outline-none" value={currentLanguage} onChange={(e) => applyToAll('language', e.target.value || undefined)}>
+                                    <option value="">🌐 자동</option>
                                     <option value="ko-KR">🇰🇷 한국어</option>
                                     <option value="en-US">🇺🇸 영어</option>
                                 </select>
-                                <select className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1.5 text-xs text-white focus:border-[var(--color-primary)] outline-none" value={currentSpeed} onChange={(e) => applyToAll('voiceSpeed', e.target.value ? parseFloat(e.target.value) : undefined)}>
-                                    <option value="">⚡ 속도: 자동</option>
+                                <select className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 text-[10px] text-white focus:border-[var(--color-primary)] outline-none" value={currentSpeed} onChange={(e) => applyToAll('voiceSpeed', e.target.value ? parseFloat(e.target.value) : undefined)}>
+                                    <option value="">⚡ 자동</option>
                                     <option value="0.85">85%</option>
                                     <option value="1.0">100%</option>
                                     <option value="1.15">115%</option>
                                 </select>
 
-                                <div className="h-6 w-px bg-white/10 mx-1" />
+                                <div className="h-5 w-px bg-white/10" />
 
                                 {localScript.length > 0 && (
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-[9px] text-gray-500 uppercase font-bold tracking-wider">Audio Lock ({audioLockedCount}/{audioGeneratedCount})</span>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-[9px] text-[var(--color-text-muted)] uppercase font-bold tracking-wider">Lock ({audioLockedCount}/{audioGeneratedCount})</span>
                                         <button onClick={lockAllAudio} className="w-6 h-6 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded flex items-center justify-center transition-all hover:scale-110" title="일괄 잠금"><Lock size={10} strokeWidth={2.5} /></button>
                                         <button onClick={unlockAllAudio} className="w-6 h-6 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded flex items-center justify-center transition-all hover:scale-110" title="일괄 해제"><Unlock size={10} strokeWidth={2.5} /></button>
                                     </div>
                                 )}
                             </div>
 
-                            {/* Per-Speaker Voice Settings */}
+                            {/* Row 2: Per-Speaker Voice Settings (vertical scroll, single-row per speaker) */}
                             {localScript.length > 0 && speakers.length > 0 && (
-                                <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-[var(--color-border)] scrollbar-track-transparent">
+                                <div className="max-h-[100px] overflow-y-auto scrollbar-thin scrollbar-thumb-[var(--color-border)] scrollbar-track-transparent border border-[var(--color-border)] rounded-lg">
                                     {speakers.map(([speaker, settings]) => {
                                         const currentVoice = settings.voiceId || getDefaultGeminiVoice(settings.gender);
+                                        // Get cut IDs for this speaker for batch generation
+                                        const speakerCutIds = localScript.filter(c => c.speaker === speaker).map(c => c.id);
                                         return (
-                                            <div key={speaker} className="bg-[var(--color-surface)] p-2.5 rounded-lg border border-[var(--color-border)] space-y-2 min-w-[220px] flex-shrink-0">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="flex-1 text-xs text-white truncate font-medium" title={speaker}>{speaker}</span>
-                                                    <span className="text-[10px] text-gray-500">{settings.cutCount} cuts</span>
-                                                </div>
-                                                <select className="w-full bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-1.5 py-1 text-[10px] text-white outline-none" value={currentVoice} onChange={(e) => applyVoiceToSpeaker(speaker, e.target.value)}>
+                                            <div key={speaker} className="flex items-center gap-2 px-3 py-1.5 border-b border-[var(--color-border)] last:border-b-0 hover:bg-white/[0.02] transition-colors">
+                                                {/* Speaker Name */}
+                                                <span className="text-[11px] text-white font-medium truncate min-w-[60px] max-w-[90px]" title={speaker}>{speaker}</span>
+                                                <span className="text-[9px] text-[var(--color-text-muted)]">{settings.cutCount}컷</span>
+
+                                                <div className="h-4 w-px bg-white/10" />
+
+                                                {/* Voice Select */}
+                                                <select className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-1.5 py-0.5 text-[10px] text-white outline-none focus:border-[var(--color-primary)] min-w-[140px]" value={currentVoice} onChange={(e) => applyVoiceToSpeaker(speaker, e.target.value)}>
                                                     {VOICE_OPTIONS.map(group => (<optgroup key={group.optgroup} label={group.optgroup}>{group.options.map(v => (<option key={v.value} value={v.value}>{v.label}</option>))}</optgroup>))}
                                                 </select>
-                                                <div className="flex gap-1">
-                                                    <select className="flex-1 bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-1 py-0.5 text-[9px] text-gray-400 outline-none" value={settings.voiceSpeed ?? ''} onChange={(e) => applyToSpeaker(speaker, 'voiceSpeed', e.target.value === '' ? undefined : parseFloat(e.target.value))}>
-                                                        <option value="">속도: 자동</option><option value="0.8">0.8x</option><option value="0.9">0.9x</option><option value="1.0">1.0x</option><option value="1.1">1.1x</option>
-                                                    </select>
-                                                    <select className="flex-1 bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-1 py-0.5 text-[9px] text-gray-400 outline-none" value={settings.age || 'adult'} onChange={(e) => applyToSpeaker(speaker, 'voiceAge', e.target.value)}>
-                                                        <option value="child">Child</option><option value="young">Young</option><option value="adult">Adult</option><option value="senior">Senior</option>
-                                                    </select>
-                                                    <button onClick={() => playVoiceSample(currentVoice || '')} disabled={sampleLoading === currentVoice} className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all ${sampleLoading === currentVoice ? 'bg-gray-500/20 text-gray-400 cursor-wait animate-pulse' : 'bg-[var(--color-primary)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/30'}`} title="Play sample">
-                                                        {sampleLoading === currentVoice ? '⏳' : '🔊'}
-                                                    </button>
-                                                </div>
-                                                <div className="flex gap-1 pt-1 border-t border-white/5">
-                                                    <button onClick={() => handleStartSmartBatch('audio', [Number(settings.voiceId)], 1)} className="flex-1 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 text-[10px] py-1 rounded flex items-center justify-center gap-1 transition-colors font-medium border border-orange-500/30"><Wand2 size={10} /> 일괄 생성</button>
-                                                    <button onClick={() => handleBulkLockAudio(speaker, true)} className="w-6 h-6 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded flex items-center justify-center transition-all hover:scale-110"><Lock size={10} strokeWidth={2.5} /></button>
-                                                    <button onClick={() => handleBulkLockAudio(speaker, false)} className="w-6 h-6 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded flex items-center justify-center transition-all hover:scale-110"><Unlock size={10} strokeWidth={2.5} /></button>
-                                                </div>
+
+                                                {/* Speed */}
+                                                <select className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-1 py-0.5 text-[9px] text-[var(--color-text-muted)] outline-none w-[55px]" value={settings.voiceSpeed ?? ''} onChange={(e) => applyToSpeaker(speaker, 'voiceSpeed', e.target.value === '' ? undefined : parseFloat(e.target.value))}>
+                                                    <option value="">자동</option><option value="0.8">0.8x</option><option value="0.9">0.9x</option><option value="1.0">1.0x</option><option value="1.1">1.1x</option>
+                                                </select>
+
+                                                {/* Age */}
+                                                <select className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-1 py-0.5 text-[9px] text-[var(--color-text-muted)] outline-none w-[55px]" value={settings.age || 'adult'} onChange={(e) => applyToSpeaker(speaker, 'voiceAge', e.target.value)}>
+                                                    <option value="child">Child</option><option value="young">Young</option><option value="adult">Adult</option><option value="senior">Senior</option>
+                                                </select>
+
+                                                {/* Sample */}
+                                                <button onClick={() => playVoiceSample(currentVoice || '')} disabled={sampleLoading === currentVoice} className={`px-1 py-0.5 rounded text-[10px] font-bold transition-all ${sampleLoading === currentVoice ? 'text-[var(--color-text-muted)] cursor-wait animate-pulse' : 'text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10'}`} title="샘플 듣기">
+                                                    {sampleLoading === currentVoice ? '⏳' : '🔊'}
+                                                </button>
+
+                                                <div className="h-4 w-px bg-white/10" />
+
+                                                {/* Per-speaker batch generate */}
+                                                <button onClick={() => handleStartSmartBatch('audio', speakerCutIds, 1)} className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold text-[var(--color-primary)] bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 rounded hover:bg-[var(--color-primary)]/20 transition-colors"><Wand2 size={9} /> 생성</button>
+                                                <button onClick={() => handleBulkLockAudio(speaker, true)} className="w-5 h-5 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded flex items-center justify-center transition-all hover:scale-110"><Lock size={8} strokeWidth={2.5} /></button>
+                                                <button onClick={() => handleBulkLockAudio(speaker, false)} className="w-5 h-5 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded flex items-center justify-center transition-all hover:scale-110"><Unlock size={8} strokeWidth={2.5} /></button>
                                             </div>
                                         );
                                     })}

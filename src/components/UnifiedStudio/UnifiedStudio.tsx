@@ -324,11 +324,11 @@ export const UnifiedStudio = ({
     useEffect(() => {
         if (!isOpen) return;
 
-        // Resolve Candidates (Cuts) - mostly for visual mode, but safe to run
+        // Resolve Candidates (Cuts) - mostly for visual mode & thumbnail mode
         const resolveCandidates = async () => {
-            if (config.mode !== 'visual' || !config.existingCuts) return;
+            if ((config.mode !== 'visual' && config.mode !== 'thumbnail') || !config.existingCuts) return;
             const cuts = config.existingCuts || [];
-            const candidates = cuts.filter(c => c.id !== config.cutId && c.finalImageUrl).map(c => ({ id: c.id, url: c.finalImageUrl!, index: cuts.indexOf(c) + 1 }));
+            const candidates = cuts.filter(c => (config.mode !== 'visual' || c.id !== (config as any).cutId) && c.finalImageUrl).map(c => ({ id: c.id, url: c.finalImageUrl!, index: cuts.indexOf(c) + 1 }));
             const resolved = await Promise.all(candidates.map(async c => {
                 let url = c.url;
                 if (isIdbUrl(url)) { url = await resolveUrl(url) || url; if (url.startsWith('blob:')) blobUrlsRef.current.add(url); }
@@ -337,11 +337,11 @@ export const UnifiedStudio = ({
             setResolvedCandidates(resolved);
         };
 
-        // Resolve Project Assets - shared for both modes now
+        // Resolve Project Assets - shared for visual, asset, and thumbnail modes
         const resolveAssets = async () => {
             let rawAssets: any[] = [];
 
-            if (config.mode === 'visual' && config.assetDefinitions) {
+            if ((config.mode === 'visual' || config.mode === 'thumbnail') && config.assetDefinitions) {
                 rawAssets = Object.values(config.assetDefinitions)
                     .filter((a: any) => ['character', 'location', 'prop'].includes(a.type) && (a.masterImage || a.draftImage || a.referenceImage))
                     .map((a: any) => ({ id: a.id, name: a.name, type: a.type, url: a.masterImage || a.draftImage || a.referenceImage }));
@@ -383,7 +383,7 @@ export const UnifiedStudio = ({
 
     const aspectRatio = mode === 'channelArt' ? (config.type === 'banner' ? '16:9' : '1:1')
         : mode === 'asset' ? config.aspectRatio
-            : mode === 'thumbnail' ? '16:9'
+            : mode === 'thumbnail' ? config.aspectRatio
                 : config.aspectRatio;
 
     const handleSaveAndClose = async () => {

@@ -434,47 +434,46 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         <div className="flex items-center gap-6">
                             {isMobile && <Box size={20} className="text-[var(--color-primary)]" />}
 
-                            <div className="flex items-center gap-4">
-                                <div className="text-sm font-bold tracking-tight">
-                                    {isDashboard ? (
-                                        <span className="text-[var(--color-text-muted)]">Overview</span>
-                                    ) : location.pathname.startsWith('/research') ? (
-                                        <span className="text-[var(--color-primary)]">PREP PHASES</span>
-                                    ) : currentStepObj ? (
-                                        <span className="text-[var(--color-text-muted)]">Step {currentStepObj.id} : {currentStepObj.name}</span>
-                                    ) : (
-                                        <span className="text-[var(--color-text-muted)]">Step {displayStep} of 6</span>
-                                    )}
-                                </div>
-
-                                {location.pathname.startsWith('/research') && (
-                                    <div className="flex items-center gap-2 animate-in slide-in-from-left-4 duration-500">
-                                        <span className="text-[10px] text-gray-600 font-bold ml-1 uppercase tracking-widest">Select Stage</span>
-                                        <ChevronRight size={12} className="text-gray-700" />
-                                        <div className="flex items-center gap-2 px-4 py-1.5 bg-white/5 rounded-full border border-white/10">
-                                            {[
-                                                { id: 1, path: '/research', label: 'Market' },
-                                                { id: 2, path: '/research/competitor', label: 'Deep' },
-                                                { id: 3, path: '/research/strategy', label: 'Strategy' },
-                                                { id: 4, path: '/research/ideas', label: 'Ideas' }
-                                            ].map((phase, i, arr) => (
-                                                <React.Fragment key={phase.id}>
-                                                    <button
-                                                        onClick={() => navigate(phase.path)}
-                                                        className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter transition-all hover:scale-105 ${location.pathname === phase.path
-                                                            ? 'bg-[var(--color-primary)]/40 text-[var(--color-primary)] border border-[var(--color-primary)]/50 shadow-[0_0_15px_rgba(255,173,117,0.3)]'
-                                                            : 'text-gray-500 hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)]'
-                                                            }`}
-                                                    >
-                                                        #{phase.id} {phase.label}
-                                                    </button>
-                                                    {i < arr.length - 1 && <span className="text-white/10 text-[10px] font-bold">/</span>}
-                                                </React.Fragment>
-                                            ))}
+                                {location.pathname.startsWith('/research') ? (
+                                    <div className="flex items-center gap-4">
+                                        <div className="text-sm font-bold tracking-tight text-[var(--color-primary)]">
+                                            PREP PHASES
+                                        </div>
+                                        <div className="flex items-center gap-2 animate-in slide-in-from-left-4 duration-500">
+                                            <span className="text-[10px] text-gray-600 font-bold ml-1 uppercase tracking-widest">Select Stage</span>
+                                            <ChevronRight size={12} className="text-gray-700" />
+                                            <div className="flex items-center gap-2 px-4 py-1.5 bg-white/5 rounded-full border border-white/10">
+                                                {[
+                                                    { id: 1, path: '/research', label: 'Market' },
+                                                    { id: 2, path: '/research/competitor', label: 'Deep' },
+                                                    { id: 3, path: '/research/strategy', label: 'Strategy' },
+                                                    { id: 4, path: '/research/ideas', label: 'Ideas' }
+                                                ].map((phase, i, arr) => (
+                                                    <React.Fragment key={phase.id}>
+                                                        <button
+                                                            onClick={() => navigate(phase.path)}
+                                                            className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter transition-all hover:scale-105 ${location.pathname === phase.path
+                                                                ? 'bg-[var(--color-primary)]/40 text-[var(--color-primary)] border border-[var(--color-primary)]/50 shadow-[0_0_15px_rgba(255,173,117,0.3)]'
+                                                                : 'text-gray-500 hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)]'
+                                                                }`}
+                                                        >
+                                                            #{phase.id} {phase.label}
+                                                        </button>
+                                                        {i < arr.length - 1 && <span className="text-white/10 text-[10px] font-bold">/</span>}
+                                                    </React.Fragment>
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
+                                ) : (
+                                    <div className="flex items-center gap-4">
+                                        <div className="text-sm font-bold tracking-tight text-[var(--color-text-muted)]">
+                                            {isDashboard ? 'Overview' : currentStepObj ? `Step ${currentStepObj.id} : ${currentStepObj.name}` : `Step ${displayStep} of 6`}
+                                        </div>
+                                        {/* Portal target for page-specific header content */}
+                                        <div id="header-portal-target" className="flex items-center ml-2 empty:hidden"></div>
+                                    </div>
                                 )}
-                            </div>
                         </div>
                         {!isMobile && (
                             <div className="flex items-center gap-3">
