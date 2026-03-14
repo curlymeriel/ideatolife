@@ -476,12 +476,14 @@ export const Step3_Production: React.FC = () => {
             const imageKey = generateCutImageKey(projectId, cutId, 'final');
             const idbUrl = await saveToIdb('images', imageKey, result.urls[0]);
 
-            const updatedScript = currentScript.map(cut =>
-                cut.id === cutId ? { ...cut, finalImageUrl: `${idbUrl}?t=${Date.now()}` } : cut
-            );
-            setLocalScript(updatedScript);
-            localScriptRef.current = updatedScript; // SYNC REF
-            saveToStore(updatedScript);
+            setLocalScript(prev => {
+                const updated = prev.map(cut =>
+                    cut.id === cutId ? { ...cut, finalImageUrl: `${idbUrl}?t=${Date.now()}` } : cut
+                );
+                localScriptRef.current = updated; // SYNC REF
+                saveToStore(updated);
+                return updated;
+            });
 
             console.log(`[Image ${cutId}] ✅ Generated and saved to IndexedDB`);
         } catch (error: any) {
@@ -1286,19 +1288,19 @@ export const Step3_Production: React.FC = () => {
         });
     }, [saveToStore]);
 
-    const handleDeleteCut = useCallback((id: number) => {
+    const handleDeleteCut = useCallback((id: number | string) => {
         setLocalScript(prev => {
-            const updated = prev.filter(cut => Number(cut.id) !== Number(id));
+            const updated = prev.filter(cut => String(cut.id) !== String(id));
             localScriptRef.current = updated;
             saveToStore(updated);
             return updated;
         });
     }, [saveToStore]);
 
-    const handleMoveCut = useCallback((id: number, direction: 'up' | 'down') => {
+    const handleMoveCut = useCallback((id: number | string, direction: 'up' | 'down') => {
         setLocalScript(prev => {
-            const targetId = Number(id);
-            const index = prev.findIndex(c => Number(c.id) === targetId);
+            const targetId = String(id);
+            const index = prev.findIndex(c => String(c.id) === targetId);
             if (index === -1) return prev;
             if (direction === 'up' && index === 0) return prev;
             if (direction === 'down' && index === prev.length - 1) return prev;

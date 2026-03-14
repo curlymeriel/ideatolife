@@ -169,11 +169,24 @@ export const createProjectSlice: StateCreator<ProjectSlice> = (set, get) => ({
             }
         }
 
-        // [PHASE 3] Final Patch Update
+        // [PHASE 3] Final Patch Update (with deletion guard)
         if (Object.keys(patches).length > 0) {
             const currentState = get().script;
+            // Guard: Only apply patches for cuts that still exist (protect deletions)
+            const currentIds = new Set(currentState.map(c => c.id));
+            const validPatches: Record<number, Partial<ScriptCut>> = {};
+            for (const [id, patch] of Object.entries(patches)) {
+                if (currentIds.has(Number(id))) {
+                    validPatches[Number(id)] = patch;
+                }
+            }
+            if (Object.keys(validPatches).length === 0) {
+                console.log("[Store] Phase 3 skipped: no valid patches (cuts may have been deleted).");
+                return;
+            }
+
             const finalScript = currentState.map(cut => {
-                const patch = patches[cut.id];
+                const patch = validPatches[cut.id];
                 if (patch) {
                     return {
                         ...cut,
