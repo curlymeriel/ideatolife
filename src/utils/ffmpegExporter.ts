@@ -588,18 +588,35 @@ export async function exportWithFFmpeg(
                     let currentFilters = '';
 
                     if (useVideoMode) {
-                        // [OPTIMIZED] Skip browser-native frame extraction. 
-                        // Instead of extracting frames to JPEGs, we let FFmpeg decode the video directly.
-                        console.log(`[FFmpeg] Cut ${i}: Using native FFmpeg decoding for maximum speed.`);
-
                         const trimStart = (cut as any).videoTrim?.start || 0;
-                        const duration = Math.max(0.1, cut.duration);
+                        const playbackSpeed = cut.playbackSpeed || 1.0;
+                        
+                        // [OPTIMIZED] Duration Priority Logic
+                        // 1. If video is master, use the trimmed duration / speed
+                        // 2. Otherwise use the cut's master duration (which should already be speed-adjusted from Step 4.5)
+                        let exportDuration = cut.duration;
+                        if (durationMaster === 'video' && cut.videoTrim?.end) {
+                            const rawTrimDur = cut.videoTrim.end - trimStart;
+                            if (rawTrimDur > 0.1) exportDuration = rawTrimDur / playbackSpeed;
+                        }
+                        
+                        // [CRITICAL] inputDuration must be at least (exportDuration * playbackSpeed)
+                        // plus a buffer to account for FFmpeg's seek/decode jitter.
+                        let inputDuration = (exportDuration * playbackSpeed) + 0.15;
 
-                        // We use the original video file as the primary video input (index 0)
-                        // but with seek and duration controls.
+                        // [FIX] Prevent reading past the physical end of the video trim
+                        if (cut.videoTrim && cut.videoTrim.end) {
+                            const maxAvailable = cut.videoTrim.end - trimStart;
+                            if (inputDuration > maxAvailable) {
+                                inputDuration = maxAvailable;
+                            }
+                        }
+
+                        console.log(`[FFmpeg] Cut ${i}: exportDur=${exportDuration.toFixed(2)}, speed=${playbackSpeed}, inputDur=${inputDuration.toFixed(2)}`);
+
                         currentInputs.push(
                             '-ss', String(trimStart),
-                            '-t', String(duration),
+                            '-t', String(inputDuration),
                             '-i', vidInputFile
                         );
                     } else {
@@ -612,17 +629,26 @@ export async function exportWithFFmpeg(
                     let audioInputIndex = 1;
 
                     if (useVideoMode && useVideoAudio) {
-                        // [FIX] Apply same trim to audio input for proper sync
                         const trimStart = (cut as any).videoTrim?.start || 0;
-                        const duration = Math.max(0.1, cut.duration);
-                        currentInputs.push('-ss', String(trimStart), '-t', String(duration), '-i', vidInputFile);
+                        const playbackSpeed = cut.playbackSpeed || 1.0;
+                        
+                        let exportDuration = cut.duration;
+                        if (durationMaster === 'video' && cut.videoTrim?.end) {
+                            const rawTrimDur = cut.videoTrim.end - trimStart;
+                            if (rawTrimDur > 0.1) exportDuration = rawTrimDur / playbackSpeed;
+                        }
+                        let inputDuration = (exportDuration * playbackSpeed) + 0.15;
+                        if (cut.videoTrim && cut.videoTrim.end) {
+                            const maxAvailable = cut.videoTrim.end - trimStart;
+                            if (inputDuration > maxAvailable) inputDuration = maxAvailable;
+                        }
+                        
+                        currentInputs.push('-ss', String(trimStart), '-t', String(inputDuration), '-i', vidInputFile);
                         audioInputIndex++;
                     } else if (useTtsAudio) {
-                        // Use TTS
                         currentInputs.push('-i', `audio_${padNum}.mp3`);
                         audioInputIndex++;
                     } else {
-                        // Silence
                         currentInputs.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100');
                         audioInputIndex++;
                     }
@@ -634,8 +660,10 @@ export async function exportWithFFmpeg(
                     }
                     const sfxInputIndex = audioInputIndex;
 
-                    // Filter: Scale + Pad + FPS
-                    currentFilters += `[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black,fps=30[vscaled];`;
+                    // Filter: Scale + Pad + FPS + Speed
+                    const playbackSpeed = cut.playbackSpeed || 1.0;
+                    const ptsMultiplier = 1 / playbackSpeed;
+                    currentFilters += `[0:v]setpts=${ptsMultiplier}*(PTS-STARTPTS),scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black,fps=30[vscaled];`;
 
                     // Subtitles
                     let lastVid = 'vscaled';
@@ -690,20 +718,18 @@ export async function exportWithFFmpeg(
                     // Audio Mixing with Resilience (Force 44100Hz to prevent amix crash from sample rate mismatch)
                     const sfxVol = cut.sfxVolume ?? 0.3;
                     const primaryVol = (useVideoAudio) ? (cut.audioVolumes?.video ?? 1.0) : (cut.audioVolumes?.tts ?? 1.0);
+                    const atempoFilter = playbackSpeed !== 1.0 ? `,atempo=${playbackSpeed}` : '';
 
                     // The primary audio is either TTS or original video at index 1.
                     // The SFX is at sfxInputIndex (usually 2).
-                    currentFilters += `[1:a]aresample=44100,volume=${primaryVol}[a_base];[${sfxInputIndex}:a]aresample=44100,volume=${sfxVol}[a_sfx];[a_base][a_sfx]amix=inputs=2:duration=first:dropout_transition=0[aout]`;
+                    currentFilters += `[1:a]aresample=44100,volume=${primaryVol}${atempoFilter}[a_base];[${sfxInputIndex}:a]aresample=44100,volume=${sfxVol}[a_sfx];[a_base][a_sfx]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]`;
 
-                    // Duration logic
-                    // cut.duration contains the master duration calculated from step 4.5.
-                    // But if it's explicitly set to 'video' duration master, ensure we respect the exact extracted video length.
+                    // Final Duration calculation
                     let exportDuration = cut.duration;
                     if (useVideoMode && durationMaster === 'video' && cut.videoTrim?.end && cut.videoTrim?.start !== undefined) {
                         const trimDur = cut.videoTrim.end - cut.videoTrim.start;
-                        // [HEALING] Ignore impossibly short trims (<= 0.2s) likely caused by early save bugs
                         if (trimDur > 0.2) {
-                            exportDuration = trimDur;
+                            exportDuration = trimDur / playbackSpeed;
                         }
                     }
                     const finalDuration = String(Math.max(0.1, exportDuration));
@@ -896,14 +922,24 @@ export async function exportWithFFmpeg(
                     const inputIdx = b + 1;
 
                     const startIndex = cuts.findIndex((c: any) => String(c.id) === String(track.startCutId));
-                    if (startIndex === -1) {
-                        console.warn(`[FFmpeg:BGM] Start Cut ID not found: ${track.startCutId}. Available IDs:`, cuts.map((c: any) => c.id));
-                    }
-                    const startTime = startIndex !== -1 ? cutStartTimeMap[startIndex] : 0;
+                    const startCutIdx = startIndex !== -1 ? startIndex : 0;
+                    const startTime = cutStartTimeMap[startCutIdx] || 0;
+
+                    // [FIX] BGM Stop Logic: Determine when this track should end
+                    const endIdx = cuts.findIndex((c: any) => String(c.id) === String(track.endCutId));
+                    const endCutIdx = endIdx !== -1 ? endIdx : cuts.length - 1;
+                    // BGM stops at the START of the cut AFTER endCutId
+                    const endTime = (endCutIdx + 1 < cutStartTimeMap.length) 
+                        ? cutStartTimeMap[endCutIdx + 1] 
+                        : (cutStartTimeMap[cutStartTimeMap.length - 1] + (cuts[cuts.length - 1].duration || 0));
+                    
+                    const duration = endTime - startTime;
                     const delayMs = Math.round(startTime * 1000);
 
                     const label = `bgm_ready_${b}`;
-                    mixFilter += `[${inputIdx}:a]volume=${track.volume || 0.5},adelay=${delayMs}|${delayMs}[${label}];`;
+                    // Use atrim to only take the part of music that fits the designated cuts
+                    // Use apad to ensure it doesn't cause amix to behave weirdly if track is shorter than duration
+                    mixFilter += `[${inputIdx}:a]atrim=0:${duration},volume=${track.volume || 0.5},adelay=${delayMs}|${delayMs}[${label}];`;
                     mixLabels.push(`[${label}]`);
 
                     tempFiles.push(trackName);
@@ -916,7 +952,7 @@ export async function exportWithFFmpeg(
                 // Determine duration based on inputs to prevent cutting short 
                 // duration=first: Since input 0 is the video, this keeps video length.
                 // dropout_transition=2: Smooth transition
-                mixFilter += `${mixLabels.join('')}amix=inputs=${mixLabels.length}:duration=first:dropout_transition=2[final_a]`;
+                mixFilter += `${mixLabels.join('')}amix=inputs=${mixLabels.length}:duration=first:dropout_transition=2:normalize=0[final_a]`;
 
                 await ffmpeg.exec([
                     ...bgmInputs,

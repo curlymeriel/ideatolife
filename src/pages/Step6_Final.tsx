@@ -223,6 +223,8 @@ export const Step6_Final = () => {
         if (!cut) return 0;
 
         let videoDur = 0;
+        const playbackSpeed = cut.playbackSpeed || 1.0;
+
         // Priority 1: If valid videoTrim exists, calculate duration from it directly
         if (cut.videoTrim) {
             const { start = 0, end = 0 } = cut.videoTrim;
@@ -238,6 +240,9 @@ export const Step6_Final = () => {
         else if (cut.videoDuration && cut.videoDuration > 0) {
             videoDur = cut.videoDuration;
         }
+
+        // Apply playback speed to visual duration
+        videoDur = videoDur / playbackSpeed;
 
         const audioDur = audioDurations[index] || 0;
         // [FIX] Fallback to estimated duration if audio exists but hasn't loaded yet
@@ -373,15 +378,19 @@ export const Step6_Final = () => {
                     // Paused state
                     if (!audio.paused) audio.pause();
                     // Keep time synced even when paused for seeking
-                    if (Math.abs(audio.currentTime - targetTime) > 0.5) {
+                    if (Math.abs(audio.currentTime - targetTime) > 0.3) {
                         audio.currentTime = targetTime;
                     }
                 }
             } else {
-                // STOPPED (Outside range)
+                // OUTSIDE RANGE - SHUT DOWN
                 if (!audio.paused) {
                     audio.pause();
-                    audio.currentTime = 0; // Reset
+                }
+                audio.volume = 0;
+                // [FIX] Reset currentTime when outside range to ensure it starts fresh when re-entering
+                if (Math.abs(audio.currentTime) > 0.1) {
+                    audio.currentTime = 0;
                 }
             }
         });
@@ -714,6 +723,11 @@ export const Step6_Final = () => {
 
                     if (videoEl) {
                         const shouldUseVideoAudio = cut?.useVideoAudio && cut?.videoUrl;
+                        const playbackSpeed = cut?.playbackSpeed || 1.0;
+
+                        if (videoEl.playbackRate !== playbackSpeed) {
+                            videoEl.playbackRate = playbackSpeed;
+                        }
 
                         // VIDEO MASTER MODE:
                         // If using video audio, the VIDEO is the master clock.
@@ -721,8 +735,8 @@ export const Step6_Final = () => {
                         if (shouldUseVideoAudio && !videoEl.paused && !videoEl.seeking && videoEl.readyState >= 2) {
                             // Calculate where we SHOULD be based on video progress within its trim
                             const videoStartOffset = cut?.videoTrim?.start || 0;
-                            // globalTime = cutStartTime + (videoTime - startOffset)
-                            let videoTimeInGlobal = cutStartTime + Math.max(0, videoEl.currentTime - videoStartOffset);
+                            // globalTime = cutStartTime + (videoTime - startOffset) / playbackSpeed
+                            let videoTimeInGlobal = cutStartTime + (Math.max(0, videoEl.currentTime - videoStartOffset) / playbackSpeed);
 
                             // Adjust StartTimeRef to match Video Time
                             const drift = Math.abs(totalElapsed - videoTimeInGlobal);
@@ -737,21 +751,22 @@ export const Step6_Final = () => {
                         else if (!videoEl.paused && !videoEl.seeking && videoEl.readyState >= 2) {
                             // CALC TARGET TIME WITH TRIM AWARENESS
                             // [FIX] Freeze on last frame instead of looping
-                            let targetTime = localTime;
+                            let targetTime = localTime * playbackSpeed;
                             if (cut?.videoTrim) {
                                 const { start, end } = cut.videoTrim;
                                 const trimDuration = end - start;
                                 if (trimDuration > 0) {
                                     // Clamp to end
-                                    targetTime = Math.min(localTime + start, end);
+                                    targetTime = Math.min((localTime * playbackSpeed) + start, end);
                                 }
                             } else if (videoEl.duration && Number.isFinite(videoEl.duration)) {
-                                targetTime = Math.min(localTime, videoEl.duration);
+                                targetTime = Math.min(localTime * playbackSpeed, videoEl.duration);
                             }
 
                             const drift = Math.abs(videoEl.currentTime - targetTime);
                             // Relaxed threshold from 0.3 to 0.5 to prevent micro-stutters
-                            if (drift > 0.5) {
+                            // Adjust drift tolerance based on speed
+                            if (drift > 0.5 * playbackSpeed) {
                                 videoEl.currentTime = targetTime;
                             }
                         }
@@ -762,16 +777,25 @@ export const Step6_Final = () => {
                     const audioPlayer = getPlayerForIndex(foundIndex);
                     if (audioPlayer && !audioPlayer.paused) {
                         const cutDur = getCutDuration(foundIndex);
+                        const playbackSpeed = cut?.playbackSpeed || 1.0;
+                        
+                        if (audioPlayer.playbackRate !== playbackSpeed) {
+                            audioPlayer.playbackRate = playbackSpeed;
+                        }
+
                         // If audio is playing past the current cut's duration, pause it
                         if (localTime >= cutDur) {
                             // console.log(`[AudioSync] Cut ${foundIndex} ended (Trimmed). Pausing audio.`);
                             audioPlayer.pause();
                         } else {
                             // Sync check: If audio drifts > 0.5s from wall clock, nudge it
-                            const audioDrift = Math.abs(audioPlayer.currentTime - localTime);
-                            if (audioDrift > 0.5) {
+                            // audioPlayer.currentTime is the actual time. localTime is the wall-clock time passed in cut.
+                            // To match correctly, audioPlayer.currentTime should be localTime * playbackSpeed
+                            const expectedAudioTime = localTime * playbackSpeed;
+                            const audioDrift = Math.abs(audioPlayer.currentTime - expectedAudioTime);
+                            if (audioDrift > 0.5 * playbackSpeed) {
                                 // console.log(`[AudioSync] Nudging Cut ${foundIndex} audio drift: ${audioDrift.toFixed(2)}s`);
-                                audioPlayer.currentTime = localTime;
+                                audioPlayer.currentTime = expectedAudioTime;
                             }
                         }
                     }
@@ -1468,6 +1492,7 @@ export const Step6_Final = () => {
                 dialogue: cut.dialogue,
                 speaker: cut.speaker,
                 id: cut.id, // Critical for BGM sync
+                playbackSpeed: cut.playbackSpeed, // [NEW] Pass speed for FFmpeg
                 // [FIX] Store original URLs for resilient FFmpeg fetching fallback
                 _original_image: cut.finalImageUrl || cut.draftImageUrl,
                 _original_video: cut.videoUrl,

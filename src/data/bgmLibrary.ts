@@ -126,6 +126,14 @@ export const BGM_LIBRARY: BGMPreset[] = [
         url: '/music/quirky_sneaky_snitch.mp3',
         duration: 180
     },
+    {
+        id: 'bgm_happy_03',
+        title: 'Euphoria',
+        artist: 'Dyalla',
+        category: 'Happy',
+        url: '/music/Euphoria - Dyalla.mp3',
+        duration: 151
+    },
 ];
 
 // Helper to categorize

@@ -16,6 +16,7 @@ export interface RecordingCut {
     dialogue?: string;
     speaker?: string;
     id?: string | number; // Critical for BGM sync
+    playbackSpeed?: number; // [NEW] Speed multiplier
 }
 
 export interface RecordingOptions {
@@ -209,6 +210,7 @@ export async function recordCanvasVideo(
             // [FIX] Respect Trim Start
             const trimStart = cut.videoTrim?.start || 0;
             video.currentTime = trimStart;
+            video.playbackRate = cut.playbackSpeed || 1.0;
             if (!shouldUseVideoAudio) video.muted = true;
             try { await video.play(); } catch (e) { console.warn('Record video play failed', e); }
         }

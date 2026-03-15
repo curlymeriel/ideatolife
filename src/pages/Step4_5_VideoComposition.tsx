@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useWorkflowStore } from '../store/workflowStore';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -148,8 +148,9 @@ const VideoCompositionRow = React.memo(({
                 </div>
 
                 <div className="text-sm text-[var(--color-text-muted)]">
-                    {cut.videoTrim ? (cut.videoTrim.end - cut.videoTrim.start).toFixed(1) : (cut.videoDuration || cut.estimatedDuration || 5).toFixed(1)}s
+                    {((cut.videoTrim ? (cut.videoTrim.end - cut.videoTrim.start) : (cut.videoDuration || cut.estimatedDuration || 5)) / (cut.playbackSpeed || 1.0)).toFixed(1)}s
                     {cut.videoTrim && <span className="ml-1 text-xs text-[var(--color-primary)]">(Trimmed)</span>}
+                    {cut.playbackSpeed && cut.playbackSpeed !== 1.0 && <span className="ml-1 text-xs text-yellow-500 font-mono">({cut.playbackSpeed}x)</span>}
                 </div>
 
                 <div>
@@ -558,6 +559,8 @@ const AudioComparisonModal = React.memo<{
         end: previewCut?.videoTrim?.end ?? 0
     }));
 
+    const [localPlaybackSpeed, setLocalPlaybackSpeed] = useState<number>(previewCut?.playbackSpeed ?? 1.0);
+
     useEffect(() => {
         volumesRef.current = volumes;
         audioSourceRef.current = selectedAudioSource;
@@ -579,8 +582,11 @@ const AudioComparisonModal = React.memo<{
                     return prev;
                 });
             }
+            if (previewCut.playbackSpeed !== undefined && previewCut.playbackSpeed !== localPlaybackSpeed) {
+                setLocalPlaybackSpeed(previewCut.playbackSpeed);
+            }
         }
-    }, [previewCut?.useVideoAudio, JSON.stringify(previewCut?.audioVolumes)]);
+    }, [previewCut?.useVideoAudio, JSON.stringify(previewCut?.audioVolumes), previewCut?.playbackSpeed]);
 
     // Video State
     const [videoDuration, setVideoDuration] = useState(0);
@@ -818,6 +824,8 @@ const AudioComparisonModal = React.memo<{
 
             if (isTtsSelected) {
                 if (isVideoPlaying && ttsEl.paused) {
+                    // Adapt TTS playback speed to match video speed
+                    ttsEl.playbackRate = localPlaybackSpeed;
                     ttsEl.play().catch(e => console.warn('[AudioModal:Sync] TTS Play failed:', e));
                 } else if (!isVideoPlaying && !ttsEl.paused) {
                     ttsEl.pause();
@@ -825,6 +833,7 @@ const AudioComparisonModal = React.memo<{
 
                 // [FIX] Calculate TTS time relative to video trim
                 // If video is at 10s and trim starts at 5s, TTS should be at 5s.
+                // Apply playbackSpeed to sync correctly if needed. Actually, TTS should play at the same speed.
                 const trimStart = currentTrimRef.current.start || 0;
                 const expectedTtsTime = Math.max(0, videoEl.currentTime - trimStart);
 
@@ -834,7 +843,13 @@ const AudioComparisonModal = React.memo<{
                 }
             }
         }
-    }, [selectedAudioSource, JSON.stringify(volumes), isVideoPlaying, resolvedTtsUrl]);
+    }, [selectedAudioSource, JSON.stringify(volumes), isVideoPlaying, resolvedTtsUrl, localPlaybackSpeed]);
+
+    useEffect(() => {
+        if (videoRef.current) {
+            videoRef.current.playbackRate = localPlaybackSpeed;
+        }
+    }, [localPlaybackSpeed, isVideoPlaying]);
 
 
     const handleSourceChange = (source: 'video' | 'tts') => {
@@ -997,7 +1012,8 @@ const AudioComparisonModal = React.memo<{
                     <div className="px-4 py-3 bg-[var(--color-bg)] border-b border-[var(--color-border)] w-full max-w-full">
                         <div className="flex items-center mb-2">
                             <span className="text-sm font-semibold text-white">
-                                재생 시간: {(previewCut.videoTrim ? previewCut.videoTrim.end - previewCut.videoTrim.start : videoDuration).toFixed(1)}s
+                                재생 시간: {((previewCut.videoTrim ? previewCut.videoTrim.end - previewCut.videoTrim.start : videoDuration) / localPlaybackSpeed).toFixed(1)}s
+                                {localPlaybackSpeed !== 1.0 && <span className="ml-2 text-[var(--color-primary)] font-mono text-xs">({localPlaybackSpeed}x)</span>}
                             </span>
                         </div>
                         <VideoTrimmer
@@ -1152,6 +1168,30 @@ const AudioComparisonModal = React.memo<{
                             </div>
                         </div>
 
+                        {/* Row D: Playback Speed Selection */}
+                        <div className="p-4 bg-[var(--color-bg)] rounded-xl border border-[var(--color-border)]">
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                                    <Zap size={14} className="text-[var(--color-primary)]" />
+                                    <span>비디오 재생 속도</span>
+                                </div>
+                                <div className="flex bg-black/40 p-1 rounded-lg border border-white/5 overflow-x-auto custom-scrollbar">
+                                    {[0.5, 0.6, 0.7, 0.75, 0.8, 0.9, 1.0, 1.1, 1.2, 1.25, 1.3, 1.4, 1.5, 1.6, 1.7, 1.75, 1.8, 1.9, 2.0].map(speed => (
+                                        <button
+                                            key={speed}
+                                            onClick={() => setLocalPlaybackSpeed(speed)}
+                                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all whitespace-nowrap ${localPlaybackSpeed === speed ? 'bg-white/10 text-[var(--color-primary)]' : 'text-gray-500 hover:text-gray-300'}`}
+                                        >
+                                            {speed.toFixed(speed % 1 === 0 ? 1 : (speed * 10 % 1 === 0 ? 1 : 2))}x
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="text-[10px] leading-relaxed text-[var(--color-text-muted)] space-y-1">
+                                <p>• <b>배속 효과</b>: 비디오 클립의 재생 속도를 현저히 늦추거나 빠르게 합니다. 오디오와 내보내기 결과에도 반영됩니다.</p>
+                            </div>
+                        </div>
+
                     </div>
                 </div>
 
@@ -1207,7 +1247,8 @@ const AudioComparisonModal = React.memo<{
                                 audioConfig: { primarySource: selectedAudioSource === 'video' ? 'video' : 'tts' },
                                 audioVolumes: volumes,
                                 videoTrim: finalTrim,
-                                cutDurationMaster: durationMaster
+                                cutDurationMaster: durationMaster,
+                                playbackSpeed: localPlaybackSpeed
                             };
 
                             // Also update videoDuration to match trim for accurate project calculation in Step 6

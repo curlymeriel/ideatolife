@@ -51,6 +51,7 @@ export interface ScriptCut {
         start: number; // Start time in seconds (relative to original video)
         end: number;   // End time in seconds
     };
+    playbackSpeed?: number; // Speed multiplier for video clips (e.g. 0.5, 1.0, 2.0)
     cutDurationMaster?: 'audio' | 'video'; // 'audio' (default) = audio length wins, video loops/freezes. 'video' = video trim length wins, audio cuts off.
 
     // [NEW] Default Audio source
