@@ -5,12 +5,15 @@ import type { BGMTrack, BGMPreset } from '../../store/types';
 import { resolveUrl, isIdbUrl } from '../../utils/imageStorage';
 import { BGMLibraryModal } from './BGMLibraryModal';
 
+import { getAspectRatioCss } from '../../utils/aspectRatioUtils';
+
 interface TimelineViewProps {
     script: ScriptCut[];
     bgmTracks: BGMTrack[];
     currentCutIndex: number;
     onCutClick: (index: number) => void;
     onBGMUpdate: (tracks: BGMTrack[]) => void;
+    aspectRatio?: string;
 }
 
 // Color palette for BGM tracks (Unified to brand color)
@@ -51,17 +54,35 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
     bgmTracks,
     currentCutIndex,
     onCutClick,
-    onBGMUpdate
+    onBGMUpdate,
+    aspectRatio = '16:9'
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
+    const leftTrackListRef = useRef<HTMLDivElement>(null);
+    const rightTrackListRef = useRef<HTMLDivElement>(null);
     const [scrollPosition, setScrollPosition] = useState(0);
     const [dragging, setDragging] = useState<{ trackId: string; edge: 'start' | 'end'; initialCutIdx: number } | null>(null);
     const [hoverCutIdx, setHoverCutIdx] = useState<number | null>(null);
     const [isLibraryOpen, setIsLibraryOpen] = useState(false);
 
+    // Sync vertical scroll between left headers and right track bars
+    const handleLeftScroll = useCallback(() => {
+        if (leftTrackListRef.current && rightTrackListRef.current) {
+            rightTrackListRef.current.scrollTop = leftTrackListRef.current.scrollTop;
+        }
+    }, []);
+    const handleRightScroll = useCallback(() => {
+        if (leftTrackListRef.current && rightTrackListRef.current) {
+            leftTrackListRef.current.scrollTop = rightTrackListRef.current.scrollTop;
+        }
+    }, []);
+
     const safeTracks = bgmTracks || [];
-    const CUT_WIDTH = 120; // Increase width for better visibility
-    const HEADER_WIDTH = 260; // Width of the track control column
+    // Thumbnail width adapts to aspect ratio: portrait ratios get narrower cells
+    const isPortrait = aspectRatio === '9:16' || aspectRatio === '4:5' || aspectRatio === '3:4';
+    const CUT_WIDTH = isPortrait ? 68 : 120;
+    const thumbAspectCss = getAspectRatioCss(aspectRatio);
+    const HEADER_WIDTH = 260;
     const totalWidth = script.length * CUT_WIDTH;
 
     // --- BGM Management Logic ---
@@ -205,9 +226,9 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                     </div>
 
                     {/* Track Headers List */}
-                    <div className="flex-1 overflow-y-auto custom-scrollbar">
+                    <div ref={leftTrackListRef} className="flex-1 overflow-y-auto custom-scrollbar" onScroll={handleLeftScroll}>
                         {safeTracks.map((track, trackIndex) => (
-                            <div key={track.id} className="h-12 border-b border-white/5 flex items-center px-2 gap-2 group hover:bg-white/5 transition-colors">
+                            <div key={track.id} className="h-12 border-b border-white/5 flex items-center px-2 gap-2 group hover:bg-white/5 transition-colors shrink-0">
                                 {/* Color Indicator & Move Handle */}
                                 <div className={`w-1 h-8 rounded-full ${BGM_COLORS[trackIndex % BGM_COLORS.length].bg}`} />
 
@@ -275,52 +296,67 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                 </div>
 
                 {/* 2. Right Column: Timeline Visuals (Scrollable) */}
-                <div className="flex-1 overflow-hidden relative bg-[#0e0e0e]">
-                    <div
-                        className="absolute h-full flex flex-col transition-transform duration-200 ease-out will-change-transform"
-                        style={{ transform: `translateX(-${scrollPosition}px)`, width: `${totalWidth}px` }}
-                    >
-                        {/* Top Row: Cut Thumbnails */}
-                        <div className="h-16 flex border-b border-white/10">
+                <div className="flex-1 overflow-hidden relative bg-[#0e0e0e] flex flex-col">
+                    {/* Top Row: Cut Thumbnails – aspect-ratio aware */}
+                    <div className="shrink-0 border-b border-white/10 overflow-hidden relative" style={{ height: `${CUT_WIDTH}px` }}>
+                        <div
+                            className="absolute top-0 bottom-0 flex transition-transform duration-200 ease-out will-change-transform"
+                            style={{ transform: `translateX(-${scrollPosition}px)`, width: `${totalWidth}px` }}
+                        >
                             {script.map((cut, index) => {
                                 const isHovered = dragging && hoverCutIdx === index;
                                 return (
                                     <div
                                         key={cut.id}
-                                        className={`flex-shrink-0 cursor-pointer border-r border-white/5 relative group ${isHovered
+                                        className={`flex-shrink-0 cursor-pointer border-r border-white/5 relative group flex items-center justify-center ${isHovered
                                             ? 'ring-2 ring-orange-500 bg-orange-500/10'
                                             : index === currentCutIndex
                                                 ? 'bg-white/5'
                                                 : 'hover:bg-white/5'
                                             }`}
-                                        style={{ width: `${CUT_WIDTH}px` }}
+                                        style={{ width: `${CUT_WIDTH}px`, height: '100%' }}
                                         onClick={() => !dragging && onCutClick(index)}
                                     >
-                                        <div className="absolute inset-0 p-1 opacity-70 group-hover:opacity-100 transition-opacity">
+                                        {/* Aspect-ratio thumbnail */}
+                                        <div
+                                            className="relative overflow-hidden rounded-sm"
+                                            style={{
+                                                aspectRatio: thumbAspectCss,
+                                                height: isPortrait ? '90%' : undefined,
+                                                width: isPortrait ? undefined : '90%',
+                                                maxWidth: '100%',
+                                                maxHeight: '100%',
+                                            }}
+                                        >
                                             <ResolvedThumbnail
                                                 src={cut.finalImageUrl || cut.draftImageUrl}
                                                 alt={`Cut ${index + 1}`}
-                                                className="w-full h-full object-cover rounded-sm"
+                                                className="w-full h-full object-cover"
                                             />
+                                            {index === currentCutIndex && (
+                                                <div className="absolute inset-0 ring-2 ring-[var(--color-primary)] ring-inset rounded-sm z-10 pointer-events-none" />
+                                            )}
                                         </div>
-                                        {/* Selection Indicator */}
-                                        {index === currentCutIndex && (
-                                            <div className="absolute inset-0 ring-2 ring-[var(--color-primary)] ring-inset rounded-sm z-10 pointer-events-none" />
-                                        )}
-                                        {/* Cut Number Label */}
-                                        <div className="absolute bottom-0 left-0 right-0 bg-black/60 backdrop-blur-[1px] px-1 py-0.5 flex justify-between items-center">
-                                            <span className={`text-[9px] font-bold ${index === currentCutIndex ? 'text-[var(--color-primary)]' : 'text-gray-400'}`}>
+                                        {/* Cut label */}
+                                        <div className="absolute bottom-0.5 left-0 right-0 flex justify-center">
+                                            <span className={`text-[8px] font-bold px-1 rounded ${index === currentCutIndex ? 'text-[var(--color-primary)]' : 'text-gray-500'}`}>
                                                 #{index + 1}
                                             </span>
-                                            <span className="text-[8px] text-gray-500">{cut.estimatedDuration}s</span>
                                         </div>
                                     </div>
                                 );
                             })}
                         </div>
+                    </div>
 
+                    {/* Track Rows (vertically scrollable, synced with left panel) */}
+                    <div ref={rightTrackListRef} className="flex-1 overflow-y-auto overflow-x-hidden relative" onScroll={handleRightScroll}>
+                    <div
+                        className="flex flex-col transition-transform duration-200 ease-out will-change-transform"
+                        style={{ transform: `translateX(-${scrollPosition}px)`, width: `${totalWidth}px`, minHeight: '100%' }}
+                    >
                         {/* Track Rows */}
-                        <div className="flex-1 relative">
+                        <div className="relative">
                             {/* Grid Lines */}
                             <div className="absolute inset-0 flex pointer-events-none">
                                 {script.map((_, i) => (
@@ -394,6 +430,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                                 );
                             })}
                         </div>
+                    </div>
                     </div>
                 </div>
             </div>

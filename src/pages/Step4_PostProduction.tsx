@@ -4,27 +4,23 @@ import { useNavigate } from 'react-router-dom';
 import { Play, Image as ImageIcon, ArrowRight, ArrowLeft, Pause, ChevronLeft, ChevronRight } from 'lucide-react';
 import { resolveUrl, isIdbUrl } from '../utils/imageStorage';
 import { TimelineView } from '../components/Production/TimelineView';
+import { getAspectRatioCss } from '../utils/aspectRatioUtils';
 
 export const Step4_PostProduction: React.FC = () => {
-    const { id: projectId, script, nextStep, prevStep, bgmTracks, setBGMTracks } = useWorkflowStore();
+    const { id: projectId, script, nextStep, prevStep, bgmTracks, setBGMTracks, aspectRatio } = useWorkflowStore();
     const navigate = useNavigate();
 
     const [currentCutIndex, setCurrentCutIndex] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
 
-    // Resolved image URLs for idb:// references
     const [resolvedImages, setResolvedImages] = useState<Record<number, string>>({});
-    // Resolved audio URLs for idb:// references
     const [resolvedAudios, setResolvedAudios] = useState<Record<number, string>>({});
-    // Resolved SFX URLs for idb:// or external references
     const [resolvedSfx, setResolvedSfx] = useState<Record<number, string>>({});
 
-    // BGM audio refs for preview playback
     const bgmRefs = useRef<Record<string, HTMLAudioElement>>({});
 
-    // CRITICAL: Reset state when project changes to prevent showing old project data
+    // Reset on project change
     useEffect(() => {
-        console.log(`[Step4] Project changed to ${projectId} - resetting cached state`);
         setCurrentCutIndex(0);
         setResolvedImages({});
         setResolvedAudios({});
@@ -32,17 +28,15 @@ export const Step4_PostProduction: React.FC = () => {
         setIsPlaying(false);
     }, [projectId]);
 
-    // Resolve all idb:// image URLs
+    // Resolve image URLs
     useEffect(() => {
         const resolveAllImages = async () => {
             const resolved: Record<number, string> = {};
             for (const cut of script) {
                 if (cut.finalImageUrl) {
-                    if (isIdbUrl(cut.finalImageUrl)) {
-                        resolved[cut.id] = await resolveUrl(cut.finalImageUrl);
-                    } else {
-                        resolved[cut.id] = cut.finalImageUrl;
-                    }
+                    resolved[cut.id] = isIdbUrl(cut.finalImageUrl)
+                        ? await resolveUrl(cut.finalImageUrl)
+                        : cut.finalImageUrl;
                 }
             }
             setResolvedImages(resolved);
@@ -50,15 +44,15 @@ export const Step4_PostProduction: React.FC = () => {
         resolveAllImages();
     }, [script]);
 
-    // Resolve all idb:// audio URLs
+    // Resolve audio URLs
     useEffect(() => {
         const resolveAllAudios = async () => {
             const resolved: Record<number, string> = {};
             for (const cut of script) {
                 if (cut.audioUrl && cut.audioUrl !== 'mock:beep') {
                     if (isIdbUrl(cut.audioUrl)) {
-                        const resolvedUrl = await resolveUrl(cut.audioUrl, { asBlob: true });
-                        if (resolvedUrl) resolved[cut.id] = resolvedUrl;
+                        const url = await resolveUrl(cut.audioUrl, { asBlob: true });
+                        if (url) resolved[cut.id] = url;
                     } else {
                         resolved[cut.id] = cut.audioUrl;
                     }
@@ -67,25 +61,22 @@ export const Step4_PostProduction: React.FC = () => {
             setResolvedAudios(resolved);
         };
         resolveAllAudios();
-
         return () => {
-            // Cleanup: Revoke all audio blob URLs
-            const audios = resolvedAudios;
-            Object.values(audios).forEach(url => {
+            Object.values(resolvedAudios).forEach(url => {
                 if (url.startsWith('blob:')) URL.revokeObjectURL(url);
             });
         };
     }, [script]);
 
-    // Resolve all SFX URLs
+    // Resolve SFX URLs
     useEffect(() => {
         const resolveAllSfx = async () => {
             const resolved: Record<number, string> = {};
             for (const cut of script) {
                 if (cut.sfxUrl) {
                     if (isIdbUrl(cut.sfxUrl)) {
-                        const resolvedUrl = await resolveUrl(cut.sfxUrl, { asBlob: true });
-                        if (resolvedUrl) resolved[cut.id] = resolvedUrl;
+                        const url = await resolveUrl(cut.sfxUrl, { asBlob: true });
+                        if (url) resolved[cut.id] = url;
                     } else {
                         resolved[cut.id] = cut.sfxUrl;
                     }
@@ -94,36 +85,23 @@ export const Step4_PostProduction: React.FC = () => {
             setResolvedSfx(resolved);
         };
         resolveAllSfx();
-
         return () => {
-            // Cleanup: Revoke all SFX blob URLs
-            const sfxs = resolvedSfx;
-            Object.values(sfxs).forEach(url => {
+            Object.values(resolvedSfx).forEach(url => {
                 if (url.startsWith('blob:')) URL.revokeObjectURL(url);
             });
         };
     }, [script]);
 
-    // Initialize BGM audio elements
+    // Init BGM audio elements
     useEffect(() => {
         const initBGM = async () => {
-            // Cleanup old
-            Object.values(bgmRefs.current).forEach(audio => {
-                audio.pause();
-                audio.src = '';
-            });
+            Object.values(bgmRefs.current).forEach(audio => { audio.pause(); audio.src = ''; });
             bgmRefs.current = {};
-
             if (!bgmTracks || bgmTracks.length === 0) return;
-
             for (const track of bgmTracks) {
                 if (!track.url) continue;
-
                 let finalUrl = track.url;
-                if (isIdbUrl(track.url)) {
-                    finalUrl = await resolveUrl(track.url, { asBlob: true });
-                }
-
+                if (isIdbUrl(track.url)) finalUrl = await resolveUrl(track.url, { asBlob: true });
                 if (finalUrl) {
                     const audio = new Audio(finalUrl);
                     audio.loop = track.loop;
@@ -133,230 +111,216 @@ export const Step4_PostProduction: React.FC = () => {
                 }
             }
         };
-
         initBGM();
-
         return () => {
-            Object.values(bgmRefs.current).forEach(audio => {
-                audio.pause();
-                // If it's a blob URL, we should ideally NOT revoke it here yet if it's used elsewhere,
-                // but usually it's fine as the effect re-runs. 
-                // However, Step4 already revokes blob URLs for script audios.
-                audio.src = '';
-            });
+            Object.values(bgmRefs.current).forEach(audio => { audio.pause(); audio.src = ''; });
         };
     }, [bgmTracks]);
 
-    // Stop audio when cut changes
+    // Stop audio on cut change
     React.useEffect(() => {
-        const audio = document.getElementById(`sequential-audio`) as HTMLAudioElement;
-        const sfxAudio = document.getElementById(`sequential-sfx`) as HTMLAudioElement;
-        if (audio) {
-            audio.pause();
-            audio.currentTime = 0;
-        }
-        if (sfxAudio) {
-            sfxAudio.pause();
-            sfxAudio.currentTime = 0;
-        }
-        // Also stop BGM
-        Object.values(bgmRefs.current).forEach(audio => {
-            audio.pause();
-            audio.currentTime = 0;
-        });
+        const audio = document.getElementById('sequential-audio') as HTMLAudioElement;
+        const sfxAudio = document.getElementById('sequential-sfx') as HTMLAudioElement;
+        if (audio) { audio.pause(); audio.currentTime = 0; }
+        if (sfxAudio) { sfxAudio.pause(); sfxAudio.currentTime = 0; }
+        Object.values(bgmRefs.current).forEach(bgm => { bgm.pause(); bgm.currentTime = 0; });
         setIsPlaying(false);
     }, [currentCutIndex]);
 
     const currentCut = script[currentCutIndex];
     const currentResolvedImage = currentCut ? resolvedImages[currentCut.id] : undefined;
 
-    const handlePrevCut = () => {
-        setCurrentCutIndex(Math.max(0, currentCutIndex - 1));
-    };
-
-    const handleNextCut = () => {
-        setCurrentCutIndex(Math.min(script.length - 1, currentCutIndex + 1));
-    };
+    const handlePrevCut = () => setCurrentCutIndex(Math.max(0, currentCutIndex - 1));
+    const handleNextCut = () => setCurrentCutIndex(Math.min(script.length - 1, currentCutIndex + 1));
 
     const handlePlaySequential = () => {
         if (!currentCut?.audioUrl) return;
-
-        // Get the resolved audio URL
         const resolvedAudioUrl = resolvedAudios[currentCut.id];
         const resolvedSfxUrl = resolvedSfx[currentCut.id];
         const sfxVolume = currentCut.sfxVolume ?? 0.3;
-
         if (!resolvedAudioUrl) {
             alert('Audio is still loading. Please try again in a moment.');
             return;
         }
+        const audio = document.getElementById('sequential-audio') as HTMLAudioElement;
+        const sfxAudio = document.getElementById('sequential-sfx') as HTMLAudioElement;
+        if (!audio) return;
 
-        const audio = document.getElementById(`sequential-audio`) as HTMLAudioElement;
-        const sfxAudio = document.getElementById(`sequential-sfx`) as HTMLAudioElement;
-
-        if (audio) {
-            if (isPlaying) {
-                audio.pause();
-                if (sfxAudio) sfxAudio.pause();
-                // Stop BGM
-                Object.values(bgmRefs.current).forEach(bgm => {
-                    bgm.pause();
-                });
-                setIsPlaying(false);
-            } else {
-                // Ensure audio src is set
-                if (audio.src !== resolvedAudioUrl) {
-                    audio.src = resolvedAudioUrl;
-                }
-                audio.load();
-
-                // Also prepare SFX if available
-                if (sfxAudio && resolvedSfxUrl) {
-                    sfxAudio.src = resolvedSfxUrl;
-                    sfxAudio.volume = sfxVolume;
-                    sfxAudio.load();
-                }
-
-                // Play main audio
-                audio.play().catch(console.error);
-
-                // Play SFX simultaneously
-                if (sfxAudio && resolvedSfxUrl) {
-                    sfxAudio.play().catch(e => console.warn('SFX playback failed:', e));
-                }
-
-                setIsPlaying(true);
-
-                // Play matching BGM track(s)
-                (bgmTracks || []).forEach(track => {
-                    const startIdx = script.findIndex(c => String(c.id) === String(track.startCutId));
-                    const endIdx = script.findIndex(c => String(c.id) === String(track.endCutId));
-                    if (startIdx === -1) return;
-                    const validEnd = endIdx !== -1 ? endIdx : script.length - 1;
-
-                    // Check if current cut is within this track's range
-                    if (currentCutIndex >= startIdx && currentCutIndex <= validEnd) {
-                        const bgmAudio = bgmRefs.current[track.id];
-                        if (bgmAudio) {
-                            bgmAudio.currentTime = 0;
-                            bgmAudio.play().catch(e => console.warn('BGM play failed:', e));
-                        }
-                    }
-                });
-
-                audio.onended = () => {
-                    setIsPlaying(false);
-                    if (sfxAudio) sfxAudio.pause();
-                    Object.values(bgmRefs.current).forEach(bgm => {
-                        bgm.pause();
-                    });
-                    // Auto-advance
-                    if (currentCutIndex < script.length - 1) {
-                        setTimeout(() => {
-                            setCurrentCutIndex(currentCutIndex + 1);
-                        }, 500);
-                    }
-                };
+        if (isPlaying) {
+            audio.pause();
+            if (sfxAudio) sfxAudio.pause();
+            Object.values(bgmRefs.current).forEach(bgm => bgm.pause());
+            setIsPlaying(false);
+        } else {
+            if (audio.src !== resolvedAudioUrl) audio.src = resolvedAudioUrl;
+            audio.load();
+            if (sfxAudio && resolvedSfxUrl) {
+                sfxAudio.src = resolvedSfxUrl;
+                sfxAudio.volume = sfxVolume;
+                sfxAudio.load();
             }
+            audio.play().catch(console.error);
+            if (sfxAudio && resolvedSfxUrl) sfxAudio.play().catch(e => console.warn('SFX playback failed:', e));
+            setIsPlaying(true);
+
+            (bgmTracks || []).forEach(track => {
+                const startIdx = script.findIndex(c => String(c.id) === String(track.startCutId));
+                const endIdx = script.findIndex(c => String(c.id) === String(track.endCutId));
+                if (startIdx === -1) return;
+                const validEnd = endIdx !== -1 ? endIdx : script.length - 1;
+                if (currentCutIndex >= startIdx && currentCutIndex <= validEnd) {
+                    const bgmAudio = bgmRefs.current[track.id];
+                    if (bgmAudio) { bgmAudio.currentTime = 0; bgmAudio.play().catch(e => console.warn('BGM play failed:', e)); }
+                }
+            });
+
+            audio.onended = () => {
+                setIsPlaying(false);
+                if (sfxAudio) sfxAudio.pause();
+                Object.values(bgmRefs.current).forEach(bgm => bgm.pause());
+                if (currentCutIndex < script.length - 1) {
+                    setTimeout(() => setCurrentCutIndex(currentCutIndex + 1), 500);
+                }
+            };
         }
     };
 
-    const handleFinish = () => {
-        nextStep();
-        navigate('/step/5');
-    };
+    const handleFinish = () => { nextStep(); navigate('/step/5'); };
+
+    // Compute CSS aspect-ratio for preview and thumbnails
+    const aspectCss = getAspectRatioCss(aspectRatio);
+    const isPortrait = aspectRatio === '9:16' || aspectRatio === '4:5' || aspectRatio === '3:4';
 
     return (
-        <div className="flex flex-col gap-4 h-[calc(100vh-120px)] overflow-hidden min-h-[700px]">
+        <div className="flex flex-col gap-3 h-[calc(100vh-120px)] overflow-hidden min-h-[700px]">
             {/* Description */}
-            <div className="flex-none px-2">
+            <div className="flex-none px-1">
                 <p className="text-[var(--color-text-muted)] text-sm">
                     STEP 3에서 확정된 이미지, TTS 오디오, 음향 효과에 배경음악(BGM)을 결합하여 결과물의 전체 흐름을 확인 및 수정하는 단계입니다.
                 </p>
             </div>
 
-            {/* Main Preview Area */}
+            {/* Main Area: Left Panel + Right Preview */}
             <div className="flex-1 flex gap-4 overflow-hidden min-h-0">
-                <div className="flex-1 flex flex-col gap-3 glass-panel p-4 h-full">
-                    {/* Main Image */}
-                    <div className="flex-1 relative min-h-0 rounded-lg overflow-hidden bg-black/40 border border-white/5">
+
+                {/* ── LEFT PANEL: Controls + Script ── */}
+                <div className="w-[320px] shrink-0 flex flex-col gap-4 glass-panel p-4 overflow-y-auto">
+                    {/* Cut indicator */}
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider">
+                            Cut {currentCutIndex + 1} / {script.length}
+                        </span>
+                        <span className="text-xs text-gray-500">{currentCut?.estimatedDuration}s</span>
+                    </div>
+
+                    {/* Playback Controls */}
+                    <div className="flex items-center justify-center gap-4">
+                        <button
+                            onClick={handlePrevCut}
+                            disabled={currentCutIndex === 0}
+                            className="p-2.5 rounded-full hover:bg-white/10 text-white disabled:opacity-30 transition-colors"
+                        >
+                            <ArrowLeft size={22} />
+                        </button>
+
+                        <button
+                            onClick={handlePlaySequential}
+                            className={`w-16 h-16 rounded-full flex items-center justify-center transition-all shadow-lg ${
+                                isPlaying
+                                    ? 'bg-red-500/20 text-red-500 hover:bg-red-500/30 ring-2 ring-red-500/50'
+                                    : 'bg-[var(--color-primary)] text-black hover:scale-110 shadow-[var(--color-primary)]/30'
+                            }`}
+                        >
+                            {isPlaying
+                                ? <Pause size={26} fill="currentColor" />
+                                : <Play size={26} fill="currentColor" className="ml-1" />
+                            }
+                        </button>
+
+                        <button
+                            onClick={handleNextCut}
+                            disabled={currentCutIndex === script.length - 1}
+                            className="p-2.5 rounded-full hover:bg-white/10 text-white disabled:opacity-30 transition-colors"
+                        >
+                            <ArrowRight size={22} />
+                        </button>
+                    </div>
+
+                    {/* Divider */}
+                    <div className="h-px bg-white/10" />
+
+                    {/* Speaker */}
+                    {currentCut?.speaker && (
+                        <div className="flex items-center gap-2">
+                            <span className="px-2.5 py-1 rounded-lg bg-[var(--color-primary)]/15 border border-[var(--color-primary)]/30 text-[11px] font-bold text-[var(--color-primary)] uppercase tracking-wider">
+                                {currentCut.speaker}
+                            </span>
+                        </div>
+                    )}
+
+                    {/* Script / Dialogue */}
+                    <div className="flex-1">
+                        <p className="text-base text-white font-medium leading-relaxed">
+                            "{currentCut?.dialogue}"
+                        </p>
+                    </div>
+                </div>
+
+                {/* ── RIGHT PANEL: Preview Image (aspect-ratio locked) ── */}
+                <div className="flex-1 flex flex-col items-center justify-center glass-panel p-4 overflow-hidden">
+                    {/* Aspect-ratio locked image container */}
+                    <div
+                        className={`relative bg-black/60 border border-white/10 rounded-xl overflow-hidden shadow-2xl ${
+                            isPortrait ? 'h-full' : 'w-full'
+                        }`}
+                        style={{ aspectRatio: aspectCss, maxHeight: '100%', maxWidth: '100%' }}
+                    >
                         {currentResolvedImage ? (
                             <img
                                 src={currentResolvedImage}
                                 alt={`Cut ${currentCut?.id}`}
-                                className="absolute inset-0 w-full h-full object-contain"
+                                className="absolute inset-0 w-full h-full object-cover"
                             />
                         ) : (
-                            <div className="absolute inset-0 flex items-center justify-center text-gray-600 flex-col gap-2">
+                            <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-600 gap-2">
                                 <ImageIcon size={48} />
                                 <span className="text-xs">No Image</span>
                             </div>
                         )}
 
-                        {/* Cut info overlay */}
-                        <div className="absolute top-4 left-4 bg-black/60 backdrop-blur px-3 py-1.5 rounded-full border border-white/10 text-xs font-bold text-white">
-                            Cut #{currentCutIndex + 1}
-                        </div>
-                    </div>
-
-                    {/* Playback Controls & Dialogue */}
-                    <div className="h-[90px] shrink-0 flex items-start gap-4 pt-1">
-                        <div className="shrink-0 flex items-center gap-3 pt-1">
-                            <button onClick={handlePrevCut} disabled={currentCutIndex === 0} className="p-2 hover:bg-white/10 rounded-full text-white disabled:opacity-30">
-                                <ArrowLeft size={20} />
-                            </button>
-                            <button
-                                onClick={handlePlaySequential}
-                                className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isPlaying
-                                    ? 'bg-red-500/20 text-red-500 hover:bg-red-500/30 ring-2 ring-red-500/50'
-                                    : 'bg-[var(--color-primary)] text-black hover:scale-110 shadow-lg shadow-[var(--color-primary)]/30'
-                                    }`}
-                            >
-                                {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" className="ml-1" />}
-                            </button>
-                            <button onClick={handleNextCut} disabled={currentCutIndex === script.length - 1} className="p-2 hover:bg-white/10 rounded-full text-white disabled:opacity-30">
-                                <ArrowRight size={20} />
-                            </button>
+                        {/* Cut number overlay */}
+                        <div className="absolute top-3 left-3 bg-black/60 backdrop-blur px-3 py-1 rounded-full border border-white/10 text-xs font-bold text-white">
+                            #{currentCutIndex + 1}
                         </div>
 
-                        <div className="flex-1 space-y-2">
-                            <div className="flex items-center gap-2">
-                                <span className="px-2 py-0.5 rounded bg-white/10 text-[10px] font-bold text-white uppercase tracking-wider">
-                                    {currentCut?.speaker}
-                                </span>
-                            </div>
-                            <p className="text-lg text-white font-medium leading-relaxed">
-                                "{currentCut?.dialogue}"
-                            </p>
-                            <p className="text-xs text-gray-500 line-clamp-1">
-                                {currentCut?.visualPrompt}
-                            </p>
+                        {/* Aspect ratio badge */}
+                        <div className="absolute top-3 right-3 bg-black/60 backdrop-blur px-2 py-1 rounded border border-white/10 text-[10px] font-mono text-gray-400">
+                            {aspectRatio || '16:9'}
                         </div>
                     </div>
                 </div>
-            </div >
+            </div>
 
-            {/* Bottom: Timeline (Fixed Height) */}
-            < div className="h-[160px] shrink-0" >
-                {
-                    script.length > 0 ? (
-                        <TimelineView
-                            script={script}
-                            bgmTracks={bgmTracks || []}
-                            currentCutIndex={currentCutIndex}
-                            onCutClick={setCurrentCutIndex}
-                            onBGMUpdate={setBGMTracks}
-                        />
-                    ) : (
-                        <div className="h-full glass-panel flex items-center justify-center text-gray-500">
-                            No script data available.
-                        </div>
-                    )
-                }
-            </div >
+            {/* Bottom: Timeline */}
+            <div className="h-[160px] shrink-0">
+                {script.length > 0 ? (
+                    <TimelineView
+                        script={script}
+                        bgmTracks={bgmTracks || []}
+                        currentCutIndex={currentCutIndex}
+                        onCutClick={setCurrentCutIndex}
+                        onBGMUpdate={setBGMTracks}
+                        aspectRatio={aspectRatio}
+                    />
+                ) : (
+                    <div className="h-full glass-panel flex items-center justify-center text-gray-500">
+                        No script data available.
+                    </div>
+                )}
+            </div>
 
             {/* Hidden Audio Elements */}
-            < audio id="sequential-audio" className="hidden" />
+            <audio id="sequential-audio" className="hidden" />
             <audio id="sequential-sfx" className="hidden" />
 
             {/* Navigation */}
@@ -376,6 +340,6 @@ export const Step4_PostProduction: React.FC = () => {
                     <ChevronRight size={16} />
                 </button>
             </div>
-        </div >
+        </div>
     );
 };

@@ -23,3 +23,30 @@ export const RESOLUTIONS: Record<string, { width: number; height: number }> = {
 export function getResolution(ratio: AspectRatio | string | undefined): { width: number; height: number } {
     return RESOLUTIONS[ratio || '16:9'] || RESOLUTIONS['16:9'];
 }
+
+/**
+ * Get CSS aspect-ratio property value string (e.g. '16 / 9').
+ * Falls back to '16 / 9' if the ratio is unknown.
+ */
+export function getAspectRatioCss(ratio: AspectRatio | string | undefined): string {
+    const cssMap: Record<string, string> = {
+        '16:9': '16 / 9',
+        '9:16': '9 / 16',
+        '1:1': '1 / 1',
+        '4:3': '4 / 3',
+        '21:9': '21 / 9',
+        '2.35:1': '2.35 / 1',
+        '4:5': '4 / 5',
+        '3:4': '3 / 4',
+    };
+    return cssMap[ratio || '16:9'] || '16 / 9';
+}
+
+/**
+ * Returns whether the ratio is portrait (taller than wide).
+ */
+export function isPortraitRatio(ratio: AspectRatio | string | undefined): boolean {
+    const { width, height } = getResolution(ratio);
+    return height > width;
+}
+
