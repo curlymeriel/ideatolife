@@ -559,7 +559,7 @@ const AudioComparisonModal = React.memo<{
         end: previewCut?.videoTrim?.end ?? 0
     }));
 
-    const [localPlaybackSpeed, setLocalPlaybackSpeed] = useState<number>(previewCut?.playbackSpeed ?? 1.0);
+    const [localPlaybackSpeed, setLocalPlaybackSpeed] = useState<number>(previewCut?.playbackSpeed ?? 1.2);
 
     useEffect(() => {
         volumesRef.current = volumes;
@@ -878,7 +878,7 @@ const AudioComparisonModal = React.memo<{
 
     return (
         <div className="fixed inset-0 bg-black/90 flex items-start justify-center z-50 p-4 overflow-y-auto" onClick={onClose}>
-            <div className="max-w-4xl w-full relative bg-[var(--color-surface)] rounded-2xl overflow-hidden flex flex-col my-auto border border-[var(--color-border)] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="max-w-7xl w-full h-[90vh] relative bg-[var(--color-surface)] rounded-2xl overflow-hidden flex flex-col my-auto border border-[var(--color-border)] shadow-2xl" onClick={(e) => e.stopPropagation()}>
 
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)] bg-[var(--color-bg)]">
@@ -894,146 +894,12 @@ const AudioComparisonModal = React.memo<{
                     </button>
                 </div>
 
-                {/* Main Content */}
-                <div className="bg-black/20 flex flex-col">
-
-                    {/* 1. Video Preview (Top) */}
-                    <div className="bg-black relative aspect-video max-h-[40vh] shrink-0 border-b border-white/5">
-                        {/* [CRITICAL] key={videoMountKey} forces the browser to discard the old decoder state */}
-                        {previewVideoUrl && (
-                            <video
-                                key={`${previewCut?.id}-${videoMountKey}`}
-                                ref={videoRef}
-                                src={previewVideoUrl}
-                                className={`w-full h-full object-contain ${loadingStatus ? 'opacity-0' : 'opacity-100'} transition-opacity`}
-
-                                playsInline
-                                preload="auto"
-                                controls
-                                // [FIX] autoPlay removed: manual play is more reliable for audio unlock
-                                onLoadedMetadata={handleLoadedMetadata}
-                                onTimeUpdate={handleTimeUpdate}
-                                onPlay={handlePlay}
-                                onPause={handlePause}
-                                onEnded={triggerLoop}
-                                onError={(e) => {
-                                    console.error('[AudioModal:Video] Engine Error:', e.currentTarget.error, 'src:', previewVideoUrl?.substring(0, 100));
-                                    setErrorMsg('비디오 데크 오류 (코덱 또는 MIME 불일치)');
-                                    setLoadingStatus(null);
-                                }}
-                            />
-                        )}
-
-
-
-                        {/* Loading & Download Overlay */}
-                        {(loadingStatus || downloadProgress !== null) && (
-                            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity duration-300">
-                                <Loader2 size={32} className="text-[var(--color-primary)] animate-spin mb-3" />
-                                <div className="text-white font-medium mb-1">{loadingStatus || 'Loading...'}</div>
-                                {downloadProgress !== null && (
-                                    <>
-                                        <div className="w-48 h-1.5 bg-white/20 rounded-full overflow-hidden mt-2">
-                                            <div
-                                                className="h-full bg-[var(--color-primary)] transition-all duration-200"
-                                                style={{ width: `${downloadProgress}%` }}
-                                            />
-                                        </div>
-                                        <div className="text-xs text-white/70 mt-1">{downloadProgress}%</div>
-                                    </>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Error Overlay */}
-                        {errorMsg && (
-                            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md p-6 text-center">
-                                <div className="text-red-500 mb-2">
-                                    <AlertCircle size={32} />
-                                </div>
-                                <div className="text-white font-bold mb-1">Failed to Load Video</div>
-                                <div className="text-white/70 text-sm mb-4 break-words max-w-[80%]">{errorMsg}</div>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => { setErrorMsg(null); setLoadingStatus('Retrying...'); }}
-                                        className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-full text-sm transition-colors text-white"
-                                    >
-                                        Retry
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            // Fallback: try open in new tab if it's external url
-                                            if (previewCut?.videoUrl?.startsWith('http')) {
-                                                window.open(previewCut.videoUrl, '_blank');
-                                            }
-                                        }}
-                                        className="px-4 py-2 bg-[var(--color-primary)]/20 hover:bg-[var(--color-primary)]/40 text-[var(--color-primary)] rounded-full text-sm transition-colors"
-                                    >
-                                        Open Original
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Refresh Button Overlay */}
-                        <button
-                            onClick={() => {
-                                if (videoRef.current) {
-                                    // [HEALING] Force reset volume/mute on refresh
-                                    videoRef.current.muted = false;
-                                    videoRef.current.volume = volumesRef.current.video;
-
-                                    const currentSrc = videoRef.current.src;
-                                    videoRef.current.src = '';
-                                    setTimeout(() => {
-                                        if (videoRef.current) {
-                                            videoRef.current.src = currentSrc;
-                                            videoRef.current.load();
-                                            videoRef.current.play().catch(() => { });
-                                            // Second pass for mobile/aggressive browser policies
-                                            setTimeout(() => {
-                                                if (videoRef.current) {
-                                                    videoRef.current.muted = false;
-                                                    videoRef.current.volume = volumesRef.current.video;
-                                                }
-                                            }, 200);
-                                        }
-                                    }, 50);
-                                }
-                            }}
-                            className="absolute top-2 right-2 p-2 bg-black/60 hover:bg-black/90 text-[var(--color-primary)] border border-[var(--color-primary)]/30 rounded-full transition-colors z-10"
-                            title="소리가 안 나거나 재생 오류 시 클릭 (강제 초기화)"
-                        >
-                            <RefreshCw size={18} />
-                        </button>
-                    </div>
-
-                    {/* 2. Video Trimmer (Slider Only) - Immediately below video */}
-                    <div className="px-4 py-3 bg-[var(--color-bg)] border-b border-[var(--color-border)] w-full max-w-full">
-                        <div className="flex items-center mb-2">
-                            <span className="text-sm font-semibold text-white">
-                                재생 시간: {((previewCut.videoTrim ? previewCut.videoTrim.end - previewCut.videoTrim.start : videoDuration) / localPlaybackSpeed).toFixed(1)}s
-                                {localPlaybackSpeed !== 1.0 && <span className="ml-2 text-[var(--color-primary)] font-mono text-xs">({localPlaybackSpeed}x)</span>}
-                            </span>
-                        </div>
-                        <VideoTrimmer
-                            videoUrl={previewVideoUrl}
-                            startTime={localTrim.start}
-                            endTime={localTrim.end > 0 ? localTrim.end : videoDuration}
-                            duration={videoDuration}
-                            onChange={handleTrimChange}
-                            hideVideo={true}
-                            onSeek={(time) => {
-                                if (videoRef.current) {
-                                    videoRef.current.currentTime = time;
-                                }
-                            }}
-                        />
-                    </div>
-
-                    {/* 3. Audio Controls (Stacked Rows) */}
-                    <div className="p-4 bg-[var(--color-surface)] flex flex-col gap-3">
-
+                {/* Main Content Restructured */}
+                <div className="flex-1 flex flex-row min-h-0 overflow-hidden">
+                    
+                    {/* --- Left Panel (Settings) --- */}
+                    <div className="w-1/3 min-w-[340px] max-w-[420px] shrink-0 bg-[var(--color-surface)] flex flex-col overflow-y-auto border-r border-[var(--color-border)] p-5 custom-scrollbar gap-4">
+                        
                         {/* Row A: Audio Source Selection */}
                         <div className="p-4 bg-[var(--color-bg)] rounded-xl border border-[var(--color-border)]">
                             <div className="flex items-center justify-between mb-3">
@@ -1138,13 +1004,13 @@ const AudioComparisonModal = React.memo<{
                         )}
 
                         {/* Row C: Duration Master Selection */}
-                        <div className="p-4 bg-[var(--color-bg)] rounded-xl border border-[var(--color-border)]">
+                        <div className="p-4 bg-[var(--color-bg)] rounded-xl border border-[var(--color-border)] flex-col flex shrink-0">
                             <div className="flex items-center justify-between mb-3">
                                 <div className="flex items-center gap-2 text-sm font-semibold text-white">
                                     <Sparkles size={14} className="text-[var(--color-primary)]" />
                                     <span>영상 재생 기준</span>
                                 </div>
-                                <div className="flex bg-black/40 p-1 rounded-lg border border-white/5">
+                                <div className="flex flex-col bg-black/40 p-1 rounded-lg border border-white/5">
                                     <button
                                         onClick={() => setDurationMaster('audio')}
                                         className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${durationMaster === 'audio' ? 'bg-white/10 text-[var(--color-primary)]' : 'text-gray-500 hover:text-gray-300'}`}
@@ -1161,37 +1027,172 @@ const AudioComparisonModal = React.memo<{
                             </div>
                             <div className="text-[10px] leading-relaxed text-[var(--color-text-muted)] space-y-1">
                                 {durationMaster === 'audio' ? (
-                                    <p>• <b>오디오 길이 기준</b>: 목소리가 다 나올 때까지 장면이 유지됩니다. 비디오가 짧으면 마지막 프레임에서 멈추거나 반복됩니다.</p>
+                                    <p>• <b>오디오 길이 기준</b>: 목소리가 다 나올 때까지 장면이 유지됩니다. 비디오가 짧으면 멈추거나 반복됩니다.</p>
                                 ) : (
-                                    <p>• <b>비디오 트리밍 기준</b>: 편집한 비디오 길이에 맞춰 컷이 강제 종료됩니다. 목소리가 더 길면 중간에 끊길 수 있습니다.</p>
+                                    <p>• <b>비디오 트리밍 기준</b>: 편집한 비디오 길이에 맞춰 컷이 종료됩니다.</p>
                                 )}
                             </div>
                         </div>
 
                         {/* Row D: Playback Speed Selection */}
-                        <div className="p-4 bg-[var(--color-bg)] rounded-xl border border-[var(--color-border)]">
+                        <div className="p-4 bg-[var(--color-bg)] rounded-xl border border-[var(--color-border)] flex-col flex shrink-0">
                             <div className="flex items-center justify-between mb-3">
                                 <div className="flex items-center gap-2 text-sm font-semibold text-white">
                                     <Zap size={14} className="text-[var(--color-primary)]" />
-                                    <span>비디오 재생 속도</span>
+                                    <span>비디오 속도</span>
                                 </div>
-                                <div className="flex bg-black/40 p-1 rounded-lg border border-white/5 overflow-x-auto custom-scrollbar">
-                                    {[0.5, 0.6, 0.7, 0.75, 0.8, 0.9, 1.0, 1.1, 1.2, 1.25, 1.3, 1.4, 1.5, 1.6, 1.7, 1.75, 1.8, 1.9, 2.0].map(speed => (
-                                        <button
-                                            key={speed}
-                                            onClick={() => setLocalPlaybackSpeed(speed)}
-                                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all whitespace-nowrap ${localPlaybackSpeed === speed ? 'bg-white/10 text-[var(--color-primary)]' : 'text-gray-500 hover:text-gray-300'}`}
-                                        >
-                                            {speed.toFixed(speed % 1 === 0 ? 1 : (speed * 10 % 1 === 0 ? 1 : 2))}x
-                                        </button>
-                                    ))}
-                                </div>
+                                <span className="text-xs font-mono text-[var(--color-primary)]">
+                                    {localPlaybackSpeed.toFixed(localPlaybackSpeed % 1 === 0 ? 1 : 2)}x
+                                </span>
+                            </div>
+                            <div className="flex bg-black/40 p-1 rounded-lg border border-white/5 overflow-x-auto custom-scrollbar mb-3">
+                                {[0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.25, 1.5, 1.75, 2.0].map(speed => (
+                                    <button
+                                        key={speed}
+                                        onClick={() => setLocalPlaybackSpeed(speed)}
+                                        className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all whitespace-nowrap flex-1 text-center ${localPlaybackSpeed === speed ? 'bg-white/10 text-[var(--color-primary)]' : 'text-gray-500 hover:text-gray-300'}`}
+                                    >
+                                        {speed.toFixed(speed % 1 === 0 ? 1 : 2)}x
+                                    </button>
+                                ))}
                             </div>
                             <div className="text-[10px] leading-relaxed text-[var(--color-text-muted)] space-y-1">
-                                <p>• <b>배속 효과</b>: 비디오 클립의 재생 속도를 현저히 늦추거나 빠르게 합니다. 오디오와 내보내기 결과에도 반영됩니다.</p>
+                                <p>• <b>배속 효과</b>: 비디오 클립의 재생 속도를 변경합니다.</p>
                             </div>
                         </div>
 
+                    </div>
+
+                    {/* --- Right Panel (Preview & Trimmer) --- */}
+                    <div className="flex-1 flex flex-col min-w-0 bg-black/90 relative">
+                        
+                        {/* 1. Video Preview (Taking Maximum Space) */}
+                        <div className="relative flex-1 min-h-0 flex items-center justify-center p-4">
+                            {/* [CRITICAL] key={videoMountKey} forces the browser to discard the old decoder state */}
+                            {previewVideoUrl && (
+                                <video
+                                    key={`${previewCut?.id}-${videoMountKey}`}
+                                    ref={videoRef}
+                                    src={previewVideoUrl}
+                                    className={`w-full h-full object-contain ${loadingStatus ? 'opacity-0' : 'opacity-100'} transition-opacity rounded-lg`}
+                                    playsInline
+                                    preload="auto"
+                                    controls
+                                    onLoadedMetadata={handleLoadedMetadata}
+                                    onTimeUpdate={handleTimeUpdate}
+                                    onPlay={handlePlay}
+                                    onPause={handlePause}
+                                    onEnded={triggerLoop}
+                                    onError={(e) => {
+                                        console.error('[AudioModal:Video] Engine Error:', e.currentTarget.error, 'src:', previewVideoUrl?.substring(0, 100));
+                                        setErrorMsg('비디오 데크 오류 (코덱 또는 MIME 불일치)');
+                                        setLoadingStatus(null);
+                                    }}
+                                />
+                            )}
+
+                            {/* Loading & Download Overlay */}
+                            {(loadingStatus || downloadProgress !== null) && (
+                                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity duration-300 rounded-lg">
+                                    <Loader2 size={32} className="text-[var(--color-primary)] animate-spin mb-3" />
+                                    <div className="text-white font-medium mb-1">{loadingStatus || 'Loading...'}</div>
+                                    {downloadProgress !== null && (
+                                        <>
+                                            <div className="w-48 h-1.5 bg-white/20 rounded-full overflow-hidden mt-2">
+                                                <div
+                                                    className="h-full bg-[var(--color-primary)] transition-all duration-200"
+                                                    style={{ width: `${downloadProgress}%` }}
+                                                />
+                                            </div>
+                                            <div className="text-xs text-white/70 mt-1">{downloadProgress}%</div>
+                                        </>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Error Overlay */}
+                            {errorMsg && (
+                                <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md p-6 text-center rounded-lg">
+                                    <div className="text-red-500 mb-2">
+                                        <AlertCircle size={32} />
+                                    </div>
+                                    <div className="text-white font-bold mb-1">Failed to Load Video</div>
+                                    <div className="text-white/70 text-sm mb-4 break-words max-w-[80%]">{errorMsg}</div>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => { setErrorMsg(null); setLoadingStatus('Retrying...'); }}
+                                            className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-full text-sm transition-colors text-white"
+                                        >
+                                            Retry
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                if (previewCut?.videoUrl?.startsWith('http')) {
+                                                    window.open(previewCut.videoUrl, '_blank');
+                                                }
+                                            }}
+                                            className="px-4 py-2 bg-[var(--color-primary)]/20 hover:bg-[var(--color-primary)]/40 text-[var(--color-primary)] rounded-full text-sm transition-colors"
+                                        >
+                                            Open Original
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Refresh Button Overlay */}
+                            <button
+                                onClick={() => {
+                                    if (videoRef.current) {
+                                        videoRef.current.muted = false;
+                                        videoRef.current.volume = volumesRef.current.video;
+
+                                        const currentSrc = videoRef.current.src;
+                                        videoRef.current.src = '';
+                                        setTimeout(() => {
+                                            if (videoRef.current) {
+                                                videoRef.current.src = currentSrc;
+                                                videoRef.current.load();
+                                                videoRef.current.play().catch(() => { });
+                                                setTimeout(() => {
+                                                    if (videoRef.current) {
+                                                        videoRef.current.muted = false;
+                                                        videoRef.current.volume = volumesRef.current.video;
+                                                    }
+                                                }, 200);
+                                            }
+                                        }, 50);
+                                    }
+                                }}
+                                className="absolute top-6 right-6 p-2 bg-black/60 hover:bg-black/90 text-[var(--color-primary)] border border-[var(--color-primary)]/30 rounded-full transition-colors z-10"
+                                title="소리가 안 나거나 재생 오류 시 클릭 (강제 초기화)"
+                            >
+                                <RefreshCw size={18} />
+                            </button>
+                        </div>
+
+                        {/* 2. Video Trimmer (Slider Only) - Bottom of Right Panel */}
+                        <div className="shrink-0 border-t border-white/10 bg-[var(--color-bg)] p-4">
+                            <div className="flex items-center mb-3">
+                                <span className="text-sm font-semibold text-white">
+                                    재생 시간: {((previewCut.videoTrim ? previewCut.videoTrim.end - previewCut.videoTrim.start : videoDuration) / localPlaybackSpeed).toFixed(1)}s
+                                    {localPlaybackSpeed !== 1.0 && <span className="ml-2 text-[var(--color-primary)] font-mono text-xs">({localPlaybackSpeed}x)</span>}
+                                </span>
+                            </div>
+                            <VideoTrimmer
+                                videoUrl={previewVideoUrl}
+                                startTime={localTrim.start}
+                                endTime={localTrim.end > 0 ? localTrim.end : videoDuration}
+                                duration={videoDuration}
+                                onChange={handleTrimChange}
+                                hideVideo={true}
+                                onSeek={(time) => {
+                                    if (videoRef.current) {
+                                        videoRef.current.currentTime = time;
+                                    }
+                                }}
+                            />
+                        </div>
+                        
                     </div>
                 </div>
 
