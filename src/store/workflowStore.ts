@@ -1159,71 +1159,71 @@ export const useWorkflowStore = create<WorkflowStore>()(
             },
 
             // OVERRIDE Intelligence Actions for PC Sync
-            saveTrendSnapshot: (snapshot: TrendSnapshot) => {
+            saveTrendSnapshot: async (snapshot: TrendSnapshot) => {
                 set((state: any) => ({
                     trendSnapshots: { ...state.trendSnapshots, [snapshot.id]: snapshot }
                 }));
                 const { localFolder } = get();
-                if (localFolder?.handle) (get() as any).syncIntelligenceLayerToPC(get(), localFolder.handle);
+                if (localFolder?.handle) await syncIntelligenceLayerToPC(get(), localFolder.handle);
             },
-            deleteTrendSnapshot: (id: string) => {
+            deleteTrendSnapshot: async (id: string) => {
                 set((state: any) => {
                     const { [id]: deleted, ...rest } = state.trendSnapshots;
                     return { trendSnapshots: rest };
                 });
                 const { localFolder } = get();
-                if (localFolder?.handle) (get() as any).syncIntelligenceLayerToPC(get(), localFolder.handle);
+                if (localFolder?.handle) await syncIntelligenceLayerToPC(get(), localFolder.handle);
             },
-            saveCompetitorSnapshot: (snapshot: CompetitorSnapshot) => {
+            saveCompetitorSnapshot: async (snapshot: CompetitorSnapshot) => {
                 set((state: any) => ({
                     competitorSnapshots: { ...state.competitorSnapshots, [snapshot.id]: snapshot }
                 }));
                 const { localFolder } = get();
-                if (localFolder?.handle) (get() as any).syncIntelligenceLayerToPC(get(), localFolder.handle);
+                if (localFolder?.handle) await syncIntelligenceLayerToPC(get(), localFolder.handle);
             },
-            deleteCompetitorSnapshot: (id: string) => {
+            deleteCompetitorSnapshot: async (id: string) => {
                 set((state: any) => {
                     const { [id]: deleted, ...rest } = state.competitorSnapshots;
                     return { competitorSnapshots: rest };
                 });
                 const { localFolder } = get();
-                if (localFolder?.handle) (get() as any).syncIntelligenceLayerToPC(get(), localFolder.handle);
+                if (localFolder?.handle) await syncIntelligenceLayerToPC(get(), localFolder.handle);
             },
-            saveStrategyInsight: (insight: StrategyInsight) => {
+            saveStrategyInsight: async (insight: StrategyInsight) => {
                 set((state: any) => ({
                     strategyInsights: { ...state.strategyInsights, [insight.id]: insight }
                 }));
                 const { localFolder } = get();
-                if (localFolder?.handle) (get() as any).syncIntelligenceLayerToPC(get(), localFolder.handle);
+                if (localFolder?.handle) await syncIntelligenceLayerToPC(get(), localFolder.handle);
             },
-            deleteStrategyInsight: (id: string) => {
+            deleteStrategyInsight: async (id: string) => {
                 set((state: any) => {
                     const { [id]: deleted, ...rest } = state.strategyInsights;
                     return { strategyInsights: rest };
                 });
                 const { localFolder } = get();
-                if (localFolder?.handle) (get() as any).syncIntelligenceLayerToPC(get(), localFolder.handle);
+                if (localFolder?.handle) await syncIntelligenceLayerToPC(get(), localFolder.handle);
             },
-            addIdeaToPool: (idea: any) => {
+            addIdeaToPool: async (idea: any) => {
                 set((state: any) => ({
                     ideaPool: [...(state.ideaPool || []), idea]
                 }));
                 const { localFolder } = get();
-                if (localFolder?.handle) (get() as any).syncIntelligenceLayerToPC(get(), localFolder.handle);
+                if (localFolder?.handle) await syncIntelligenceLayerToPC(get(), localFolder.handle);
             },
-            updateIdeaStatus: (id: string, status: string) => {
+            updateIdeaStatus: async (id: string, status: string) => {
                 set((state: any) => ({
                     ideaPool: (state.ideaPool || []).map((i: any) => i.id === id ? { ...i, status } : i)
                 }));
                 const { localFolder } = get();
-                if (localFolder?.handle) (get() as any).syncIntelligenceLayerToPC(get(), localFolder.handle);
+                if (localFolder?.handle) await syncIntelligenceLayerToPC(get(), localFolder.handle);
             },
-            deleteIdeaFromPool: (id: string) => {
+            deleteIdeaFromPool: async (id: string) => {
                 set((state: any) => ({
                     ideaPool: (state.ideaPool || []).filter((i: any) => i.id !== id)
                 }));
                 const { localFolder } = get();
-                if (localFolder?.handle) (get() as any).syncIntelligenceLayerToPC(get(), localFolder.handle);
+                if (localFolder?.handle) await syncIntelligenceLayerToPC(get(), localFolder.handle);
             },
 
             // Multi-project Actions
@@ -1252,10 +1252,9 @@ export const useWorkflowStore = create<WorkflowStore>()(
                 const hasSubstantialData = (Array.isArray(state.script) && state.script.length > 0) ||
                     (Array.isArray(state.chatHistory) && state.chatHistory.length > 0);
 
-                if (!hasSubstantialData) {
-                    // Only check disk if memory data is empty, to prevent overwriting with empty data
-                    // if the load failed or state is partial
-                    console.log(`[Store] Memory script empty for ${projectId}, checking disk preservation...`);
+                if (!hasSubstantialData || state.seriesName === 'New Series') {
+                    // Check disk if memory data is empty, OR if seriesName is default (possible HMR corruption)
+                    console.log(`[Store] ${!hasSubstantialData ? 'Memory script empty' : 'SeriesName is default'} for ${projectId}, checking disk preservation...`);
                     existingData = await loadProjectFromDisk(projectId);
                 }
 
@@ -1263,6 +1262,17 @@ export const useWorkflowStore = create<WorkflowStore>()(
                 if (existingData && existingData.episodeName && state.episodeName) {
                     if (existingData.episodeName !== state.episodeName) {
                         console.warn(`[Store] ⚠️ Episode name mismatch detected!`);
+                    }
+                }
+
+                // SAFETY CHECK 3: Protect seriesName from being overwritten by default value during HMR
+                // If memory state has the default 'New Series' name but disk has a real name, preserve disk name
+                let correctedSeriesName = state.seriesName;
+                if (existingData && existingData.seriesName && existingData.seriesName !== 'New Series') {
+                    if (state.seriesName === 'New Series') {
+                        console.warn(`[Store] ⚠️ seriesName protection triggered! Memory='New Series' but Disk='${existingData.seriesName}'. Preserving disk value.`);
+                        correctedSeriesName = existingData.seriesName;
+                        set({ seriesName: correctedSeriesName } as any);
                     }
                 }
 
@@ -1334,7 +1344,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
                 const projectData: ProjectData = {
                     id: state.id,
                     lastModified: Date.now(),
-                    seriesName: state.seriesName,
+                    seriesName: correctedSeriesName,
                     episodeName: state.episodeName,
                     episodeNumber: state.episodeNumber,
                     seriesStory: state.seriesStory,

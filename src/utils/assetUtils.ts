@@ -30,7 +30,7 @@ export const isNameMatch = (assetName: string, promptText: string): boolean => {
 };
 
 // Helper function to get matched and deduplicated assets for a cut
-export const getMatchedAssets = (prompt: string, manualAssetIds: string[], assetDefinitions: any, cutId?: number) => {
+export const getMatchedAssets = (prompt: string, manualAssetIds: string[], assetDefinitions: any, cutId?: number | string) => {
     const potentialMatches: Array<{ asset: any; isManual: boolean }> = [];
 
     Object.values(assetDefinitions || {}).forEach((asset: any) => {

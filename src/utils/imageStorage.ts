@@ -476,7 +476,7 @@ export async function resolveUrls(urls: (string | null | undefined)[]): Promise<
 /**
  * Generate a unique key for a script cut image
  */
-export function generateCutImageKey(projectId: string, cutId: number, type: 'final' | 'draft' = 'final'): string {
+export function generateCutImageKey(projectId: string, cutId: number | string, type: 'final' | 'draft' = 'final'): string {
     return `${projectId}-cut-${cutId}-${type}`;
 }
 
@@ -492,14 +492,14 @@ export const generateAssetImageKey = (projectId: string, assetId: string, type: 
 /**
  * Generate a unique key for audio
  */
-export function generateAudioKey(projectId: string, cutId: number): string {
+export function generateAudioKey(projectId: string, cutId: number | string): string {
     return `${projectId}-audio-${cutId}`;
 }
 
 /**
  * Generate a unique key for video
  */
-export function generateVideoKey(projectId: string, cutId: number, extension?: string): string {
+export function generateVideoKey(projectId: string, cutId: number | string, extension?: string): string {
     const suffix = extension ? (extension.startsWith('.') ? extension : `.${extension}`) : '';
     return `${projectId}-video-${cutId}${suffix}`;
 }

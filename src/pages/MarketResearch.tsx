@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 import type { YouTubeTrendVideo, TrendSnapshot, ChannelAnalysis } from '../store/types';
-import { fetchTrendingVideos, fetchVideosByCategory, searchVideos, extractTopTopics, searchChannels } from '../services/youtube';
+import { fetchTrendingVideos, fetchVideosByCategory, searchVideos, extractAllAnalytics, searchChannels } from '../services/youtube';
 import { TrendChart } from '../components/Trend/TrendChart';
 import { TrendVideoCard } from '../components/Trend/TrendVideoCard';
 import { generateText } from '../services/gemini';
@@ -37,81 +37,15 @@ interface ChatMessage {
     };
 }
 
-// Function declaration for Gemini
-interface FunctionDeclaration {
-    name: string;
-    description: string;
-    parameters: {
-        type: string;
-        properties: Record<string, any>;
-        required: string[];
-    };
-}
+// Available functions for AI to call (FunctionDeclaration interface removed as it was unused after prompt simplification)
 
-// Available functions for AI to call
-const AVAILABLE_FUNCTIONS: FunctionDeclaration[] = [
-    {
-        name: 'fetchTrendingVideos',
-        description: '특정 지역의 전체 인기 영상(Mix)을 가져옵니다. Music, Gaming, News, Movies 카테고리의 영상이 혼합됩니다.',
-        parameters: {
-            type: 'object',
-            properties: {
-                regionCode: { type: 'string', description: '지역 코드 (KR, JP, US 등)', enum: ['KR', 'JP', 'FR', 'DE', 'ES', 'US', 'Global'] },
-                maxResults: { type: 'number', description: '최대 결과 수 (기본 50)' }
-            },
-            required: ['regionCode']
-        }
-    },
-    {
-        name: 'fetchVideosByCategory',
-        description: '특정 카테고리의 인기 영상을 가져옵니다.',
-        parameters: {
-            type: 'object',
-            properties: {
-                regionCode: { type: 'string', description: '지역 코드', enum: ['KR', 'JP', 'FR', 'DE', 'ES', 'US', 'Global'] },
-                categoryId: { type: 'string', description: '카테고리 ID', enum: ['10', '20', '25', '44'] },
-                maxResults: { type: 'number', description: '최대 결과 수 (기본 50)' }
-            },
-            required: ['regionCode', 'categoryId']
-        }
-    },
-    {
-        name: 'searchVideos',
-        description: '키워드로 영상을 검색합니다.',
-        parameters: {
-            type: 'object',
-            properties: {
-                query: { type: 'string', description: '검색어' },
-                regionCode: { type: 'string', description: '지역 코드', enum: ['KR', 'JP', 'FR', 'DE', 'ES', 'US', 'Global'] },
-                maxResults: { type: 'number', description: '최대 결과 수 (기본 25)' }
-            },
-            required: ['query', 'regionCode']
-        }
-    },
-    {
-        name: 'searchChannels',
-        description: '키워드로 관련 전문 채널을 검색하고 구독자 수 기반으로 정렬합니다.',
-        parameters: {
-            type: 'object',
-            properties: {
-                query: { type: 'string', description: '채널 검색어' },
-                regionCode: { type: 'string', description: '지역 코드', enum: ['KR', 'JP', 'FR', 'DE', 'ES', 'US', 'Global'] },
-                maxResults: { type: 'number', description: '최대 결과 수 (기본 15)' }
-            },
-            required: ['query', 'regionCode']
-        }
-    },
-    {
-        name: 'extractTopTopics',
-        description: '영상 목록에서 인기 주제와 해시태그를 추출합니다.',
-        parameters: {
-            type: 'object',
-            properties: {
-                videos: { type: 'array', description: '분석할 영상 목록' }
-            },
-            required: ['videos']
-        }
-    }
+// Available functions list (simplified for prompt)
+const FUNCTION_DEFINITIONS = [
+    'fetchTrendingVideos(regionCode, maxResults)',
+    'fetchVideosByCategory(regionCode, categoryId, maxResults)',
+    'searchVideos(query, regionCode, maxResults)',
+    'searchChannels(query, regionCode, maxResults)',
+    'extractAllAnalytics(videos)'
 ];
 
 export const MarketResearch: React.FC = () => {
@@ -254,8 +188,8 @@ export const MarketResearch: React.FC = () => {
                     searchOrder,
                     searchDuration
                 );
-            case 'extractTopTopics':
-                return extractTopTopics(args.videos);
+            case 'extractAllAnalytics':
+                return extractAllAnalytics(args.videos);
             case 'searchChannels':
                 // Capture the executed query
                 setExecutedQuery(args.query);
@@ -300,48 +234,25 @@ export const MarketResearch: React.FC = () => {
                 parts: [{ text: m.content }]
             }));
 
+            const startTime = performance.now();
+            console.log(`[Performance] Starting AI Intent Detection...`);
+
             // Build system prompt with function declarations
-            const systemPrompt = `당신은 YouTube 시장 조사 전문가입니다. 사용자의 요청에 따라 YouTube 데이터를 분석합니다.
+            const systemPrompt = `당신은 YouTube 시장 조사 전문가입니다. 
+현재 필터: 모드=${searchMode}, 국가=${searchRegion}, 카테고리=${trendingCategory}, 기간=${searchPeriod}, 정렬=${searchOrder}.
 
-현재 사용자가 UI에서 선택한 필터 설정은 다음과 같습니다:
-- 조사 모드: ${searchMode === 'trending' ? '실시간 인기 트렌드 (Trending)' : '키워드 검색 (Search)'}
-- 대상 국가: ${searchRegion}
-${searchMode === 'trending' ? `- 선택된 카테고리: ${trendingCategory} (mix=전체, 10=Music, 20=Gaming, 25=News, 44=Movies)` : ''}
-${searchMode === 'search' ? `- 기간: ${searchPeriod}` : ''}
-${searchMode === 'search' ? `- 정렬: ${searchOrder}` : ''}
-${searchMode === 'search' ? `- 길이: ${searchDuration}` : ''}
+지침:
+1. "보여줘", "분석해줘" 등 조건 없는 요청엔 위 필터값으로 함수 호출.
+2. 조건 명시 때만 해당 값 반영.
+3. 검색 모드에서 검색어 없으면 안내.
+4. 검색 시 현지어 키워드 병행 사용 (예: "아이폰" -> "아이폰" OR "iPhone").
 
-중요 지침:
-1. 사용자가 "보여줘", "분석해줘", "시작해" 등 구체적인 조건(국가, 카테고리 등) 없이 요청하면, 무조건 위 **[현재 필터 설정]** 값을 사용하여 함수를 호출하세요.
-   - 예: "보여줘" (현재설정: KR, Gaming) -> fetchVideosByCategory(regionCode='KR', categoryId='20') 호출
-   - 예: "보여줘" (현재설정: JP, Mix) -> fetchTrendingVideos(regionCode='JP') 호출
-2. 사용자가 명시적으로 조건을 변경하여 요청한 경우에만(예: "미국 거 보여줘") 그 조건을 우선시하세요.
-3. 검색 모드(search)에서 검색어 없이 "보여줘"라고 하면 "검색어를 입력해주세요"라고 안내하세요.
-4. **스마트 키워드 확장**: 사용자가 입력한 검색어가 대상 국가의 언어와 다를 경우, 더 정확한 결과를 위해 해당 언어로 번역하거나 관련 현지 키워드를 포함하여 검색하세요. (예: KR 대상 "K-Drama" -> "한국 드라마" OR "K-Drama")
+함수:
+${FUNCTION_DEFINITIONS.map(f => `- ${f}`).join('\n')}
 
-사용 가능한 함수:
-${AVAILABLE_FUNCTIONS.map(f => `- ${f.name}: ${f.description}`).join('\n')}
+카테고리: 10(음악), 20(게임), 25(뉴스), 44(영화).
 
-카테고리 ID 참조:
-- 10: Music (음악)
-- 20: Gaming (게임)
-- 25: News (뉴스)
-- 44: Movies/Trailers (영화)
-
-지역 코드 참조:
-- KR: 한국
-- JP: 일본
-- US: 미국
-- Global: 전세계
-
-사용자 요청을 분석하고, 적절한 함수를 호출하세요.
-함수를 호출하려면 다음 형식으로 응답하세요:
-[FUNCTION_CALL: functionName({"param": "value"})]
-
-예시:
-- "한국 게이밍 인기 영상 가져와" → [FUNCTION_CALL: fetchVideosByCategory({"regionCode": "KR", "categoryId": "20"})]
-- "먹방 검색해줘" → [FUNCTION_CALL: searchVideos({"query": "먹방", "regionCode": "KR"})]
-- "보여줘" (만약 현재 설정이 JP, Music이라면) → [FUNCTION_CALL: fetchVideosByCategory({"regionCode": "JP", "categoryId": "10"})]`;
+응답 형식: [FUNCTION_CALL: functionName({"param": "value"})]`;
 
             const aiResponse = await generateText(
                 inputValue,
@@ -349,9 +260,16 @@ ${AVAILABLE_FUNCTIONS.map(f => `- ${f.name}: ${f.description}`).join('\n')}
                 undefined, // responseMimeType
                 undefined, // images
                 systemPrompt,
-                { temperature: 0.7, maxOutputTokens: 2048 },
+                { 
+                    temperature: 0.7, 
+                    maxOutputTokens: 2048,
+                    preferredModel: 'Gemini 2.5 Flash' // [PERFORMANCE] Use faster model for intent detection
+                },
                 conversationHistory
             );
+
+            const intentTime = performance.now();
+            console.log(`[Performance] AI Intent Detection took ${((intentTime - startTime) / 1000).toFixed(2)}s`);
 
             // Check for function call in response
             const functionCallMatch = aiResponse.match(/\[FUNCTION_CALL:\s*(\w+)\(({[^}]+})\)\]/);
@@ -376,18 +294,22 @@ ${AVAILABLE_FUNCTIONS.map(f => `- ${f.name}: ${f.description}`).join('\n')}
 
                 // Execute the function
                 try {
+                    const funcStartTime = performance.now();
                     const result = await executeFunction(functionName, functionArgs);
+                    const funcEndTime = performance.now();
+                    console.log(`[Performance] Function execution (${functionName}) took ${((funcEndTime - funcStartTime) / 1000).toFixed(2)}s`);
 
                     // Update results panel
                     if (Array.isArray(result) && result.length > 0) {
                         if (result[0].id && result[0].title) {
-                            // Videos - extract all 3 types
+                            // Videos - extract all types in one go
                             setCurrentVideos(result);
                             setDisplayedVideos(result);
+                            const analytics = extractAllAnalytics(result);
                             setTopicsByType({
-                                topic: extractTopTopics(result, 'topic'),
-                                keyword: extractTopTopics(result, 'keyword'),
-                                hashtag: extractTopTopics(result, 'hashtag')
+                                topic: analytics.categories,
+                                keyword: analytics.keywords,
+                                hashtag: analytics.hashtags
                             });
                             setSelectedTopic(null);
                             setAnalysisTab('topic'); // Default to topic tab
@@ -980,7 +902,7 @@ ${AVAILABLE_FUNCTIONS.map(f => `- ${f.name}: ${f.description}`).join('\n')}
                 </div>
 
                 {/* Footer: Next Step */}
-                {currentVideos.length > 0 && (
+                {(currentVideos.length > 0 || currentChannels.length > 0) && (
                     <div className="p-4 border-t border-[var(--color-border)]">
                         <button
                             onClick={handleNavigateToPhase2}

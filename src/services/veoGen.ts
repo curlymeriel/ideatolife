@@ -58,8 +58,7 @@ export async function generateVideoWithVeo(
     // Available Veo models (as of Feb 2026)
     const availableModels = [
         'veo-3.1-generate-preview',      // Best quality, 4K
-        'veo-3.1-fast-generate-preview', // Fast generation, slightly lower quality
-        'veo-2.0-generate-001'           // Stable legacy model
+        'veo-3.1-fast-generate-preview'  // Fast generation, slightly lower quality
     ];
     const requestedModel = options.model || availableModels[0];
 

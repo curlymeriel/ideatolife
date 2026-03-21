@@ -9,6 +9,31 @@ import { YOUTUBE_CATEGORIES } from '../store/types';
 
 const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3';
 
+// Simple memory cache for YouTube API calls
+const youtubeCache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_TTL = 1000 * 60 * 10; // 10 minutes
+
+function getCachedData(key: string) {
+    const cached = youtubeCache.get(key);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        return cached.data;
+    }
+    return null;
+}
+
+function setCachedData(key: string, data: any) {
+    youtubeCache.set(key, { data, timestamp: Date.now() });
+    
+    // Cleanup old cache entries if it gets too large
+    if (youtubeCache.size > 50) {
+        const oldestKey = youtubeCache.keys().next().value;
+        if (oldestKey !== undefined) {
+            youtubeCache.delete(oldestKey);
+        }
+    }
+}
+
+
 // Region code to YouTube region mapping
 const REGION_MAP: Record<RegionCode, string> = {
     'KR': 'KR',
@@ -100,9 +125,9 @@ export async function searchVideos(
             searchUrl += `&videoDuration=${videoDuration}`;
         }
 
-        if (publishedAfter) {
-            searchUrl += `&publishedAfter=${publishedAfter}`;
-        }
+        const cacheKey = `search-${query}-${region}-${order}-${maxResults}-${videoDuration}-${publishedAfter || ''}`;
+        const cached = getCachedData(cacheKey);
+        if (cached) return cached;
 
         const searchResponse = await fetch(searchUrl);
 
@@ -131,7 +156,7 @@ export async function searchVideos(
 
         const detailsData = await detailsResponse.json();
 
-        return detailsData.items.map((item: any) => {
+        const videos: YouTubeTrendVideo[] = detailsData.items.map((item: any) => {
             const catId = item.snippet.categoryId;
             const catInfo = YOUTUBE_CATEGORIES[catId as YouTubeCategoryId];
 
@@ -150,6 +175,9 @@ export async function searchVideos(
                 duration: item.contentDetails?.duration,
             };
         });
+
+        setCachedData(cacheKey, videos);
+        return videos;
     } catch (error) {
         console.error('[YouTube API] Error searching videos:', error);
         throw error;
@@ -163,6 +191,10 @@ export async function getChannelAnalysis(
     apiKey: string,
     channelInput: string
 ): Promise<ChannelAnalysis> {
+    const cacheKey = `channel-${channelInput}`;
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     try {
         let channelId = channelInput;
 
@@ -274,7 +306,7 @@ export async function getChannelAnalysis(
         // Sort by views to get top videos
         const topVideos = [...recentVideos].sort((a, b) => b.viewCount - a.viewCount).slice(0, 5);
 
-        return {
+        const result: ChannelAnalysis = {
             channelId: actualChannelId,
             channelName: channel.snippet.title,
             channelThumbnail: channel.snippet.thumbnails.high?.url || channel.snippet.thumbnails.default?.url,
@@ -286,6 +318,8 @@ export async function getChannelAnalysis(
             topVideos,
             recentVideos,
         };
+        setCachedData(cacheKey, result);
+        return result;
     } catch (error) {
         console.error('[YouTube API] Error getting channel analysis:', error);
         throw error;
@@ -375,6 +409,112 @@ export function extractTopTopics(videos: YouTubeTrendVideo[], topicType: 'hashta
     return topics.sort((a, b) => b.avgViews - a.avgViews).slice(0, 15);
 }
 
+/**
+ * Consolidated analytics extraction: Processes videos once to get topics, keywords, and hashtags.
+ * This is much faster than calling extractTopTopics 3 separate times.
+ */
+export function extractAllAnalytics(videos: YouTubeTrendVideo[]): {
+    categories: YouTubeTrendTopic[];
+    keywords: YouTubeTrendTopic[];
+    hashtags: YouTubeTrendTopic[];
+} {
+    if (!videos || videos.length === 0) {
+        return { categories: [], keywords: [], hashtags: [] };
+    }
+
+    // Reuse the existing logic but optimized into one pass
+    const categoryData = new Map<string, { videos: YouTubeTrendVideo[]; viewSum: number; engagementSum: number }>();
+    const keywordData = new Map<string, { videos: YouTubeTrendVideo[]; viewSum: number; engagementSum: number }>();
+    const hashtagData = new Map<string, { videos: YouTubeTrendVideo[]; viewSum: number; engagementSum: number }>();
+
+    const STOPWORDS = new Set([
+        '의', '를', '을', '이', '가', '에', '에서', '으로', '로', '와', '과', '은', '는',
+        'the', 'a', 'an', 'in', 'on', 'at', 'for', 'to', 'of', 'and', 'or', 'is', 'are',
+        '그', '저', '이런', '저런', '합니다', '있다', '없다', '한다', '된다',
+    ]);
+
+    videos.forEach(video => {
+        const engagement = video.viewCount > 0
+            ? (video.likeCount + video.commentCount) / video.viewCount
+            : 0;
+
+        // 1. Process Category
+        let catKey = '';
+        if (video.categoryName) {
+            catKey = video.categoryName;
+        } else if (video.categoryId) {
+            const catInfo = YOUTUBE_CATEGORIES[video.categoryId as YouTubeCategoryId];
+            catKey = catInfo ? `${catInfo.icon} ${catInfo.title}` : `Category ${video.categoryId}`;
+        }
+        if (catKey) {
+            const d = categoryData.get(catKey) || { videos: [], viewSum: 0, engagementSum: 0 };
+            d.videos.push(video);
+            d.viewSum += video.viewCount;
+            d.engagementSum += engagement;
+            categoryData.set(catKey, d);
+        }
+
+        // 2. Process Keywords
+        const cleaned = video.title
+            .replace(/#[\w가-힣]+/g, '') 
+            .replace(/[\[\]【】「」『』()（）]/g, ' ')
+            .replace(/[|｜\-:：]/g, ' ')
+            .toLowerCase()
+            .trim();
+
+        const words = cleaned.split(/\s+/).filter(w =>
+            w.length >= 2 && !STOPWORDS.has(w) && !/^\d+$/.test(w)
+        ).slice(0, 5);
+
+        words.forEach(word => {
+            const d = keywordData.get(word) || { videos: [], viewSum: 0, engagementSum: 0 };
+            if (!d.videos.some(v => v.id === video.id)) {
+                d.videos.push(video);
+                d.viewSum += video.viewCount;
+                d.engagementSum += engagement;
+            }
+            keywordData.set(word, d);
+        });
+
+        // 3. Process Hashtags
+        const hashtagMatches = video.title.match(/#[\w가-힣]+/g) || [];
+        hashtagMatches.forEach(tag => {
+            const lowerTag = tag.toLowerCase();
+            const d = hashtagData.get(lowerTag) || { videos: [], viewSum: 0, engagementSum: 0 };
+            if (!d.videos.some(v => v.id === video.id)) {
+                d.videos.push(video);
+                d.viewSum += video.viewCount;
+                d.engagementSum += engagement;
+            }
+            hashtagData.set(lowerTag, d);
+        });
+    });
+
+    const mapToTopics = (dataMap: Map<string, any>, type: string): YouTubeTrendTopic[] => {
+        const result: YouTubeTrendTopic[] = [];
+        dataMap.forEach((data, key) => {
+            result.push({
+                id: `${type}-${key}`,
+                topic: type === 'hashtag' && !key.startsWith('#') ? `#${key}` : key,
+                topicType: type === 'category' ? 'category' : (type as any),
+                avgViews: Math.round(data.viewSum / data.videos.length),
+                avgEngagement: Math.round((data.engagementSum / data.videos.length) * 10000) / 100,
+                videoCount: data.videos.length,
+                thumbnailUrl: data.videos[0]?.thumbnailUrl,
+                relatedVideos: data.videos,
+            });
+        });
+        return result.sort((a, b) => b.avgViews - a.avgViews).slice(0, 15);
+    };
+
+    return {
+        categories: mapToTopics(categoryData, 'category'),
+        keywords: mapToTopics(keywordData, 'keyword'),
+        hashtags: mapToTopics(hashtagData, 'hashtag')
+    };
+}
+
+
 
 /**
  * Calculate engagement rate for a video
@@ -446,15 +586,24 @@ export async function fetchVideosByCategory(
                 (nextPageToken ? `pageToken=${nextPageToken}&` : '') +
                 `key=${apiKey}`;
 
-            console.log(`[YouTube API] Fetching category ${categoryId} videos:`, url);
-            const response = await fetch(url);
+            const cacheKey = `cat-${categoryId}-${region}-${fetchCount}-${nextPageToken || ''}`;
+            const cached = getCachedData(cacheKey);
+            
+            let data: any;
+            if (cached) {
+                data = cached;
+            } else {
+                console.log(`[YouTube API] Fetching category ${categoryId} videos:`, url);
+                const response = await fetch(url);
 
-            if (!response.ok) {
-                const error: any = await response.json();
-                throw new Error(error.error?.message || `Failed to fetch category ${categoryId} videos`);
+                if (!response.ok) {
+                    const error: any = await response.json();
+                    throw new Error(error.error?.message || `Failed to fetch category ${categoryId} videos`);
+                }
+
+                data = await response.json();
+                setCachedData(cacheKey, data);
             }
-
-            const data: any = await response.json();
 
             // Enhanced logging for debugging
             console.log(`[YouTube API] Category ${categoryId} response:`, {

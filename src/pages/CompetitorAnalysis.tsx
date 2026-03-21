@@ -297,13 +297,13 @@ export const CompetitorAnalysis: React.FC = () => {
 
                         {/* 2. Hooks */}
                         <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-5">
-                            <h4 className="text-orange-400 font-bold flex items-center gap-2 mb-3">
+                            <h4 className="text-[var(--color-primary)] font-bold flex items-center gap-2 mb-3">
                                 <Zap size={20} /> 필승 후킹 전략 (Hook)
                             </h4>
                             <div className="space-y-2">
                                 {analysisResult.hookPatterns.map((hook, i) => (
                                     <div key={i} className="flex gap-2 items-start text-sm text-gray-300">
-                                        <div className="w-5 h-5 bg-orange-400/20 text-orange-400 rounded flex items-center justify-center flex-shrink-0 text-xs mt-0.5">{i + 1}</div>
+                                        <div className="w-5 h-5 bg-[var(--color-primary)]/20 text-[var(--color-primary)] rounded flex items-center justify-center flex-shrink-0 text-xs mt-0.5">{i + 1}</div>
                                         {hook}
                                     </div>
                                 ))}
@@ -312,13 +312,13 @@ export const CompetitorAnalysis: React.FC = () => {
 
                         {/* 3. Visual Strategy */}
                         <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-5">
-                            <h4 className="text-blue-400 font-bold flex items-center gap-2 mb-3">
+                            <h4 className="text-[var(--color-primary)] font-bold flex items-center gap-2 mb-3">
                                 <Palette size={20} /> 시각적 연출 가이드
                             </h4>
                             <div className="space-y-2">
                                 {analysisResult.visualStrategies.map((item, i) => (
                                     <div key={i} className="flex gap-2 items-start text-sm text-gray-300">
-                                        <CheckCircle2 className="text-blue-400/50 flex-shrink-0 mt-0.5" size={16} />
+                                        <CheckCircle2 className="text-[var(--color-primary)]/50 flex-shrink-0 mt-0.5" size={16} />
                                         {item}
                                     </div>
                                 ))}
@@ -327,12 +327,12 @@ export const CompetitorAnalysis: React.FC = () => {
 
                         {/* 4. Emotional Triggers */}
                         <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-5">
-                            <h4 className="text-pink-400 font-bold flex items-center gap-2 mb-3">
+                            <h4 className="text-[var(--color-primary)] font-bold flex items-center gap-2 mb-3">
                                 <Heart size={20} /> 감정 자극 요소
                             </h4>
                             <div className="flex flex-wrap gap-2">
                                 {analysisResult.emotionalTriggers.map((item, i) => (
-                                    <span key={i} className="px-3 py-1.5 bg-pink-400/10 text-pink-300 text-xs rounded-full border border-pink-400/20">
+                                    <span key={i} className="px-3 py-1.5 bg-[var(--color-primary)]/10 text-[var(--color-primary)] text-xs rounded-full border border-[var(--color-primary)]/20">
                                         {item}
                                     </span>
                                 ))}
@@ -340,9 +340,9 @@ export const CompetitorAnalysis: React.FC = () => {
                         </div>
 
                         {/* 5. Competitive Edge & Gaps (Full Width) */}
-                        <div className="lg:col-span-2 bg-gradient-to-br from-indigo-500/10 to-purple-500/10 border border-indigo-500/20 rounded-xl p-6">
+                        <div className="lg:col-span-2 bg-gradient-to-br from-[var(--color-primary)]/10 to-transparent border border-[var(--color-primary)]/20 rounded-xl p-6">
                             <div className="flex justify-between items-center mb-4">
-                                <h4 className="text-indigo-400 font-bold flex items-center gap-2">
+                                <h4 className="text-[var(--color-primary)] font-bold flex items-center gap-2">
                                     <Lightbulb size={24} /> 시장 격차 분석 및 블루오션 기회 (Opportunity)
                                 </h4>
                                 <button
@@ -365,7 +365,7 @@ export const CompetitorAnalysis: React.FC = () => {
                                     <ul className="space-y-2">
                                         {analysisResult.competitiveEdges.map((item, i) => (
                                             <li key={i} className="text-sm text-gray-300 flex items-start gap-2">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-1.5 flex-shrink-0" />
+                                                <div className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] mt-1.5 flex-shrink-0" />
                                                 {item}
                                             </li>
                                         ))}
@@ -378,7 +378,7 @@ export const CompetitorAnalysis: React.FC = () => {
                                     <ul className="space-y-2">
                                         {analysisResult.contentGapOpportunities.map((item, i) => (
                                             <li key={i} className="text-sm text-white font-medium flex items-start gap-2">
-                                                <ArrowRight size={14} className="text-orange-400 mt-0.5 flex-shrink-0" />
+                                                <ArrowRight size={14} className="text-[var(--color-primary)] mt-0.5 flex-shrink-0" />
                                                 {item}
                                             </li>
                                         ))}
@@ -460,9 +460,9 @@ export const CompetitorAnalysis: React.FC = () => {
             </div>
 
             {/* Banner info */}
-            <div className="px-6 py-2 bg-indigo-500/10 border-t border-indigo-500/20 flex items-center justify-between text-[10px]">
-                <div className="flex items-center gap-4 text-indigo-400">
-                    <span className="flex items-center gap-1"><BrainCircuit size={12} /> Gemini 3.0 Pro 기반 분석</span>
+            <div className="px-6 py-2 bg-[var(--color-primary)]/10 border-t border-[var(--color-primary)]/20 flex items-center justify-between text-[10px]">
+                <div className="flex items-center gap-4 text-[var(--color-primary)]">
+                    <span className="flex items-center gap-1"><BrainCircuit size={12} /> Gemini 3.1 Pro Preview 기반 분석</span>
                     <span className="flex items-center gap-1"><Target size={12} /> 시청자 페르소나 및 훅 추출</span>
                 </div>
                 {geminiApiKey ? (

@@ -850,7 +850,7 @@ export const analyzeCompetitorStrategy = async (
 사용자 입력 컨텍스트: ${queryContext}
 
 데이터 (동영상 리스트):
-${JSON.stringify(videos.map(v => ({ title: v.title, channel: v.channelName, views: v.viewCount, publishedAt: v.publishedAt })), null, 2)}
+${JSON.stringify(videos.slice(0, 15).map(v => ({ title: v.title, views: v.viewCount })), null, 2)}
 
 분석 가이드라인 (심층 분석):
 1. **Target Audience (Hyper-Niche):** 단순히 '20대 남성'이 아니라, "무엇을 해결하고 싶어하고 무엇을 두려워하는지"에 대한 심리 페르소나를 정의하세요.
@@ -876,7 +876,11 @@ ${JSON.stringify(videos.map(v => ({ title: v.title, channel: v.channelName, view
             "application/json",
             undefined, // no images
             undefined, // no system instruction (it's in prompt)
-            { temperature: 0.7 }
+            { 
+                temperature: 0.7,
+                preferredModel: 'Gemini 3.1 Pro Preview', // [QUALITY] Deep Research priority
+                fastFailover: true // [STABILITY] Faster rotation if Pro is slow
+            }
         );
         const cleanJson = text.replace(/```json\n?|\n?```/g, '').trim();
         return JSON.parse(cleanJson);
@@ -1060,7 +1064,9 @@ If the "User's Strategic Direction (from Chat)" implies a change (e.g. AI propos
             undefined, // no separate system instruction
             {
                 temperature: 0.7,
-                response_mime_type: "application/json"
+                response_mime_type: "application/json",
+                preferredModel: 'Gemini 3.1 Pro Preview',
+                fastFailover: true // [STABILITY] Faster failover for Phase 3
             }
         );
 
@@ -1222,13 +1228,15 @@ IMPORTANT: The above data is REAL market research from Step 0. Do NOT treat it a
             systemInstruction,
             {
                 temperature: 0.9,
-                response_mime_type: "application/json"
+                response_mime_type: "application/json",
+                preferredModel: 'Gemini 3.1 Pro Preview'
             },
             contents
         );
 
         try {
-            const parsed = JSON.parse(generatedText);
+            const cleanedText = generatedText.replace(/```json\n?|\n?```/g, '').trim();
+            const parsed = JSON.parse(cleanedText);
             return {
                 reply: parsed.reply,
                 suggestedSeriesName: parsed.suggestedSeriesName,
@@ -1428,13 +1436,17 @@ IMPORTANT: The above is ACTUAL research data. Ensure all modifications align wit
             systemInstruction,
             {
                 temperature: 0.7,
-                response_mime_type: "application/json"
+                response_mime_type: "application/json",
+                preferredModel: 'Gemini 3.1 Pro Preview'
             },
             sanitizedHistory
         );
 
         const generatedText = responseText;
-        const parsed = JSON.parse(generatedText);
+        
+        // Robust JSON extraction (removes markdown backticks if present)
+        const cleanedText = generatedText.replace(/```json\n?|\n?```/g, '').trim();
+        const parsed = JSON.parse(cleanedText);
 
         return {
             reply: parsed.reply,
@@ -1530,7 +1542,7 @@ Gritty and used. Guns and gadgets show signs of wear, oil stains, and scratched 
         undefined,
         { 
             temperature: 0.7,
-            preferredModel: '3.1 Pro Preview' // [QUALITY RESTORE] Explicitly target Pro for better reasoning and prompt expansion
+            preferredModel: 'Gemini 3.1 Pro Preview' // [QUALITY RESTORE] Explicitly target Pro for better reasoning and prompt expansion
         },
         undefined,
         signal
@@ -1566,7 +1578,7 @@ export const analyzeImage = async (
             undefined,
             { 
                 temperature: 0.7,
-                preferredModel: '3.1 Pro Preview' // [QUALITY RESTORE] Use Pro for detailed image analysis
+                preferredModel: 'Gemini 3.1 Pro Preview' // [QUALITY RESTORE] Use Pro for detailed image analysis
             },
             undefined,
             signal
@@ -1727,7 +1739,8 @@ Please modify the instructions according to the user's request.`;
             systemPrompt,
             {
                 temperature: 0.7,
-                response_mime_type: "application/json"
+                response_mime_type: "application/json",
+                preferredModel: 'Gemini 2.5 Flash'
             },
             [
                 { role: 'user', parts: [{ text: userPrompt }] }
@@ -1897,7 +1910,8 @@ Respond in Korean. Be specific and actionable. Return ONLY raw JSON.`;
             undefined, // no separate system instruction
             {
                 temperature: 0.7,
-                response_mime_type: "application/json"
+                response_mime_type: "application/json",
+                preferredModel: 'Gemini 2.5 Flash'
             }
         );
         const parsed = JSON.parse(generatedText);
@@ -1995,26 +2009,44 @@ export const generateText = async (
     const apiKeys = [...apiKeysRawList].sort(() => Math.random() - 0.5);
 
     // [QUALITY RESTORE] 대사 및 스토리라인 유지를 위해 추론 능력이 뛰어난 Pro 모델을 다시 최우선으로 배치
-    // 단답형이나 단순 확장은 함수 호출부에서 preferredModel: '2.5 Flash'로 오버라이드하여 쿼터를 아낌
     const models = [
-        { name: 'Gemini 3.1 Pro Preview', url: GEMINI_3_1_PRO_URL },
-        { name: 'Gemini 3 Pro Preview', url: GEMINI_3_PRO_URL },
-        { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL },
-        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL },
-        { name: 'Gemini 3 Flash Preview', url: GEMINI_3_FLASH_URL },
+        { name: 'Gemini 3.1 Pro Preview', url: GEMINI_3_1_PRO_URL, pro: true },
+        { name: 'Gemini 3 Pro Preview', url: GEMINI_3_PRO_URL, pro: true },
+        { name: 'Gemini 2.5 Pro', url: GEMINI_2_5_PRO_URL, pro: true },
+        { name: 'Gemini 2.5 Flash', url: GEMINI_2_5_FLASH_URL, pro: false },
+        { name: 'Gemini 3 Flash Preview', url: GEMINI_3_FLASH_URL, pro: false },
     ];
 
-    // Support for preferredModel prioritization
+    // Support for preferredModel prioritization with smarter matching
     const finalModels = [...models];
     if (generationConfig?.preferredModel) {
-        const preferredIndex = models.findIndex(m =>
-            m.name.toLowerCase().includes(generationConfig.preferredModel.toLowerCase()) ||
-            m.url.toLowerCase().includes(generationConfig.preferredModel.toLowerCase())
-        );
+        const pref = generationConfig.preferredModel.toLowerCase();
+        const preferredIndex = models.findIndex(m => {
+            const mName = m.name.toLowerCase();
+            const mUrl = m.url.toLowerCase();
+            
+            // 1. Exact match or includes full ID (e.g., 'gemini-3.1-flash')
+            if (mName === pref || mUrl.includes(pref)) return true;
+            
+            // 2. Specialized matching for pro/flash tiers to avoid cross-tier confusion
+            if (pref.includes('flash') && mName.includes('flash')) {
+                if (pref.includes('2.5') && mName.includes('2.5')) return true;
+                if (pref.includes('3.1') && mName.includes('3.1')) return true;
+                if (pref.includes('3') && mName.includes('3') && !mName.includes('3.1')) return true;
+                return true; // Generic flash match
+            }
+            if (pref.includes('pro') && mName.includes('pro')) {
+                if (pref.includes('2.5') && mName.includes('2.5')) return true;
+                if (pref.includes('3.1') && mName.includes('3.1')) return true;
+                if (pref.includes('3') && mName.includes('3') && !mName.includes('3.1')) return true;
+                return true; // Generic pro match
+            }
+            return false;
+        });
         if (preferredIndex > -1) {
             const [preferred] = finalModels.splice(preferredIndex, 1);
             finalModels.unshift(preferred);
-            console.log(`[Gemini] Prioritizing preferred model in generateText: ${preferred.name}`);
+            console.log(`[Gemini] Prioritizing preferred model: ${preferred.name}`);
         }
     }
 
@@ -2049,57 +2081,79 @@ export const generateText = async (
         contents = [{ role: 'user', parts }];
     }
 
+    // [DIAGNOSTICS] Log total prompt estimate
+    const approximateTokens = JSON.stringify(contents).length / 4;
+    console.log(`[Gemini] Starting AI call. Preferred: ${generationConfig?.preferredModel || 'None'}. Length Estimate: ~${Math.floor(approximateTokens)} tokens.`);
+
     for (const model of finalModels) {
+        // [STABILITY] Increased timeout settings based on real-world complexity
+        // Pro models now get more time (90s) for deep reasoning tasks
+        let modelTimeout = model.pro ? 90000 : 60000; 
+
+        // [STABILITY - Phase 3 Optimization] Override timeout if specifically requested for fast failover
+        if (generationConfig?.fastFailover) {
+            modelTimeout = model.pro ? 30000 : 25000;
+        } else if (generationConfig?.timeout) {
+            modelTimeout = generationConfig.timeout;
+        }
+
         for (const apiKey of apiKeys) {
             if (signal?.aborted) throw new Error("AbortError");
-            try {
-                // Filter out non-API fields from generationConfig
-                const { preferredModel, ...validConfig } = generationConfig || {};
+            
+            let retryCount = 0;
+            const maxRetriesPerKey = 1; // [STABILITY] 1 explicit retry for 503 before switching keys
 
-                const response = await axios.post(
-                    `${model.url}?key=${apiKey}`,
-                    {
-                        contents,
-                        system_instruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
-                        generationConfig: {
-                            temperature: 0.7,
-                            ...validConfig,
-                            response_mime_type: responseMimeType || validConfig.response_mime_type || undefined
+            while (retryCount <= maxRetriesPerKey) {
+                try {
+                    const { preferredModel, ...validConfig } = generationConfig || {};
+
+                    const response = await axios.post(
+                        `${model.url}?key=${apiKey}`,
+                        {
+                            contents,
+                            system_instruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
+                            generationConfig: {
+                                temperature: 0.7,
+                                ...validConfig,
+                                response_mime_type: responseMimeType || validConfig.response_mime_type || undefined
+                            }
+                        },
+                        { 
+                            timeout: modelTimeout,
+                            signal: signal 
                         }
-                    },
-                    { 
-                        timeout: 120000,
-                        signal: signal 
+                    );
+                    return response.data.candidates[0].content.parts[0].text;
+                } catch (error: any) {
+                    if (axios.isCancel(error) || error.name === 'AbortError') throw error;
+                    
+                    lastError = error;
+                    const status = error.response?.status;
+                    
+                    // [STABILITY] Intelligent Backoff and Model Switching
+                    if (status === 429) {
+                        console.warn(`[Gemini] 429 Rate Limit on ${model.name} (Key: ${apiKey.substring(0, 5)}...)`);
+                        const cooldown = 3000 + Math.floor(Math.random() * 2000);
+                        await new Promise(resolve => setTimeout(resolve, cooldown));
+                        break; // 429 means key is exhausted for this model, break while AND break retry loop -> try next key
+                    } else if (status === 503 || status === 500) {
+                        console.warn(`[Gemini] ${status} Server Error on ${model.name} (Retry ${retryCount}/${maxRetriesPerKey})`);
+                        if (retryCount < maxRetriesPerKey) {
+                            retryCount++;
+                            const backoff = 2000 * retryCount + Math.floor(Math.random() * 1000); // 2-3s backoff
+                            await new Promise(resolve => setTimeout(resolve, backoff));
+                            continue; // Retry same key/model
+                        }
+                    } else if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+                        console.warn(`[Gemini] Timeout (${modelTimeout}ms) on ${model.name}`);
+                        // No retry for timeout, switch key/model immediately
+                    } else {
+                        console.warn(`[Gemini] ${model.name} failed (${status || 'Network Error'}): ${error.message}`);
                     }
-                );
-                return response.data.candidates[0].content.parts[0].text;
-            } catch (error: any) {
-                if (axios.isCancel(error) || error.name === 'AbortError') {
-                    throw error;
+                    
+                    // If we reached here, this key/model combo is failing. Break retry loop to try next key.
+                    break; 
                 }
-                lastError = error;
-                const status = error.response?.status;
-                if (status === 429) {
-                    console.warn(`[Gemini] 429 Rate Limit on ${model.name} with key ${apiKey.substring(0, 5)}...`);
-                    
-                    // Throttle retry to prevent rapid key cycling when all keys are likely limited
-                    // Increased to 3-5 seconds for better recovery on free tier
-                    const cooldown = 3000 + Math.floor(Math.random() * 2000);
-                    await new Promise(resolve => {
-                        const timer = setTimeout(resolve, cooldown);
-                        signal?.addEventListener('abort', () => {
-                            clearTimeout(timer);
-                            resolve(null);
-                        }, { once: true });
-                    });
-                    
-                    // [CRITICAL] Check if aborted during cooldown before proceeding
-                    if (signal?.aborted) throw new Error("AbortError");
-                    
-                    continue; // Try next key for SAME model
-                }
-                console.warn(`[Gemini] ${model.name} failed with key ${apiKey.substring(0, 5)}...:`, error.message);
-                // For other errors, we still continue to try next keys/models
             }
         }
     }
