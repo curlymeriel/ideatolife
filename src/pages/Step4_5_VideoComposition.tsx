@@ -337,7 +337,7 @@ const AudioComparisonModal = React.memo<{
     const [loadingStatus, setLoadingStatus] = useState<string | null>('Initializing...');
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
-    const [durationMaster, setDurationMaster] = useState<'audio' | 'video'>(previewCut?.cutDurationMaster || 'audio');
+    const [durationMaster, setDurationMaster] = useState<'audio' | 'video'>(previewCut?.cutDurationMaster || 'video');
 
 
     // [New Effect] Resolve URL & Download Logic

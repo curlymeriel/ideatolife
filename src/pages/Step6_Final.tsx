@@ -252,7 +252,7 @@ export const Step6_Final = () => {
             : (cut.audioUrl ? (cut.estimatedDuration || 5) : 0);
 
         // [New Logic] Respect Duration Master preference
-        const master = cut.cutDurationMaster || 'audio';
+        const master = cut.cutDurationMaster || 'video';
 
         if (master === 'video' && videoDur > 0) {
             // Strictly follow Video Trim/Duration if set as Master

@@ -134,6 +134,22 @@ export const BGM_LIBRARY: BGMPreset[] = [
         url: '/music/Euphoria - Dyalla.mp3',
         duration: 151
     },
+    {
+        id: 'bgm_cinematic_02',
+        title: 'At All Costs',
+        artist: 'The Grey Room & Golden Palms',
+        category: 'Cinematic',
+        url: '/music/At All Costs - The Grey Room _ Golden Palms.mp3',
+        duration: 210
+    },
+    {
+        id: 'bgm_calm_02',
+        title: 'Luxery',
+        artist: 'Causmic',
+        category: 'Calm',
+        url: '/music/Luxery - Causmic.mp3',
+        duration: 180
+    },
 ];
 
 // Helper to categorize

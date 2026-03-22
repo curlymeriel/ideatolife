@@ -464,7 +464,7 @@ export async function exportWithFFmpeg(
         // Configuration from Step 4.5
         // [HEALING] Fallback to legacy useVideoAudio if audioConfig is missing (due to a previous save bug)
         const audioSource = cut.audioConfig?.primarySource || (cut.useVideoAudio ? 'video' : 'tts');
-        const durationMaster = cut.cutDurationMaster || 'audio'; // 'audio' or 'video'
+        const durationMaster = cut.cutDurationMaster || 'video'; // 'audio' or 'video'
 
         let hasTtsAudio = !!cut.audioUrl;
         // If user wants 'video' audio, we only use it if video exists.
