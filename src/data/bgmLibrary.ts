@@ -131,7 +131,7 @@ export const BGM_LIBRARY: BGMPreset[] = [
         title: 'Euphoria',
         artist: 'Dyalla',
         category: 'Happy',
-        url: '/music/Euphoria - Dyalla.mp3',
+        url: '/music/happy_euphoria.mp3',
         duration: 151
     },
     {
@@ -139,7 +139,7 @@ export const BGM_LIBRARY: BGMPreset[] = [
         title: 'At All Costs',
         artist: 'The Grey Room & Golden Palms',
         category: 'Cinematic',
-        url: '/music/At All Costs - The Grey Room _ Golden Palms.mp3',
+        url: '/music/cinematic_at_all_costs.mp3',
         duration: 210
     },
     {
@@ -147,7 +147,7 @@ export const BGM_LIBRARY: BGMPreset[] = [
         title: 'Luxery',
         artist: 'Causmic',
         category: 'Calm',
-        url: '/music/Luxery - Causmic.mp3',
+        url: '/music/calm_luxery.mp3',
         duration: 180
     },
 ];

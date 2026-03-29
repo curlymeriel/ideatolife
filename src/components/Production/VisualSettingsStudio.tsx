@@ -207,71 +207,68 @@ export const VisualSettingsStudio: React.FC<VisualSettingsStudioProps> = ({
         }
     }, [initialVisualPrompt]);
 
-    const analyzeReferences = async () => {
+    const buildReferenceContextAndImages = async () => {
         const refs = taggedReferences;
-        if (refs.length === 0 || !apiKey) return null;
+        if (refs.length === 0 || !apiKey) return { text: null, inlineImages: undefined };
 
         const { blobUrlToBase64 } = await import('../../utils/imageStorage');
+        
+        const inlineImages: { mimeType: string, data: string }[] = [];
+        const metadataLines: string[] = [];
 
-        const results = await Promise.all(refs.map(async (ref) => {
+        for (const ref of refs) {
             try {
-                // [FIX] Convert blob/idb URL to Base64 for Vision analysis
-                const imgData = await blobUrlToBase64(ref.url);
-                if (!imgData) return null;
-
-                const analysisPrompt = `Perform a RIGID VISUAL INVENTORY of this reference image for identity preservation.
+                const base64Url = await blobUrlToBase64(ref.url);
+                if (!base64Url) continue;
                 
-                **STRICT ANTI-HALLUCINATION RULES**:
-                1. Describe ONLY clearly visible features.
-                2. **FACT CHECK**: Hair length, Clothing type, Neckline, Accessories.
-                3. Do NOT assume generic details.
+                let mimeType = 'image/jpeg';
+                let data = base64Url;
+                const match = base64Url.match(/^data:(.+);base64,(.+)$/);
+                if (match) {
+                    mimeType = match[1];
+                    data = match[2];
+                } else {
+                    data = base64Url.split(',')[1] || base64Url;
+                }
                 
-                Format:
-                - Asset Name: ${ref.name}
-                - Role/Category: ${ref.categories.join(', ')}
-                - Identity: (Gender, visible age)
-                - Hair: (Style, EXACT length, color)
-                - Outfit: (Type, visible colors, specific neckline)
-                
-                Return ONLY the list.`;
-
-                const text = await generateText(analysisPrompt, apiKey, undefined, [imgData]);
-                return `### REFERENCE IDENTITY: ${ref.name}\n[ASSET ROLE: ${ref.categories.join(', ')}]\n[MANDATORY VISUAL FEATURES]\n${text}`;
-            } catch (err) {
-                console.error(`[VisualSettingsStudio:Analysis] Failed for ${ref.name}:`, err);
-                return null;
+                inlineImages.push({ mimeType, data });
+                metadataLines.push(`- Reference Image #${inlineImages.length}: [Asset Name: ${ref.name}] (Role: ${ref.categories.join(', ')})`);
+            } catch(e) {
+                console.error(`[VisualSettingsStudio:PrepRef] Failed for ${ref.name}:`, e);
             }
-        }));
-        return results.filter(Boolean).join('\n\n');
+        }
+        
+        const text = metadataLines.length > 0 ? `[ATTACHED REFERENCE IMAGES METADATA]\n${metadataLines.join('\n')}` : null;
+        return { text, inlineImages: inlineImages.length > 0 ? inlineImages : undefined };
     };
 
     const handleAIExpand = async () => {
         setIsExpanding(true);
         try {
-            const refContext = await analyzeReferences();
+            const { text: refMetaText, inlineImages } = await buildReferenceContextAndImages();
 
-            const systemPrompt = `You are a professional visual director. Expand the user's prompt into a cinematic English prompt while STRICTLY ADHERING to the provided [MANDATORY VISUAL FEATURES].
+            const systemPrompt = `You are a professional visual director. Expand the user's prompt into a cinematic English prompt while STRICTLY ADHERING to the attached reference images.
             
             **ABSOLUTE GROUND TRUTH RULE**: 
-            1. The 시각적 특징(MANDATORY VISUAL FEATURES) extracted from images are the ONLY source of truth.
-            2. **TEXT DISCARD RULE**: If the user's prompt contradicts the visual analysis (e.g., user says "Long hair" but image shows "Short"), YOU MUST DISCARD the user's text and use the visual fact.
-            3. Do NOT assume or hallucinate generic clothing or hair styles.
+            1. The attached images and their metadata are the ONLY source of truth for character/asset identities.
+            2. **TEXT DISCARD RULE**: If the user's prompt contradicts the visual facts in the attached images, YOU MUST DISCARD the user's text and use the visual fact.
+            3. Do NOT assume or hallucinate generic clothing or hair styles that aren't in the images.
             4. **NO DIALOGUE**: Do not include any speech or script lines.`;
 
             const fullPrompt = `[User Request]
 ${visualPrompt}
 
-${refContext ? `[MANDATORY VISUAL FEATURES - GROUND TRUTH]
-${refContext}` : ''}
+${refMetaText ? `${refMetaText}
+* Analyze the attached images to identify the precise physical features (hair, face, clothing) of the assets listed above.*` : ''}
 
 [Final Instruction]
 1. Expand into a detailed cinematic English visual prompt.
-2. **PRIORITY 1 (IDENTITY)**: You MUST include ALL characters listed in [MANDATORY VISUAL FEATURES] in the final prompt. 
+2. **PRIORITY 1 (IDENTITY)**: You MUST include ALL characters listed in the metadata in the final prompt. 
 3. Use "(Ref: {Asset Name})" immediately after the character's first mention for identity mapping.
-4. **PRIORITY 2 (PHYSICALITY)**: Use ONLY the physical features from [MANDATORY VISUAL FEATURES]. Ignore any physical descriptions in [User Request] that contradict the [MANDATORY VISUAL FEATURES]. 
+4. **PRIORITY 2 (PHYSICALITY)**: Describe the characters EXACTLY as they appear in the attached images. 
 5. Provide a high-end cinematic description starting directly with the subject.`;
 
-            const result = await generateText(fullPrompt, apiKey, undefined, undefined, systemPrompt);
+            const result = await generateText(fullPrompt, apiKey, undefined, inlineImages, systemPrompt, { preferredModel: 'gemini-3.1-pro-preview' });
             if (result) setVisualPrompt(result.trim());
         } catch (error) {
             console.error(error);
@@ -408,14 +405,14 @@ ${refContext}` : ''}
                 }
                 setChatMessages(prev => [...prev, { id: `msg-${Date.now()}`, role: 'assistant', content: result.explanation || '이미지가 수정되었습니다.', image: result.image, timestamp: Date.now() }]);
             } else {
-                const refContext = await analyzeReferences();
+                const { text: refMetaText, inlineImages } = await buildReferenceContextAndImages();
                 const systemPrompt = `You are a visual director. Help the user refine their image generation prompt by integrating visual analysis from references.
                 
                 **CRITICAL CONSTRAINTS:**
                 1. **STRICT IDENTITY LOCKING (Mandatory)**: 
-                   - For every character or location mention that has a corresponding entry in the [Reference Analysis] below, you MUST append " (Ref: {Asset Name})" to the name in your 'suggested_prompt'.
+                   - For every character or location mention that has a corresponding entry in the attached metadata, you MUST append " (Ref: {Asset Name})" to the name in your 'suggested_prompt'.
                    - Example: "강이수 (홈룩) (Ref: 강이수 홈룩) is sitting on a luxury sofa..."
-                2. **DESCRIPTION PRUNING**: DO NOT re-describe the character's facial features, hair, or basic outfit if they have a reference image. The reference image is the ABSOLUTE VISUAL TRUTH. 
+                2. **DESCRIPTION PRUNING**: DO NOT re-describe the character's facial features, hair, or basic outfit if they have a reference image attached. The reference image is the ABSOLUTE VISUAL TRUTH. 
                    - Focus your expansion on the lighting, composition, cinematic camera movement, and environment. 
                    - This prevents the generator from drifting away from the reference identity due to redundant text descriptions.
                 3. **EDITORIAL AUTHORITY**: You have full authority to remove existing prompt elements that contradict the references or create redundancies.
@@ -427,13 +424,13 @@ ${refContext}` : ''}
                 [Project Visual Anchor]
                 Master Style: ${masterStyle}
                 
-                ${refContext ? `[Reference Analysis]\n${refContext}` : ''}
+                ${refMetaText ? `${refMetaText}\n* Analyze the attached images directly to inform your refinement.*` : ''}
 
                 Output a JSON with two fields: 'suggested_prompt' (the improved English prompt) and 'explanation' (a concise 1-2 sentence summary of what was changed and why, written in KOREAN).`;
 
                 const userQuery = `Current Prompt: ${visualPrompt}\nUser Request: ${chatInput}\n\nProvide the refined prompt that integrates the User Request while strictly maintaining the Master Style and Asset Consistency.`;
 
-                const res = await generateText(userQuery, apiKey, undefined, undefined, systemPrompt);
+                const res = await generateText(userQuery, apiKey, undefined, inlineImages, systemPrompt, { preferredModel: 'gemini-3.1-pro-preview' });
 
                 try {
                     // Try to parse JSON if AI follows instructions

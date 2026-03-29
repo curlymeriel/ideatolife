@@ -1229,7 +1229,7 @@ IMPORTANT: The above data is REAL market research from Step 0. Do NOT treat it a
             {
                 temperature: 0.9,
                 response_mime_type: "application/json",
-                preferredModel: 'Gemini 3.1 Pro Preview'
+                preferredModel: 'Gemini 3 Flash Preview' // Changed to 3 Flash Preview for fast chat response
             },
             contents
         );
@@ -1437,7 +1437,7 @@ IMPORTANT: The above is ACTUAL research data. Ensure all modifications align wit
             {
                 temperature: 0.7,
                 response_mime_type: "application/json",
-                preferredModel: 'Gemini 3.1 Pro Preview'
+                preferredModel: 'Gemini 3 Flash Preview' // Changed to 3 Flash Preview for fast chat response
             },
             sanitizedHistory
         );
@@ -1783,7 +1783,10 @@ export const consultSupport = async (
             undefined,
             undefined,
             systemPrompt,
-            { temperature: 0.7 },
+            { 
+                temperature: 0.7,
+                preferredModel: 'Gemini 3 Flash Preview' // Explicitly set to Flash for fast support chat
+            },
             historyForGenerateText
         );
     } catch (error: any) {

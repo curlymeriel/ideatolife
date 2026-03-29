@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { X, Play, Pause, Music, Plus, Upload, Loader2, Wand2 } from 'lucide-react';
 import { BGM_LIBRARY, getBgmByCategory } from '../../data/bgmLibrary';
 import type { BGMPreset } from '../../store/types';
-import { saveToIdb } from '../../utils/imageStorage';
+import { saveToIdb, resolveUrl } from '../../utils/imageStorage';
 import { generateGeminiMusic } from '../../services/geminiMusic';
 import { useWorkflowStore } from '../../store/workflowStore';
 
@@ -39,33 +39,45 @@ export const BGMLibraryModal: React.FC<BGMLibraryModalProps> = ({ isOpen, onClos
         }
     }, [isOpen]);
 
-    const handlePreview = (track: BGMPreset) => {
+    const handlePreview = async (track: BGMPreset) => {
         setError(null);
         if (previewTrackId === track.id) {
             // Pause
-            audioRef.current?.pause();
+            try { audioRef.current?.pause(); } catch (e) { }
             setPreviewTrackId(null);
         } else {
             // Play new
-            if (audioRef.current) audioRef.current.pause();
-
-            const audio = new Audio(track.url);
-            audio.volume = 0.5;
-
-            const playPromise = audio.play();
-
-            if (playPromise !== undefined) {
-                playPromise.catch(e => {
-                    console.error("Preview play failed:", e);
-                    setError(`Failed to play "${track.title}".`);
-                    setPreviewTrackId(null);
-                });
+            if (audioRef.current) {
+                try { audioRef.current.pause(); } catch (e) { }
             }
 
-            audio.onended = () => setPreviewTrackId(null);
+            try {
+                let playableUrl = track.url;
+                if (playableUrl.startsWith('idb://')) {
+                    playableUrl = await resolveUrl(playableUrl, { asBlob: true });
+                }
 
-            audioRef.current = audio;
-            setPreviewTrackId(track.id);
+                const audio = new Audio(playableUrl);
+                audio.volume = 0.5;
+
+                const playPromise = audio.play();
+
+                if (playPromise !== undefined) {
+                    playPromise.catch(e => {
+                        console.error("Preview play failed:", e);
+                        setError(`Failed to play "${track.title}".`);
+                        setPreviewTrackId(null);
+                    });
+                }
+
+                audio.onended = () => setPreviewTrackId(null);
+
+                audioRef.current = audio;
+                setPreviewTrackId(track.id);
+            } catch (err) {
+                console.error("Preview resolve failed:", err);
+                setError(`Failed to prepare "${track.title}" for playback.`);
+            }
         }
     };
 
@@ -161,7 +173,9 @@ export const BGMLibraryModal: React.FC<BGMLibraryModalProps> = ({ isOpen, onClos
     };
 
     const handleSelect = (track: BGMPreset) => {
-        if (audioRef.current) audioRef.current.pause();
+        if (audioRef.current) {
+            try { audioRef.current.pause(); } catch(e) {}
+        }
         onSelect(track);
         onClose();
     };

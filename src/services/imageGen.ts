@@ -151,7 +151,7 @@ export const generateImage = async (
     _prompt: string,
     apiKeysRaw: string | string[],
     referenceImages?: (string | ReferenceImage)[] | null,
-    aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3',
+    aspectRatio?: string,
     modelName: ImageModel = 'gemini-3-pro-image-preview',
     candidateCount: number = 1,
     abortSignal?: AbortSignal
@@ -206,12 +206,13 @@ export const generateImage = async (
     for (const model of allModels) {
         if (abortSignal?.aborted) throw new Error("AbortError");
 
-        // [STABILITY FIX] If previous model was fully rate-limited, wait before trying next model
+        // [STABILITY FIX] If previous model was fully rate-limited, try next model immediately 
+        // Different models have different API quota pools, so there is no need for a massive delay here.
         if (consecutiveModelFailures > 0) {
-            const interModelCooldown = 30000 + Math.floor(Math.random() * 10000); // 30-40s
-            console.warn(`[ImageGen] 🔁 All keys exhausted for previous model. Inter-model cooldown: ${Math.round(interModelCooldown / 1000)}s before trying ${model}...`);
+            console.warn(`[ImageGen] 🔁 All keys exhausted for previous model. Trying next model ${model} immediately...`);
+            // Adding a tiny 500ms delay just to prevent rapid fire loops
             await new Promise(r => {
-                const timer = setTimeout(r, interModelCooldown);
+                const timer = setTimeout(r, 500);
                 abortSignal?.addEventListener('abort', () => { clearTimeout(timer); r(null); }, { once: true });
             });
             if (abortSignal?.aborted) throw new Error("AbortError");
