@@ -237,7 +237,7 @@ export const UnifiedStudio = ({
 
                     if (config.initialFinalImageUrl) {
                         let url = config.initialFinalImageUrl;
-                        if (isIdbUrl(url)) url = await resolveUrl(url) || url;
+                        url = await resolveUrl(url) || url;
                         setDraftHistory([url]);
                         setSelectedDraft(url);
                     }
@@ -252,7 +252,7 @@ export const UnifiedStudio = ({
                         const imgUrl = getUrl(asset);
                         if (imgUrl) {
                             let url = imgUrl;
-                            if (isIdbUrl(url)) url = await resolveUrl(url) || url;
+                            url = await resolveUrl(url) || url;
                             const refId = asset.id || `${isAuto ? 'auto' : 'manual'}-${Date.now()}-${Math.random()}`;
                             if (url && !loadedRefs.some(r => r.id === refId)) {
                                 console.log(`[UnifiedStudio] Processing ${isAuto ? 'AUTO' : 'MANUAL'} Asset: ${asset.name}`, { type: asset.type, urlSource: imgUrl.substring(0, 50) });
@@ -279,14 +279,14 @@ export const UnifiedStudio = ({
                             const refCut = (config.existingCuts || []).find(c => c.id === refId);
                             if (refCut?.finalImageUrl) {
                                 let url = refCut.finalImageUrl;
-                                if (isIdbUrl(url)) url = await resolveUrl(url) || url;
+                                url = await resolveUrl(url) || url;
                                 if (url) loadedRefs.push({ id: `cut-${refId}`, url, name: `Cut #${refId}`, categories: ['style'], isAuto: false });
                             }
                         }
                     }
                     if (currentCut?.userReferenceImage) {
                         let url = currentCut.userReferenceImage;
-                        if (isIdbUrl(url)) url = await resolveUrl(url) || url;
+                        url = await resolveUrl(url) || url;
                         if (url) loadedRefs.push({ id: 'user-ref', url, name: 'User Reference', categories: ['style'], isAuto: false });
                     }
                     setTaggedReferences(loadedRefs);
@@ -302,13 +302,13 @@ export const UnifiedStudio = ({
                 } else if (mode === 'channelArt') {
                     if (config.initialUrl) {
                         let url = config.initialUrl;
-                        if (url.startsWith('idb://')) url = await resolveUrl(url) || url;
+                        url = await resolveUrl(url) || url;
                         if (url) { setDraftHistory([url]); setSelectedDraft(url); }
                     }
                 } else if (mode === 'thumbnail') {
                     if (config.initialUrl) {
                         let url = config.initialUrl;
-                        if (url.startsWith('idb://')) url = await resolveUrl(url) || url;
+                        url = await resolveUrl(url) || url;
                         if (url) { setDraftHistory([url]); setSelectedDraft(url); }
                     }
                 }
@@ -331,7 +331,8 @@ export const UnifiedStudio = ({
             const candidates = cuts.filter(c => (config.mode !== 'visual' || c.id !== (config as any).cutId) && c.finalImageUrl).map(c => ({ id: c.id, url: c.finalImageUrl!, index: cuts.indexOf(c) + 1 }));
             const resolved = await Promise.all(candidates.map(async c => {
                 let url = c.url;
-                if (isIdbUrl(url)) { url = await resolveUrl(url) || url; if (url.startsWith('blob:')) blobUrlsRef.current.add(url); }
+                url = await resolveUrl(url) || url; 
+                if (url.startsWith('blob:')) blobUrlsRef.current.add(url);
                 return { ...c, url };
             }));
             setResolvedCandidates(resolved);
@@ -352,7 +353,8 @@ export const UnifiedStudio = ({
 
             const resolved = await Promise.all(rawAssets.map(async a => {
                 let url = a.url;
-                if (isIdbUrl(url)) { url = await resolveUrl(url) || url; if (url.startsWith('blob:')) blobUrlsRef.current.add(url); }
+                url = await resolveUrl(url) || url; 
+                if (url.startsWith('blob:')) blobUrlsRef.current.add(url); 
                 return { ...a, url };
             }));
             setResolvedProjectAssets(resolved);

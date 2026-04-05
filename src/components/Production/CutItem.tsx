@@ -229,14 +229,10 @@ export const CutItem = memo(({
         }
     }, [cut.actingDirection, cut.id]);
 
-    // Resolve IDB URLs
+    // Resolve IDB and Firebase URLs
     useEffect(() => {
         if (cut.finalImageUrl) {
-            if (isIdbUrl(cut.finalImageUrl)) {
-                resolveUrl(cut.finalImageUrl).then(url => setResolvedImageUrl(url || undefined));
-            } else {
-                setResolvedImageUrl(cut.finalImageUrl);
-            }
+            resolveUrl(cut.finalImageUrl).then(url => setResolvedImageUrl(url || undefined));
         } else {
             setResolvedImageUrl(undefined);
         }
@@ -244,16 +240,12 @@ export const CutItem = memo(({
 
     useEffect(() => {
         if (cut.audioUrl) {
-            if (isIdbUrl(cut.audioUrl)) {
-                resolveUrl(cut.audioUrl, { asBlob: true }).then(url => {
-                    console.log(`[CutItem ${cut.id}] 🔊 Resolved audio URL: ${url.substring(0, 50)}...`);
-                    setResolvedAudioUrl(url);
-                }).catch(err => {
-                    console.error(`[CutItem ${cut.id}] ❌ Failed to resolve audio:`, err);
-                });
-            } else {
-                setResolvedAudioUrl(cut.audioUrl);
-            }
+            resolveUrl(cut.audioUrl, { asBlob: true }).then(url => {
+                if (url) console.log(`[CutItem ${cut.id}] 🔊 Resolved audio URL: ${url.substring(0, 50)}...`);
+                setResolvedAudioUrl(url || undefined);
+            }).catch(err => {
+                console.error(`[CutItem ${cut.id}] ❌ Failed to resolve audio:`, err);
+            });
         } else {
             setResolvedAudioUrl(undefined);
         }

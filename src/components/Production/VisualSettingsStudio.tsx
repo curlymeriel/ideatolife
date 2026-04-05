@@ -74,6 +74,21 @@ const DEFAULT_CATEGORIES = [
 ];
 
 // ============================================================================
+// COMPONENTS
+// ============================================================================
+
+const SafeImage = ({ src, alt, className }: { src?: string, alt?: string, className?: string }) => {
+    const [error, setError] = useState(false);
+    
+    useEffect(() => {
+        setError(false);
+    }, [src]);
+
+    if (error || !src) return <div className={`${className} flex flex-col items-center justify-center bg-white/5 text-[9px] text-red-400 font-bold tracking-widest uppercase`}><ImageIcon className="opacity-30 mb-1" size={16}/>BROKEN</div>;
+    return <img src={src} alt={alt} className={className} onError={() => setError(true)} />;
+};
+
+// ============================================================================
 // COMPONENT
 // ============================================================================
 
@@ -589,9 +604,7 @@ ${refMetaText ? `${refMetaText}
             const init = async () => {
                 if (initialFinalImageUrl) {
                     let resolvedUrl = initialFinalImageUrl;
-                    if (isIdbUrl(initialFinalImageUrl)) {
-                        resolvedUrl = await resolveUrl(initialFinalImageUrl) || initialFinalImageUrl;
-                    }
+                    resolvedUrl = await resolveUrl(resolvedUrl) || resolvedUrl;
                     setDraftHistory([resolvedUrl]);
                     setSelectedDraft(resolvedUrl);
                 }
@@ -604,7 +617,7 @@ ${refMetaText ? `${refMetaText}
                     const imgUrl = getAssetImageUrl(asset);
                     if (imgUrl) {
                         let url = imgUrl;
-                        if (isIdbUrl(url)) url = await resolveUrl(url) || url;
+                        url = await resolveUrl(url) || url;
 
                         let category = asset.type || 'unknown';
                         if (asset.type === 'prop') category = `prop-${asset.name}`;
@@ -632,7 +645,8 @@ ${refMetaText ? `${refMetaText}
                         const refCut = existingCuts.find(c => c.id === refId);
                         if (refCut?.finalImageUrl) {
                             let url = refCut.finalImageUrl;
-                            if (isIdbUrl(url)) url = await resolveUrl(url) || url;
+                            url = await resolveUrl(url) || url;
+                            
                             if (url) {
                                 loadedRefs.push({
                                     id: `cut-${refId}`,
@@ -649,7 +663,7 @@ ${refMetaText ? `${refMetaText}
                 // 4. Load User Reference Image
                 if (currentCut?.userReferenceImage) {
                     let url = currentCut.userReferenceImage;
-                    if (isIdbUrl(url)) url = await resolveUrl(url) || url;
+                    url = await resolveUrl(url) || url;
                     if (url) {
                         loadedRefs.push({
                             id: 'user-ref',
@@ -831,7 +845,7 @@ ${refMetaText ? `${refMetaText}
                                                 <div className="flex gap-4">
                                                     <div className="w-24 h-24 shrink-0 relative rounded-xl overflow-hidden border border-white/10">
                                                         <div className="absolute top-1 left-1 z-10 px-1.5 py-0.5 bg-black/80 backdrop-blur-md rounded text-[9px] font-black text-[var(--color-primary)]">#{idx + 1}</div>
-                                                        <img src={ref.url} className="w-full h-full object-cover" />
+                                                        <SafeImage src={ref.url} className="w-full h-full object-cover" />
                                                         <button onClick={() => handleRemoveRef(ref.id)} className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-md opacity-0 group-hover/ref:opacity-100 transition-all"><Trash2 size={12} /></button>
                                                     </div>
                                                     <div className="flex-1 space-y-2">
@@ -934,7 +948,7 @@ ${refMetaText ? `${refMetaText}
                                     {draftHistory.map((url, i) => (
                                         <div key={i} className="relative group/draft">
                                             <button onClick={() => setSelectedDraft(url)} className={`w-full aspect-square rounded-lg overflow-hidden border-2 transition-all ${selectedDraft === url ? 'border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/20 shadow-lg scale-[1.05]' : 'border-white/5 hover:border-white/20'}`}>
-                                                <img src={url} className="w-full h-full object-cover" />
+                                                <SafeImage src={url} className="w-full h-full object-cover" />
                                             </button>
                                             <button onClick={() => handleAddDraftAsReference(url)} className="absolute -top-1 -right-1 p-1 bg-[var(--color-primary)] text-black rounded-full opacity-0 group-hover/draft:opacity-100 hover:scale-110 transition-all shadow-xl z-20">
                                                 <Plus size={10} strokeWidth={4} />
@@ -980,7 +994,7 @@ ${refMetaText ? `${refMetaText}
                                                 <div key={msg.id} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                                                     <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-[11px] leading-relaxed relative group ${msg.role === 'user' ? 'bg-[var(--color-primary)] text-black font-bold' : 'bg-white/5 text-gray-300 border border-white/10'}`}>
                                                         {msg.content}
-                                                        {msg.image && <img src={msg.image} className="mt-2 rounded-lg max-w-full border border-white/10" />}
+                                                        {msg.image && <SafeImage src={msg.image} className="mt-2 rounded-lg max-w-full border border-white/10" />}
 
                                                         {msg.suggestedPrompt && (
                                                             <div className="mt-3 pt-3 border-t border-white/10 space-y-2 text-left">

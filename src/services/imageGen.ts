@@ -57,6 +57,10 @@ The following images define the visual identity of the characters and assets.
             } else if (referenceImage.startsWith('http') || referenceImage.startsWith('blob:')) {
                 try {
                     const res = await fetch(referenceImage);
+                    if (!res.ok) {
+                        console.error(`[ImageGen] Failed to fetch HTTP reference image ${i + 1}: ${res.status} ${res.statusText}`);
+                        continue;
+                    }
                     const blob = await res.blob();
                     mimeType = blob.type || 'image/jpeg';
                     data = await new Promise<string>((resolve, reject) => {
@@ -317,6 +321,9 @@ export const editImageWithChat = async (
             } else throw new Error('Invalid image data URL format');
         } else {
             const response = await fetch(imageUrl);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch target image for editing: ${response.status} ${response.statusText}`);
+            }
             const blob = await response.blob();
             imageData = await new Promise<string>((resolve, reject) => {
                 const reader = new FileReader();

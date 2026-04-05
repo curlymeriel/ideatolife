@@ -286,6 +286,30 @@ export async function resolveUrl(
     options: { asBlob?: boolean } = {}
 ): Promise<string> {
     if (!url) return '';
+
+    // [FIX] Auto-heal expired Firebase Storage URLs globally
+    if (url.startsWith('https://firebasestorage.googleapis.com/')) {
+        try {
+            const res = await fetch(url, { method: 'HEAD' });
+            if (res.ok) return url;
+        } catch (e) {
+            // Might be CORS block or network issue, proceed to regenerate token to be safe
+        }
+
+        try {
+            const match = url.match(/\/o\/([^?]+)/);
+            if (match && match[1]) {
+                const path = decodeURIComponent(match[1]);
+                const cloudStorage = await import('../services/cloudStorage');
+                // Auto-healing tokens without user prompt
+                return await cloudStorage.getFileUrl(path);
+            }
+        } catch (e) {
+            console.warn('[ImageStorage:resolveUrl] Failed to auto-heal firebase url', e);
+        }
+        return url; // Fallback to original if healing fails
+    }
+
     if (!isIdbUrl(url)) return url;
 
     // [OPTIMIZATION] Check cache first for Blob URLs
@@ -442,10 +466,15 @@ export async function blobUrlToBase64(url: string | null | undefined): Promise<s
 
         // 2. Fetch blob or http URL and convert to Base64
         const response = await fetch(resolved);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch media: ${response.status} ${response.statusText}`);
+        }
+        
         const blob = await response.blob();
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
             reader.readAsDataURL(blob);
         });
     } catch (e) {
@@ -487,6 +516,13 @@ export function generateCutImageKey(projectId: string, cutId: number | string, t
 export const generateAssetImageKey = (projectId: string, assetId: string, type: 'ref' | 'draft' | 'master' | 'visual-preview') => {
     return `${projectId}-asset-${assetId}-${type}`;
 };
+
+/**
+ * Generate a unique key for an uploaded watermark
+ */
+export function generateWatermarkKey(projectId: string): string {
+    return `${projectId}-watermark`;
+}
 
 
 /**

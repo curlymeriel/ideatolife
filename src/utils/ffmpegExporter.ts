@@ -17,6 +17,7 @@ export interface ExportOptions {
     cutStartTimeMap?: number[];
     attachThumbnail?: boolean;
     thumbnailData?: Uint8Array;
+    watermarkSettings?: import('../store/types').WatermarkSettings;
 }
 
 /**
@@ -969,6 +970,64 @@ export async function exportWithFFmpeg(
         } catch (mixErr) {
             console.error('[FFmpeg:BGM] BGM Mixing failed:', mixErr);
             try { await ffmpeg.deleteFile('output_temp.mp4'); } catch { }
+        }
+    }
+
+    // 4.5 Watermark Pass
+    if (options.watermarkSettings?.enabled && options.watermarkSettings?.imageUrl) {
+        onProgress?.(96, 'Applying watermark...');
+        try {
+            const wmSettings = options.watermarkSettings;
+            const imageUrl = wmSettings.imageUrl!;
+            const wmData = await fetchAssetResilient(imageUrl, 'watermark', 0);
+            
+            if (wmData.length > 0) {
+                await ffmpeg.writeFile('watermark.png', wmData);
+                
+                const currentOutputData = await ffmpeg.readFile('output.mp4');
+                await ffmpeg.writeFile('output_pre_wm.mp4', currentOutputData);
+                await ffmpeg.deleteFile('output.mp4');
+
+                // positionX/positionY: 0-100% center anchor within video
+                const posX = wmSettings.positionX ?? 90;
+                const posY = wmSettings.positionY ?? 90;
+                // overlay= x:y where x,y is the TOP-LEFT corner of the watermark
+                // watermark width = W * scale, so half = (W*scale)/2
+                const halfW = `(W*${wmSettings.scale || 0.2}/2)`;
+                const halfH = `(oh/2)`; // oh = calculated height after scale
+                const overlayX = `W*${posX / 100}-${halfW}`;
+                const overlayY = `H*${posY / 100}-${halfH}`;
+                const overlayCoords = `${overlayX}:${overlayY}`;
+
+                // scale watermark so its width = (video_width * userScale)
+                const wmTargetWidth = `W*${wmSettings.scale || 0.2}`;
+                const wmFilter = `[1:v]format=rgba,colorchannelmixer=aa=${wmSettings.opacity || 0.8},scale=${wmTargetWidth}:-1[wm];[0:v][wm]overlay=${overlayCoords}[vout]`;
+
+                await ffmpeg.exec([
+                    '-i', 'output_pre_wm.mp4',
+                    '-i', 'watermark.png',
+                    '-filter_complex', wmFilter,
+                    '-map', '[vout]',
+                    '-map', '0:a?', 
+                    '-c:v', 'libx264',
+                    '-crf', String(crf), // Maintain same visual quality
+                    '-preset', 'superfast',
+                    '-pix_fmt', 'yuv420p',
+                    '-c:a', 'copy', // Don't re-encode audio
+                    '-y', 'output.mp4'
+                ]);
+
+                try { await ffmpeg.deleteFile('output_pre_wm.mp4'); } catch { }
+                tempFiles.push('watermark.png');
+            }
+        } catch (wmErr) {
+            console.error('[FFmpeg:Watermark] Watermark failed:', wmErr);
+            // Attempt to restore if failed
+            try { 
+                const preWmData = await ffmpeg.readFile('output_pre_wm.mp4');
+                await ffmpeg.writeFile('output.mp4', preWmData);
+                await ffmpeg.deleteFile('output_pre_wm.mp4');
+            } catch { }
         }
     }
 

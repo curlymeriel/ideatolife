@@ -139,6 +139,14 @@ const getEmptyProjectState = (id: string, apiKeys: any = {}): ProjectData => ({
     assets: {},
     currentStep: 1,
     bgmTracks: [],
+    watermarkSettings: {
+        imageUrl: '',
+        positionX: 90,
+        positionY: 90,
+        opacity: 0.8,
+        scale: 0.2,
+        enabled: true
+    },
     trendInsights: {
         appliedAt: Date.now(),
         references: [],

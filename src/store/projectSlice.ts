@@ -21,6 +21,7 @@ export interface ProjectSlice extends Omit<ProjectData, 'id' | 'lastModified' | 
     setChatHistory: (history: ChatMessage[]) => void;
     setThumbnail: (url: string | null) => void;
     setThumbnailSettings: (settings: Partial<ProjectData['thumbnailSettings']>) => void;
+    setWatermarkSettings: (settings: Partial<import('./types').WatermarkSettings>) => void;
     setMasterStyle: (style: Partial<MasterStyle>) => void;
     setStyleAnchor: (style: Partial<StyleAnchor>) => void;
     setScript: (script: ScriptCut[]) => void;
@@ -116,6 +117,20 @@ export const createProjectSlice: StateCreator<ProjectSlice> = (set, get) => ({
         thumbnailSettings: { ...state.thumbnailSettings, ...settings },
         isDirty: true
     })),
+
+    setWatermarkSettings: (settings) => set((state) => {
+        const current = state.watermarkSettings || {
+            imageUrl: '',
+            position: 'top-right',
+            opacity: 0.8,
+            scale: 0.5,
+            enabled: true
+        };
+        return {
+            watermarkSettings: { ...current, ...settings },
+            isDirty: true
+        };
+    }),
 
     setMasterStyle: (style) => set((state) => ({
         masterStyle: { ...state.masterStyle, ...style },

@@ -276,6 +276,16 @@ export interface ChannelAnalysis {
 // Project Data (Persisted Domain State)
 // ====================
 
+export interface WatermarkSettings {
+    imageUrl?: string;      // Uploaded logo image URL (idb://)
+    position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'; // Legacy - kept for migration
+    positionX: number;     // 0 ~ 100 (% from left edge within video area)
+    positionY: number;     // 0 ~ 100 (% from top edge within video area)
+    opacity: number;       // 0.0 ~ 1.0
+    scale: number;         // 0.05 ~ 0.5 relative to video width
+    enabled: boolean;      // Enable overlay in viewer & export
+}
+
 export interface BGMTrack {
     id: string;
     url: string;      // Audio file URL
@@ -341,6 +351,9 @@ export interface ProjectData {
 
     // [NEW] Global BGM Tracks
     bgmTracks: BGMTrack[];
+
+    // [NEW] Global Watermark
+    watermarkSettings?: WatermarkSettings;
 
     // Step 5: Production
     assets: Record<string, Asset[]>;

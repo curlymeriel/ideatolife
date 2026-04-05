@@ -50,6 +50,8 @@ export const Step6_Final = () => {
         aspectRatio, // Destructure aspectRatio
         bgmTracks, // Destructure bgmTracks
         setScript, // Add setScript for migration
+        watermarkSettings,
+        setWatermarkSettings // Add watermarkSettings for UI toggle
     } = useWorkflowStore();
 
     // Custom CC Icon Component - Defined inside is okay, or move outside if no props dependency
@@ -79,6 +81,19 @@ export const Step6_Final = () => {
     const [currentCutIndex, setCurrentCutIndex] = useState(0);
     const [viewOnly, setViewOnly] = useState(false);
     const [showThumbnail, setShowThumbnail] = useState(true); // Start with thumbnail
+    const [watermarkPreviewUrl, setWatermarkPreviewUrl] = useState<string | null>(null);
+
+    useEffect(() => {
+        const loadPreview = async () => {
+            if (watermarkSettings?.imageUrl) {
+                const resolved = await resolveUrl(watermarkSettings.imageUrl);
+                setWatermarkPreviewUrl(resolved);
+            } else {
+                setWatermarkPreviewUrl(null);
+            }
+        };
+        loadPreview();
+    }, [watermarkSettings?.imageUrl]);
     const [isPlayingState, setIsPlayingState] = useState(false);
     const setIsPlaying = (val: boolean, reason: string = "unknown") => {
         console.error(`[Step6] setIsPlaying(${val}) called. Reason: ${reason}`);
@@ -1663,7 +1678,8 @@ export const Step6_Final = () => {
                     bgmTracks: bgmTracks,
                     cutStartTimeMap: cutStartTimeMap,
                     attachThumbnail: exportThumbnail,
-                    thumbnailData: thumbnailData
+                    thumbnailData: thumbnailData,
+                    watermarkSettings: watermarkSettings
                 },
                 (progress, status) => {
                     console.log(`[Step6:HQExport] ${status} (${progress}%)`);
@@ -2096,6 +2112,63 @@ export const Step6_Final = () => {
                 )
             }
 
+            {/* Watermark Overlay - Constrained to actual video area */}
+            {
+                !showThumbnail && watermarkSettings?.enabled && watermarkPreviewUrl && (() => {
+                    const containerAspect = 16 / 9;
+                    const videoAspect = (() => {
+                        if (aspectRatio === '9:16') return 9 / 16;
+                        if (aspectRatio === '1:1') return 1;
+                        if (aspectRatio === '2.35:1') return 2.35;
+                        return 16 / 9;
+                    })();
+
+                    // Pillarbox / letterbox offsets (as percentage of container)
+                    let videoWidthPct = 100;
+                    let videoHeightPct = 100;
+                    let videoLeftPct = 0;
+                    let videoTopPct = 0;
+
+                    if (videoAspect < containerAspect) {
+                        videoWidthPct = (videoAspect / containerAspect) * 100;
+                        videoLeftPct = (100 - videoWidthPct) / 2;
+                    } else if (videoAspect > containerAspect) {
+                        videoHeightPct = (containerAspect / videoAspect) * 100;
+                        videoTopPct = (100 - videoHeightPct) / 2;
+                    }
+
+                    const posX = watermarkSettings.positionX ?? 90;
+                    const posY = watermarkSettings.positionY ?? 90;
+                    const scale = watermarkSettings.scale ?? 0.2;
+                    const opacity = watermarkSettings.opacity ?? 0.8;
+
+                    // Convert posX/posY (within video area) → absolute position in container
+                    const absLeft = videoLeftPct + (posX / 100) * videoWidthPct;
+                    const absTop = videoTopPct + (posY / 100) * videoHeightPct;
+
+                    const style: React.CSSProperties = {
+                        position: 'absolute',
+                        left: `${absLeft}%`,
+                        top: `${absTop}%`,
+                        transform: 'translate(-50%, -50%)',
+                        width: `${videoWidthPct * scale}%`, // scale relative to video width
+                        opacity,
+                        pointerEvents: 'none',
+                        zIndex: 45,
+                        filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))',
+                    };
+
+                    return (
+                        <img
+                            src={watermarkPreviewUrl}
+                            alt="Watermark"
+                            style={style}
+                            className="max-w-full object-contain"
+                        />
+                    );
+                })()
+            }
+
             {/* Controls Bar - Fixed to Bottom */}
             <div className={`absolute bottom-0 left-0 w-full h-24 bg-gradient-to-t from-black/90 to-transparent flex items-end pb-6 px-12 gap-8 z-50 transition-opacity duration-300 ${isPlaying ? 'opacity-0 hover:opacity-100' : 'opacity-100'}`}>
                 <button
@@ -2299,6 +2372,23 @@ export const Step6_Final = () => {
                                         <div className="text-xs text-gray-400">MP4 파일의 커버 이미지로 썸네일을 삽입합니다.</div>
                                     </div>
                                 </label>
+
+                                {watermarkSettings?.imageUrl && (
+                                    <label className="flex items-center gap-3 p-3 bg-white/5 rounded-lg cursor-pointer hover:bg-white/10 transition-colors">
+                                        <input
+                                            type="checkbox"
+                                            checked={watermarkSettings.enabled ?? true}
+                                            onChange={(e) => setWatermarkSettings({ enabled: e.target.checked })}
+                                            className="w-5 h-5 rounded border-gray-600 bg-black/40 text-[var(--color-primary)] focus:ring-[var(--color-primary)] focus:ring-offset-0"
+                                        />
+                                        <div>
+                                            <div className="text-white text-sm font-bold flex items-center gap-2">
+                                                <ImageIcon size={16} /> 워터마크 포함 (Watermark)
+                                            </div>
+                                            <div className="text-xs text-gray-400">영상에 워터마크 로고를 오버레이하여 저장합니다.</div>
+                                        </div>
+                                    </label>
+                                )}
                             </div>
 
                             <p className="text-[10px] text-gray-500 italic">

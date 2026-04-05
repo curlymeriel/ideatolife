@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { ZoomIn, ZoomOut, Move, Square, RotateCcw, Eraser, Crop, X } from 'lucide-react';
+import { ZoomIn, ZoomOut, Move, Square, RotateCcw, Eraser, Crop, X, Image as ImageIcon } from 'lucide-react';
 
 interface InteractiveImageViewerProps {
     src: string;
@@ -21,6 +21,7 @@ export const InteractiveImageViewer: React.FC<InteractiveImageViewerProps> = ({
     // State
     const [scale, setScale] = useState(1);
     const [position, setPosition] = useState({ x: 0, y: 0 });
+    const [imgError, setImgError] = useState(false);
     const [mode, setMode] = useState<'pan' | 'select'>('pan');
     const [isDragging, setIsDragging] = useState(false);
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -32,6 +33,10 @@ export const InteractiveImageViewer: React.FC<InteractiveImageViewerProps> = ({
     const contentRef = useRef<HTMLDivElement>(null);
     const imgRef = useRef<HTMLImageElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
+
+    React.useEffect(() => {
+        setImgError(false);
+    }, [src]);
 
     // Initialize Canvas on image load
     const handleImageLoad = () => {
@@ -279,15 +284,23 @@ export const InteractiveImageViewer: React.FC<InteractiveImageViewerProps> = ({
                         transition: isDragging ? 'none' : 'transform 0.1s ease-out'
                     }}
                 >
-                    <img
-                        ref={imgRef}
-                        src={src}
-                        alt={alt}
-                        className="max-w-none pointer-events-none display-block"
-                        style={{ maxHeight: '80vh', maxWidth: '80vw' }}
-                        onLoad={handleImageLoad}
-                        draggable={false}
-                    />
+                    {imgError ? (
+                        <div className="flex flex-col items-center justify-center bg-white/5 text-[12px] text-red-400 font-bold tracking-widest uppercase" style={{ height: '80vh', width: '80vw', minWidth: '300px' }}>
+                            <ImageIcon size={48} className="opacity-20 mb-4" />
+                            IMAGE NOT FOUND
+                        </div>
+                    ) : (
+                        <img
+                            ref={imgRef}
+                            src={src}
+                            alt={alt}
+                            className="max-w-none pointer-events-none display-block"
+                            style={{ maxHeight: '80vh', maxWidth: '80vw' }}
+                            onLoad={handleImageLoad}
+                            onError={() => setImgError(true)}
+                            draggable={false}
+                        />
+                    )}
                     <canvas
                         ref={canvasRef}
                         className={`absolute inset-0 w-full h-full cursor-${mode === 'select' ? 'crosshair' : 'grab'}`}

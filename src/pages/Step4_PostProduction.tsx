@@ -4,14 +4,16 @@ import { useNavigate } from 'react-router-dom';
 import { Play, Image as ImageIcon, ArrowRight, ArrowLeft, Pause, ChevronLeft, ChevronRight } from 'lucide-react';
 import { resolveUrl, isIdbUrl } from '../utils/imageStorage';
 import { TimelineView } from '../components/Production/TimelineView';
+import { WatermarkSettingsModal } from '../components/Production/WatermarkSettingsModal';
 import { getAspectRatioCss } from '../utils/aspectRatioUtils';
 
 export const Step4_PostProduction: React.FC = () => {
-    const { id: projectId, script, nextStep, prevStep, bgmTracks, setBGMTracks, aspectRatio } = useWorkflowStore();
+    const { id: projectId, script, nextStep, prevStep, bgmTracks, setBGMTracks, aspectRatio, watermarkSettings, setWatermarkSettings } = useWorkflowStore();
     const navigate = useNavigate();
 
     const [currentCutIndex, setCurrentCutIndex] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
+    const [isWatermarkModalOpen, setIsWatermarkModalOpen] = useState(false);
 
     const [resolvedImages, setResolvedImages] = useState<Record<number, string>>({});
     const [resolvedAudios, setResolvedAudios] = useState<Record<number, string>>({});
@@ -246,8 +248,7 @@ export const Step4_PostProduction: React.FC = () => {
                         </button>
                     </div>
 
-                    {/* Divider */}
-                    <div className="h-px bg-white/10" />
+
 
                     {/* Speaker */}
                     {currentCut?.speaker && (
@@ -263,6 +264,17 @@ export const Step4_PostProduction: React.FC = () => {
                         <p className="text-base text-white font-medium leading-relaxed">
                             "{currentCut?.dialogue}"
                         </p>
+                    </div>
+
+                    <div className="mt-auto pt-4 border-t border-white/10">
+                        {/* Post Production Options */}
+                        <button
+                            onClick={() => setIsWatermarkModalOpen(true)}
+                            className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 rounded-lg hover:bg-[var(--color-primary)]/10 hover:border-[var(--color-primary)] transition-colors text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)] w-full justify-center"
+                        >
+                            <ImageIcon size={16} />
+                            <span>워터마크 설정</span>
+                        </button>
                     </div>
                 </div>
 
@@ -340,6 +352,17 @@ export const Step4_PostProduction: React.FC = () => {
                     <ChevronRight size={16} />
                 </button>
             </div>
+
+            {isWatermarkModalOpen && (
+                <WatermarkSettingsModal
+                    projectId={projectId}
+                    watermarkSettings={watermarkSettings}
+                    aspectRatio={aspectRatio}
+                    previewBackground={currentResolvedImage}
+                    onUpdate={setWatermarkSettings}
+                    onClose={() => setIsWatermarkModalOpen(false)}
+                />
+            )}
         </div>
     );
 };
