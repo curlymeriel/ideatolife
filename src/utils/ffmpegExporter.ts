@@ -190,9 +190,9 @@ export async function loadFFmpeg(
     const ffmpeg = new FFmpeg();
 
     ffmpeg.on('log', ({ message }) => {
-        // Filter out too verbose logs if needed
+        // Pass frame= logs through during encoding so we can track progress
         if (message.includes('frame=') || message.includes('speed=')) {
-            // progress logs
+            console.debug('[FFmpeg Progress]', message.trim());
         } else {
             console.log('[FFmpeg Log]', message);
         }
@@ -896,6 +896,7 @@ export async function exportWithFFmpeg(
 
     if (bgmTracks.length > 0 && cutStartTimeMap.length > 0) {
         onProgress?.(95, 'Mixing background music...');
+        console.log(`[FFmpeg:BGM] Starting BGM mix with ${bgmTracks.length} track(s)...`);
 
         try {
             // Rename Manual (read -> write -> delete)
@@ -976,60 +977,120 @@ export async function exportWithFFmpeg(
     // 4.5 Watermark Pass
     if (options.watermarkSettings?.enabled && options.watermarkSettings?.imageUrl) {
         onProgress?.(96, 'Applying watermark...');
+        console.log('[FFmpeg:Watermark] Starting watermark pass:', options.watermarkSettings);
         try {
             const wmSettings = options.watermarkSettings;
             const imageUrl = wmSettings.imageUrl!;
-            const wmData = await fetchAssetResilient(imageUrl, 'watermark', 0);
+
+            // Load watermark using idb:// aware loader
+            let wmData: Uint8Array;
+            if (isIdbUrl(imageUrl)) {
+                const { loadFromIdb } = await import('./imageStorage');
+                const raw = await loadFromIdb(imageUrl);
+                if (!raw) throw new Error('Watermark image not found in IDB');
+                wmData = await fetchFile(raw instanceof Blob ? raw : raw as any);
+            } else {
+                wmData = await fetchFile(imageUrl);
+            }
             
             if (wmData.length > 0) {
+                console.log(`[FFmpeg:Watermark] Watermark data loaded: ${wmData.length}B`);
                 await ffmpeg.writeFile('watermark.png', wmData);
                 
                 const currentOutputData = await ffmpeg.readFile('output.mp4');
                 await ffmpeg.writeFile('output_pre_wm.mp4', currentOutputData);
                 await ffmpeg.deleteFile('output.mp4');
 
-                // positionX/positionY: 0-100% center anchor within video
                 const posX = wmSettings.positionX ?? 90;
                 const posY = wmSettings.positionY ?? 90;
-                // overlay= x:y where x,y is the TOP-LEFT corner of the watermark
-                // watermark width = W * scale, so half = (W*scale)/2
-                const halfW = `(W*${wmSettings.scale || 0.2}/2)`;
-                const halfH = `(oh/2)`; // oh = calculated height after scale
-                const overlayX = `W*${posX / 100}-${halfW}`;
-                const overlayY = `H*${posY / 100}-${halfH}`;
-                const overlayCoords = `${overlayX}:${overlayY}`;
+                const wmScale = wmSettings.scale || 0.2;
+                const wmOpacity = wmSettings.opacity ?? 0.8;
 
-                // scale watermark so its width = (video_width * userScale)
-                const wmTargetWidth = `W*${wmSettings.scale || 0.2}`;
-                const wmFilter = `[1:v]format=rgba,colorchannelmixer=aa=${wmSettings.opacity || 0.8},scale=${wmTargetWidth}:-1[wm];[0:v][wm]overlay=${overlayCoords}[vout]`;
+                // [FIX] Directly compute watermark pixel width from known export dimensions.
+                // scale2ref is unreliable and can distort aspect ratio with odd pixel counts.
+                // We know width/height from export options so use them directly.
+                // -2 (not -1) ensures even height → required for yuv420p, prevents aspect distortion.
+                const wmPixelWidth = Math.max(2, Math.round(width * wmScale));
+                const overlayXpx = Math.round(width * (posX / 100));
+                const overlayYpx = Math.round(height * (posY / 100));
 
-                await ffmpeg.exec([
-                    '-i', 'output_pre_wm.mp4',
-                    '-i', 'watermark.png',
-                    '-filter_complex', wmFilter,
-                    '-map', '[vout]',
-                    '-map', '0:a?', 
-                    '-c:v', 'libx264',
-                    '-crf', String(crf), // Maintain same visual quality
-                    '-preset', 'superfast',
-                    '-pix_fmt', 'yuv420p',
-                    '-c:a', 'copy', // Don't re-encode audio
-                    '-y', 'output.mp4'
-                ]);
+                // [PERF] Skip lut if opacity is effectively 1.0 (saves filter overhead)
+                const needsLut = wmOpacity < 0.999;
+                const wmFilterParts = [
+                    // Scale watermark to (videoWidth * scale) px wide, preserve natural aspect ratio
+                    `[1:v]scale=${wmPixelWidth}:-2[wmscaled]`,
+                ];
+                if (needsLut) {
+                    wmFilterParts.push(`[wmscaled]format=rgba,lut=a=val*${wmOpacity}[wm]`);
+                } else {
+                    wmFilterParts.push(`[wmscaled]format=rgba[wm]`);
+                }
+                wmFilterParts.push(
+                    // Overlay: center-anchor at (posX%, posY%) of video. Clamp to avoid negative coords.
+                    `[0:v][wm]overlay=x='max(0,${overlayXpx}-overlay_w/2)':y='max(0,${overlayYpx}-overlay_h/2)'[vout]`
+                );
+                const wmFilter = wmFilterParts.join(';');
+
+                // Register progress listener so the UI shows actual encoding progress
+                const totalDuration = cuts.reduce((sum: number, c: any) => sum + (c.duration || 0), 0);
+                const wmProgressHandler = ({ ratio }: { ratio: number }) => {
+                    const pct = 96 + Math.round(ratio * 2); // 96%~98%
+                    onProgress?.(Math.min(98, pct), `워터마크 적용 중... (${Math.round(ratio * 100)}%)`);
+                    console.log(`[FFmpeg:Watermark] Progress: ${Math.round(ratio * 100)}%`);
+                };
+                ffmpeg.on('progress', wmProgressHandler);
+
+                console.log(`[FFmpeg:Watermark] Filter: ${wmFilter}`);
+                console.log(`[FFmpeg:Watermark] Video: ${width}x${height}, ${totalDuration.toFixed(1)}s — using ultrafast preset`);
+                try {
+                    await ffmpeg.exec([
+                        '-i', 'output_pre_wm.mp4',
+                        '-i', 'watermark.png',
+                        '-filter_complex', wmFilter,
+                        '-map', '[vout]',
+                        '-map', '0:a?',
+                        '-c:v', 'libx264',
+                        // [PERF] ultrafast is ~4-5x faster than superfast in WASM.
+                        // CRF 26 keeps file size reasonable while encoding quickly.
+                        '-crf', '26',
+                        '-preset', 'ultrafast',
+                        '-pix_fmt', 'yuv420p',
+                        '-c:a', 'copy',
+                        '-y', 'output.mp4'
+                    ]);
+                } finally {
+                    // Always remove progress listener after encoding
+                    ffmpeg.off('progress', wmProgressHandler);
+                }
+                console.log('[FFmpeg:Watermark] ✅ Watermark applied successfully.');
 
                 try { await ffmpeg.deleteFile('output_pre_wm.mp4'); } catch { }
                 tempFiles.push('watermark.png');
+            } else {
+                console.warn('[FFmpeg:Watermark] Watermark data is empty, skipping.');
+                // No data, but output.mp4 was NOT deleted (wmData check before delete), safe.
             }
-        } catch (wmErr) {
-            console.error('[FFmpeg:Watermark] Watermark failed:', wmErr);
-            // Attempt to restore if failed
+        } catch (wmErr: any) {
+            console.error('[FFmpeg:Watermark] ❌ Watermark failed:', wmErr?.message || wmErr);
+            // If FFmpeg crashed, try reloading it first
+            if (wmErr?.message?.includes('Aborted') || wmErr?.message?.includes('exit')) {
+                console.warn('[FFmpeg:Watermark] FFmpeg crashed. Reloading engine...');
+                try { ffmpeg = await loadFFmpeg(onProgress, true); } catch { }
+            }
+            // Attempt to restore pre-watermark video so export can continue
             try { 
                 const preWmData = await ffmpeg.readFile('output_pre_wm.mp4');
                 await ffmpeg.writeFile('output.mp4', preWmData);
-                await ffmpeg.deleteFile('output_pre_wm.mp4');
-            } catch { }
+                try { await ffmpeg.deleteFile('output_pre_wm.mp4'); } catch { }
+                console.warn('[FFmpeg:Watermark] ⚠️ Restored pre-watermark video. Export continues without watermark.');
+            } catch (restoreErr: any) {
+                console.error('[FFmpeg:Watermark] ❌ Could not restore pre-watermark video:', restoreErr?.message);
+                // Last resort: export is broken. Throw so user sees the real error.
+                throw new Error(`워터마크 적용 실패 및 복원 불가: ${wmErr?.message || '알 수 없는 오류'}`);
+            }
         }
     }
+
 
     // 5. Attach Thumbnail (Cover Art)
     if (options.attachThumbnail && options.thumbnailData) {
@@ -1092,7 +1153,14 @@ export async function exportWithFFmpeg(
     let data: any;
     try {
         data = await ffmpeg.readFile('output.mp4');
-    } catch (e) {
+        console.log(`[FFmpeg:Export] ✅ Final output.mp4 read: ${data?.length}B`);
+    } catch (e: any) {
+        console.error('[FFmpeg:Export] ❌ Failed to read output.mp4:', e?.message);
+        // List FS to diagnose
+        try {
+            const dir = await ffmpeg.listDir('.');
+            console.error('[FFmpeg:Export] Files in FS at failure:', dir.map(f => f.name).join(', '));
+        } catch { }
         throw new Error('최종 비디오 파일(output.mp4)을 읽을 수 없습니다. 인코딩 또는 병합에 실패했습니다.');
     }
 

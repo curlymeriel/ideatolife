@@ -339,7 +339,7 @@ ${refContext}` : ''}
                 }
 
                 refImages = usedRefImages;
-                ratio = config.mode === 'thumbnail' ? '16:9' : config.aspectRatio;
+                ratio = config.mode === 'thumbnail' ? (config.aspectRatio || '16:9') : config.aspectRatio;
             }
 
             const cleaned = cleanPromptForGeneration(finalPrompt);
