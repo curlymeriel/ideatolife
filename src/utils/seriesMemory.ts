@@ -85,11 +85,18 @@ export async function upsertEpisodeMemoryEntry(
     // 에피소드 번호 순으로 정렬
     base.episodes.sort((a, b) => a.episodeNumber - b.episodeNumber);
 
+    // AI가 반환하는 문자열의 띄어쓰기나 구두점 차이로 인한 매칭 실패를 방지하는 정규화 함수
+    const normalizeStr = (s: string) => (s || '').replace(/\s+/g, '').replace(/[.,!?]/g, '').toLowerCase();
+
     // 전체 미회수 복선 목록 재계산 (모든 화의 pendingPlotHooks 합산 - 회수된 것 제거)
-    const allResolved = new Set(base.episodes.flatMap(e => e.resolvedPlotHooks));
+    const allResolvedNormalized = new Set(
+        base.episodes.flatMap(e => (e.resolvedPlotHooks || []).map(normalizeStr))
+    );
+
     const allPending = base.episodes
-        .flatMap(e => e.pendingPlotHooks)
-        .filter(hook => !allResolved.has(hook));
+        .flatMap(e => e.pendingPlotHooks || [])
+        .filter(hook => !allResolvedNormalized.has(normalizeStr(hook)));
+    
     base.globalPendingHooks = [...new Set(allPending)];
 
     base.lastModified = Date.now();
