@@ -2429,7 +2429,8 @@ Output ONLY the motion prompt text. End with "No background music. Ambient sound
  */
 export const generateEpisodeMemorySummary = async (
     project: ProjectData,
-    apiKeysRaw: string | string[]
+    apiKeysRaw: string | string[],
+    existingPendingHooks: string[] = []
 ): Promise<EpisodeMemoryEntry> => {
     const compactScript = (project.script || []).map((cut: any) => ({
         speaker: cut.speaker,
@@ -2452,14 +2453,17 @@ ${JSON.stringify(project.storylineTable || [])}
 [대본 컷 리스트 (요약)]
 ${JSON.stringify(compactScript.slice(0, 40))}
 
+[이전까지 수집된 미회수 복선 (매우 중요)]
+${existingPendingHooks.length > 0 ? JSON.stringify(existingPendingHooks) : "없음"}
+
 위 데이터를 바탕으로 다음 JSON을 생성하세요:
 {
   "summary": "에피소드 핵심 사건 요약 (150자 이내, 한국어)",
   "emotionLog": "주인공 감정선 변화 포인트 (한 문장, 한국어)",
   "plotPoints": ["주요 사건 1", "주요 사건 2", ...],
   "endingNote": "엔딩 분위기 및 마지막 대사 요약 (한국어)",
-  "pendingPlotHooks": ["이번 화에서 심어진 미회수 복선 1", ...],
-  "resolvedPlotHooks": ["이번 화에서 회수된 기존 복선 1", ...]
+  "pendingPlotHooks": ["이번 화에서 새롭게 심어진 복선 1", ...],
+  "resolvedPlotHooks": ["이번 화에서 회수된 복선 목록. (★반드시 위 [이전가지 수집된 미회수 복선]에 있는 텍스트와 토시 하나 안 틀리고 100% 동일한 문자열로 적어야 시스템에서 지워집니다!! 없으면 빈 배열)"]
 }
 
 응답은 JSON만 반환하세요 (Markdown 블록 없이).

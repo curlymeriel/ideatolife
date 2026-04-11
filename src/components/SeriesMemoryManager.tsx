@@ -160,7 +160,8 @@ const SeriesMemoryManager: React.FC<Props> = ({
         }
         setIsGeneratingMemory(true);
         try {
-            const entry = await generateEpisodeMemorySummary(projectData, apiKey);
+            const existingHooks = memory?.globalPendingHooks || [];
+            const entry = await generateEpisodeMemorySummary(projectData, apiKey, existingHooks);
             await upsertEpisodeMemoryEntry(seriesName, entry);
             await load();
             setExpandedEp(entry.episodeNumber);
