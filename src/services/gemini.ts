@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { deepMerge } from '../utils/objectUtils';
+import type { ProjectData, EpisodeMemoryEntry } from '../store/types';
 
 export interface ScriptCut {
     id: number;
@@ -1097,7 +1098,11 @@ export const consultStory = async (
     history: ChatMessage[],
     context: ProjectContext,
     apiKeysRaw: string | string[],
-    customInstruction?: string
+    customInstruction?: string,
+    seriesMemoryContext?: {        // Layer 1/2 메모리 컨텍스트
+        layer1Bible?: string;
+        layer2CumulativeLog?: string;
+    }
 ): Promise<ConsultationResult> => {
     console.log("[Gemini Service] consultStory called. Has API Key:", !!apiKeysRaw);
     if (!apiKeysRaw) {
@@ -1123,6 +1128,40 @@ export const consultStory = async (
 
     try {
         let systemInstruction = customInstruction || DEFAULT_CONSULTANT_INSTRUCTION;
+
+        // ====================
+        // [LAYER 1/2] 시리즈 메모리 블록 주입
+        // ====================
+        let seriesMemoryBlock = '';
+        if (seriesMemoryContext?.layer1Bible || seriesMemoryContext?.layer2CumulativeLog) {
+            const parts: string[] = [];
+
+            if (seriesMemoryContext.layer1Bible) {
+                parts.push(`================================================================
+[SERIES BIBLE — Layer 1: 시리즈 불변 규칙 및 설정]
+================================================================
+${seriesMemoryContext.layer1Bible}
+================================================================
+END OF SERIES BIBLE
+================================================================`);
+            }
+
+            if (seriesMemoryContext.layer2CumulativeLog) {
+                parts.push(`================================================================
+[CUMULATIVE STORY LOG — Layer 2: 이전 에피소드 누적 서사]
+이 기록은 실제 완성된 에피소드 내용입니다. 신규 에피소드 작성 시 반드시 이 서사 흐름을 이어가세요.
+================================================================
+${seriesMemoryContext.layer2CumulativeLog}
+================================================================
+END OF CUMULATIVE LOG
+================================================================`);
+            }
+
+            seriesMemoryBlock = parts.join('\n\n') + '\n\n';
+        }
+
+        // {{seriesMemoryBlock}} 플레이스홀더 치환 (메모리가 없으면 빈 문자열)
+        systemInstruction = systemInstruction.replace('{{seriesMemoryBlock}}', seriesMemoryBlock);
 
         // Hydrate template variables
         systemInstruction = systemInstruction
@@ -2378,5 +2417,178 @@ Output ONLY the motion prompt text. End with "No background music. Ambient sound
         const basePrompt = context.visualPrompt || '';
         const cameraMove = emotionSuggestions[0] || 'Camera holds steady';
         return `${basePrompt}. ${cameraMove}. ${characterMotionHints || 'Subtle breathing motion'}. ${locationHints || 'Ambient atmosphere'}. No background music.`;
+    }
+};
+
+// ====================
+// Series Memory AI Functions (Phase 3 & 4)
+// ====================
+
+/**
+ * [Phase 3] Layer 2: 현재 완료된 에피소드의 메모리 항목을 AI가 자동 생성
+ */
+export const generateEpisodeMemorySummary = async (
+    project: ProjectData,
+    apiKeysRaw: string | string[]
+): Promise<EpisodeMemoryEntry> => {
+    const compactScript = (project.script || []).map((cut: any) => ({
+        speaker: cut.speaker,
+        dialogue: cut.dialogue,
+        duration: cut.estimatedDuration
+    }));
+
+    const prompt = `
+당신은 K-Drama 시리즈 작가 보조 AI입니다.
+다음 에피소드 데이터를 분석하여 서사 메모리(Episode Memory Entry)를 생성하세요.
+
+[에피소드 기본 정보]
+- 에피소드 번호: ${project.episodeNumber || '?'}
+- 에피소드명: ${project.episodeName || ''}
+- 에피소드 플롯: ${project.episodePlot || ''}
+
+[스토리라인 씬 구성]
+${JSON.stringify(project.storylineTable || [])}
+
+[대본 컷 리스트 (요약)]
+${JSON.stringify(compactScript.slice(0, 40))}
+
+위 데이터를 바탕으로 다음 JSON을 생성하세요:
+{
+  "summary": "에피소드 핵심 사건 요약 (150자 이내, 한국어)",
+  "emotionLog": "주인공 감정선 변화 포인트 (한 문장, 한국어)",
+  "plotPoints": ["주요 사건 1", "주요 사건 2", ...],
+  "endingNote": "엔딩 분위기 및 마지막 대사 요약 (한국어)",
+  "pendingPlotHooks": ["이번 화에서 심어진 미회수 복선 1", ...],
+  "resolvedPlotHooks": ["이번 화에서 회수된 기존 복선 1", ...]
+}
+
+응답은 JSON만 반환하세요 (Markdown 블록 없이).
+`;
+
+    try {
+        const text = await generateText(prompt, apiKeysRaw, 'application/json', undefined, undefined, {
+            temperature: 0.5,
+            preferredModel: 'Gemini 3 Flash Preview'
+        });
+        const clean = text.replace(/```json\n?|\n?```/g, '').trim();
+        const parsed = JSON.parse(clean);
+
+        return {
+            episodeNumber: project.episodeNumber || 0,
+            episodeName: project.episodeName || `Episode ${project.episodeNumber}`,
+            status: 'completed',
+            completedAt: Date.now(),
+            summary: parsed.summary || '',
+            emotionLog: parsed.emotionLog || '',
+            plotPoints: Array.isArray(parsed.plotPoints) ? parsed.plotPoints : [],
+            endingNote: parsed.endingNote || '',
+            pendingPlotHooks: Array.isArray(parsed.pendingPlotHooks) ? parsed.pendingPlotHooks : [],
+            resolvedPlotHooks: Array.isArray(parsed.resolvedPlotHooks) ? parsed.resolvedPlotHooks : [],
+            createdAt: Date.now()
+        };
+    } catch (error) {
+        console.error('[generateEpisodeMemorySummary] Failed:', error);
+        throw error;
+    }
+};
+
+/**
+ * [Phase 4] Layer 1: 현재 프로젝트 데이터 기반으로 시리즈 바이블 초안 생성 (신규 시리즈용)
+ */
+export const generateSeriesBibleDraft = async (
+    project: ProjectData,
+    apiKeysRaw: string | string[]
+): Promise<string> => {
+    const prompt = `
+당신은 K-Drama 시리즈 전문 작가입니다.
+다음 시리즈 기초 데이터를 바탕으로, 신규 시리즈의 '시리즈 바이블(Series Bible)' 초안을 마크다운 형식으로 생성하세요.
+이 바이블은 AI 스토리작가가 에피소드를 집필할 때 참조하는 불변 가이드입니다.
+
+[시리즈 기초 정보]
+- 시리즈명: ${project.seriesName || ''}
+- 시리즈 스토리: ${project.seriesStory || ''}
+- 메인 캐릭터: ${JSON.stringify(project.characters || [])}
+- 시리즈 장소: ${JSON.stringify(project.seriesLocations || [])}
+- 시리즈 소품/오브제: ${JSON.stringify(project.seriesProps || [])}
+- 마스터 비주얼 스타일: ${project.masterStyle?.description || ''}
+- 목표 분량: ${project.targetDuration || 60}초 숏폼
+
+다음 섹션을 포함한 마크다운 바이블을 작성하세요:
+
+# 시리즈명: [시리즈명]
+
+## 1. 세계관 & 핵심 설정
+(시뮬메리지 서비스, AI 퓨처, 계약 결혼 등 핵심 세계관 규칙)
+
+## 2. 주요 캐릭터 불변 프로필
+(각 캐릭터의 불변 특성, 가치관, 말투)
+
+## 3. 시리즈 핵심 복선 & 미스터리
+(전체 시리즈에 걸쳐 회수될 복선 목록)
+
+## 4. 포맷 룰 (숏폼 제작 규칙)
+(엔딩 클리프행어 필수, 8초 제한 컷 등 제작 규칙)
+
+## 5. 감정선 아크 (전체 시리즈 로드맵)
+(시리즈 전체의 감정 흐름 가이드)
+
+응답은 마크다운 텍스트만 반환하세요.
+`;
+
+    try {
+        const text = await generateText(prompt, apiKeysRaw, 'text/plain', undefined, undefined, {
+            temperature: 0.7,
+            preferredModel: 'Gemini 3.1 Pro Preview'
+        });
+        return text.trim();
+    } catch (error) {
+        console.error('[generateSeriesBibleDraft] Failed:', error);
+        throw error;
+    }
+};
+
+/**
+ * [Phase 4] Layer 1: 에피소드 완료 후 시리즈 바이블 업데이트 제안 생성
+ */
+export const suggestBibleUpdates = async (
+    project: ProjectData,
+    existingBible: string,
+    apiKeysRaw: string | string[]
+): Promise<{ section: string; suggestion: string; reason: string }[]> => {
+    const prompt = `
+당신은 K-Drama 시리즈 작가 보조 AI입니다.
+방금 완성된 에피소드의 내용을 분석하고, 기존 '시리즈 바이블'에서 업데이트가 필요한 항목을 제안하세요.
+
+[기존 시리즈 바이블]
+${existingBible}
+
+[방금 완성된 에피소드 정보]
+- 에피소드 번호: ${project.episodeNumber || '?'}
+- 에피소드 플롯: ${project.episodePlot || ''}
+- 주요 사건 (스토리라인): ${JSON.stringify((project.storylineTable || []).map((s: any) => s.content))}
+
+에피소드 내용을 바탕으로, 시리즈 바이블에서 추가·수정이 필요한 항목을 배열로 반환하세요:
+[
+  {
+    "section": "업데이트할 바이블 섹션명 (예: '주요 캐릭터 불변 프로필', '시리즈 핵심 복선')",
+    "suggestion": "추가하거나 수정할 내용 (한국어, 구체적으로)",
+    "reason": "이 업데이트가 필요한 이유 (한국어, 1문장)"
+  }
+]
+
+응답은 JSON 배열만 반환하세요. 제안이 없으면 빈 배열 []을 반환하세요.
+`;
+
+    try {
+        const text = await generateText(prompt, apiKeysRaw, 'application/json', undefined, undefined, {
+            temperature: 0.5,
+            preferredModel: 'Gemini 3 Flash Preview'
+        });
+        const clean = text.replace(/```json\n?|\n?```/g, '').trim();
+        const parsed = JSON.parse(clean);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+        console.error('[suggestBibleUpdates] Failed:', error);
+        return [];
     }
 };

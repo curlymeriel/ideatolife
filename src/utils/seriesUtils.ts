@@ -56,6 +56,41 @@ export async function getLatestProjectBySeries(seriesName: string): Promise<Proj
 }
 
 /**
+ * Get the most recent project in a series that has characters defined.
+ * This is preferred over getLatestProjectBySeries when inheriting series data,
+ * because the "latest" project may be a new empty episode with no characters yet.
+ */
+export async function getSeriesProjectWithCharacters(seriesName: string): Promise<ProjectData | null> {
+    try {
+        const allKeys = await idbKeys();
+        const projectKeys = allKeys.filter(key =>
+            typeof key === 'string' && key.startsWith('project-')
+        ) as string[];
+
+        let bestProject: ProjectData | null = null;
+        let bestTimestamp = 0;
+
+        for (const key of projectKeys) {
+            const project = await idbGet<ProjectData>(key);
+            if (
+                project?.seriesName === seriesName &&
+                Array.isArray(project.characters) &&
+                project.characters.length > 0 &&
+                project.lastModified > bestTimestamp
+            ) {
+                bestProject = project;
+                bestTimestamp = project.lastModified;
+            }
+        }
+
+        return bestProject;
+    } catch (error) {
+        console.error(`Failed to get series project with characters for "${seriesName}":`, error);
+        return null;
+    }
+}
+
+/**
  * Extract series-level data from a project
  */
 export function extractSeriesData(project: ProjectData): Partial<ProjectData> {

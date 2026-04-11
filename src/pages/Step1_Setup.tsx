@@ -7,6 +7,7 @@ import type { AspectRatio } from '../store/types';
 import { compressImage } from '../utils/imageUtils';
 import { CheckCircle, Save, ArrowRight, Bot, User, Sparkles, Film, Send, ChevronDown, ChevronRight, Plus, Trash2, Edit2, X, MapPin, Clock, Paperclip, Package } from 'lucide-react';
 import { ChatMessageItem } from '../components/ChatMessageItem';
+import SeriesMemoryManager from '../components/SeriesMemoryManager';
 
 export const Step1_Setup: React.FC = () => {
     console.log("Step1_Setup: Rendering");
@@ -87,6 +88,11 @@ export const Step1_Setup: React.FC = () => {
 
     // Trend Insights Panel State
     const [isTrendInsightsOpen, setIsTrendInsightsOpen] = useState(false);
+
+    // Series Memory 상태
+    const [isMemoryEnabled, setIsMemoryEnabled] = useState(true);
+    const [memoryInjectionLimit, setMemoryInjectionLimit] = useState(3);
+    const [showMemoryPanel, setShowMemoryPanel] = useState(false);
 
 
 
@@ -524,7 +530,14 @@ export const Step1_Setup: React.FC = () => {
                 assetDefinitions: store.assetDefinitions || {}
             };
 
-            const result = await consultStory(updatedHistory, context, apiKeys.gemini, customInstructions);
+            const result = await consultStory(
+                updatedHistory,
+                context,
+                apiKeys.gemini,
+                customInstructions,
+                // [Layer 1/2] 메모리 주입
+                isMemoryEnabled && seriesName ? await import('../utils/seriesMemory').then(m => m.buildMemoryContext(seriesName, memoryInjectionLimit)) : undefined
+            );
             console.log('[Step1] AI Response - suggestedDeletions:', result.suggestedDeletions, 'Full keys:', Object.keys(result));
 
             // FALLBACK: If AI didn't return suggestedDeletions, try to detect deletion intent from user message
@@ -1171,6 +1184,37 @@ export const Step1_Setup: React.FC = () => {
                             <p className="text-xs text-[var(--color-text-muted)]">
                                 * Variables like {"{{seriesName}}"} will be replaced with actual project data.
                             </p>
+                        </div>
+                    </details>
+
+                    {/* Series Memory Manager Panel (Collapsible) */}
+                    <details className="group border-b border-[var(--color-primary)]/30 bg-[var(--color-surface)]/30">
+                        <summary className="px-4 py-3 cursor-pointer flex items-center justify-between bg-gradient-to-r from-[var(--color-primary)]/20 via-[var(--color-primary)]/5 to-transparent hover:from-[var(--color-primary)]/30 transition-all select-none">
+                            <div className="flex items-center gap-4 flex-1">
+                                <span className="text-sm font-bold text-[var(--color-primary)] flex items-center gap-2">
+                                    📚 AI 시리즈 메모리 (Layer 1 & 2)
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-3 pl-2">
+                                <ChevronDown size={14} className="text-[var(--color-primary)] group-open:rotate-180 transition-transform" />
+                            </div>
+                        </summary>
+                        <div className="p-4 border-t border-[var(--color-primary)]/20">
+                            {seriesName ? (
+                                <SeriesMemoryManager
+                                    seriesName={seriesName}
+                                    projectData={store}
+                                    apiKey={apiKeys.gemini}
+                                    isMemoryEnabled={isMemoryEnabled}
+                                    onMemoryToggle={setIsMemoryEnabled}
+                                    injectionLimit={memoryInjectionLimit}
+                                    onInjectionLimitChange={setMemoryInjectionLimit}
+                                />
+                            ) : (
+                                <div className="text-xs text-gray-400 text-center py-4">
+                                    오른쪽 패널에서 시리즈명(Series Name)을 먼저 설정해야 메모리 기능을 사용할 수 있습니다.
+                                </div>
+                            )}
                         </div>
                     </details>
 

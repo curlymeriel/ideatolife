@@ -1,5 +1,6 @@
 
 const SHARED_PROJECT_CONTEXT = `
+{{seriesMemoryBlock}}
 CURRENT PROJECT CONTEXT (Use this to inform your suggestions):
 - Main Characters Summary: "{{mainCharacters}}"
 - Main Characters List: {{characters}}

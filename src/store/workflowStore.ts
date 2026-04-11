@@ -1595,11 +1595,25 @@ export const useWorkflowStore = create<WorkflowStore>()(
 
                 // If sourceSeries is provided, inherit series-level data
                 if (sourceSeries) {
-                    const { getLatestProjectBySeries, extractSeriesData, getNextEpisodeNumber } = await import('../utils/seriesUtils');
-                    const sourceProject = await getLatestProjectBySeries(sourceSeries);
+                    const { getLatestProjectBySeries, extractSeriesData, getNextEpisodeNumber, getSeriesProjectWithCharacters } = await import('../utils/seriesUtils');
+
+                    // [FIX] Prefer the in-memory state if it's the same series AND has characters.
+                    // This avoids a race condition where saveProject() updates lastModified,
+                    // making the current (possibly empty) project the "latest" one.
+                    let sourceProject: any = null;
+                    if (state.seriesName === sourceSeries && Array.isArray(state.characters) && state.characters.length > 0) {
+                        console.log(`[Store] Using in-memory state as series source for "${sourceSeries}" (${state.characters.length} characters)`);
+                        sourceProject = state; // Use memory state directly
+                    } else {
+                        // Fallback: find the best project on disk (prefer one with characters)
+                        sourceProject = await getSeriesProjectWithCharacters(sourceSeries);
+                        if (!sourceProject) {
+                            sourceProject = await getLatestProjectBySeries(sourceSeries);
+                        }
+                    }
 
                     if (sourceProject) {
-                        console.log(`[Store] Inheriting series data from "${sourceSeries}"`);
+                        console.log(`[Store] Inheriting series data from "${sourceSeries}" (characters: ${sourceProject.characters?.length || 0})`);
                         const seriesData = extractSeriesData(sourceProject);
                         const nextEpisodeNum = await getNextEpisodeNumber(sourceSeries);
 

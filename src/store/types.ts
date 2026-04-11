@@ -557,3 +557,49 @@ export interface ProjectMetadata {
     storylineTable?: StorylineScene[];
     currentStep?: number;
 }
+
+// ====================
+// Series Memory System (3-Layer Story Memory)
+// ====================
+
+/**
+ * Layer 1: 시리즈 바이블 — 세계관 룰, 캐릭터 프로필, 포맷 룰 (크리에이터 정의)
+ * 원칙적으로 시리즈 완결까지 불변. AI 제안으로 점진적 업데이트 가능.
+ */
+export interface SeriesBible {
+    seriesName: string;
+    content: string;        // 마크다운 자유 텍스트
+    lastModified: number;
+    version: number;        // 편집 버전 추적
+    createdAt: number;
+}
+
+/**
+ * Layer 2: 에피소드 누적 기록 — 완료 에피소드별 서사·감정선·복선 요약
+ * 에피소드 완료 후 수동 트리거로 AI가 생성. 크리에이터가 검토 후 확정.
+ */
+export interface EpisodeMemoryEntry {
+    episodeNumber: number;
+    episodeName: string;
+    status: 'completed' | 'in_progress';
+    completedAt?: number;
+    summary: string;            // AI가 생성한 에피소드 핵심 요약 (150자 이내)
+    emotionLog: string;         // 주인공 감정선 변화 포인트
+    plotPoints: string[];       // 주요 사건 목록
+    endingNote: string;         // 엔딩 대사·분위기 요약
+    pendingPlotHooks: string[]; // 이번 화에서 심어진 미회수 복선
+    resolvedPlotHooks: string[]; // 이번 화에서 회수된 복선
+    createdAt: number;
+}
+
+/**
+ * Layer 2 전체 컨테이너
+ */
+export interface SeriesMemory {
+    seriesName: string;
+    lastModified: number;
+    injectionLimit: number;     // AI 프롬프트에 주입할 최근 N화 한도 (기본 3)
+    layer2Summary: string;      // 전체 누적 내러티브 요약 (500자 이내)
+    episodes: EpisodeMemoryEntry[];
+    globalPendingHooks: string[]; // 전체 미회수 복선 목록
+}
