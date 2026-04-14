@@ -287,8 +287,13 @@ export async function resolveUrl(
 ): Promise<string> {
     if (!url) return '';
 
-    // [FIX] Auto-heal expired Firebase Storage URLs globally
-    if (url.startsWith('https://firebasestorage.googleapis.com/')) {
+    // [FIX] Auto-heal expired Firebase Storage URLs globally, including Google Cloud Storage domains
+    if (
+        url.startsWith('https://firebasestorage.googleapis.com/') ||
+        url.startsWith('https://storage.googleapis.com/') ||
+        url.startsWith('https://storage.cloud.google.com/') ||
+        url.includes('.firebasestorage.app')
+    ) {
         try {
             const res = await fetch(url, { method: 'HEAD' });
             if (res.ok) return url;
@@ -297,20 +302,95 @@ export async function resolveUrl(
         }
 
         try {
-            const match = url.match(/\/o\/([^?]+)/);
-            if (match && match[1]) {
-                const path = decodeURIComponent(match[1]);
+            let path = "";
+            const matchO = url.match(/\/o\/([^?]+)/);
+            if (matchO && matchO[1]) {
+                path = decodeURIComponent(matchO[1]);
+            } else {
+                // Handle generic storage.googleapis.com/bucket/path format
+                const urlObj = new URL(url);
+                const parts = urlObj.pathname.split('/').filter(Boolean);
+                // Standard Firebase paths look like users/userId/projects/...
+                const usersIndex = parts.indexOf('users');
+                if (usersIndex !== -1) {
+                    path = decodeURIComponent(parts.slice(usersIndex).join('/'));
+                }
+            }
+
+            if (path) {
                 const cloudStorage = await import('../services/cloudStorage');
                 // Auto-healing tokens without user prompt
-                return await cloudStorage.getFileUrl(path);
+                try {
+                    return await cloudStorage.getFileUrl(path);
+                } catch (cloudErr) {
+                    console.warn('[ImageStorage:resolveUrl] Cloud heal failed, attempting IDB fallback for', path);
+                    // Path format: users/{userId}/projects/{projectId}/{mediaType}/{fileName}
+                    const parts = path.split('/');
+                    if (parts.length >= 6 && parts[2] === 'projects') {
+                        const projectId = parts[3];
+                        const mediaType = parts[4]; // images | audio | videos
+                        const fileName = parts[5];
+
+                        // Real IDB key format: idb://{type}/{projectId}-cut-{cutId}-{subtype}
+                        // e.g. idb://images/project-xxx-cut-14-final
+                        //      idb://audio/project-xxx-audio-9
+                        const cutMatch = fileName.match(/cut_(\d+)/);
+                        const cutId = cutMatch ? parseInt(cutMatch[1], 10).toString() : '';
+
+                        if (cutId) {
+                            let idbKey = '';
+                            if (mediaType === 'images' && fileName.includes('_final.')) {
+                                idbKey = `idb://images/${projectId}-cut-${cutId}-final`;
+                            } else if (mediaType === 'images' && fileName.includes('_draft.')) {
+                                idbKey = `idb://images/${projectId}-cut-${cutId}-draft`;
+                            } else if (mediaType === 'audio') {
+                                idbKey = `idb://audio/${projectId}-audio-${cutId}`;
+                            } else if (mediaType === 'videos' || mediaType === 'video') {
+                                idbKey = `idb://video/${projectId}-video-${cutId}`;
+                            }
+
+                            if (idbKey) {
+                                console.log('[ImageStorage:resolveUrl] Trying IDB fallback key:', idbKey);
+                                const idbFallbackUrl = await resolveUrl(idbKey, options);
+                                if (idbFallbackUrl) return idbFallbackUrl;
+                                console.warn('[ImageStorage:resolveUrl] IDB fallback key not found in local storage:', idbKey);
+                            }
+                        }
+                    }
+                    throw cloudErr;
+                }
             }
         } catch (e) {
-            console.warn('[ImageStorage:resolveUrl] Failed to auto-heal firebase url', e);
+            console.warn('[ImageStorage:resolveUrl] Failed to auto-heal firebase url and IDB fallback failed', e);
         }
         return url; // Fallback to original if healing fails
     }
 
-    if (!isIdbUrl(url)) return url;
+    if (!isIdbUrl(url)) {
+        // [FIX] If it's a huge data: URL, convert it to a Blob URL to prevent React key explosion and freezing
+        if (options.asBlob && url.startsWith('data:')) {
+            if (blobUrlCache.has(url)) return blobUrlCache.get(url)!.url;
+            
+            try {
+                const [header, base64] = url.split(',');
+                if (base64 && base64.length > 1000) { // Only bother for large assets
+                    let mime = header.match(/:(.*?);/)?.[1] || 'application/octet-stream';
+                    const binary = atob(base64);
+                    const array = new Uint8Array(binary.length);
+                    for (let i = 0; i < binary.length; i++) {
+                        array[i] = binary.charCodeAt(i);
+                    }
+                    const blob = new Blob([array], { type: mime });
+                    const bUrl = URL.createObjectURL(blob);
+                    blobUrlCache.set(url, { url: bUrl, blob });
+                    return bUrl;
+                }
+            } catch (e) {
+                console.warn("[ImageStorage:resolveUrl] Fallback data URL conversion failed", e);
+            }
+        }
+        return url;
+    }
 
     // [OPTIMIZATION] Check cache first for Blob URLs
     if (options.asBlob && blobUrlCache.has(url)) {

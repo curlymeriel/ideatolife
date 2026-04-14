@@ -58,6 +58,9 @@ export const getLocalProjects = async (): Promise<ProjectData[]> => {
     return projects.sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0));
 };
 
+// [FIX] Session-level flag: once quota is exceeded, stop all uploads for the rest of the session
+let _quotaExceeded = false;
+
 /**
  * 단일 URL의 미디어를 클라우드에 업로드
  */
@@ -71,8 +74,15 @@ const uploadMediaUrl = async (
 ): Promise<string | null> => {
     if (!url) return null;
 
+    // [FIX] Skip all uploads if quota was exceeded earlier in this session
+    if (_quotaExceeded) return null;
+
     // Skip if already a Firebase Storage URL
-    if (url.includes('firebasestorage.googleapis.com')) {
+    if (
+        url.includes('firebasestorage.googleapis.com') ||
+        url.includes('storage.googleapis.com') ||
+        url.includes('storage.cloud.google.com')
+    ) {
         return url;
     }
 
@@ -141,6 +151,12 @@ const uploadMediaUrl = async (
         // Firebase Storage Unauthorized error code
         if (error?.code === 'storage/unauthorized' || error?.status === 403) {
             return 'UNAUTHORIZED';
+        }
+        // [FIX] Quota exceeded: mark session flag to stop all future uploads this session
+        if (error?.code === 'storage/quota-exceeded') {
+            _quotaExceeded = true;
+            console.warn('[CloudMigration] Storage quota exceeded. Disabling auto-upload for this session.');
+            return 'QUOTA_EXCEEDED';
         }
         return null;
     }
