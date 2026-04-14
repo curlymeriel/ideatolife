@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useWorkflowStore } from '../store/workflowStore';
 import { useNavigate } from 'react-router-dom';
 import { Play, Image as ImageIcon, ArrowRight, ArrowLeft, Pause, ChevronLeft, ChevronRight } from 'lucide-react';
-import { resolveUrl, isIdbUrl } from '../utils/imageStorage';
+import { resolveUrl } from '../utils/imageStorage';
 import { TimelineView } from '../components/Production/TimelineView';
 import { WatermarkSettingsModal } from '../components/Production/WatermarkSettingsModal';
 import { getAspectRatioCss } from '../utils/aspectRatioUtils';
@@ -36,9 +36,8 @@ export const Step4_PostProduction: React.FC = () => {
             const resolved: Record<number, string> = {};
             for (const cut of script) {
                 if (cut.finalImageUrl) {
-                    resolved[cut.id] = isIdbUrl(cut.finalImageUrl)
-                        ? await resolveUrl(cut.finalImageUrl)
-                        : cut.finalImageUrl;
+                    const url = await resolveUrl(cut.finalImageUrl);
+                    if (url) resolved[cut.id] = url;
                 }
             }
             setResolvedImages(resolved);
@@ -52,12 +51,8 @@ export const Step4_PostProduction: React.FC = () => {
             const resolved: Record<number, string> = {};
             for (const cut of script) {
                 if (cut.audioUrl && cut.audioUrl !== 'mock:beep') {
-                    if (isIdbUrl(cut.audioUrl)) {
-                        const url = await resolveUrl(cut.audioUrl, { asBlob: true });
-                        if (url) resolved[cut.id] = url;
-                    } else {
-                        resolved[cut.id] = cut.audioUrl;
-                    }
+                    const url = await resolveUrl(cut.audioUrl, { asBlob: true });
+                    if (url) resolved[cut.id] = url;
                 }
             }
             setResolvedAudios(resolved);
@@ -76,12 +71,8 @@ export const Step4_PostProduction: React.FC = () => {
             const resolved: Record<number, string> = {};
             for (const cut of script) {
                 if (cut.sfxUrl) {
-                    if (isIdbUrl(cut.sfxUrl)) {
-                        const url = await resolveUrl(cut.sfxUrl, { asBlob: true });
-                        if (url) resolved[cut.id] = url;
-                    } else {
-                        resolved[cut.id] = cut.sfxUrl;
-                    }
+                    const url = await resolveUrl(cut.sfxUrl, { asBlob: true });
+                    if (url) resolved[cut.id] = url;
                 }
             }
             setResolvedSfx(resolved);
@@ -102,8 +93,7 @@ export const Step4_PostProduction: React.FC = () => {
             if (!bgmTracks || bgmTracks.length === 0) return;
             for (const track of bgmTracks) {
                 if (!track.url) continue;
-                let finalUrl = track.url;
-                if (isIdbUrl(track.url)) finalUrl = await resolveUrl(track.url, { asBlob: true });
+                const finalUrl = await resolveUrl(track.url, { asBlob: true });
                 if (finalUrl) {
                     const audio = new Audio(finalUrl);
                     audio.loop = track.loop;
