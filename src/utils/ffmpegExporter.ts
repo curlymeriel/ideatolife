@@ -656,8 +656,6 @@ export async function exportWithFFmpeg(
 
                     if (hasSfx) {
                         currentInputs.push('-i', `sfx_${padNum}.mp3`);
-                    } else {
-                        currentInputs.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100');
                     }
                     const sfxInputIndex = audioInputIndex;
 
@@ -719,11 +717,18 @@ export async function exportWithFFmpeg(
                     // Audio Mixing with Resilience (Force 44100Hz to prevent amix crash from sample rate mismatch)
                     const sfxVol = cut.sfxVolume ?? 0.3;
                     const primaryVol = (useVideoAudio) ? (cut.audioVolumes?.video ?? 1.0) : (cut.audioVolumes?.tts ?? 1.0);
+                    // [FIX] A linear multiplier of 2.0 (+6dB) is often not perceived as "200% louder".
+                    // We square the multiplier if > 1.0, so a 2.0 slider gives a 4.0x amplitude (+12dB) boost!
+                    const exportVol = primaryVol > 1.0 ? Math.pow(primaryVol, 2) : primaryVol;
                     const atempoFilter = playbackSpeed !== 1.0 ? `,atempo=${playbackSpeed}` : '';
 
                     // The primary audio is either TTS or original video at index 1.
-                    // The SFX is at sfxInputIndex (usually 2).
-                    currentFilters += `[1:a]aresample=44100,volume=${primaryVol}${atempoFilter}[a_base];[${sfxInputIndex}:a]aresample=44100,volume=${sfxVol}[a_sfx];[a_base][a_sfx]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]`;
+                    // If SFX exists, mix them. Otherwise, pass primary directly to [aout].
+                    if (hasSfx) {
+                        currentFilters += `[1:a]aresample=44100,volume=${exportVol}${atempoFilter}[a_base];[${sfxInputIndex}:a]aresample=44100,volume=${sfxVol}[a_sfx];[a_base][a_sfx]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]`;
+                    } else {
+                        currentFilters += `[1:a]aresample=44100,volume=${exportVol}${atempoFilter}[aout]`;
+                    }
 
                     // Final Duration calculation
                     let exportDuration = cut.duration;
@@ -1033,12 +1038,13 @@ export async function exportWithFFmpeg(
 
                 // Register progress listener so the UI shows actual encoding progress
                 const totalDuration = cuts.reduce((sum: number, c: any) => sum + (c.duration || 0), 0);
-                const wmProgressHandler = ({ ratio }: { ratio: number }) => {
-                    const pct = 96 + Math.round(ratio * 2); // 96%~98%
-                    onProgress?.(Math.min(98, pct), `워터마크 적용 중... (${Math.round(ratio * 100)}%)`);
-                    console.log(`[FFmpeg:Watermark] Progress: ${Math.round(ratio * 100)}%`);
+                const wmProgressHandler = (event: any) => {
+                    const ratioValue = event.progress ?? event.ratio ?? 0;
+                    const pct = 96 + Math.round(ratioValue * 2); // 96%~98%
+                    onProgress?.(Math.min(98, pct), `워터마크 적용 중... (${Math.round(ratioValue * 100)}%)`);
+                    console.log(`[FFmpeg:Watermark] Progress: ${Math.round(ratioValue * 100)}%`);
                 };
-                ffmpeg.on('progress', wmProgressHandler);
+                ffmpeg.on('progress', wmProgressHandler as any);
 
                 console.log(`[FFmpeg:Watermark] Filter: ${wmFilter}`);
                 console.log(`[FFmpeg:Watermark] Video: ${width}x${height}, ${totalDuration.toFixed(1)}s — using ultrafast preset`);
@@ -1060,7 +1066,7 @@ export async function exportWithFFmpeg(
                     ]);
                 } finally {
                     // Always remove progress listener after encoding
-                    ffmpeg.off('progress', wmProgressHandler);
+                    ffmpeg.off('progress', wmProgressHandler as any);
                 }
                 console.log('[FFmpeg:Watermark] ✅ Watermark applied successfully.');
 

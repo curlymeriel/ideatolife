@@ -8,7 +8,7 @@ import { ImageCropModal } from '../ImageCropModal';
 import { InteractiveImageViewer } from '../InteractiveImageViewer';
 import { CompositionEditor } from './CompositionEditor';
 import { ReferenceSelectorModal } from '../ReferenceSelectorModal';
-import { resolveUrl, isIdbUrl } from '../../utils/imageStorage';
+import { resolveUrl } from '../../utils/imageStorage';
 import { generateText, generateVideoMotionPrompt, type VideoMotionContext } from '../../services/gemini';
 import type { ScriptCut } from '../../services/gemini';
 import type { AspectRatio } from '../../store/types';
@@ -707,11 +707,9 @@ ${refMetaText ? `${refMetaText}
 
             const resolved = await Promise.all(candidates.map(async c => {
                 let url = c.url;
-                if (isIdbUrl(url)) {
-                    url = await resolveUrl(url) || url;
-                    // Track blob URLs for cleanup
-                    if (url.startsWith('blob:')) blobUrlsRef.current.add(url);
-                }
+                url = await resolveUrl(url) || url;
+                // Track blob URLs for cleanup
+                if (url.startsWith('blob:')) blobUrlsRef.current.add(url);
                 return { ...c, url };
             }));
             setResolvedCandidates(resolved);
@@ -735,11 +733,9 @@ ${refMetaText ? `${refMetaText}
 
             const resolved = await Promise.all(rawAssets.map(async a => {
                 let url = a.url;
-                if (isIdbUrl(url)) {
-                    url = await resolveUrl(url) || url;
-                    // Track blob URLs for cleanup
-                    if (url.startsWith('blob:')) blobUrlsRef.current.add(url);
-                }
+                url = await resolveUrl(url) || url;
+                // Track blob URLs for cleanup
+                if (url.startsWith('blob:')) blobUrlsRef.current.add(url);
                 return { ...a, url };
             }));
             setResolvedProjectAssets(resolved);

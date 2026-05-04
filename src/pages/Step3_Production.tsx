@@ -908,6 +908,17 @@ export const Step3_Production: React.FC = () => {
 
         const cloudOps = [
             {
+                optgroup: '🇰🇷 Korean (Chirp 3 HD)',
+                options: [
+                    { value: 'ko-KR-Chirp3-HD-Aoede', label: '♀ Chirp3-Aoede (여성/성인)', gender: 'female', lang: 'ko-KR' },
+                    { value: 'ko-KR-Chirp3-HD-Leda', label: '♀ Chirp3-Leda (여성/아동,청년)', gender: 'female', lang: 'ko-KR' },
+                    { value: 'ko-KR-Chirp3-HD-Kore', label: '♀ Chirp3-Kore (여성/노인)', gender: 'female', lang: 'ko-KR' },
+                    { value: 'ko-KR-Chirp3-HD-Fenrir', label: '♂ Chirp3-Fenrir (남성/성인)', gender: 'male', lang: 'ko-KR' },
+                    { value: 'ko-KR-Chirp3-HD-Puck', label: '♂ Chirp3-Puck (남성/아동,청년)', gender: 'male', lang: 'ko-KR' },
+                    { value: 'ko-KR-Chirp3-HD-Charon', label: '♂ Chirp3-Charon (남성/노인)', gender: 'male', lang: 'ko-KR' },
+                ]
+            },
+            {
                 optgroup: '🇰🇷 Korean (Standard)',
                 options: [
                     { value: 'ko-KR-Standard-A', label: '♀ Standard-A (여성)', gender: 'female', lang: 'ko-KR' },

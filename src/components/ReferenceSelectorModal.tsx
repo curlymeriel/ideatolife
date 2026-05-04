@@ -11,16 +11,15 @@ const AsyncImage = ({ src, alt, className }: { src: string; alt: string; classNa
     React.useEffect(() => {
         let isMounted = true;
         setHasError(false);
-        if (isIdbUrl(src)) {
-            setResolvedSrc(''); // Clear while loading
-            resolveUrl(src).then(url => {
-                if (isMounted && url) setResolvedSrc(url);
-            }).catch(() => {
-                if (isMounted) setHasError(true);
-            });
-        } else {
-            setResolvedSrc(src);
-        }
+        setResolvedSrc(''); // Clear while loading, regardless of URL type
+        
+        resolveUrl(src).then(url => {
+            if (isMounted && url) setResolvedSrc(url);
+            else if (isMounted) setHasError(true);
+        }).catch(() => {
+            if (isMounted) setHasError(true);
+        });
+        
         return () => { isMounted = false; };
     }, [src]);
 

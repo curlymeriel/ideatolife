@@ -158,7 +158,7 @@ export const Step5_Thumbnail: React.FC = () => {
 
                 const resolved = await Promise.all(rawAssets.map(async (a: any) => {
                     let url = a.url;
-                    if (isIdbUrl(url)) url = await resolveUrl(url) || url;
+                    url = await resolveUrl(url) || url;
                     return { ...a, url };
                 }));
                 setResolvedProjectAssets(resolved);
@@ -172,7 +172,7 @@ export const Step5_Thumbnail: React.FC = () => {
 
                 const resolved = await Promise.all(cuts.map(async (c: any) => {
                     let url = c.url;
-                    if (isIdbUrl(url)) url = await resolveUrl(url) || url;
+                    url = await resolveUrl(url) || url;
                     return { ...c, url };
                 }));
                 setResolvedCandidates(resolved);
@@ -212,11 +212,7 @@ export const Step5_Thumbnail: React.FC = () => {
     // Resolve Frame Image URL
     useEffect(() => {
         if (!frameImage) return;
-        if (isIdbUrl(frameImage)) {
-            resolveUrl(frameImage).then(setResolvedFrameImage);
-        } else {
-            setResolvedFrameImage(frameImage);
-        }
+        resolveUrl(frameImage).then(setResolvedFrameImage);
     }, [frameImage]);
 
     // Auto-save settings to store when they change

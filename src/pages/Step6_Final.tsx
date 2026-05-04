@@ -442,38 +442,35 @@ export const Step6_Final = () => {
             const newCache: Record<string, string> = {};
 
             const processUrl = async (url: string, retryContext?: string) => {
-                // Optimization: If it's already a resolved format, return as is.
-                if (!url || url.startsWith('blob:') || url.startsWith('http')) return url;
+                // Optimization: If it's already a resolved blob URL, return as is.
+                if (!url || url.startsWith('blob:')) return url;
 
-                // Handle idb:// URLs - resolve from IndexedDB
-                if (isIdbUrl(url)) {
-                    // [IMPORTANT] Use asBlob: true to leverage centralized caching and prevent ERR_FILE_NOT_FOUND
-                    // [FIX] Retry logic for video URLs - IDB access can transiently fail
-                    const MAX_RETRIES = 2;
-                    const RETRY_DELAY = 500;
-                    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-                        try {
-                            const resolved = await resolveUrl(url, { asBlob: true });
-                            if (resolved) return resolved;
-                            // resolveUrl returned empty string - data missing from IDB
-                            if (attempt < MAX_RETRIES) {
-                                console.warn(`[Step6:processUrl] Attempt ${attempt + 1}/${MAX_RETRIES + 1} failed for ${retryContext || url.substring(0, 80)} - retrying in ${RETRY_DELAY}ms...`);
-                                await new Promise(r => setTimeout(r, RETRY_DELAY));
-                            }
-                        } catch (err) {
-                            if (attempt < MAX_RETRIES) {
-                                console.warn(`[Step6:processUrl] Attempt ${attempt + 1}/${MAX_RETRIES + 1} threw error for ${retryContext || url.substring(0, 80)}:`, err);
-                                await new Promise(r => setTimeout(r, RETRY_DELAY));
-                            } else {
-                                console.error(`[Step6:processUrl] All ${MAX_RETRIES + 1} attempts failed for ${retryContext || url.substring(0, 80)}:`, err);
-                            }
+                // [IMPORTANT] 항상 resolveUrl을 통과시켜 Firebase URL이 깨졌을 때 IDB 폴백이 작동하게 함
+                // [FIX] Retry logic for video/audio URLs - IDB access can transiently fail
+                const MAX_RETRIES = 2;
+                const RETRY_DELAY = 500;
+                for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+                    try {
+                        const resolved = await resolveUrl(url, { asBlob: true });
+                        if (resolved) return resolved;
+                        
+                        // resolveUrl returned empty string - data missing from IDB
+                        if (attempt < MAX_RETRIES) {
+                            console.warn(`[Step6:processUrl] Attempt ${attempt + 1}/${MAX_RETRIES + 1} failed for ${retryContext || url.substring(0, 80)} - retrying in ${RETRY_DELAY}ms...`);
+                            await new Promise(r => setTimeout(r, RETRY_DELAY));
+                        }
+                    } catch (err) {
+                        if (attempt < MAX_RETRIES) {
+                            console.warn(`[Step6:processUrl] Attempt ${attempt + 1}/${MAX_RETRIES + 1} threw error for ${retryContext || url.substring(0, 80)}:`, err);
+                            await new Promise(r => setTimeout(r, RETRY_DELAY));
                         }
                     }
-                    console.error(`[Step6:processUrl] ❌ FAILED to resolve IDB URL after ${MAX_RETRIES + 1} attempts: ${url}`);
-                    return undefined;
                 }
-
-                return url;
+                
+                // 만약 모든 시도가 실패하고 원래 URL이 http라면, 최후의 수단으로 원본이라도 반환 (기적이 일어날 수도 있으니)
+                if (url.startsWith('http')) return url;
+                
+                return undefined;
             };
 
             // Resolve Thumbnail
@@ -645,19 +642,23 @@ export const Step6_Final = () => {
     // Helper to get optimized URL (safe for render)
     const getOptimizedUrl = (originalUrl?: string) => {
         if (!originalUrl) return undefined;
+        
         // Use Ref first if available for latest data, fallback to state
-        // This helps when state update is pending but ref is ready
-        const url = blobCacheRef.current[originalUrl] || blobCache[originalUrl] || originalUrl;
+        const url = blobCacheRef.current[originalUrl] || blobCache[originalUrl];
 
-        // Safety: Unresolved IDB URLs cannot be displayed/played
-        if (url.startsWith('idb://')) return undefined;
+        if (url) return url;
 
-        // DEBUG: Log video URLs to check for corruption
-        if (originalUrl.includes('video') || originalUrl.includes('mp4') || originalUrl.includes('webm')) {
-            console.log('[DEBUG VIDEO URL]', { originalUrl, resolvedUrl: url });
+        // If not in cache and it's a "risky" URL (IDB or Cloud), return undefined to wait for resolution
+        if (
+            originalUrl.startsWith('idb://') || 
+            originalUrl.includes('firebasestorage') || 
+            originalUrl.includes('storage.googleapis.com') ||
+            originalUrl.includes('.firebasestorage.app')
+        ) {
+            return undefined;
         }
 
-        return url;
+        return originalUrl;
     };
 
 

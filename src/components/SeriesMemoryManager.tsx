@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { SeriesBible, SeriesMemory, EpisodeMemoryEntry } from '../store/types';
+import type { SeriesBible, SeriesMemory } from '../store/types';
 import {
     getSeriesBible, saveSeriesBible,
     getSeriesMemory,
     upsertEpisodeMemoryEntry,
-    updateInjectionLimit,
-    buildMemoryContext
+    updateInjectionLimit
 } from '../utils/seriesMemory';
 import {
     generateEpisodeMemorySummary,

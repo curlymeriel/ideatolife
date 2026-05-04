@@ -35,21 +35,22 @@ const ResolvedImage = React.memo(({ src, alt, className, fallbackSrc }: { src?: 
             return;
         }
 
+        let isMounted = true;
         const processUrl = (url: string) => {
-            if (url.startsWith('data:application/octet-stream;base64')) {
+            if (url && url.startsWith('data:application/octet-stream;base64')) {
                 return url.replace('data:application/octet-stream;base64', 'data:image/png;base64');
             }
             return url;
         };
 
-        if (isIdbUrl(src)) {
-            resolveUrl(src).then(url => setResolvedSrc(processUrl(url))).catch((err) => {
-                console.error('Failed to resolve image:', err);
-                if (fallbackSrc) setResolvedSrc(fallbackSrc);
-            });
-        } else {
-            setResolvedSrc(processUrl(src));
-        }
+        resolveUrl(src).then(url => {
+            if (isMounted && url) setResolvedSrc(processUrl(url));
+        }).catch((err) => {
+            console.error('Failed to resolve image:', err);
+            if (isMounted && fallbackSrc) setResolvedSrc(fallbackSrc);
+        });
+
+        return () => { isMounted = false; };
     }, [src, fallbackSrc]);
 
     if (!resolvedSrc && !fallbackSrc) return null;
@@ -649,7 +650,7 @@ const AudioComparisonModal = React.memo<{
         // [FIX] Sync muted/volume state when video is ready
         const isVideoSelected = audioSourceRef.current === 'video';
         videoRef.current.muted = !isVideoSelected;
-        videoRef.current.volume = isVideoSelected ? (volumesRef.current.video ?? 1) : 0;
+        videoRef.current.volume = Math.min(1.0, isVideoSelected ? (volumesRef.current.video ?? 1) : 0);
         console.log('[AudioModal:loadedMetadata] Synced muted:', videoRef.current.muted, 'volume:', videoRef.current.volume);
     };
 
@@ -658,18 +659,18 @@ const AudioComparisonModal = React.memo<{
         if (videoRef.current) {
             const isVideoSelected = audioSourceRef.current === 'video';
             videoRef.current.muted = !isVideoSelected;
-            videoRef.current.volume = isVideoSelected ? (volumesRef.current.video ?? 1) : 0;
+            videoRef.current.volume = Math.min(1.0, isVideoSelected ? (volumesRef.current.video ?? 1) : 0);
 
             if (isVideoSelected && videoRef.current.muted) {
                 videoRef.current.muted = false;
-                videoRef.current.volume = volumesRef.current.video ?? 1.0;
+                videoRef.current.volume = Math.min(1.0, volumesRef.current.video ?? 1.0);
             }
         }
 
         if (ttsAudioRef.current && audioSourceRef.current === 'tts') {
             const t = ttsAudioRef.current;
             t.muted = false;
-            t.volume = volumesRef.current.tts ?? 1.0;
+            t.volume = Math.min(1.0, volumesRef.current.tts ?? 1.0);
             if (t.paused) t.play().catch(e => {
                 // AbortError is expected when user pauses/seeks rapidly
                 if (e.name !== 'AbortError') console.warn('[AudioModal:Play] TTS Play Error:', e);
@@ -707,8 +708,9 @@ const AudioComparisonModal = React.memo<{
         // [HEALING] Force re-sync volume/mute every update to prevent browser silent mutes
         if (isVideoSelected) {
             if (videoRef.current.muted) videoRef.current.muted = false;
-            if (Math.abs(videoRef.current.volume - (volumesRef.current.video ?? 1)) > 0.05) {
-                videoRef.current.volume = volumesRef.current.video ?? 1;
+            const targetVol = Math.min(1.0, volumesRef.current.video ?? 1);
+            if (Math.abs(videoRef.current.volume - targetVol) > 0.05) {
+                videoRef.current.volume = targetVol;
             }
         } else {
             if (!videoRef.current.muted) videoRef.current.muted = true;
@@ -777,15 +779,12 @@ const AudioComparisonModal = React.memo<{
         }
     }, [previewVideoUrl, videoMountKey]);
 
-    // Resolve TTS audio URL
+    // Resolve TTS audio URL (항상 resolveUrl 통과 - Firebase URL도 IDB 폴백 적용)
     useEffect(() => {
         if (!previewCut?.audioUrl) return;
-        if (isIdbUrl(previewCut.audioUrl)) {
-            // [OPTIMIZATION] Use Blob URL for TTS
-            resolveUrl(previewCut.audioUrl, { asBlob: true }).then(url => setResolvedTtsUrl(url));
-        } else {
-            setResolvedTtsUrl(previewCut.audioUrl);
-        }
+        resolveUrl(previewCut.audioUrl, { asBlob: true }).then(url => {
+            if (url) setResolvedTtsUrl(url);
+        });
     }, [previewCut?.audioUrl]);
 
     // State for audio track detection
@@ -814,13 +813,13 @@ const AudioComparisonModal = React.memo<{
         // Sync Audio State
         const isVideoSelected = selectedAudioSource === 'video';
         videoEl.muted = !isVideoSelected;
-        videoEl.volume = isVideoSelected ? (volumes.video ?? 1) : 0;
+        videoEl.volume = Math.min(1.0, isVideoSelected ? (volumes.video ?? 1) : 0);
         console.log('[AudioModal:SyncEffect] selectedAudioSource:', selectedAudioSource, 'Applied muted:', videoEl.muted, 'volume:', videoEl.volume, 'volumes state:', volumes);
 
         if (ttsEl) {
             const isTtsSelected = selectedAudioSource === 'tts';
             ttsEl.muted = !isTtsSelected;
-            ttsEl.volume = isTtsSelected ? (volumes.tts ?? 1) : 0;
+            ttsEl.volume = Math.min(1.0, isTtsSelected ? (volumes.tts ?? 1) : 0);
 
             if (isTtsSelected) {
                 if (isVideoPlaying && ttsEl.paused) {
@@ -944,7 +943,7 @@ const AudioComparisonModal = React.memo<{
                                 <input
                                     type="range"
                                     min="0"
-                                    max="1"
+                                    max="2"
                                     step="0.05"
                                     value={volumes[selectedAudioSource] ?? 1}
                                     onChange={(e) => {
@@ -955,8 +954,8 @@ const AudioComparisonModal = React.memo<{
                                 />
                                 <div className="flex justify-between mt-1 px-1">
                                     <span className="text-[9px] text-gray-500">Mute</span>
-                                    <span className="text-[9px] text-gray-500">50%</span>
                                     <span className="text-[9px] text-gray-500">100%</span>
+                                    <span className="text-[9px] text-gray-500">200%</span>
                                 </div>
                             </div>
                         </div>
@@ -975,7 +974,7 @@ const AudioComparisonModal = React.memo<{
                             <input
                                 type="range"
                                 min="0"
-                                max="1"
+                                max="2"
                                 step="0.05"
                                 value={volumes.bgm || 0}
                                 onChange={(e) => {
@@ -986,8 +985,8 @@ const AudioComparisonModal = React.memo<{
                             />
                             <div className="flex justify-between mt-1 px-1">
                                 <span className="text-[9px] text-gray-500">Mute</span>
-                                <span className="text-[9px] text-gray-500">50%</span>
                                 <span className="text-[9px] text-gray-500">100%</span>
+                                <span className="text-[9px] text-gray-500">200%</span>
                             </div>
                         </div>
 
@@ -1144,7 +1143,7 @@ const AudioComparisonModal = React.memo<{
                                 onClick={() => {
                                     if (videoRef.current) {
                                         videoRef.current.muted = false;
-                                        videoRef.current.volume = volumesRef.current.video;
+                                        videoRef.current.volume = Math.min(1.0, volumesRef.current.video ?? 1.0);
 
                                         const currentSrc = videoRef.current.src;
                                         videoRef.current.src = '';
@@ -1156,7 +1155,7 @@ const AudioComparisonModal = React.memo<{
                                                 setTimeout(() => {
                                                     if (videoRef.current) {
                                                         videoRef.current.muted = false;
-                                                        videoRef.current.volume = volumesRef.current.video;
+                                                        videoRef.current.volume = Math.min(1.0, volumesRef.current.video ?? 1.0);
                                                     }
                                                 }, 200);
                                             }

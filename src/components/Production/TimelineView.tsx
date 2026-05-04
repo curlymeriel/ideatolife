@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, GripVertical, Plus, Trash2, Volume2 } from 'lucide-react';
 import type { ScriptCut } from '../../services/gemini';
 import type { BGMTrack, BGMPreset } from '../../store/types';
-import { resolveUrl, isIdbUrl } from '../../utils/imageStorage';
+import { resolveUrl } from '../../utils/imageStorage';
 import { BGMLibraryModal } from './BGMLibraryModal';
 
 import { getAspectRatioCss } from '../../utils/aspectRatioUtils';
@@ -24,21 +24,26 @@ const BGM_COLORS = [
 // Resolved Image Component
 const ResolvedThumbnail: React.FC<{ src?: string; alt?: string; className?: string }> = ({ src, alt, className }) => {
     const [resolvedSrc, setResolvedSrc] = useState<string>('');
+    const [hasError, setHasError] = useState(false);
 
     useEffect(() => {
-        if (!src) {
-            setResolvedSrc('');
-            return;
-        }
+        let isMounted = true;
+        setHasError(false);
+        setResolvedSrc(''); // Clear while loading, regardless of url type
+        
+        if (!src) return;
 
-        if (isIdbUrl(src)) {
-            resolveUrl(src).then(url => setResolvedSrc(url)).catch(() => setResolvedSrc(''));
-        } else {
-            setResolvedSrc(src);
-        }
+        resolveUrl(src).then(url => {
+            if (isMounted && url) setResolvedSrc(url);
+            else if (isMounted) setHasError(true);
+        }).catch(() => {
+            if (isMounted) setHasError(true);
+        });
+        
+        return () => { isMounted = false; };
     }, [src]);
 
-    if (!resolvedSrc) {
+    if (!resolvedSrc || hasError) {
         return (
             <div className={`${className} bg-white/5 flex items-center justify-center text-gray-600`}>
                 <span className="text-[8px]">-</span>

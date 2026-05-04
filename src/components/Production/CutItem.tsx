@@ -5,7 +5,7 @@ import type { ScriptCut } from '../../services/gemini';
 import { generateVideoMotionPrompt, generateText, type VideoMotionContext } from '../../services/gemini';
 import { DEFAULT_MOTION_PRESETS, getPresetsByCategory } from '../../data/motionPresets';
 import { getMatchedAssets } from '../../utils/assetUtils';
-import { resolveUrl, isIdbUrl } from '../../utils/imageStorage';
+import { resolveUrl } from '../../utils/imageStorage';
 import type { AspectRatio } from '../../store/types';
 import { UnifiedStudio, type VisualSettingsResult } from '../UnifiedStudio';
 import { ReferenceSelectorModal } from '../ReferenceSelectorModal';

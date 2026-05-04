@@ -7,7 +7,8 @@ import type {
     TtsModel,
     ImageModel,
     Asset,
-    BGMTrack
+    BGMTrack,
+    WatermarkSettings
 } from './types';
 import type { ScriptCut, ChatMessage } from '../services/gemini';
 
@@ -119,9 +120,11 @@ export const createProjectSlice: StateCreator<ProjectSlice> = (set, get) => ({
     })),
 
     setWatermarkSettings: (settings) => set((state) => {
-        const current = state.watermarkSettings || {
+        const current: WatermarkSettings = state.watermarkSettings || {
             imageUrl: '',
             position: 'top-right',
+            positionX: 5,
+            positionY: 5,
             opacity: 0.8,
             scale: 0.5,
             enabled: true

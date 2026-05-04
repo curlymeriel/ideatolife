@@ -10,7 +10,7 @@ import {
 import { ImageCropModal } from '../ImageCropModal';
 import { InteractiveImageViewer } from '../InteractiveImageViewer';
 import { ReferenceSelectorModal } from '../ReferenceSelectorModal';
-import { resolveUrl, isIdbUrl } from '../../utils/imageStorage';
+import { resolveUrl } from '../../utils/imageStorage';
 import { useStudioHandlers } from './useStudioHandlers';
 import type { UnifiedStudioProps, TaggedReference, ChatMessage } from './types';
 import { DEFAULT_CATEGORIES, ASSET_CATEGORIES } from './types';

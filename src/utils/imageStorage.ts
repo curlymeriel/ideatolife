@@ -338,23 +338,29 @@ export async function resolveUrl(
                         const cutId = cutMatch ? parseInt(cutMatch[1], 10).toString() : '';
 
                         if (cutId) {
-                            let idbKey = '';
-                            if (mediaType === 'images' && fileName.includes('_final.')) {
-                                idbKey = `idb://images/${projectId}-cut-${cutId}-final`;
-                            } else if (mediaType === 'images' && fileName.includes('_draft.')) {
-                                idbKey = `idb://images/${projectId}-cut-${cutId}-draft`;
+                            const possibleKeys: string[] = [];
+                            if (mediaType === 'images') {
+                                if (fileName.includes('_final.')) possibleKeys.push(`idb://images/${projectId}-cut-${cutId}-final`);
+                                if (fileName.includes('_draft.')) possibleKeys.push(`idb://images/${projectId}-cut-${cutId}-draft`);
+                                possibleKeys.push(`idb://images/${projectId}-cut-${cutId}`);
                             } else if (mediaType === 'audio') {
-                                idbKey = `idb://audio/${projectId}-audio-${cutId}`;
+                                possibleKeys.push(`idb://audio/${projectId}-audio-${cutId}`);
+                                possibleKeys.push(`idb://audio/${projectId}-cut-${cutId}-audio`);
                             } else if (mediaType === 'videos' || mediaType === 'video') {
-                                idbKey = `idb://video/${projectId}-video-${cutId}`;
+                                possibleKeys.push(`idb://video/${projectId}-video-${cutId}.mp4`);
+                                possibleKeys.push(`idb://video/${projectId}-video-${cutId}.webm`);
+                                possibleKeys.push(`idb://video/${projectId}-video-${cutId}`);
                             }
 
-                            if (idbKey) {
+                            for (const idbKey of possibleKeys) {
                                 console.log('[ImageStorage:resolveUrl] Trying IDB fallback key:', idbKey);
                                 const idbFallbackUrl = await resolveUrl(idbKey, options);
-                                if (idbFallbackUrl) return idbFallbackUrl;
-                                console.warn('[ImageStorage:resolveUrl] IDB fallback key not found in local storage:', idbKey);
+                                if (idbFallbackUrl && idbFallbackUrl !== idbKey) {
+                                    console.log('[ImageStorage:resolveUrl] ✅ IDB fallback success:', idbKey);
+                                    return idbFallbackUrl;
+                                }
                             }
+                            console.warn('[ImageStorage:resolveUrl] IDB fallback failed for all variations of:', fileName);
                         }
                     }
                     throw cloudErr;

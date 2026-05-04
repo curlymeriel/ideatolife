@@ -92,9 +92,6 @@ export const Step1_Setup: React.FC = () => {
     // Series Memory 상태
     const [isMemoryEnabled, setIsMemoryEnabled] = useState(true);
     const [memoryInjectionLimit, setMemoryInjectionLimit] = useState(3);
-    const [showMemoryPanel, setShowMemoryPanel] = useState(false);
-
-
 
     const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -540,70 +537,8 @@ export const Step1_Setup: React.FC = () => {
             );
             console.log('[Step1] AI Response - suggestedDeletions:', result.suggestedDeletions, 'Full keys:', Object.keys(result));
 
-            // FALLBACK: If AI didn't return suggestedDeletions, try to detect deletion intent from user message
-            if (!result.suggestedDeletions) {
-                const userMsg = inputMessage.toLowerCase();
-                const deletionKeywords = ['삭제', 'delete', 'remove', '지워', '지우', '없애', 'drop'];
-                const hasDeleteIntent = deletionKeywords.some(kw => userMsg.includes(kw));
-
-                if (hasDeleteIntent) {
-                    console.log('[Step1] Fallback: Detected deletion intent in user message');
-                    const detectedDeletions: any = {};
-
-                    // Match against existing characters
-                    characters.forEach((c: any) => {
-                        if (userMsg.includes(c.name.toLowerCase())) {
-                            if (!detectedDeletions.characters) detectedDeletions.characters = [];
-                            detectedDeletions.characters.push(c.name);
-                        }
-                    });
-
-                    // Match against series locations
-                    seriesLocations.forEach((l: any) => {
-                        if (userMsg.includes(l.name.toLowerCase())) {
-                            if (!detectedDeletions.seriesLocations) detectedDeletions.seriesLocations = [];
-                            detectedDeletions.seriesLocations.push(l.name);
-                        }
-                    });
-
-                    // Match against episode characters
-                    episodeCharacters.forEach((c: any) => {
-                        if (userMsg.includes(c.name.toLowerCase())) {
-                            if (!detectedDeletions.episodeCharacters) detectedDeletions.episodeCharacters = [];
-                            detectedDeletions.episodeCharacters.push(c.name);
-                        }
-                    });
-
-                    // Match against episode locations
-                    episodeLocations.forEach((l: any) => {
-                        if (userMsg.includes(l.name.toLowerCase())) {
-                            if (!detectedDeletions.episodeLocations) detectedDeletions.episodeLocations = [];
-                            detectedDeletions.episodeLocations.push(l.name);
-                        }
-                    });
-
-                    // Match against series props
-                    seriesProps.forEach((p: any) => {
-                        if (userMsg.includes(p.name.toLowerCase())) {
-                            if (!detectedDeletions.seriesProps) detectedDeletions.seriesProps = [];
-                            detectedDeletions.seriesProps.push(p.name);
-                        }
-                    });
-
-                    // Match against episode props
-                    episodeProps.forEach((p: any) => {
-                        if (userMsg.includes(p.name.toLowerCase())) {
-                            if (!detectedDeletions.episodeProps) detectedDeletions.episodeProps = [];
-                            detectedDeletions.episodeProps.push(p.name);
-                        }
-                    });
-
-                    if (Object.keys(detectedDeletions).length > 0) {
-                        console.log('[Step1] Fallback: Auto-detected deletions:', detectedDeletions);
-                        result.suggestedDeletions = detectedDeletions;
-                    }
-                }
-            }
+            // Rely entirely on AI's 'suggestedDeletions' field for destructive actions.
+            // The previous fallback logic was too aggressive and caused characters to be deleted accidentally if their name appeared in a sentence with a word like "지워".
 
             // Fallback: Detect Aspect Ratio from User Message if AI missed it
             if (!result.suggestedAspectRatio) {
@@ -657,7 +592,7 @@ export const Step1_Setup: React.FC = () => {
             // Auto-populate fields if suggestions exist (including deletions)
             if (result.suggestedSeriesName || result.suggestedEpisodeName || result.suggestedDuration || result.suggestedEpisodeNumber || result.suggestedSeriesStory || result.suggestedMainCharacters || result.suggestedEpisodePlot || result.suggestedEpisodeCharacters || result.suggestedCharacters || result.suggestedSeriesLocations || result.suggestedSeriesProps || result.suggestedEpisodeProps || result.suggestedDeletions || result.suggestedAspectRatio || result.suggestedMasterStyle || result.suggestedStorylineScenes) {
                 const updates: Partial<Parameters<typeof setProjectInfo>[0]> = {
-                    seriesName: result.suggestedSeriesName || (isEditing ? localSeriesName : seriesName),
+                    seriesName: (localSeriesName && localSeriesName !== 'New Series') ? localSeriesName : (result.suggestedSeriesName || (isEditing ? localSeriesName : seriesName)),
                     episodeName: result.suggestedEpisodeName || (isEditing ? localEpisodeName : episodeName),
                     episodeNumber: result.suggestedEpisodeNumber || (isEditing ? localEpisodeNumber : episodeNumber),
                     seriesStory: result.suggestedSeriesStory || (isEditing ? localSeriesStory : seriesStory),
@@ -668,7 +603,7 @@ export const Step1_Setup: React.FC = () => {
                 };
 
                 // Sync Local States for immediate UI feedback
-                if (result.suggestedSeriesName) setLocalSeriesName(result.suggestedSeriesName);
+                if (result.suggestedSeriesName && !(localSeriesName && localSeriesName !== 'New Series')) setLocalSeriesName(result.suggestedSeriesName);
                 if (result.suggestedEpisodeName) setLocalEpisodeName(result.suggestedEpisodeName);
                 if (result.suggestedEpisodeNumber) setLocalEpisodeNumber(result.suggestedEpisodeNumber);
                 if (result.suggestedSeriesStory) setLocalSeriesStory(result.suggestedSeriesStory);
