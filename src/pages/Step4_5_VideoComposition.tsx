@@ -1712,6 +1712,12 @@ export const Step4_5_VideoComposition: React.FC = () => {
                 // Veo 3.x models support native audio/lip-sync → always append dialogue.
                 // Other models → only append if speaker is visible in the scene (check visualPrompt).
                 if (cut.dialogue && cut.speaker) {
+                    const state = useWorkflowStore.getState();
+                    const allChars = [...(state.characters || []), ...(state.episodeCharacters || [])];
+                    const char = allChars.find(c => c.name === cut.speaker);
+                    const genderStr = char?.gender ? ` (${char.gender})` : '';
+                    const speakerWithNameAndGender = `${cut.speaker}${genderStr}`;
+
                     const veoModelInfo = selectedProvider === 'gemini-veo'
                         ? getVeoModels().find(m => m.id === (getVeoModels().map(v => v.id).includes(selectedVeoModel) ? selectedVeoModel : 'veo-3.1-generate-preview'))
                         : null;
@@ -1720,16 +1726,21 @@ export const Step4_5_VideoComposition: React.FC = () => {
                     if (isAudioCapableModel) {
                         // Veo 3.x: Native audio/lip-sync supported → always append dialogue
                         if (!prompt.includes(cut.dialogue)) {
-                            prompt += `. Character speaking: "${cut.dialogue}"`;
+                            prompt += `. ${speakerWithNameAndGender} speaking: "${cut.dialogue}"`;
                         }
                     } else {
                         // Non-audio models (Veo 2.0, Replicate, KieAI) → only if speaker is in visual prompt
                         const speakerName = cut.speaker.toLowerCase();
                         const visualPromptText = (cut.visualPrompt || '').toLowerCase();
                         if (visualPromptText.includes(speakerName) && !prompt.includes(cut.dialogue)) {
-                            prompt += `. Character speaking: "${cut.dialogue}"`;
+                            prompt += `. ${speakerWithNameAndGender} speaking: "${cut.dialogue}"`;
                         }
                     }
+                }
+
+                // Enforce "no bgm" for all video generations
+                if (!prompt.toLowerCase().includes('no bgm')) {
+                    prompt += '. no bgm';
                 }
 
                 let videoUrl: string;

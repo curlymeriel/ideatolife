@@ -2301,25 +2301,27 @@ export const generateVideoMotionPrompt = async (
 
     // ============ DETERMINISTIC SPEAKER VISIBILITY CHECK ============
     // Check if speaker name appears in visualPrompt (case-insensitive)
-    const speakerName = context.speakerInfo?.name || '';
+    const baseSpeakerName = context.speakerInfo?.name || 'Character';
+    const genderStr = context.speakerInfo?.gender ? ` (${context.speakerInfo.gender})` : '';
+    const speakerName = `${baseSpeakerName}${genderStr}`;
     const visualPromptLower = (context.visualPrompt || '').toLowerCase();
-    const isNarrator = speakerName.toLowerCase().includes('narrator') ||
-        speakerName.toLowerCase().includes('나레이터') ||
-        speakerName.toLowerCase().includes('narration');
+    const isNarrator = baseSpeakerName.toLowerCase().includes('narrator') ||
+        baseSpeakerName.toLowerCase().includes('나레이터') ||
+        baseSpeakerName.toLowerCase().includes('narration');
 
     // Speaker is considered ON-SCREEN only if:
     // 1. Not a narrator AND
     // 2. Speaker name explicitly appears in visualPrompt
     const isSpeakerOnScreen = !isNarrator &&
-        speakerName.length > 0 &&
-        visualPromptLower.includes(speakerName.toLowerCase());
+        baseSpeakerName.length > 0 &&
+        visualPromptLower.includes(baseSpeakerName.toLowerCase());
 
     // Filter dialogue for off-screen speakers
     const effectiveDialogue = isSpeakerOnScreen ? context.dialogue : undefined;
     const dialogueContext = effectiveDialogue
-        ? `Dialogue: "${effectiveDialogue}" (Character speaks on-screen - include natural lip-sync)`
+        ? `Dialogue: "${effectiveDialogue}" (${speakerName} speaks on-screen - include natural lip-sync for ${speakerName})`
         : isNarrator
-            ? 'Voice-over narration (NO lip-sync needed - character not speaking on screen)'
+            ? `Voice-over narration by ${speakerName} (NO lip-sync needed - ${speakerName} not speaking on screen)`
             : 'No dialogue (ambient/silent shot)';
 
     // Build character motion hints from visual features
@@ -2388,26 +2390,26 @@ Generate a single, cohesive video motion prompt (3-5 sentences) that:
 2. Specifies ONE primary camera movement matching the intensity level
 3. Describes natural character/subject motion:
    ${isSpeakerOnScreen
-            ? '- Character speaks with natural lip-sync, gestures matching emotion'
-            : '- NO lip-sync or speaking animation (voice is off-screen or narration). Focus on breathing, subtle movements.'}
+            ? `- ${speakerName} speaks with natural lip-sync, gestures matching emotion`
+            : `- NO lip-sync or speaking animation (voice is off-screen or narration). Focus on breathing, subtle movements.`}
 4. Includes environmental motion (particles, lighting, atmosphere)
 5. Mentions any character-specific visual elements that should move naturally
 
 **CRITICAL RULES:**
-- **NO BACKGROUND MUSIC**: NEVER include background music, soundtrack, or musical score.
+- **NO BACKGROUND MUSIC**: NEVER include background music, soundtrack, or musical score. Include "no bgm" in the prompt.
 - **NO TEXT RENDERING**: Do NOT render dialogue as on-screen text or subtitles.
 - **AMBIENT SOUNDS ONLY**: Focus on natural sounds (footsteps, wind, breathing, environment).
 
 **OUTPUT FORMAT:**
-Output ONLY the motion prompt text. End with "No background music. Ambient sounds only."`;
+Output ONLY the motion prompt text. End with "no bgm, no background music. Ambient sounds only."`;
 
     try {
         const result = await generateText(prompt, apiKeysRaw, undefined, undefined, undefined, { temperature: 0.7 });
         let finalPrompt = result?.trim() || `${context.visualPrompt}. Camera holds steady. Subtle atmospheric motion.`;
 
         // ENFORCE: Always append negative suffix if not present
-        if (!finalPrompt.toLowerCase().includes('no background music')) {
-            finalPrompt += ' No background music. Ambient sounds only.';
+        if (!finalPrompt.toLowerCase().includes('no bgm')) {
+            finalPrompt += ' no bgm, no background music. Ambient sounds only.';
         }
 
         return finalPrompt;
@@ -2416,7 +2418,7 @@ Output ONLY the motion prompt text. End with "No background music. Ambient sound
         // Fallback with basic enhancement
         const basePrompt = context.visualPrompt || '';
         const cameraMove = emotionSuggestions[0] || 'Camera holds steady';
-        return `${basePrompt}. ${cameraMove}. ${characterMotionHints || 'Subtle breathing motion'}. ${locationHints || 'Ambient atmosphere'}. No background music.`;
+        return `${basePrompt}. ${cameraMove}. ${characterMotionHints || 'Subtle breathing motion'}. ${locationHints || 'Ambient atmosphere'}. no bgm, no background music.`;
     }
 };
 
