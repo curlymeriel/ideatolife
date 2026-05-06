@@ -426,7 +426,9 @@ export const generateScript = async (
         });
     }
 
-    const apiKeys = Array.isArray(apiKeysRaw) ? apiKeysRaw : apiKeysRaw.split(',').map(k => k.trim()).filter(Boolean);
+    let apiKeys = Array.isArray(apiKeysRaw)
+        ? apiKeysRaw
+        : apiKeysRaw.split(/[\s,]+/).map(k => k.trim()).filter(Boolean);
     if (apiKeys.length === 0) throw new Error("At least one valid API key is required");
 
     try {

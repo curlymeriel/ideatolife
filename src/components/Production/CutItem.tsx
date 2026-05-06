@@ -231,12 +231,23 @@ export const CutItem = memo(({
 
     // Resolve IDB and Firebase URLs
     useEffect(() => {
-        if (cut.finalImageUrl) {
-            resolveUrl(cut.finalImageUrl).then(url => setResolvedImageUrl(url || undefined));
-        } else {
-            setResolvedImageUrl(undefined);
-        }
-    }, [cut.finalImageUrl]);
+        const init = async () => {
+            if (cut.finalImageUrl) {
+                console.log(`[CutItem ${cut.id}] 🖼️ Resolving image: ${cut.finalImageUrl}`);
+                const resolved = await resolveUrl(cut.finalImageUrl);
+                if (resolved) {
+                    console.log(`[CutItem ${cut.id}] 🖼️ Resolved successfully. Size: ${Math.round(resolved.length / 1024)}KB`);
+                    setResolvedImageUrl(resolved);
+                } else {
+                    console.warn(`[CutItem ${cut.id}] 🖼️ Resolution returned empty string`);
+                }
+            } else {
+                console.log(`[CutItem ${cut.id}] 🖼️ No image URL, clearing preview.`);
+                setResolvedImageUrl(undefined);
+            }
+        };
+        init();
+    }, [cut.finalImageUrl, cut.id]);
 
     useEffect(() => {
         if (cut.audioUrl) {
@@ -1164,6 +1175,7 @@ export const CutItem = memo(({
                         initialSpeaker: cut.speaker,
                         initialDialogue: cut.dialogue,
                         onSave: async (result: VisualSettingsResult) => {
+                            console.log(`[CutItem ${cut.id}] 💾 UnifiedStudio onSave triggered. Draft:`, result.finalImageUrl?.substring(0, 50));
                             const refs = result.taggedReferences || [];
                             const manualAssetIds = refs
                                 .filter(r => !r.isAuto && assetDefinitions && assetDefinitions[r.id])

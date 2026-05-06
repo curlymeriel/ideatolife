@@ -462,6 +462,22 @@ ${refContext}` : ''}
             }
 
             // 2. Perform Save based on mode
+            const savePayload = {
+                visualPrompt: finalDescription,
+                visualPromptKR: promptKR,
+                videoPrompt: videoPrompt, // Will be updated below if empty
+                finalImageUrl: selectedDraft,
+                draftHistory,
+                taggedReferences,
+                withBackground: false
+            };
+
+            console.log('[UnifiedStudio] 💾 Attempting save with payload:', {
+                hasImage: !!selectedDraft,
+                imagePrefix: selectedDraft?.substring(0, 50),
+                promptLength: finalDescription?.length
+            });
+
             if (config.mode === 'channelArt') {
                 await config.onSave(selectedDraft || '', finalDescription);
             } else if (config.mode === 'thumbnail') {
@@ -482,8 +498,8 @@ ${refContext}` : ''}
                 let finalVideoPrompt = videoPrompt;
                 if (!finalVideoPrompt?.trim() && finalDescription?.trim()) {
                     try {
+                        console.log('[UnifiedStudio] Generating video motion prompt...');
                         const { assetDefinitions, existingCuts = [], initialSpeaker, initialDialogue } = config;
-
                         const speakerAsset = assetDefinitions ?
                             Object.values(assetDefinitions).find((a: any) => a.type === 'character' && a.name?.toLowerCase() === initialSpeaker?.toLowerCase()) as any : null;
                         const locationAsset = assetDefinitions ?
@@ -504,20 +520,16 @@ ${refContext}` : ''}
 
                         finalVideoPrompt = await generateVideoMotionPrompt(context, apiKey);
                     } catch (vErr) {
-                        console.error('Video prompt generation failed:', vErr);
+                        console.error('[UnifiedStudio] Video prompt generation failed:', vErr);
                         finalVideoPrompt = `${finalDescription}. Camera slowly pushes in. Subtle atmospheric motion.`;
                     }
                 }
 
                 await config.onSave({
-                    visualPrompt: finalDescription,
-                    visualPromptKR: promptKR,
-                    videoPrompt: finalVideoPrompt,
-                    finalImageUrl: selectedDraft,
-                    draftHistory,
-                    taggedReferences,
-                    withBackground: false
+                    ...savePayload,
+                    videoPrompt: finalVideoPrompt
                 } as any);
+                console.log('[UnifiedStudio] ✅ onSave callback completed.');
             }
         } catch (saveErr) {
             console.error('[UnifiedStudio] Save failed:', saveErr);

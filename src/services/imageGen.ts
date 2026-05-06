@@ -174,7 +174,9 @@ export const generateImage = async (
     // [HYBRID SMART THROTTLING] 강제로 후보 이미지 수를 1장으로 제한하여 API 쿼터 고갈 방지
     const effectiveCandidateCount = 1;
 
-    let apiKeys = Array.isArray(apiKeysRaw) ? apiKeysRaw : apiKeysRaw.split(',').map(k => k.trim()).filter(Boolean);
+    let apiKeys = Array.isArray(apiKeysRaw) 
+        ? apiKeysRaw 
+        : apiKeysRaw.split(/[\s,]+/).map(k => k.trim()).filter(Boolean);
     if (apiKeys.length === 0) throw new Error("At least one valid API key is required");
 
     // [STABILITY FIX] Shuffle API keys for each request to prevent thundering herd on the first key
@@ -210,19 +212,19 @@ export const generateImage = async (
     for (const model of allModels) {
         if (abortSignal?.aborted) throw new Error("AbortError");
 
-        // [STABILITY FIX] If previous model was fully rate-limited, try next model immediately 
-        // Different models have different API quota pools, so there is no need for a massive delay here.
         if (consecutiveModelFailures > 0) {
-            console.warn(`[ImageGen] 🔁 All keys exhausted for previous model. Trying next model ${model} immediately...`);
-            // Adding a tiny 500ms delay just to prevent rapid fire loops
+            // [429 BACKOFF] All keys on the previous model were rate-limited.
+            // Add a short delay before trying the next model to avoid hammering the API.
+            const backoffMs = Math.min(1500 * consecutiveModelFailures, 5000);
+            console.warn(`[ImageGen] 🔁 All keys exhausted for previous model. Waiting ${backoffMs}ms before trying next model ${model}...`);
             await new Promise(r => {
-                const timer = setTimeout(r, 500);
+                const timer = setTimeout(r, backoffMs);
                 abortSignal?.addEventListener('abort', () => { clearTimeout(timer); r(null); }, { once: true });
             });
             if (abortSignal?.aborted) throw new Error("AbortError");
         }
 
-        let modelAllKeysRateLimited = true; // Assume all rate limited until a key succeeds or non-429 error
+        let modelAllKeysRateLimited = true;
 
         for (const apiKey of apiKeys) {
             if (abortSignal?.aborted) throw new Error("AbortError");
@@ -254,37 +256,43 @@ export const generateImage = async (
                 if (error.name === 'AbortError' || error.message === 'AbortError') throw error;
 
                 if (status === 429) {
-                    // [RESTORED] Original behavior: immediately try next key on 429
-                    // Do NOT add delay here — let the key rotation happen instantly.
-                    // Inter-model delay is handled separately below.
-                    console.warn(`[ImageGen] 429 Rate Limit for model ${model} with key ${apiKey.substring(0, 5)}... Retrying with next key.`);
+                    // [429 BACKOFF] Read Retry-After header if available, otherwise use 2s default
+                    const retryAfterSec = parseInt(error.response?.headers?.['retry-after'] || '0', 10);
+                    const waitMs = retryAfterSec > 0 ? retryAfterSec * 1000 : 2000;
+                    console.warn(`[ImageGen] 429 Rate Limit for model ${model} (Key: ${apiKey.substring(0, 5)}...). Waiting ${waitMs}ms before next key...`);
+                    await new Promise(r => {
+                        const timer = setTimeout(r, waitMs);
+                        abortSignal?.addEventListener('abort', () => { clearTimeout(timer); r(null); }, { once: true });
+                    });
+                    if (abortSignal?.aborted) throw new Error("AbortError");
                     lastError = error;
-                    continue; // Try next key immediately
+                    continue;
                 }
                 
-                // Non-429 error: this model had a real issue, not just rate limit
+                // Non-429 error
                 modelAllKeysRateLimited = false;
                 console.warn(`[ImageGen] Model ${model} failed with key ${apiKey.substring(0, 5)}...:`, errorMsg);
                 lastError = error;
             }
         }
 
-        // Track whether we should add inter-model cooldown
         if (modelAllKeysRateLimited) {
             consecutiveModelFailures++;
         } else {
-            consecutiveModelFailures = 0; // Reset if a model had non-429 errors
+            consecutiveModelFailures = 0;
         }
     }
 
     let errorMessage = lastError?.message || "Unknown error";
     if (lastError?.code === 'ECONNABORTED' || lastError?.message?.includes('timeout')) {
         errorMessage = `⏱️ 연결 시간 초과 (Timeout)`;
+    } else if (lastError?.response?.status === 429) {
+        errorMessage = `⚠️ API 이미지 생성 쿼터 초과 (429 Too Many Requests)\n\n가능한 해결 방법:\n1. 설정에서 Gemini API Key를 쉼표로 구분하여 여러 개 입력해 주세요.\n2. 잠시 후 (1~2분) 다시 시도해 주세요.\n3. 일일 한도를 모두 사용한 경우, 내일 자정(UTC) 이후 초기화됩니다.`;
     } else if (lastError?.response) {
         errorMessage = `API Error (${lastError.response.status}): ${lastError.response.data.error?.message}`;
     }
 
-    throw new Error(`All image generation models and keys failed. Last error: ${errorMessage}`);
+    throw new Error(errorMessage);
 };
 
 /**

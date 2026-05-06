@@ -1122,6 +1122,7 @@ export const Step3_Production: React.FC = () => {
     }, [saveToStore]);
 
     const handleUpdateCut = useCallback(async (id: number | string, updates: Partial<ScriptCut>) => {
+        console.log(`[handleUpdateCut] Updating cut ${id}`, updates);
         let finalUpdates = { ...updates };
 
         // [STABILITY FIX] If Studio sends raw data: URLs (Base64), save to IDB first
@@ -1130,9 +1131,10 @@ export const Step3_Production: React.FC = () => {
         if (finalUpdates.finalImageUrl?.startsWith('data:')) {
             try {
                 const key = generateCutImageKey(projectId, id, 'final');
+                console.log(`[handleUpdateCut] Saving final image to IDB with key: ${key}`);
                 const idbUrl = await saveToIdb('images', key, finalUpdates.finalImageUrl);
                 finalUpdates.finalImageUrl = idbUrl;
-                console.log(`[handleUpdateCut] Pre-saved final image to IDB for cut ${id}`);
+                console.log(`[handleUpdateCut] Successfully saved to IDB: ${idbUrl}`);
             } catch (e) {
                 console.error(`[handleUpdateCut] Failed to pre-save final image to IDB for cut ${id}:`, e);
             }
@@ -1149,16 +1151,38 @@ export const Step3_Production: React.FC = () => {
             }
         }
 
+        // [CACHE BUSTING] Ensure React detects image changes even if IDB path is same
+        // This is critical for refreshing the UI in CutItem after studio saves.
+        if (finalUpdates.finalImageUrl?.startsWith('idb://')) {
+            const cleanUrl = finalUpdates.finalImageUrl.split('?')[0];
+            finalUpdates.finalImageUrl = `${cleanUrl}?t=${Date.now()}`;
+            console.log(`[handleUpdateCut] Applied cache buster: ${finalUpdates.finalImageUrl}`);
+        }
+        if (finalUpdates.draftImageUrl?.startsWith('idb://')) {
+            const cleanUrl = finalUpdates.draftImageUrl.split('?')[0];
+            finalUpdates.draftImageUrl = `${cleanUrl}?t=${Date.now()}`;
+        }
+
         setLocalScript(prev => {
-            const targetId = Number(id);
-            const updated = prev.map(cut =>
-                Number(cut.id) === targetId ? { ...cut, ...finalUpdates } : cut
-            );
-            // IMMUTABLE UPDATE: Also update the ref immediately so subsequent handleSave calls
-            // see the newest data even if the component hasn't re-rendered yet.
+            const targetIdStr = String(id);
+            console.log(`[handleUpdateCut] State Update - Searching for ${targetIdStr} in ${prev.length} cuts`);
+            
+            // [STABILITY] Use string comparison to support both numeric and string IDs (e.g. "cut_1")
+            const updated = prev.map(cut => {
+                const isMatch = String(cut.id) === targetIdStr;
+                return isMatch ? { ...cut, ...finalUpdates } : { ...cut };
+            });
+            
+            const matchCount = updated.filter((c, i) => String(prev[i].id) === targetIdStr).length;
+            if (matchCount === 0) {
+                console.warn(`[handleUpdateCut] ⚠️ No cut found with ID ${targetIdStr}! Update failed.`);
+            } else {
+                console.log(`[handleUpdateCut] ✅ Successfully updated ${matchCount} cut(s).`);
+            }
+            
             localScriptRef.current = updated;
             saveToStore(updated);
-            return updated;
+            return [...updated]; 
         });
     }, [projectId, saveToStore]);
 

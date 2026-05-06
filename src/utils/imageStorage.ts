@@ -199,7 +199,13 @@ export async function saveToIdb(
         console.log(`[ImageStorage:SAVE] Key: ${key}, MIME: ${dataToSave.type}, Size: ${Math.round(dataToSave.size / 1024)}KB`);
     }
 
-    await set(storageKey, dataToSave);
+    try {
+        await set(storageKey, dataToSave);
+        console.log(`[ImageStorage] ✅ Successfully wrote to IDB: ${storageKey}`);
+    } catch (err) {
+        console.error(`[ImageStorage] ❌ FAILED to write to IDB: ${storageKey}`, err);
+        throw err;
+    }
     const idbUrl = generateIdbUrl(type, key);
     console.log(`[ImageStorage] Saved ${type}/${key} (${typeof dataToSave === 'string' ? Math.round(dataToSave.length / 1024) : Math.round((dataToSave as Blob).size / 1024)}KB)`);
     return idbUrl;
@@ -218,6 +224,12 @@ export async function loadFromIdb(idbUrl: string): Promise<any> {
 
     const storageKey = `${STORAGE_PREFIX}${parsed.type}-${parsed.key}`;
     const data = await get(storageKey);
+    if (data) {
+        const size = (data instanceof Blob) ? data.size : (typeof data === 'string' ? data.length : 0);
+        console.log(`[ImageStorage] LOAD: ${parsed.type}/${parsed.key} success. Size: ${Math.round(size / 1024)}KB`);
+    } else {
+        console.warn(`[ImageStorage] LOAD: ${parsed.type}/${parsed.key} FAILED (not found in IDB)`);
+    }
     return data || null;
 }
 
@@ -474,6 +486,8 @@ export async function resolveUrl(
                             result = result.replace('data:application/octet-stream', 'data:audio/mpeg');
                         } else if (parsed?.type === 'video') {
                             result = result.replace('data:application/octet-stream', 'data:video/mp4');
+                        } else if (parsed?.type === 'images' || parsed?.type === 'assets') {
+                            result = result.replace('data:application/octet-stream', 'data:image/jpeg');
                         }
                     }
                     resolve(result);
